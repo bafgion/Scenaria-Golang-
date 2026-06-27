@@ -10,8 +10,8 @@ Status values:
 
 | Area | Python capability | Go target package | Status | Validation |
 |---|---|---|---|---|
-| Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | in-progress | Golden parse/serialize tests |
-| Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | in-progress | `scenaria validate` fixture suite |
+| Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | in-progress | Parser tests + fixture-based `.feature` tests |
+| Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | in-progress | `scenaria validate` + validation unit tests |
 | Run engine | Execute steps in browser | `internal/player` | planned | Integration run tests with Chromium |
 | Recording | Capture interactions to steps | `internal/recorder` | planned | Record-playback parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
