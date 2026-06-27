@@ -11,10 +11,15 @@ import (
 )
 
 type runOptions struct {
-	target      string
-	dryRun      bool
-	summaryJSON string
-	junitPath   string
+	target            string
+	dryRun            bool
+	summaryJSON       string
+	junitPath         string
+	engine            string
+	browser           string
+	headed            bool
+	baseURL           string
+	installPlaywright bool
 }
 
 func RunRun(args []string) error {
@@ -65,7 +70,10 @@ func RunRun(args []string) error {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
 	}
 
-	runner := player.NewRunner(opts.dryRun)
+	runner, err := buildRunner(opts)
+	if err != nil {
+		return err
+	}
 	result, err := runner.Execute(context.Background(), plan)
 	if err != nil {
 		return err
@@ -94,9 +102,13 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright]")
 	}
-	opts := runOptions{target: args[0]}
+	opts := runOptions{
+		target:  args[0],
+		engine:  "stub",
+		browser: "chromium",
+	}
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -114,9 +126,54 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.junitPath = args[i]
+		case "--engine":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--engine requires a value (stub|playwright)")
+			}
+			i++
+			opts.engine = args[i]
+		case "--browser":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--browser requires a value (chromium|firefox|webkit)")
+			}
+			i++
+			opts.browser = args[i]
+		case "--headed":
+			opts.headed = true
+		case "--base-url":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--base-url requires a URL value")
+			}
+			i++
+			opts.baseURL = args[i]
+		case "--install-playwright":
+			opts.installPlaywright = true
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
 	}
 	return opts, nil
+}
+
+func buildRunner(opts runOptions) (player.Runner, error) {
+	if opts.dryRun {
+		return player.DryRunner{}, nil
+	}
+	switch opts.engine {
+	case "stub":
+		return player.BrowserRunner{
+			Executor: player.StubBrowserExecutor{},
+		}, nil
+	case "playwright":
+		return player.BrowserRunner{
+			Executor: player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
+				BrowserName: opts.browser,
+				Headless:    !opts.headed,
+				BaseURL:     opts.baseURL,
+				AutoInstall: opts.installPlaywright,
+			}),
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)
+	}
 }

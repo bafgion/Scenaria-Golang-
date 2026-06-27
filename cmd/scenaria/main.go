@@ -82,7 +82,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  scenaria <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`)")
+	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios to target formats")
 	fmt.Println("  record    Record browser actions into scenario steps")

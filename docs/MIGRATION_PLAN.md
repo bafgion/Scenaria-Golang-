@@ -71,7 +71,7 @@ Exit criteria:
 - Implement `scenaria validate`.
 - Introduce runner abstraction for dry-run and browser execution backends.
 - Add JUnit-compatible report output (baseline CLI writer in place).
-- Integrate Playwright execution path in Go worker model.
+- Integrate Playwright execution path in Go worker model (baseline executor wiring in place).
 
 Exit criteria:
 

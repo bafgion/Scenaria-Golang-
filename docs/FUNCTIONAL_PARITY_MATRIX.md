@@ -12,10 +12,10 @@ Status values:
 |---|---|---|---|---|
 | Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | in-progress | Parser + serializer round-trip tests + fixture-based `.feature` tests |
 | Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | in-progress | `scenaria validate` + validation unit tests |
-| Run engine | Execute steps in browser | `internal/player` | in-progress | Runner abstraction + upcoming Chromium integration tests |
+| Run engine | Execute steps in browser | `internal/player` | in-progress | Runner abstraction + baseline Playwright executor + upcoming Chromium integration tests |
 | Recording | Capture interactions to steps | `internal/recorder` | planned | Record-playback parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
-| CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + summary JSON + future browser execution/report comparisons |
+| CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + summary/JUnit + engine selection + future parity comparisons |
 | CLI export | `scenaria export` parity | `internal/report`, `internal/cli` | planned | Golden export snapshots |
 | Reports | JUnit/HTML outputs | `internal/report` | in-progress | Run summary JSON + baseline JUnit XML implemented; HTML and snapshot parity checks pending |
 | Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |

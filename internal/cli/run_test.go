@@ -81,19 +81,24 @@ func TestRunRun_WritesJUnit(t *testing.T) {
 }
 
 func TestParseRunOptions(t *testing.T) {
-	opts, err := parseRunOptions([]string{"./features", "--dry-run", "--summary-json", "result.json"})
+	opts, err := parseRunOptions([]string{
+		"./features",
+		"--dry-run",
+		"--summary-json", "result.json",
+		"--junit", "junit.xml",
+		"--engine", "playwright",
+		"--browser", "firefox",
+		"--headed",
+		"--base-url", "https://example.local",
+		"--install-playwright",
+	})
 	if err != nil {
 		t.Fatalf("parseRunOptions returned error: %v", err)
 	}
 	if opts.target != "./features" || !opts.dryRun || opts.summaryJSON != "result.json" {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
-
-	opts, err = parseRunOptions([]string{"./features", "--junit", "junit.xml"})
-	if err != nil {
-		t.Fatalf("parseRunOptions returned error for junit: %v", err)
-	}
-	if opts.junitPath != "junit.xml" {
+	if opts.junitPath != "junit.xml" || opts.engine != "playwright" || opts.browser != "firefox" || !opts.headed || opts.baseURL != "https://example.local" || !opts.installPlaywright {
 		t.Fatalf("unexpected junit path: %+v", opts)
 	}
 }
@@ -108,7 +113,46 @@ func TestParseRunOptionsErrors(t *testing.T) {
 	if _, err := parseRunOptions([]string{"./features", "--junit"}); err == nil {
 		t.Fatal("expected missing value error for --junit")
 	}
+	if _, err := parseRunOptions([]string{"./features", "--engine"}); err == nil {
+		t.Fatal("expected missing value error for --engine")
+	}
+	if _, err := parseRunOptions([]string{"./features", "--browser"}); err == nil {
+		t.Fatal("expected missing value error for --browser")
+	}
+	if _, err := parseRunOptions([]string{"./features", "--base-url"}); err == nil {
+		t.Fatal("expected missing value error for --base-url")
+	}
 	if _, err := parseRunOptions([]string{"./features", "--unknown"}); err == nil {
 		t.Fatal("expected unknown flag error")
+	}
+}
+
+func TestBuildRunner(t *testing.T) {
+	runner, err := buildRunner(runOptions{dryRun: true})
+	if err != nil {
+		t.Fatalf("buildRunner dry-run failed: %v", err)
+	}
+	if _, ok := runner.(player.DryRunner); !ok {
+		t.Fatalf("expected DryRunner, got %T", runner)
+	}
+
+	runner, err = buildRunner(runOptions{engine: "stub"})
+	if err != nil {
+		t.Fatalf("buildRunner stub failed: %v", err)
+	}
+	if _, ok := runner.(player.BrowserRunner); !ok {
+		t.Fatalf("expected BrowserRunner for stub, got %T", runner)
+	}
+
+	runner, err = buildRunner(runOptions{engine: "playwright", browser: "chromium"})
+	if err != nil {
+		t.Fatalf("buildRunner playwright failed: %v", err)
+	}
+	if _, ok := runner.(player.BrowserRunner); !ok {
+		t.Fatalf("expected BrowserRunner for playwright, got %T", runner)
+	}
+
+	if _, err := buildRunner(runOptions{engine: "unknown"}); err == nil {
+		t.Fatal("expected error for unknown engine")
 	}
 }

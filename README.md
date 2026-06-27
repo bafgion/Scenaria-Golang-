@@ -37,6 +37,9 @@ go run ./cmd/scenaria run ./path/to/features --dry-run --summary-json run-summar
 
 # generate JUnit XML (useful for CI test reporting dashboards)
 go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml
+
+# run with Playwright engine (experimental foundation)
+go run ./cmd/scenaria run ./path/to/features --engine playwright --browser chromium --base-url https://example.com --install-playwright
 ```
 
 ## Install CLI as a global command
