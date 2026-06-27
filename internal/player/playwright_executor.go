@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -24,7 +26,7 @@ func NewPlaywrightExecutor(options PlaywrightExecutorOptions) *PlaywrightExecuto
 	return &PlaywrightExecutor{options: options}
 }
 
-func (e *PlaywrightExecutor) ExecuteScenario(_ context.Context, input ScenarioInput) (ScenarioResult, error) {
+func (e *PlaywrightExecutor) ExecuteScenario(ctx context.Context, input ScenarioInput) (ScenarioResult, error) {
 	result := ScenarioResult{
 		FeaturePath: input.FeaturePath,
 		Scenario:    input.Scenario.Title,
@@ -59,13 +61,13 @@ func (e *PlaywrightExecutor) ExecuteScenario(_ context.Context, input ScenarioIn
 	steps = append(steps, input.Scenario.Steps...)
 
 	for _, step := range steps {
-		action, parseErr := parseStepAction(step)
+		action, parseErr := stepdsl.Parse(step)
 		if parseErr != nil {
 			result.Status = "failed"
 			result.Message = parseErr.Error()
 			return result, nil
 		}
-		if err := executeAction(page, action, e.options.BaseURL); err != nil {
+		if err := executeAction(ctx, page, action, e.options.BaseURL); err != nil {
 			result.Status = "failed"
 			result.Message = fmt.Sprintf("line %d: %v", step.Line, err)
 			return result, nil
@@ -97,47 +99,10 @@ func launchBrowser(pw *playwright.Playwright, options PlaywrightExecutorOptions)
 	}
 }
 
-type stepAction struct {
-	Kind   string
-	Value1 string
-	Value2 string
-}
-
-func parseStepAction(step gherkin.Step) (stepAction, error) {
-	text := strings.TrimSpace(step.Text)
-	lower := strings.ToLower(text)
-	values := extractQuotedValues(text)
-
-	switch {
-	case strings.HasPrefix(lower, "открываю ") || strings.HasPrefix(lower, "перехожу на "):
-		if len(values) < 1 {
-			return stepAction{}, fmt.Errorf("line %d: navigation step must contain URL in quotes", step.Line)
-		}
-		return stepAction{Kind: "goto", Value1: values[0]}, nil
-	case strings.HasPrefix(lower, "нажимаю ") || strings.HasPrefix(lower, "кликаю "):
-		if len(values) < 1 {
-			return stepAction{}, fmt.Errorf("line %d: click step must contain selector in quotes", step.Line)
-		}
-		return stepAction{Kind: "click", Value1: values[0]}, nil
-	case strings.HasPrefix(lower, "ввожу "):
-		if len(values) < 2 {
-			return stepAction{}, fmt.Errorf("line %d: fill step must contain value and selector in quotes", step.Line)
-		}
-		return stepAction{Kind: "fill", Value1: values[0], Value2: values[1]}, nil
-	case strings.HasPrefix(lower, "вижу "):
-		if len(values) < 1 {
-			return stepAction{}, fmt.Errorf("line %d: assertion step must contain expected text in quotes", step.Line)
-		}
-		return stepAction{Kind: "assert-text", Value1: values[0]}, nil
-	default:
-		return stepAction{}, fmt.Errorf("line %d: unsupported step text %q for playwright engine", step.Line, step.Text)
-	}
-}
-
-func executeAction(page playwright.Page, action stepAction, baseURL string) error {
+func executeAction(ctx context.Context, page playwright.Page, action stepdsl.Action, baseURL string) error {
 	switch action.Kind {
 	case "goto":
-		_, err := page.Goto(resolveURL(action.Value1, baseURL))
+		_, err := page.Goto(stepdsl.ResolveURL(action.Value1, baseURL))
 		if err != nil {
 			return fmt.Errorf("goto failed: %w", err)
 		}
@@ -161,40 +126,30 @@ func executeAction(page playwright.Page, action stepAction, baseURL string) erro
 			return fmt.Errorf("expected text %q not found", action.Value1)
 		}
 		return nil
+	case "assert-url-contains":
+		if !strings.Contains(page.URL(), action.Value1) {
+			return fmt.Errorf("expected URL to contain %q, got %q", action.Value1, page.URL())
+		}
+		return nil
+	case "press":
+		if err := page.Keyboard().Press(action.Value1); err != nil {
+			return fmt.Errorf("key press failed: %w", err)
+		}
+		return nil
+	case "wait":
+		duration, err := time.ParseDuration(action.Value1)
+		if err != nil {
+			return fmt.Errorf("invalid wait duration %q: %w", action.Value1, err)
+		}
+		timer := time.NewTimer(duration)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
 	default:
 		return fmt.Errorf("unsupported action kind %q", action.Kind)
 	}
-}
-
-func resolveURL(raw string, baseURL string) string {
-	trimmed := strings.TrimSpace(raw)
-	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
-		return trimmed
-	}
-	if strings.TrimSpace(baseURL) == "" {
-		return trimmed
-	}
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if strings.HasPrefix(trimmed, "/") {
-		return base + trimmed
-	}
-	return base + "/" + strings.TrimLeft(trimmed, "/")
-}
-
-func extractQuotedValues(s string) []string {
-	values := make([]string, 0)
-	for {
-		start := strings.Index(s, `"`)
-		if start < 0 {
-			break
-		}
-		s = s[start+1:]
-		end := strings.Index(s, `"`)
-		if end < 0 {
-			break
-		}
-		values = append(values, s[:end])
-		s = s[end+1:]
-	}
-	return values
 }

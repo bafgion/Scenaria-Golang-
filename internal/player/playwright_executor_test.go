@@ -1,86 +1,43 @@
 package player
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
-	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 )
 
-func TestParseStepAction(t *testing.T) {
-	tests := []struct {
-		name    string
-		step    gherkin.Step
-		kind    string
-		value1  string
-		value2  string
-		wantErr bool
-	}{
-		{
-			name:   "goto",
-			step:   gherkin.Step{Line: 1, Text: `открываю "https://example.com"`},
-			kind:   "goto",
-			value1: "https://example.com",
-		},
-		{
-			name:   "click",
-			step:   gherkin.Step{Line: 2, Text: `нажимаю "#login"`},
-			kind:   "click",
-			value1: "#login",
-		},
-		{
-			name:   "fill",
-			step:   gherkin.Step{Line: 3, Text: `ввожу "admin" в "#username"`},
-			kind:   "fill",
-			value1: "admin",
-			value2: "#username",
-		},
-		{
-			name:   "assert-text",
-			step:   gherkin.Step{Line: 4, Text: `вижу "Панель"`},
-			kind:   "assert-text",
-			value1: "Панель",
-		},
-		{
-			name:    "unsupported",
-			step:    gherkin.Step{Line: 5, Text: "что-то странное"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			action, err := parseStepAction(tt.step)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected parseStepAction error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseStepAction returned error: %v", err)
-			}
-			if action.Kind != tt.kind || action.Value1 != tt.value1 || action.Value2 != tt.value2 {
-				t.Fatalf("unexpected action: %+v", action)
-			}
-		})
+func TestLaunchBrowserUnsupportedName(t *testing.T) {
+	_, err := launchBrowser(nil, PlaywrightExecutorOptions{BrowserName: "unknown"})
+	if err == nil {
+		t.Fatal("expected unsupported browser error")
 	}
 }
 
-func TestResolveURL(t *testing.T) {
-	if got := resolveURL("https://example.com", "https://base.local"); got != "https://example.com" {
-		t.Fatalf("unexpected absolute URL resolution: %q", got)
-	}
-	if got := resolveURL("/login", "https://base.local"); got != "https://base.local/login" {
-		t.Fatalf("unexpected rooted URL resolution: %q", got)
-	}
-	if got := resolveURL("profile", "https://base.local/"); got != "https://base.local/profile" {
-		t.Fatalf("unexpected relative URL resolution: %q", got)
+func TestExecuteActionWaitCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := executeAction(ctx, nil, stepdsl.Action{Kind: "wait", Value1: "5s"}, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation error, got: %v", err)
 	}
 }
 
-func TestExtractQuotedValues(t *testing.T) {
-	values := extractQuotedValues(`ввожу "admin" в "#username"`)
-	if len(values) != 2 || values[0] != "admin" || values[1] != "#username" {
-		t.Fatalf("unexpected quoted values: %#v", values)
+func TestExecuteActionWaitSuccess(t *testing.T) {
+	start := time.Now()
+	if err := executeAction(context.Background(), nil, stepdsl.Action{Kind: "wait", Value1: "10ms"}, ""); err != nil {
+		t.Fatalf("executeAction wait returned error: %v", err)
+	}
+	if time.Since(start) < 10*time.Millisecond {
+		t.Fatal("wait action did not wait long enough")
+	}
+}
+
+func TestExecuteActionInvalidWaitDuration(t *testing.T) {
+	if err := executeAction(context.Background(), nil, stepdsl.Action{Kind: "wait", Value1: "oops"}, ""); err == nil {
+		t.Fatal("expected invalid wait duration error")
 	}
 }

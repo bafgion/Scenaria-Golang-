@@ -44,6 +44,8 @@ go run ./cmd/scenaria run ./path/to/features --engine playwright --browser chrom
 # export scenario to JSON document or normalized .feature
 go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json
 go run ./cmd/scenaria export ./path/to/login.feature --output login-normalized.feature --format feature
+go run ./cmd/scenaria export ./path/to/login.feature --output login.spec.ts --format ts --base-url https://example.com
+go run ./cmd/scenaria export ./path/to/login.feature --output login.py --format python --base-url https://example.com
 
 # bootstrap a recorded scenario file from CLI
 go run ./cmd/scenaria record --output recorded.feature --feature "Логин" --scenario "Успех" --step "открываю \"https://example.com\""

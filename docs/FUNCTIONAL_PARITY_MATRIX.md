@@ -16,7 +16,7 @@ Status values:
 | Recording | Capture interactions to steps | `internal/recorder`, `internal/cli` | in-progress | Baseline `record` CLI writer + future browser capture parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
 | CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + summary/JUnit + engine selection + future parity comparisons |
-| CLI export | `scenaria export` parity | `internal/exporter`, `internal/cli` | in-progress | Baseline JSON/feature export tests + future format parity snapshots |
+| CLI export | `scenaria export` parity | `internal/exporter`, `internal/cli` | in-progress | Baseline JSON/feature/TS/Python export tests + future format parity snapshots |
 | Reports | JUnit/HTML outputs | `internal/report` | in-progress | Run summary JSON + baseline JUnit XML implemented; HTML and snapshot parity checks pending |
 | Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |
 | Test clients | `.scenaria/test_clients/*.json` | `internal/settings`, `internal/scenario` | in-progress | Fixture compatibility tests |

@@ -89,7 +89,7 @@ func runHelp(_ []string) error {
 	fmt.Println("Commands:")
 	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
-	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature`)")
+	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature|ts|python`)")
 	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, ...)")
 	fmt.Println("  plugins   Manage plugins (`list`, `install`, `uninstall`)")
 	fmt.Println("  version   Print version")

@@ -10,9 +10,10 @@ import (
 )
 
 type exportOptions struct {
-	input  string
-	output string
-	format string
+	input   string
+	output  string
+	format  string
+	baseURL string
 }
 
 func RunExport(args []string) error {
@@ -37,6 +38,14 @@ func RunExport(args []string) error {
 		if err := store.Save(opts.output, feature); err != nil {
 			return err
 		}
+	case "ts":
+		if err := exporter.WritePlaywrightTS(opts.output, feature, opts.baseURL); err != nil {
+			return err
+		}
+	case "python":
+		if err := exporter.WritePlaywrightPython(opts.output, feature, opts.baseURL); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported export format %q", opts.format)
 	}
@@ -47,7 +56,7 @@ func RunExport(args []string) error {
 
 func parseExportOptions(args []string) (exportOptions, error) {
 	if len(args) == 0 {
-		return exportOptions{}, fmt.Errorf("usage: scenaria export <feature-file> --output <file> [--format json|feature]")
+		return exportOptions{}, fmt.Errorf("usage: scenaria export <feature-file> --output <file> [--format json|feature|ts|python] [--base-url <url>]")
 	}
 
 	opts := exportOptions{
@@ -63,10 +72,16 @@ func parseExportOptions(args []string) (exportOptions, error) {
 			opts.output = args[i]
 		case "--format":
 			if i+1 >= len(args) {
-				return exportOptions{}, fmt.Errorf("--format requires a value (json|feature)")
+				return exportOptions{}, fmt.Errorf("--format requires a value (json|feature|ts|python)")
 			}
 			i++
 			opts.format = strings.ToLower(args[i])
+		case "--base-url":
+			if i+1 >= len(args) {
+				return exportOptions{}, fmt.Errorf("--base-url requires a URL value")
+			}
+			i++
+			opts.baseURL = args[i]
 		default:
 			return exportOptions{}, fmt.Errorf("unknown flag for export: %s", args[i])
 		}
@@ -78,8 +93,8 @@ func parseExportOptions(args []string) (exportOptions, error) {
 	if opts.format == "" {
 		opts.format = inferExportFormat(opts.output)
 	}
-	if opts.format != "json" && opts.format != "feature" {
-		return exportOptions{}, fmt.Errorf("unsupported export format %q (supported: json, feature)", opts.format)
+	if opts.format != "json" && opts.format != "feature" && opts.format != "ts" && opts.format != "python" {
+		return exportOptions{}, fmt.Errorf("unsupported export format %q (supported: json, feature, ts, python)", opts.format)
 	}
 	return opts, nil
 }
@@ -91,6 +106,10 @@ func inferExportFormat(path string) string {
 		return "json"
 	case ".feature":
 		return "feature"
+	case ".ts":
+		return "ts"
+	case ".py":
+		return "python"
 	default:
 		return "json"
 	}
