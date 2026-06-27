@@ -10,16 +10,16 @@ Status values:
 
 | Area | Python capability | Go target package | Status | Validation |
 |---|---|---|---|---|
-| Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | planned | Golden parse/serialize tests |
-| Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | planned | `scenaria validate` fixture suite |
+| Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | in-progress | Golden parse/serialize tests |
+| Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | in-progress | `scenaria validate` fixture suite |
 | Run engine | Execute steps in browser | `internal/player` | planned | Integration run tests with Chromium |
 | Recording | Capture interactions to steps | `internal/recorder` | planned | Record-playback parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
 | CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | planned | Exit code and report comparisons |
 | CLI export | `scenaria export` parity | `internal/report`, `internal/cli` | planned | Golden export snapshots |
 | Reports | JUnit/HTML outputs | `internal/report` | planned | Schema and snapshot checks |
-| Settings | `settings.json` compatibility | `internal/settings` | planned | Round-trip JSON compatibility tests |
-| Test clients | `.scenaria/test_clients/*.json` | `internal/settings`, `internal/scenario` | planned | Fixture compatibility tests |
+| Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |
+| Test clients | `.scenaria/test_clients/*.json` | `internal/settings`, `internal/scenario` | in-progress | Fixture compatibility tests |
 | Plugin runtime | Runner extension points | `internal/plugin` | planned | Plugin smoke tests |
 | Desktop shell | Main desktop workflow | `ui/desktop` | planned | E2E workflow tests |
 | Update system | Release/update checks | `internal/update` | planned | Update metadata contract tests |

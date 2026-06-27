@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/bafgion/scenaria-golang/internal/cli"
 )
 
 type command struct {
@@ -25,8 +27,8 @@ func main() {
 		},
 		"validate": {
 			name:        "validate",
-			description: "Validate scenarios (migration placeholder)",
-			run:         runNotImplemented("validate"),
+			description: "Validate scenarios",
+			run:         cli.RunValidate,
 		},
 		"export": {
 			name:        "export",
