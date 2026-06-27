@@ -2,11 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"io/fs"
-	"path/filepath"
-	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/scenario"
 )
 
 func RunValidate(args []string) error {
@@ -15,7 +13,8 @@ func RunValidate(args []string) error {
 	}
 	target := args[0]
 
-	files, err := collectFeatureFiles(target)
+	store := scenario.NewFeatureStore()
+	files, err := store.Discover(target)
 	if err != nil {
 		return err
 	}
@@ -48,24 +47,4 @@ func RunValidate(args []string) error {
 	}
 	fmt.Printf("Validated %d file(s): no issues found\n", len(files))
 	return nil
-}
-
-func collectFeatureFiles(target string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(strings.ToLower(d.Name()), ".feature") {
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("scan %q: %w", target, err)
-	}
-	return files, nil
 }
