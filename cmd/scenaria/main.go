@@ -37,8 +37,8 @@ func main() {
 		},
 		"record": {
 			name:        "record",
-			description: "Record browser interactions (migration placeholder)",
-			run:         runNotImplemented("record"),
+			description: "Create baseline recorded scenario",
+			run:         cli.RunRecord,
 		},
 		"version": {
 			name:        "version",
@@ -85,7 +85,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature`)")
-	fmt.Println("  record    Record browser actions into scenario steps")
+	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, ...)")
 	fmt.Println("  version   Print version")
 	fmt.Println("  help      Show this help")
 	fmt.Println()

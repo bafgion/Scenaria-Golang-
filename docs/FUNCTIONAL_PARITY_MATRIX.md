@@ -13,7 +13,7 @@ Status values:
 | Scenario format | Read/write `.feature` files | `internal/gherkin`, `internal/scenario` | in-progress | Parser + serializer round-trip tests + fixture-based `.feature` tests |
 | Scenario validation | Syntax and semantic checks | `internal/gherkin`, `internal/cli` | in-progress | `scenaria validate` + validation unit tests |
 | Run engine | Execute steps in browser | `internal/player` | in-progress | Runner abstraction + baseline Playwright executor + upcoming Chromium integration tests |
-| Recording | Capture interactions to steps | `internal/recorder` | planned | Record-playback parity scenarios |
+| Recording | Capture interactions to steps | `internal/recorder`, `internal/cli` | in-progress | Baseline `record` CLI writer + future browser capture parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
 | CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + summary/JUnit + engine selection + future parity comparisons |
 | CLI export | `scenaria export` parity | `internal/exporter`, `internal/cli` | in-progress | Baseline JSON/feature export tests + future format parity snapshots |

@@ -90,6 +90,7 @@ Exit criteria:
 
 ## Phase 4: recorder backend migration
 
+- Baseline `scenaria record` command can generate starter `.feature` scenarios from CLI input.
 - Port recorder script injection and callback plumbing.
 - Port selector heuristics and picker behavior.
 - Add deterministic tests for command queue and event ordering.
