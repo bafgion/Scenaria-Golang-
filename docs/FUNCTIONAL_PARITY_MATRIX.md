@@ -17,7 +17,7 @@ Status values:
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
 | CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + summary JSON + future browser execution/report comparisons |
 | CLI export | `scenaria export` parity | `internal/report`, `internal/cli` | planned | Golden export snapshots |
-| Reports | JUnit/HTML outputs | `internal/report` | in-progress | Run summary JSON implemented; JUnit/HTML schema and snapshot checks pending |
+| Reports | JUnit/HTML outputs | `internal/report` | in-progress | Run summary JSON + baseline JUnit XML implemented; HTML and snapshot parity checks pending |
 | Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |
 | Test clients | `.scenaria/test_clients/*.json` | `internal/settings`, `internal/scenario` | in-progress | Fixture compatibility tests |
 | Plugin runtime | Runner extension points | `internal/plugin` | planned | Plugin smoke tests |

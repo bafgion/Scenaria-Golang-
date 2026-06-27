@@ -14,6 +14,7 @@ type runOptions struct {
 	target      string
 	dryRun      bool
 	summaryJSON string
+	junitPath   string
 }
 
 func RunRun(args []string) error {
@@ -76,6 +77,12 @@ func RunRun(args []string) error {
 		}
 		fmt.Printf("Wrote summary report: %s\n", opts.summaryJSON)
 	}
+	if opts.junitPath != "" {
+		if writeErr := report.WriteJUnit(opts.junitPath, result); writeErr != nil {
+			return writeErr
+		}
+		fmt.Printf("Wrote JUnit report: %s\n", opts.junitPath)
+	}
 
 	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s)\n", result.Files, result.Scenarios, result.Steps)
 	if opts.dryRun {
@@ -87,7 +94,7 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>]")
 	}
 	opts := runOptions{target: args[0]}
 	for i := 1; i < len(args); i++ {
@@ -101,6 +108,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.summaryJSON = args[i]
+		case "--junit":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--junit requires a file path")
+			}
+			i++
+			opts.junitPath = args[i]
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}

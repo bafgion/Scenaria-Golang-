@@ -63,6 +63,23 @@ func TestRunRun_WritesSummaryJSON(t *testing.T) {
 	}
 }
 
+func TestRunRun_WritesJUnit(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "ok.feature")
+	content := "Функционал: Demo\nСценарий: S1\nКогда выполняю шаг\n"
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+	junitPath := filepath.Join(tmp, "junit.xml")
+
+	if err := RunRun([]string{tmp, "--dry-run", "--junit", junitPath}); err != nil {
+		t.Fatalf("RunRun returned error: %v", err)
+	}
+	if _, err := os.Stat(junitPath); err != nil {
+		t.Fatalf("expected junit report to be written: %v", err)
+	}
+}
+
 func TestParseRunOptions(t *testing.T) {
 	opts, err := parseRunOptions([]string{"./features", "--dry-run", "--summary-json", "result.json"})
 	if err != nil {
@@ -70,6 +87,14 @@ func TestParseRunOptions(t *testing.T) {
 	}
 	if opts.target != "./features" || !opts.dryRun || opts.summaryJSON != "result.json" {
 		t.Fatalf("unexpected options: %+v", opts)
+	}
+
+	opts, err = parseRunOptions([]string{"./features", "--junit", "junit.xml"})
+	if err != nil {
+		t.Fatalf("parseRunOptions returned error for junit: %v", err)
+	}
+	if opts.junitPath != "junit.xml" {
+		t.Fatalf("unexpected junit path: %+v", opts)
 	}
 }
 
@@ -79,6 +104,9 @@ func TestParseRunOptionsErrors(t *testing.T) {
 	}
 	if _, err := parseRunOptions([]string{"./features", "--summary-json"}); err == nil {
 		t.Fatal("expected missing value error for --summary-json")
+	}
+	if _, err := parseRunOptions([]string{"./features", "--junit"}); err == nil {
+		t.Fatal("expected missing value error for --junit")
 	}
 	if _, err := parseRunOptions([]string{"./features", "--unknown"}); err == nil {
 		t.Fatal("expected unknown flag error")
