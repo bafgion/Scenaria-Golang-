@@ -15,7 +15,7 @@ Status values:
 | Run engine | Execute steps in browser | `internal/player` | planned | Integration run tests with Chromium |
 | Recording | Capture interactions to steps | `internal/recorder` | planned | Record-playback parity scenarios |
 | Selectors | Build and resolve selectors | `internal/selector` | planned | Selector fixture and DOM tests |
-| CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | planned | Exit code and report comparisons |
+| CLI run | `scenaria run` parity | `cmd/scenaria`, `internal/cli` | in-progress | Preflight tests + future browser execution and report comparisons |
 | CLI export | `scenaria export` parity | `internal/report`, `internal/cli` | planned | Golden export snapshots |
 | Reports | JUnit/HTML outputs | `internal/report` | planned | Schema and snapshot checks |
 | Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |
