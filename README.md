@@ -40,6 +40,10 @@ go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml
 
 # run with Playwright engine (experimental foundation)
 go run ./cmd/scenaria run ./path/to/features --engine playwright --browser chromium --base-url https://example.com --install-playwright
+
+# export scenario to JSON document or normalized .feature
+go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json
+go run ./cmd/scenaria export ./path/to/login.feature --output login-normalized.feature --format feature
 ```
 
 ## Install CLI as a global command

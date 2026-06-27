@@ -81,6 +81,7 @@ Exit criteria:
 ## Phase 3: export/report parity
 
 - Implement export formats used by current Python flow.
+- Baseline CLI export for JSON and normalized `.feature` is available.
 - Implement HTML/JUnit reports with stable schema.
 
 Exit criteria:

@@ -32,8 +32,8 @@ func main() {
 		},
 		"export": {
 			name:        "export",
-			description: "Export scenarios (migration placeholder)",
-			run:         runNotImplemented("export"),
+			description: "Export scenarios",
+			run:         cli.RunExport,
 		},
 		"record": {
 			name:        "record",
@@ -84,7 +84,7 @@ func runHelp(_ []string) error {
 	fmt.Println("Commands:")
 	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
-	fmt.Println("  export    Export scenarios to target formats")
+	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature`)")
 	fmt.Println("  record    Record browser actions into scenario steps")
 	fmt.Println("  version   Print version")
 	fmt.Println("  help      Show this help")
