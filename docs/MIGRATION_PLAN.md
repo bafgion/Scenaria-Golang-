@@ -83,6 +83,7 @@ Exit criteria:
 - Implement export formats used by current Python flow.
 - Baseline CLI export for JSON and normalized `.feature` is available.
 - Implement HTML/JUnit reports with stable schema.
+- Baseline CLI plugin registry operations (`plugins list/install/uninstall`) are available.
 
 Exit criteria:
 

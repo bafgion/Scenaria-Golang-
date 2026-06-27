@@ -47,6 +47,11 @@ go run ./cmd/scenaria export ./path/to/login.feature --output login-normalized.f
 
 # bootstrap a recorded scenario file from CLI
 go run ./cmd/scenaria record --output recorded.feature --feature "Логин" --scenario "Успех" --step "открываю \"https://example.com\""
+
+# manage local plugin registry for project
+go run ./cmd/scenaria plugins install --project . --name vanessa --source https://example.com/vanessa.zip
+go run ./cmd/scenaria plugins list --project .
+go run ./cmd/scenaria plugins uninstall --project . --name vanessa
 ```
 
 ## Install CLI as a global command

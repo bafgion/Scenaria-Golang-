@@ -20,7 +20,7 @@ Status values:
 | Reports | JUnit/HTML outputs | `internal/report` | in-progress | Run summary JSON + baseline JUnit XML implemented; HTML and snapshot parity checks pending |
 | Settings | `settings.json` compatibility | `internal/settings` | in-progress | Round-trip JSON compatibility tests |
 | Test clients | `.scenaria/test_clients/*.json` | `internal/settings`, `internal/scenario` | in-progress | Fixture compatibility tests |
-| Plugin runtime | Runner extension points | `internal/plugin` | planned | Plugin smoke tests |
+| Plugin runtime | Runner extension points | `internal/plugin`, `internal/cli` | in-progress | Baseline local manifest registry + lifecycle smoke tests |
 | Desktop shell | Main desktop workflow | `ui/desktop` | planned | E2E workflow tests |
 | Update system | Release/update checks | `internal/update` | planned | Update metadata contract tests |
 | Packaging | Portable distribution artifacts | `build/` or release workflow | planned | Release workflow dry runs |

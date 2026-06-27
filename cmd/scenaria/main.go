@@ -40,6 +40,11 @@ func main() {
 			description: "Create baseline recorded scenario",
 			run:         cli.RunRecord,
 		},
+		"plugins": {
+			name:        "plugins",
+			description: "Manage plugins",
+			run:         cli.RunPlugins,
+		},
 		"version": {
 			name:        "version",
 			description: "Print CLI version",
@@ -86,6 +91,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature`)")
 	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, ...)")
+	fmt.Println("  plugins   Manage plugins (`list`, `install`, `uninstall`)")
 	fmt.Println("  version   Print version")
 	fmt.Println("  help      Show this help")
 	fmt.Println()
