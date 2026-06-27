@@ -1,33 +1,40 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/report"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 )
 
+type runOptions struct {
+	target      string
+	dryRun      bool
+	summaryJSON string
+}
+
 func RunRun(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: scenaria run <path> [--dry-run]")
+	opts, err := parseRunOptions(args)
+	if err != nil {
+		return err
 	}
-	target := args[0]
-	dryRun := hasFlag(args[1:], "--dry-run")
 
 	store := scenario.NewFeatureStore()
-	files, err := store.Discover(target)
+	files, err := store.Discover(opts.target)
 	if err != nil {
 		return err
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("no .feature files found in %q", target)
+		return fmt.Errorf("no .feature files found in %q", opts.target)
 	}
 
-	var (
-		errorsCount int
-		scenarios   int
-		steps       int
-	)
+	var errorsCount int
+	plan := player.ExecutionPlan{
+		Features: make([]player.FeatureInput, 0, len(files)),
+	}
 
 	for _, path := range files {
 		feature, loadErr := store.Load(path)
@@ -46,11 +53,10 @@ func RunRun(args []string) error {
 			continue
 		}
 
-		scenarios += len(feature.Scenarios)
-		steps += len(feature.Background)
-		for _, s := range feature.Scenarios {
-			steps += len(s.Steps)
-		}
+		plan.Features = append(plan.Features, player.FeatureInput{
+			Path:    path,
+			Feature: feature,
+		})
 		fmt.Printf("✓ %s\n", path)
 	}
 
@@ -58,19 +64,46 @@ func RunRun(args []string) error {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
 	}
 
-	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s)\n", len(files), scenarios, steps)
-	if dryRun {
+	runner := player.NewRunner(opts.dryRun)
+	result, err := runner.Execute(context.Background(), plan)
+	if err != nil {
+		return err
+	}
+
+	if opts.summaryJSON != "" {
+		if writeErr := report.WriteRunSummary(opts.summaryJSON, report.FromExecutionResult(result)); writeErr != nil {
+			return writeErr
+		}
+		fmt.Printf("Wrote summary report: %s\n", opts.summaryJSON)
+	}
+
+	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s)\n", result.Files, result.Scenarios, result.Steps)
+	if opts.dryRun {
 		fmt.Println("Dry-run mode enabled: browser execution skipped")
 		return nil
 	}
-	return fmt.Errorf("browser execution engine is not implemented yet; retry with --dry-run")
+	return nil
 }
 
-func hasFlag(args []string, flag string) bool {
-	for _, arg := range args {
-		if arg == flag {
-			return true
+func parseRunOptions(args []string) (runOptions, error) {
+	if len(args) == 0 {
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>]")
+	}
+	opts := runOptions{target: args[0]}
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--dry-run":
+			opts.dryRun = true
+		case "--summary-json":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--summary-json requires a file path")
+			}
+			i++
+			opts.summaryJSON = args[i]
+		default:
+			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
 	}
-	return false
+	return opts, nil
 }

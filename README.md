@@ -26,6 +26,16 @@ go test ./...
 go run ./cmd/scenaria --help
 ```
 
+## Current CLI capabilities
+
+```bash
+# validate feature files
+go run ./cmd/scenaria validate ./path/to/features
+
+# run preflight and emit summary JSON for CI integration
+go run ./cmd/scenaria run ./path/to/features --dry-run --summary-json run-summary.json
+```
+
 ## Install CLI as a global command
 
 ```bash
