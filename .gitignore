@@ -1,0 +1,10 @@
+*.exe
+*.dll
+*.so
+*.dylib
+dist/
+build/bin/
+node_modules/
+frontend/dist/
+frontend/build/
+.DS_Store

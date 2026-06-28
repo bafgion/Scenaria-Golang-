@@ -28,6 +28,7 @@ type runOptions struct {
 	installPlaywright bool
 	tag               string
 	variables         map[string]string
+	testClient        string
 	slowMo            float64
 	workers           int
 }
@@ -82,7 +83,7 @@ func RunRun(args []string) error {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
 	}
 
-	plan := player.BuildExecutionPlan(featureInputs, opts.tag, opts.variables)
+	plan := player.BuildExecutionPlanWithTestClient(featureInputs, opts.tag, opts.variables, opts.testClient)
 	if len(plan.Cases) == 0 {
 		if opts.tag != "" {
 			return fmt.Errorf("no scenarios found with tag %q in %v", opts.tag, opts.targets)
@@ -216,6 +217,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.tag = args[i]
+		case "--test-client":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--test-client requires a client name")
+			}
+			i++
+			opts.testClient = args[i]
 		case "--var":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--var requires NAME=VALUE")

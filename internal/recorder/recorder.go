@@ -82,6 +82,11 @@ func EventsToStep(eventType string, detail map[string]string) (string, bool) {
 			return "", false
 		}
 		return `ввожу "` + value + `" в "` + sel + `"`, true
+	case "draw-signature":
+		if sel == "" {
+			return "", false
+		}
+		return `рисую подпись в "` + sel + `"`, true
 	default:
 		return "", false
 	}

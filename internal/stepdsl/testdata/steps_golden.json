@@ -20,6 +20,7 @@
   {"text": "жду появления \"#ready\"", "kind": "wait-visible", "v1": "#ready"},
   {"text": "жду исчезновения \"#loader\"", "kind": "wait-hidden", "v1": "#loader"},
   {"text": "жду 500 мс", "kind": "wait", "v1": "500ms"},
+  {"text": "жду 2 с", "kind": "wait", "v1": "2000ms"},
   {"text": "обновляю страницу", "kind": "reload"},
   {"text": "возвращаюсь назад", "kind": "go-back"},
   {"text": "закрываю браузер", "kind": "close-browser"},

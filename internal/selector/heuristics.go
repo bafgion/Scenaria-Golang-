@@ -35,6 +35,14 @@ func BuildFromElement(el ElementInfo) string {
 	if tag == "" {
 		tag = "*"
 	}
+	if tag == "canvas" {
+		if testID := strings.TrimSpace(el.TestID); testID != "" {
+			return fmt.Sprintf(`[data-testid=%q]`, testID)
+		}
+		if aria := strings.TrimSpace(el.AriaLabel); aria != "" {
+			return fmt.Sprintf(`canvas[aria-label=%q]`, aria)
+		}
+	}
 	if id := strings.TrimSpace(el.ID); id != "" {
 		return "#" + cssEscape(id)
 	}

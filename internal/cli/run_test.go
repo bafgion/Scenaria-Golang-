@@ -92,6 +92,8 @@ func TestParseRunOptions(t *testing.T) {
 		"--base-url", "https://example.local",
 		"--install-playwright",
 		"--tag", "smoke",
+		"--test-client", "DemoUser",
+		"--var", "BASE=https://example.com",
 	})
 	if err != nil {
 		t.Fatalf("parseRunOptions returned error: %v", err)
@@ -104,6 +106,12 @@ func TestParseRunOptions(t *testing.T) {
 	}
 	if opts.tag != "smoke" {
 		t.Fatalf("unexpected tag: %q", opts.tag)
+	}
+	if opts.testClient != "DemoUser" {
+		t.Fatalf("unexpected test client: %q", opts.testClient)
+	}
+	if opts.variables["BASE"] != "https://example.com" {
+		t.Fatalf("unexpected variables: %#v", opts.variables)
 	}
 }
 

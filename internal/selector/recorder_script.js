@@ -52,7 +52,42 @@
     return el;
   }
 
-  function buildInputSelector(el) {
+  function findCanvas(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.tagName === 'CANVAS') return el;
+    return el.closest('canvas');
+  }
+
+  function buildCanvasSelector(canvas) {
+    if (!canvas) return null;
+    const testId = canvas.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+    if (canvas.id) return `#${cssEscape(canvas.id)}`;
+    const aria = canvas.getAttribute('aria-label');
+    if (aria && aria.trim()) return `canvas[aria-label="${cssEscape(aria.trim())}"]`;
+    const wrap = canvas.closest('[data-testid]');
+    if (wrap) {
+      const wrapId = wrap.getAttribute('data-testid');
+      if (wrapId) return `[data-testid="${cssEscape(wrapId)}"] canvas`;
+    }
+    const sig = canvas.closest('[class*="sign"], [class*="signature"], [data-signature]');
+    if (sig && sig.id) return `#${cssEscape(sig.id)} canvas`;
+    return 'canvas';
+  }
+
+  function isSignatureCanvas(canvas) {
+    if (!canvas) return false;
+    const cls = (canvas.className || '').toLowerCase();
+    if (cls.includes('sign') || cls.includes('signature')) return true;
+    const parent = canvas.parentElement;
+    if (parent) {
+      const pcls = (parent.className || '').toLowerCase();
+      if (pcls.includes('sign') || pcls.includes('signature')) return true;
+      if (parent.getAttribute('data-signature')) return true;
+    }
+    return canvas.getAttribute('role') === 'img' && !!canvas.getAttribute('aria-label');
+  }
+
     if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return null;
     const tag = el.tagName.toLowerCase();
     const testId = el.getAttribute('data-testid');
@@ -114,6 +149,10 @@
 
   function buildSelector(el) {
     if (!el || el.nodeType !== 1) return '';
+    if (el.tagName === 'CANVAS' || findCanvas(el) === el) {
+      const canvasSel = buildCanvasSelector(el);
+      if (canvasSel) return canvasSel;
+    }
     const click = buildClickSelector(el);
     if (click) return click;
     const input = buildInputSelector(el);
@@ -158,7 +197,14 @@
     if (!el) return;
     window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
   };
-  document.addEventListener('click', (e) => push('click', e.target), true);
+  document.addEventListener('click', (e) => {
+    const canvas = findCanvas(e.target);
+    if (canvas && isSignatureCanvas(canvas)) {
+      push('draw-signature', canvas);
+      return;
+    }
+    push('click', e.target);
+  }, true);
   document.addEventListener('input', (e) => push('input', e.target), true);
   document.addEventListener('change', (e) => push('change', e.target), true);
 })();

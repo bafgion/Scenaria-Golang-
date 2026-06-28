@@ -1,6 +1,6 @@
 # Functional Parity Matrix (Python MVP -> Go)
 
-Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne desktop (not pixel-identical).
+Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, completions, splash, export/import.
 
 | Area | Python capability | Go target | Status |
 |---|---|---|---|
@@ -17,11 +17,11 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 | Reports | JUnit/HTML | `internal/report` | validated |
 | Run status | `.scenaria/run_status.json` | `internal/runstatus` | validated |
 | Recorder | live capture + step coalescing | `internal/recorder`, `normalize.go` | validated |
-| Selector heuristics | DOM → selector (expanded JS) | `internal/selector/recorder_script.js` | partial |
+| Selector heuristics | DOM → selector (canvas/signature) | `internal/selector/recorder_script.js` | validated |
 | OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
 | Vanessa add-on | exclude tags, rerun, epf install, JUnit monitor | `internal/vanessa` | partial |
 | CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
-| Desktop | tabs, settings dialog, browser validate | `ui/desktop` | partial |
+| Desktop | syntax highlight, run options, test client picker | `ui/desktop` | validated |
 | Plugins registry | list/install zip/URL | `internal/plugin` | validated |
 | Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
@@ -29,9 +29,7 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 
 ## Remaining gaps (not 100%)
 
-- **Desktop Qt IDE**: syntax highlighter, step completions, splash screen.
-- **Selector heuristics JS**: canvas/signature selectors from Python.
-- **Python test suite**: full cross-language golden CI.
+- **Python test suite**: full cross-language CI job against Python `tests/` repo (golden fixture embedded in Go).
 
 ## Intentional differences
 

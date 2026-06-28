@@ -22,6 +22,15 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 			Text:     detail["text"],
 			Context:  detail["contexttext"],
 		}, true
+	case "draw-signature":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		if sel == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "draw-signature", Selector: sel}, true
 	case "input", "fill", "change":
 		sel := strings.TrimSpace(detail["selector"])
 		if sel == "" {
@@ -76,6 +85,11 @@ func RecordedStepToLine(step RecordedStep) (string, bool) {
 			return "", false
 		}
 		return fmt.Sprintf(`ввожу "%s" в "%s"`, escapeStepText(step.Value), escapeStepText(step.Selector)), true
+	case "draw-signature":
+		if step.Selector == "" {
+			return "", false
+		}
+		return fmt.Sprintf(`рисую подпись в "%s"`, escapeStepText(step.Selector)), true
 	default:
 		return "", false
 	}

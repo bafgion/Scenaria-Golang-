@@ -1,6 +1,8 @@
 package player
 
 import (
+	"strings"
+
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -20,6 +22,14 @@ type ExecutionPlan struct {
 }
 
 func BuildExecutionPlan(features []FeatureInput, tag string, variables map[string]string) ExecutionPlan {
+	return buildExecutionPlan(features, tag, variables, "")
+}
+
+func BuildExecutionPlanWithTestClient(features []FeatureInput, tag string, variables map[string]string, testClientOverride string) ExecutionPlan {
+	return buildExecutionPlan(features, tag, variables, testClientOverride)
+}
+
+func buildExecutionPlan(features []FeatureInput, tag string, variables map[string]string, testClientOverride string) ExecutionPlan {
 	plan := ExecutionPlan{
 		Cases: make([]RunCase, 0),
 	}
@@ -29,8 +39,12 @@ func BuildExecutionPlan(features []FeatureInput, tag string, variables map[strin
 		}
 		projectRoot := paths.InferProjectRoot([]string{input.Path})
 		var testClient *settings.TestClient
-		if input.Feature.TestClient != "" && projectRoot != "" {
-			client, err := loadTestClientForFeature(projectRoot, input.Feature.TestClient)
+		clientName := strings.TrimSpace(input.Feature.TestClient)
+		if override := strings.TrimSpace(testClientOverride); override != "" {
+			clientName = override
+		}
+		if clientName != "" && projectRoot != "" {
+			client, err := loadTestClientForFeature(projectRoot, clientName)
 			if err == nil {
 				testClient = client
 			}
