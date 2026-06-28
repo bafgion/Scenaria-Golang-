@@ -35,9 +35,6 @@ func Run(req RunRequest) (BatchResult, error) {
 	if err != nil {
 		return BatchResult{}, err
 	}
-	if issues := ValidateSettings(cfg); len(issues) > 0 {
-		return BatchResult{Success: false, Error: strings.Join(issues, "; ")}, fmt.Errorf("%s", strings.Join(issues, "; "))
-	}
 	if req.DryRun || cfg.DryRunOnly {
 		files, ferr := resolveFeatureFiles(req)
 		if ferr != nil {
@@ -48,6 +45,9 @@ func Run(req RunRequest) (BatchResult, error) {
 			cases = append(cases, CaseResult{Path: file, Name: filepath.Base(file), Success: true, Message: "dry-run"})
 		}
 		return BatchResult{Success: true, Cases: cases}, nil
+	}
+	if issues := ValidateSettings(cfg); len(issues) > 0 {
+		return BatchResult{Success: false, Error: strings.Join(issues, "; ")}, fmt.Errorf("%s", strings.Join(issues, "; "))
 	}
 
 	runDir := filepath.Join(ResolveRunsDir(cfg), fmt.Sprintf("run-%d", time.Now().UnixNano()))
