@@ -15,10 +15,6 @@ type FeatureInput struct {
 	Feature *gherkin.Feature
 }
 
-type ExecutionPlan struct {
-	Features []FeatureInput
-}
-
 type ExecutionResult struct {
 	Mode            string
 	Files           int
@@ -32,12 +28,6 @@ type ScenarioResult struct {
 	Scenario    string
 	Status      string
 	Message     string
-}
-
-type ScenarioInput struct {
-	FeaturePath string
-	Feature     *gherkin.Feature
-	Scenario    *gherkin.Scenario
 }
 
 type BrowserExecutor interface {
@@ -60,7 +50,7 @@ func NewRunner(dryRun bool) Runner {
 type DryRunner struct{}
 
 func (DryRunner) Execute(_ context.Context, plan ExecutionPlan) (ExecutionResult, error) {
-	files, scenarios, steps, scenarioResults := summarizePlan(plan)
+	files, scenarios, steps, scenarioResults := SummarizePlan(plan)
 	return ExecutionResult{
 		Mode:            "dry-run",
 		Files:           files,
@@ -78,7 +68,7 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	if r.Executor == nil {
 		return ExecutionResult{}, fmt.Errorf("browser runner: executor is nil")
 	}
-	files, scenarios, steps, _ := summarizePlan(plan)
+	files, scenarios, steps, _ := SummarizePlan(plan)
 	result := ExecutionResult{
 		Mode:      "browser",
 		Files:     files,
@@ -86,19 +76,19 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 		Steps:     steps,
 	}
 
-	for _, featureInput := range plan.Features {
-		for i := range featureInput.Feature.Scenarios {
-			scenario := &featureInput.Feature.Scenarios[i]
-			runResult, err := r.Executor.ExecuteScenario(ctx, ScenarioInput{
-				FeaturePath: featureInput.Path,
-				Feature:     featureInput.Feature,
-				Scenario:    scenario,
-			})
-			if err != nil {
-				return ExecutionResult{}, err
-			}
-			result.ScenarioResults = append(result.ScenarioResults, runResult)
+	for _, runCase := range plan.Cases {
+		runResult, err := r.Executor.ExecuteScenario(ctx, ScenarioInput{
+			FeaturePath:  runCase.FeaturePath,
+			ScenarioName: runCase.Name,
+			Steps:        runCase.Steps,
+			TestClient:   runCase.TestClient,
+			Variables:    runCase.Variables,
+			ProjectRoot:  runCase.ProjectRoot,
+		})
+		if err != nil {
+			return ExecutionResult{}, err
 		}
+		result.ScenarioResults = append(result.ScenarioResults, runResult)
 	}
 	return result, nil
 }
@@ -107,23 +97,4 @@ type StubBrowserExecutor struct{}
 
 func (StubBrowserExecutor) ExecuteScenario(_ context.Context, _ ScenarioInput) (ScenarioResult, error) {
 	return ScenarioResult{}, ErrBrowserExecutionNotImplemented
-}
-
-func summarizePlan(plan ExecutionPlan) (files int, scenarios int, steps int, results []ScenarioResult) {
-	files = len(plan.Features)
-	results = make([]ScenarioResult, 0)
-	for _, input := range plan.Features {
-		steps += len(input.Feature.Background)
-		scenarios += len(input.Feature.Scenarios)
-		for _, scenario := range input.Feature.Scenarios {
-			steps += len(scenario.Steps)
-			results = append(results, ScenarioResult{
-				FeaturePath: input.Path,
-				Scenario:    scenario.Title,
-				Status:      "skipped",
-				Message:     "dry-run mode",
-			})
-		}
-	}
-	return files, scenarios, steps, results
 }

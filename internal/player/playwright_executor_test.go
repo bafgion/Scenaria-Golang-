@@ -20,7 +20,7 @@ func TestExecuteActionWaitCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := executeAction(ctx, nil, stepdsl.Action{Kind: "wait", Value1: "5s"}, "")
+	err := executeAction(ctx, &browserSession{}, stepdsl.Action{Kind: "wait", Value1: "5s"}, "", nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation error, got: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestExecuteActionWaitCancellation(t *testing.T) {
 
 func TestExecuteActionWaitSuccess(t *testing.T) {
 	start := time.Now()
-	if err := executeAction(context.Background(), nil, stepdsl.Action{Kind: "wait", Value1: "10ms"}, ""); err != nil {
+	if err := executeAction(context.Background(), &browserSession{page: nil}, stepdsl.Action{Kind: "wait", Value1: "10ms"}, "", nil); err != nil {
 		t.Fatalf("executeAction wait returned error: %v", err)
 	}
 	if time.Since(start) < 10*time.Millisecond {
@@ -37,7 +37,7 @@ func TestExecuteActionWaitSuccess(t *testing.T) {
 }
 
 func TestExecuteActionInvalidWaitDuration(t *testing.T) {
-	if err := executeAction(context.Background(), nil, stepdsl.Action{Kind: "wait", Value1: "oops"}, ""); err == nil {
+	if err := executeAction(context.Background(), &browserSession{}, stepdsl.Action{Kind: "wait", Value1: "oops"}, "", nil); err == nil {
 		t.Fatal("expected invalid wait duration error")
 	}
 }

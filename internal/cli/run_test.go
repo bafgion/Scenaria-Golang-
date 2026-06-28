@@ -23,7 +23,7 @@ func TestRunRun_DryRunSuccess(t *testing.T) {
 	}
 }
 
-func TestRunRun_RequiresDryRunForNow(t *testing.T) {
+func TestRunRun_StubEngineNotImplemented(t *testing.T) {
 	tmp := t.TempDir()
 	featurePath := filepath.Join(tmp, "ok.feature")
 	content := "Функционал: Demo\nСценарий: S1\nКогда выполняю шаг\n"
@@ -31,7 +31,7 @@ func TestRunRun_RequiresDryRunForNow(t *testing.T) {
 		t.Fatalf("failed to write feature: %v", err)
 	}
 
-	err := RunRun([]string{tmp})
+	err := RunRun([]string{tmp, "--engine", "stub"})
 	if !errors.Is(err, player.ErrBrowserExecutionNotImplemented) {
 		t.Fatalf("expected not-implemented error, got: %v", err)
 	}
@@ -91,6 +91,7 @@ func TestParseRunOptions(t *testing.T) {
 		"--headed",
 		"--base-url", "https://example.local",
 		"--install-playwright",
+		"--tag", "smoke",
 	})
 	if err != nil {
 		t.Fatalf("parseRunOptions returned error: %v", err)
@@ -100,6 +101,70 @@ func TestParseRunOptions(t *testing.T) {
 	}
 	if opts.junitPath != "junit.xml" || opts.engine != "playwright" || opts.browser != "firefox" || !opts.headed || opts.baseURL != "https://example.local" || !opts.installPlaywright {
 		t.Fatalf("unexpected junit path: %+v", opts)
+	}
+	if opts.tag != "smoke" {
+		t.Fatalf("unexpected tag: %q", opts.tag)
+	}
+}
+
+func TestRunRun_TagFilterNoMatch(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "plain.feature")
+	content := "Функционал: Demo\nСценарий: S1\nКогда выполняю шаг\n"
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+
+	err := RunRun([]string{tmp, "--dry-run", "--tag", "smoke"})
+	if err == nil {
+		t.Fatal("expected tag filter error")
+	}
+}
+
+func TestRunRun_TagFilterMatch(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "smoke.feature")
+	content := "@smoke\nФункционал: Demo\nСценарий: S1\nКогда открываю \"https://example.com\"\n"
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+
+	if err := RunRun([]string{tmp, "--dry-run", "--tag", "smoke"}); err != nil {
+		t.Fatalf("RunRun returned error: %v", err)
+	}
+}
+
+func TestRunRun_ExpandsOutlineDryRun(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "outline.feature")
+	content := `Функционал: Каталог
+Структура сценария: Поиск
+  Когда открываю "<url>"
+  Тогда вижу "<title>"
+Примеры:
+  | url      | title |
+  | /catalog | Items |
+  | /offers  | Deals |
+`
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+	summaryPath := filepath.Join(tmp, "summary.json")
+
+	if err := RunRun([]string{tmp, "--dry-run", "--summary-json", summaryPath}); err != nil {
+		t.Fatalf("RunRun returned error: %v", err)
+	}
+
+	payload, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary json: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("failed to decode summary json: %v", err)
+	}
+	if int(decoded["scenarios"].(float64)) != 2 {
+		t.Fatalf("expected 2 expanded scenarios, got %v", decoded["scenarios"])
 	}
 }
 

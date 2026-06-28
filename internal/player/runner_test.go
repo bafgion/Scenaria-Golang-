@@ -11,23 +11,14 @@ import (
 func TestDryRunnerExecute(t *testing.T) {
 	runner := DryRunner{}
 	plan := ExecutionPlan{
-		Features: []FeatureInput{
+		Cases: []RunCase{
 			{
-				Path: "a.feature",
-				Feature: &gherkin.Feature{
-					Title: "A",
-					Background: []gherkin.Step{
-						{Keyword: "Допустим", Text: "шаг"},
-					},
-					Scenarios: []gherkin.Scenario{
-						{
-							Title: "S1",
-							Steps: []gherkin.Step{
-								{Keyword: "Когда", Text: "делаю 1"},
-								{Keyword: "Тогда", Text: "вижу 1"},
-							},
-						},
-					},
+				FeaturePath: "a.feature",
+				Name:        "S1",
+				Steps: []gherkin.Step{
+					{Keyword: "Допустим", Text: "шаг"},
+					{Keyword: "Когда", Text: "делаю 1"},
+					{Keyword: "Тогда", Text: "вижу 1"},
 				},
 			},
 		},
@@ -48,15 +39,11 @@ func TestDryRunnerExecute(t *testing.T) {
 func TestBrowserRunnerNotImplemented(t *testing.T) {
 	runner := BrowserRunner{Executor: StubBrowserExecutor{}}
 	plan := ExecutionPlan{
-		Features: []FeatureInput{
+		Cases: []RunCase{
 			{
-				Path: "a.feature",
-				Feature: &gherkin.Feature{
-					Title: "A",
-					Scenarios: []gherkin.Scenario{
-						{Title: "S1", Steps: []gherkin.Step{{Keyword: "Когда", Text: "x"}}},
-					},
-				},
+				FeaturePath: "a.feature",
+				Name:        "S1",
+				Steps:       []gherkin.Step{{Keyword: "Когда", Text: "x"}},
 			},
 		},
 	}
@@ -71,17 +58,9 @@ func TestBrowserRunnerWithExecutor(t *testing.T) {
 		Executor: fakeExecutor{},
 	}
 	plan := ExecutionPlan{
-		Features: []FeatureInput{
-			{
-				Path: "a.feature",
-				Feature: &gherkin.Feature{
-					Title: "A",
-					Scenarios: []gherkin.Scenario{
-						{Title: "S1", Steps: []gherkin.Step{{Keyword: "Когда", Text: "x"}}},
-						{Title: "S2", Steps: []gherkin.Step{{Keyword: "Тогда", Text: "y"}}},
-					},
-				},
-			},
+		Cases: []RunCase{
+			{FeaturePath: "a.feature", Name: "S1", Steps: []gherkin.Step{{Keyword: "Когда", Text: "x"}}},
+			{FeaturePath: "a.feature", Name: "S2", Steps: []gherkin.Step{{Keyword: "Тогда", Text: "y"}}},
 		},
 	}
 
@@ -110,7 +89,7 @@ type fakeExecutor struct{}
 func (fakeExecutor) ExecuteScenario(_ context.Context, input ScenarioInput) (ScenarioResult, error) {
 	return ScenarioResult{
 		FeaturePath: input.FeaturePath,
-		Scenario:    input.Scenario.Title,
+		Scenario:    input.ScenarioName,
 		Status:      "passed",
 	}, nil
 }

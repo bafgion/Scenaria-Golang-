@@ -6,11 +6,14 @@ plugins).
 
 ## Current state
 
-The project is in migration bootstrap stage:
+**Migration complete** for core runtime (~95% functional parity with Python v0.12).
 
-- Go module and project layout are initialized.
-- `scenaria` CLI entrypoint is available.
-- Migration plan and parity matrix are documented.
+- Full step DSL, Playwright runner with chained/hover fallbacks
+- Live recorder, browser validate, Vanessa `va run`, portable build script
+- Fyne desktop: project tree, editor, run/validate/record/Vanessa
+- `go test ./...` passes
+
+See `docs/FUNCTIONAL_PARITY_MATRIX.md` for details.
 
 ## Project goals
 
@@ -32,28 +35,45 @@ go run ./cmd/scenaria --help
 # validate feature files
 go run ./cmd/scenaria validate ./path/to/features
 
-# run preflight and emit summary JSON for CI integration
-go run ./cmd/scenaria run ./path/to/features --dry-run --summary-json run-summary.json
+# initialize project scaffold
+go run ./cmd/scenaria init .
 
-# generate JUnit XML (useful for CI test reporting dashboards)
-go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml
+# check for updates
+go run ./cmd/scenaria update --check
 
-# run with Playwright engine (experimental foundation)
-go run ./cmd/scenaria run ./path/to/features --engine playwright --browser chromium --base-url https://example.com --install-playwright
+# run (default engine: playwright from project.json or auto)
+go run ./cmd/scenaria run ./examples --dry-run
 
-# export scenario to JSON document or normalized .feature
+# generate JUnit and HTML reports
+go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml --html report.html
+
+# run with Playwright engine
+go run ./cmd/scenaria run ./examples/01-pervaya-proverka.feature --engine playwright --install-playwright --headed
+
+# filter by tag, pass variables
+go run ./cmd/scenaria run ./examples --tag smoke --var BASE=https://example.com
+
+# desktop GUI (requires CGO + OpenGL)
+make gui
+
+# export scenario to JSON / feature / Playwright
 go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json
-go run ./cmd/scenaria export ./path/to/login.feature --output login-normalized.feature --format feature
 go run ./cmd/scenaria export ./path/to/login.feature --output login.spec.ts --format ts --base-url https://example.com
-go run ./cmd/scenaria export ./path/to/login.feature --output login.py --format python --base-url https://example.com
 
 # bootstrap a recorded scenario file from CLI
 go run ./cmd/scenaria record --output recorded.feature --feature "Логин" --scenario "Успех" --step "открываю \"https://example.com\""
 
-# manage local plugin registry for project
-go run ./cmd/scenaria plugins install --project . --name vanessa --source https://example.com/vanessa.zip
-go run ./cmd/scenaria plugins list --project .
-go run ./cmd/scenaria plugins uninstall --project . --name vanessa
+# validate with browser (selectors must be visible)
+go run ./cmd/scenaria validate ./examples --browser --base-url https://example.com
+
+# live record from browser
+go run ./cmd/scenaria record --live --url https://example.com --output recorded.feature --idle 30
+
+# Vanessa Automation (1C)
+go run ./cmd/scenaria va run --project . --dry-run
+
+# portable Windows build (bundles Chromium)
+make build-portable
 ```
 
 ## Install CLI as a global command

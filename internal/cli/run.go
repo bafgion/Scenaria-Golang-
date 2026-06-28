@@ -3,11 +3,16 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/report"
+	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
+	"github.com/bafgion/scenaria-golang/internal/settings"
+	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
 type runOptions struct {
@@ -15,11 +20,14 @@ type runOptions struct {
 	dryRun            bool
 	summaryJSON       string
 	junitPath         string
+	htmlPath          string
 	engine            string
 	browser           string
 	headed            bool
 	baseURL           string
 	installPlaywright bool
+	tag               string
+	variables         map[string]string
 }
 
 func RunRun(args []string) error {
@@ -38,9 +46,7 @@ func RunRun(args []string) error {
 	}
 
 	var errorsCount int
-	plan := player.ExecutionPlan{
-		Features: make([]player.FeatureInput, 0, len(files)),
-	}
+	featureInputs := make([]player.FeatureInput, 0, len(files))
 
 	for _, path := range files {
 		feature, loadErr := store.Load(path)
@@ -59,7 +65,7 @@ func RunRun(args []string) error {
 			continue
 		}
 
-		plan.Features = append(plan.Features, player.FeatureInput{
+		featureInputs = append(featureInputs, player.FeatureInput{
 			Path:    path,
 			Feature: feature,
 		})
@@ -68,6 +74,14 @@ func RunRun(args []string) error {
 
 	if errorsCount > 0 {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
+	}
+
+	plan := player.BuildExecutionPlan(featureInputs, opts.tag, opts.variables)
+	if len(plan.Cases) == 0 {
+		if opts.tag != "" {
+			return fmt.Errorf("no scenarios found with tag %q in %q", opts.tag, opts.target)
+		}
+		return fmt.Errorf("no runnable scenarios found in %q", opts.target)
 	}
 
 	runner, err := buildRunner(opts)
@@ -91,8 +105,29 @@ func RunRun(args []string) error {
 		}
 		fmt.Printf("Wrote JUnit report: %s\n", opts.junitPath)
 	}
+	if opts.htmlPath != "" {
+		if writeErr := report.WriteHTML(opts.htmlPath, result); writeErr != nil {
+			return writeErr
+		}
+		fmt.Printf("Wrote HTML report: %s\n", opts.htmlPath)
+	}
 
-	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s)\n", result.Files, result.Scenarios, result.Steps)
+	if !opts.dryRun {
+		if root := paths.InferProjectRoot([]string{opts.target}); root != "" {
+			if store, storeErr := runstatus.Open(root); storeErr == nil {
+				for _, scenarioResult := range result.ScenarioResults {
+					_ = store.Record(runstatus.Entry{
+						Path:    scenarioResult.FeaturePath + "::" + scenarioResult.Scenario,
+						Success: scenarioResult.Status == "passed",
+						Message: scenarioResult.Message,
+						Runner:  opts.engine,
+					})
+				}
+			}
+		}
+	}
+
+	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
 	if opts.dryRun {
 		fmt.Println("Dry-run mode enabled: browser execution skipped")
 		return nil
@@ -102,11 +137,11 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE]")
 	}
 	opts := runOptions{
 		target:  args[0],
-		engine:  "stub",
+		engine:  "",
 		browser: "chromium",
 	}
 	for i := 1; i < len(args); i++ {
@@ -126,6 +161,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.junitPath = args[i]
+		case "--html":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--html requires a file path")
+			}
+			i++
+			opts.htmlPath = args[i]
 		case "--engine":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--engine requires a value (stub|playwright)")
@@ -148,18 +189,59 @@ func parseRunOptions(args []string) (runOptions, error) {
 			opts.baseURL = args[i]
 		case "--install-playwright":
 			opts.installPlaywright = true
+		case "--tag":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--tag requires a tag name")
+			}
+			i++
+			opts.tag = args[i]
+		case "--var":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--var requires NAME=VALUE")
+			}
+			i++
+			if opts.variables == nil {
+				opts.variables = map[string]string{}
+			}
+			pair := args[i]
+			eq := strings.Index(pair, "=")
+			if eq <= 0 {
+				return runOptions{}, fmt.Errorf("--var expects NAME=VALUE, got %q", pair)
+			}
+			opts.variables[pair[:eq]] = pair[eq+1:]
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
 	}
+	if opts.baseURL == "" {
+		if root := paths.InferProjectRoot([]string{opts.target}); root != "" {
+			if cfg, err := settings.LoadProjectConfig(root); err == nil && cfg.BaseURL != "" {
+				opts.baseURL = cfg.BaseURL
+			}
+		}
+	}
 	return opts, nil
+}
+
+func resolveRunEngine(target, engine string) string {
+	if engine != "" {
+		return engine
+	}
+	root := paths.InferProjectRoot([]string{target})
+	if root != "" {
+		if cfg, err := settings.LoadProjectConfig(root); err == nil && cfg.DefaultRunner != "" {
+			return cfg.DefaultRunner
+		}
+	}
+	return "playwright"
 }
 
 func buildRunner(opts runOptions) (player.Runner, error) {
 	if opts.dryRun {
 		return player.DryRunner{}, nil
 	}
-	switch opts.engine {
+	engine := resolveRunEngine(opts.target, opts.engine)
+	switch engine {
 	case "stub":
 		return player.BrowserRunner{
 			Executor: player.StubBrowserExecutor{},

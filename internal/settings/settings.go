@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type AppSettings struct {
@@ -51,6 +52,13 @@ func LoadTestClient(path string) (*TestClient, error) {
 
 func SaveTestClient(path string, client *TestClient) error {
 	return writeJSON(path, client)
+}
+
+func TestClientPath(projectRoot, name string) (string, error) {
+	if projectRoot == "" || name == "" {
+		return "", fmt.Errorf("project root and test client name are required")
+	}
+	return filepath.Join(projectRoot, ".scenaria", "test_clients", name+".json"), nil
 }
 
 func readJSON(path string, dst any) error {
