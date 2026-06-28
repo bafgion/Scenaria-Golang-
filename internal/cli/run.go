@@ -29,6 +29,7 @@ type runOptions struct {
 	tag               string
 	variables         map[string]string
 	slowMo            float64
+	workers           int
 }
 
 func RunRun(args []string) error {
@@ -148,6 +149,18 @@ func parseRunOptions(args []string) (runOptions, error) {
 		engine:  "",
 		browser: "chromium",
 	}
+	if cfg, err := settings.LoadDefaultAppSettings(); err == nil && cfg != nil {
+		if cfg.Browser != "" {
+			opts.browser = cfg.Browser
+		}
+		opts.headed = !cfg.Headless
+		if cfg.ParallelWorkers > 0 {
+			opts.workers = cfg.ParallelWorkers
+		}
+		if cfg.MaxLoopIterations > 0 {
+			player.SetMaxLoopIterations(cfg.MaxLoopIterations)
+		}
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if !strings.HasPrefix(arg, "-") {
@@ -227,6 +240,16 @@ func parseRunOptions(args []string) (runOptions, error) {
 				return runOptions{}, fmt.Errorf("--slow-mo expects non-negative number, got %q", args[i])
 			}
 			opts.slowMo = slowMo
+		case "--workers":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--workers requires a positive integer")
+			}
+			i++
+			var workers int
+			if _, err := fmt.Sscanf(args[i], "%d", &workers); err != nil || workers < 1 {
+				return runOptions{}, fmt.Errorf("--workers expects integer >= 1, got %q", args[i])
+			}
+			opts.workers = workers
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
@@ -270,7 +293,8 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 	switch engine {
 	case "stub":
 		return player.BrowserRunner{
-			Executor: player.StubBrowserExecutor{},
+			Executor:        player.StubBrowserExecutor{},
+			ParallelWorkers: opts.workers,
 		}, nil
 	case "playwright":
 		return player.BrowserRunner{
@@ -281,6 +305,7 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 				AutoInstall: opts.installPlaywright,
 				SlowMo:      opts.slowMo,
 			}),
+			ParallelWorkers: opts.workers,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)

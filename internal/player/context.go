@@ -13,7 +13,14 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
-const MaxLoopIterations = 100
+// MaxLoopIterations caps repeat/while loops (overridable via settings / CLI).
+var MaxLoopIterations = 100
+
+func SetMaxLoopIterations(n int) {
+	if n > 0 {
+		MaxLoopIterations = n
+	}
+}
 
 // EmailCodePrompt is set by desktop/CLI for interactive OTP entry.
 var EmailCodePrompt func(email string) (string, error)

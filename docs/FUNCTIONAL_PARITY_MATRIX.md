@@ -9,7 +9,7 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 | Control flow | Если/Повторяю/Пока (max iter error)/Для каждого | `internal/gherkin`, `internal/player` | validated |
 | Variables / generators | checksum INN/OGRNIP, coherent names | `internal/player/generators.go` | validated |
 | Navigation | skip-goto, `urls_match`, nav timeout | `internal/player/urls.go` | validated |
-| Run suite | batch, tags, outline, multi-path | `internal/player/suite.go`, `cli/run` | validated |
+| Run suite | batch, tags, outline, multi-path, `--workers` | `internal/player/suite.go`, `cli/run` | validated |
 | Playwright engine | playback + fallbacks, `--slow-mo` | `internal/player`, `internal/selector` | validated |
 | TestClient | cookies/localStorage | `internal/settings`, `internal/player` | validated |
 | Validate | syntax + `--browser chromium|firefox|webkit` | `internal/cli`, `internal/selector` | validated |
@@ -19,9 +19,9 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 | Recorder | live capture + step coalescing | `internal/recorder`, `normalize.go` | validated |
 | Selector heuristics | DOM → selector (expanded JS) | `internal/selector/recorder_script.js` | partial |
 | OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
-| Vanessa add-on | exclude tags, rerun, epf install | `internal/vanessa` | partial |
+| Vanessa add-on | exclude tags, rerun, epf install, JUnit monitor | `internal/vanessa` | partial |
 | CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
-| Desktop | IDE (Qt → Fyne) | `ui/desktop` | partial |
+| Desktop | tabs, settings dialog, browser validate | `ui/desktop` | partial |
 | Plugins registry | list/install zip/URL | `internal/plugin` | validated |
 | Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
@@ -29,10 +29,9 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 
 ## Remaining gaps (not 100%)
 
-- **Desktop Qt IDE**: tabs, highlighter, completions, settings dialog, splash.
-- **Selector heuristics JS**: contextual card clicks, canvas/signature paths from Python.
-- **Python test suite**: ~80 modules not ported to Go golden/CI cross-check.
-- **Vanessa extras**: incremental JUnit monitor, `parallel_workers`.
+- **Desktop Qt IDE**: syntax highlighter, step completions, splash screen.
+- **Selector heuristics JS**: canvas/signature selectors from Python.
+- **Python test suite**: full cross-language golden CI.
 
 ## Intentional differences
 

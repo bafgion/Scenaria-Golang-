@@ -27,17 +27,12 @@ type App struct {
 	featureList  *widget.List
 	features     []string
 	logOutput    *widget.Entry
-	featureEditor *widget.Entry
+	tabs         *tabManager
 	selectedPath string
 }
 
 func Run() {
 	application := app.NewWithID("com.bafgion.scenaria")
-	application.SetMetadata(fyne.AppMetadata{
-		ID:      "com.bafgion.scenaria",
-		Name:    version.AppName,
-		Version: version.Version,
-	})
 	ui := &App{
 		window: application.NewWindow(version.String()),
 	}
@@ -51,8 +46,7 @@ func (a *App) build() {
 	a.logOutput.SetPlaceHolder("Лог выполнения…")
 	a.logOutput.Disable()
 
-	a.featureEditor = widget.NewMultiLineEntry()
-	a.featureEditor.SetPlaceHolder("Выберите .feature файл слева…")
+	a.tabs = newTabManager()
 
 	a.featureList = widget.NewList(
 		func() int { return len(a.features) },
@@ -129,14 +123,19 @@ func (a *App) build() {
 	})
 
 	saveBtn := widget.NewButton("Сохранить feature", func() {
-		if a.selectedPath == "" {
+		path := a.tabs.CurrentPath()
+		if path == "" {
 			return
 		}
-		if err := os.WriteFile(a.selectedPath, []byte(a.featureEditor.Text), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(a.tabs.CurrentText()), 0o644); err != nil {
 			a.appendLog("Ошибка сохранения: " + err.Error())
 			return
 		}
-		a.appendLog("Сохранено: " + a.selectedPath)
+		a.appendLog("Сохранено: " + path)
+	})
+
+	settingsBtn := widget.NewButton("Настройки…", func() {
+		a.showSettingsDialog()
 	})
 
 	catalogBtn := widget.NewButton("Шаги…", func() {
@@ -182,6 +181,7 @@ func (a *App) build() {
 			validateBtn,
 			browserValidateBtn,
 			saveBtn,
+			settingsBtn,
 			catalogBtn,
 			updateBtn,
 		),
@@ -189,7 +189,7 @@ func (a *App) build() {
 		a.featureList,
 	)
 
-	editorPane := container.NewBorder(nil, nil, nil, nil, a.featureEditor)
+	editorPane := container.NewBorder(nil, nil, nil, nil, a.tabs.Widget())
 	right := container.NewVSplit(editorPane, a.logOutput)
 	right.SetOffset(0.55)
 
@@ -265,8 +265,8 @@ func (a *App) loadFeature(path string) {
 		a.appendLog("Не удалось открыть: " + err.Error())
 		return
 	}
+	a.tabs.Open(path, string(payload))
 	a.selectedPath = path
-	a.featureEditor.SetText(string(payload))
 }
 
 func (a *App) refreshFeatures() {

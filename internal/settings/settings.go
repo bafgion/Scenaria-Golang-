@@ -13,6 +13,8 @@ type AppSettings struct {
 	Headless            bool   `json:"headless"`
 	RecordingHoverMode  bool   `json:"recording_hover_mode"`
 	RecordingFilterMode bool   `json:"recording_filter_mode"`
+	ParallelWorkers     int    `json:"parallel_workers"`
+	MaxLoopIterations   int    `json:"max_loop_iterations"`
 }
 
 type TestClient struct {

@@ -69,6 +69,36 @@
     return null;
   }
 
+  function countMatchingClickables(doc, label) {
+    if (!doc || !label) return 0;
+    let count = 0;
+    const nodes = doc.querySelectorAll('button, a, [role="button"], [role="link"]');
+    for (const node of nodes) {
+      if (visibleText(node).trim() === label) count++;
+    }
+    return count;
+  }
+
+  function buildContextualClickSelector(target) {
+    if (!target || target.nodeType !== 1) return null;
+    const label = visibleText(target).trim();
+    if (!label || label.length > 40) return null;
+    if (countMatchingClickables(target.ownerDocument, label) <= 1) return null;
+    let node = target.parentElement;
+    for (let depth = 0; node && depth < 8; depth++) {
+      const caption = visibleText(node).trim();
+      if (caption.length >= 6 && caption !== label && caption.length <= 80) {
+        const escapedCaption = caption.replace(/"/g, '\\"');
+        const escapedLabel = label.replace(/"/g, '\\"');
+        const tag = (target.tagName || 'BUTTON').toLowerCase();
+        const btnTag = tag === 'a' ? 'a' : 'button';
+        return `div:has-text("${escapedCaption}") >> ${btnTag}:has-text("${escapedLabel}")`;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
   function buildClickSelector(el) {
     if (!el || el.nodeType !== 1) return null;
     const target = clickableAncestor(el) || el;
@@ -77,6 +107,8 @@
     if (target.id) return `#${cssEscape(target.id)}`;
     const aria = target.getAttribute('aria-label');
     if (aria && aria.trim()) return `[aria-label="${cssEscape(aria.trim())}"]`;
+    const contextual = buildContextualClickSelector(target);
+    if (contextual) return contextual;
     return hasTextSelector(target, '');
   }
 
