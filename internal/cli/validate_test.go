@@ -14,7 +14,7 @@ func TestRunValidate_Success(t *testing.T) {
 		t.Fatalf("failed to write feature: %v", err)
 	}
 
-	if err := RunValidate([]string{tmp}); err != nil {
+	if err := RunValidate([]string{tmp, "--no-browser"}); err != nil {
 		t.Fatalf("RunValidate returned error: %v", err)
 	}
 }
@@ -27,7 +27,7 @@ func TestRunValidate_Failure(t *testing.T) {
 		t.Fatalf("failed to write feature: %v", err)
 	}
 
-	if err := RunValidate([]string{tmp}); err == nil {
+	if err := RunValidate([]string{tmp, "--no-browser"}); err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
 }

@@ -1,32 +1,15 @@
 package stepdsl
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 )
 
-type goldenCase struct {
-	Text string `json:"text"`
-	Kind string `json:"kind"`
-	V1   string `json:"v1"`
-	V2   string `json:"v2"`
-	Mode string `json:"mode"`
-	Int  int    `json:"int"`
-}
-
 func TestGoldenStepPatterns(t *testing.T) {
-	path := filepath.Join("testdata", "steps_golden.json")
-	payload, err := os.ReadFile(path)
+	cases, err := LoadGoldenCases()
 	if err != nil {
-		t.Fatalf("read golden file: %v", err)
-	}
-	var cases []goldenCase
-	if err := json.Unmarshal(payload, &cases); err != nil {
-		t.Fatalf("decode golden file: %v", err)
+		t.Fatalf("load golden cases: %v", err)
 	}
 	for i, tc := range cases {
 		action, err := Parse(gherkin.Step{Line: i + 1, Text: tc.Text})

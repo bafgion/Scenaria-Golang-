@@ -9,7 +9,7 @@ func TestGenerateByKind(t *testing.T) {
 		t.Fatalf("phone generator failed: %v %q", err, phone)
 	}
 	inn, err := ctx.GenerateByKind("inn")
-	if err != nil || len(inn) != 10 {
+	if err != nil || len(inn) != 12 {
 		t.Fatalf("inn generator failed: %v %q", err, inn)
 	}
 }

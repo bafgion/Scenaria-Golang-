@@ -16,7 +16,7 @@ import (
 )
 
 type runOptions struct {
-	target            string
+	targets           []string
 	dryRun            bool
 	summaryJSON       string
 	junitPath         string
@@ -28,6 +28,9 @@ type runOptions struct {
 	installPlaywright bool
 	tag               string
 	variables         map[string]string
+	testClient        string
+	slowMo            float64
+	workers           int
 }
 
 func RunRun(args []string) error {
@@ -37,12 +40,16 @@ func RunRun(args []string) error {
 	}
 
 	store := scenario.NewFeatureStore()
-	files, err := store.Discover(opts.target)
-	if err != nil {
-		return err
+	files := make([]string, 0)
+	for _, target := range opts.targets {
+		discovered, err := store.Discover(target)
+		if err != nil {
+			return err
+		}
+		files = append(files, discovered...)
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("no .feature files found in %q", opts.target)
+		return fmt.Errorf("no .feature files found in %v", opts.targets)
 	}
 
 	var errorsCount int
@@ -76,12 +83,12 @@ func RunRun(args []string) error {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
 	}
 
-	plan := player.BuildExecutionPlan(featureInputs, opts.tag, opts.variables)
+	plan := player.BuildExecutionPlanWithTestClient(featureInputs, opts.tag, opts.variables, opts.testClient)
 	if len(plan.Cases) == 0 {
 		if opts.tag != "" {
-			return fmt.Errorf("no scenarios found with tag %q in %q", opts.tag, opts.target)
+			return fmt.Errorf("no scenarios found with tag %q in %v", opts.tag, opts.targets)
 		}
-		return fmt.Errorf("no runnable scenarios found in %q", opts.target)
+		return fmt.Errorf("no runnable scenarios found in %v", opts.targets)
 	}
 
 	runner, err := buildRunner(opts)
@@ -113,7 +120,7 @@ func RunRun(args []string) error {
 	}
 
 	if !opts.dryRun {
-		if root := paths.InferProjectRoot([]string{opts.target}); root != "" {
+		if root := paths.InferProjectRoot(opts.targets); root != "" {
 			if store, storeErr := runstatus.Open(root); storeErr == nil {
 				for _, scenarioResult := range result.ScenarioResults {
 					_ = store.Record(runstatus.Entry{
@@ -137,15 +144,30 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
 	}
 	opts := runOptions{
-		target:  args[0],
 		engine:  "",
 		browser: "chromium",
 	}
-	for i := 1; i < len(args); i++ {
+	if cfg, err := settings.LoadDefaultAppSettings(); err == nil && cfg != nil {
+		if cfg.Browser != "" {
+			opts.browser = cfg.Browser
+		}
+		opts.headed = !cfg.Headless
+		if cfg.ParallelWorkers > 0 {
+			opts.workers = cfg.ParallelWorkers
+		}
+		if cfg.MaxLoopIterations > 0 {
+			player.SetMaxLoopIterations(cfg.MaxLoopIterations)
+		}
+	}
+	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			opts.targets = append(opts.targets, arg)
+			continue
+		}
 		switch arg {
 		case "--dry-run":
 			opts.dryRun = true
@@ -195,6 +217,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.tag = args[i]
+		case "--test-client":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--test-client requires a client name")
+			}
+			i++
+			opts.testClient = args[i]
 		case "--var":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--var requires NAME=VALUE")
@@ -209,12 +237,35 @@ func parseRunOptions(args []string) (runOptions, error) {
 				return runOptions{}, fmt.Errorf("--var expects NAME=VALUE, got %q", pair)
 			}
 			opts.variables[pair[:eq]] = pair[eq+1:]
+		case "--slow-mo":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--slow-mo requires milliseconds value")
+			}
+			i++
+			var slowMo float64
+			if _, err := fmt.Sscanf(args[i], "%f", &slowMo); err != nil || slowMo < 0 {
+				return runOptions{}, fmt.Errorf("--slow-mo expects non-negative number, got %q", args[i])
+			}
+			opts.slowMo = slowMo
+		case "--workers":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--workers requires a positive integer")
+			}
+			i++
+			var workers int
+			if _, err := fmt.Sscanf(args[i], "%d", &workers); err != nil || workers < 1 {
+				return runOptions{}, fmt.Errorf("--workers expects integer >= 1, got %q", args[i])
+			}
+			opts.workers = workers
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
 	}
+	if len(opts.targets) == 0 {
+		return runOptions{}, fmt.Errorf("at least one path is required")
+	}
 	if opts.baseURL == "" {
-		if root := paths.InferProjectRoot([]string{opts.target}); root != "" {
+		if root := paths.InferProjectRoot(opts.targets); root != "" {
 			if cfg, err := settings.LoadProjectConfig(root); err == nil && cfg.BaseURL != "" {
 				opts.baseURL = cfg.BaseURL
 			}
@@ -240,11 +291,17 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 	if opts.dryRun {
 		return player.DryRunner{}, nil
 	}
-	engine := resolveRunEngine(opts.target, opts.engine)
+	engine := ""
+	if len(opts.targets) > 0 {
+		engine = resolveRunEngine(opts.targets[0], opts.engine)
+	} else {
+		engine = resolveRunEngine("", opts.engine)
+	}
 	switch engine {
 	case "stub":
 		return player.BrowserRunner{
-			Executor: player.StubBrowserExecutor{},
+			Executor:        player.StubBrowserExecutor{},
+			ParallelWorkers: opts.workers,
 		}, nil
 	case "playwright":
 		return player.BrowserRunner{
@@ -253,7 +310,9 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 				Headless:    !opts.headed,
 				BaseURL:     opts.baseURL,
 				AutoInstall: opts.installPlaywright,
+				SlowMo:      opts.slowMo,
 			}),
+			ParallelWorkers: opts.workers,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -17,33 +18,36 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
-	"github.com/bafgion/scenaria-golang/internal/stepcatalog"
 	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
 type App struct {
-	window       fyne.Window
-	projectPath  string
-	featureList  *widget.List
-	features     []string
-	logOutput    *widget.Entry
-	featureEditor *widget.Entry
-	selectedPath string
+	application    fyne.App
+	window         fyne.Window
+	projectPath    string
+	featureList    *widget.List
+	features       []string
+	logOutput      *widget.Entry
+	stepStatus     *widget.Label
+	tabs           *tabManager
+	selectedPath   string
+	lastRunOptions runOptions
 }
 
 func Run() {
 	application := app.NewWithID("com.bafgion.scenaria")
-	application.SetMetadata(fyne.AppMetadata{
-		ID:      "com.bafgion.scenaria",
-		Name:    version.AppName,
-		Version: version.Version,
-	})
+	splash := showSplash(application)
+	splash.Show()
+
 	ui := &App{
-		window: application.NewWindow(version.String()),
+		application: application,
+		window:      application.NewWindow(version.String()),
 	}
 	ui.window.Resize(fyne.NewSize(1100, 720))
+	ui.window.Hide()
 	ui.build()
-	ui.window.ShowAndRun()
+	revealMainAfterSplash(splash, ui.window, 750*time.Millisecond)
+	application.Run()
 }
 
 func (a *App) build() {
@@ -51,8 +55,11 @@ func (a *App) build() {
 	a.logOutput.SetPlaceHolder("Лог выполнения…")
 	a.logOutput.Disable()
 
-	a.featureEditor = widget.NewMultiLineEntry()
-	a.featureEditor.SetPlaceHolder("Выберите .feature файл слева…")
+	a.tabs = newTabManager()
+	a.stepStatus = widget.NewLabel("Шаги: —")
+	a.tabs.SetTextChangeHandler(func(text string) {
+		a.stepStatus.SetText(validateFeatureSteps(text))
+	})
 
 	a.featureList = widget.NewList(
 		func() int { return len(a.features) },
@@ -79,16 +86,42 @@ func (a *App) build() {
 		}, a.window)
 	})
 
-	runBtn := widget.NewButton("Dry-run", func() {
-		a.runCLI("dry-run", []string{a.projectPath, "--dry-run"})
+	runBtn := widget.NewButton("Запустить…", func() {
+		a.showRunOptionsDialog("Запуск сценария", a.lastRunOptions, func(opts runOptions) {
+			if !opts.dryRun {
+				opts.engine = "playwright"
+			}
+			a.runWithOptions("run", opts)
+		})
 	})
 
-	playwrightBtn := widget.NewButton("Playwright", func() {
-		a.runPlaywrightInteractive()
+	dryRunBtn := widget.NewButton("Dry-run", func() {
+		opts := a.lastRunOptions
+		opts.dryRun = true
+		a.runWithOptions("run", opts)
+	})
+
+	playwrightBtn := widget.NewButton("Playwright…", func() {
+		defaults := a.lastRunOptions
+		defaults.dryRun = false
+		defaults.headed = true
+		defaults.engine = "playwright"
+		defaults.installPW = true
+		a.showRunOptionsDialog("Playwright", defaults, func(opts runOptions) {
+			a.runPlaywrightWithOptions(opts)
+		})
+	})
+
+	testClientBtn := widget.NewButton("TestClient…", func() {
+		a.showTestClientDialog()
 	})
 
 	vaBtn := widget.NewButton("Vanessa (dry)", func() {
 		a.runCLI("vanessa", []string{"run", "--project", a.projectPath, "--dry-run"})
+	})
+
+	vaRunBtn := widget.NewButton("Vanessa run", func() {
+		a.runCLI("vanessa", []string{"run", "--project", a.projectPath})
 	})
 
 	recordBtn := widget.NewButton("Запись…", func() {
@@ -116,27 +149,40 @@ func (a *App) build() {
 	})
 
 	validateBtn := widget.NewButton("Проверить", func() {
-		a.runCLI("validate", []string{a.projectPath})
+		a.runCLI("validate", []string{a.projectPath, "--no-browser"})
+	})
+
+	browserValidateBtn := widget.NewButton("Проверить в браузере", func() {
+		args := []string{a.projectPath, "--browser", "chromium"}
+		a.runCLI("validate", args)
 	})
 
 	saveBtn := widget.NewButton("Сохранить feature", func() {
-		if a.selectedPath == "" {
+		path := a.tabs.CurrentPath()
+		if path == "" {
 			return
 		}
-		if err := os.WriteFile(a.selectedPath, []byte(a.featureEditor.Text), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(a.tabs.CurrentText()), 0o644); err != nil {
 			a.appendLog("Ошибка сохранения: " + err.Error())
 			return
 		}
-		a.appendLog("Сохранено: " + a.selectedPath)
+		a.appendLog("Сохранено: " + path)
 	})
 
-	catalogBtn := widget.NewButton("Шаги…", func() {
-		items := stepcatalog.Search("")
-		lines := make([]string, 0, len(items))
-		for _, entry := range items {
-			lines = append(lines, entry.Template+" — "+entry.Help)
-		}
-		dialog.ShowInformation("Каталог шагов", strings.Join(lines, "\n"), a.window)
+	settingsBtn := widget.NewButton("Настройки…", func() {
+		a.showSettingsDialog()
+	})
+
+	catalogBtn := widget.NewButton("Вставить шаг…", func() {
+		a.showStepCompletions()
+	})
+
+	exportBtn := widget.NewButton("Экспорт…", func() {
+		a.showExportDialog()
+	})
+
+	importBtn := widget.NewButton("Импорт JSON…", func() {
+		a.showImportJSONDialog()
 	})
 
 	updateBtn := widget.NewButton("Обновления", func() {
@@ -166,19 +212,26 @@ func (a *App) build() {
 			openBtn,
 			initBtn,
 			runBtn,
+			dryRunBtn,
 			playwrightBtn,
+			testClientBtn,
 			vaBtn,
+			vaRunBtn,
 			recordBtn,
 			validateBtn,
+			browserValidateBtn,
 			saveBtn,
+			settingsBtn,
 			catalogBtn,
+			exportBtn,
+			importBtn,
 			updateBtn,
 		),
 		nil, nil, nil,
 		a.featureList,
 	)
 
-	editorPane := container.NewBorder(nil, nil, nil, nil, a.featureEditor)
+	editorPane := container.NewBorder(nil, a.stepStatus, nil, nil, a.tabs.Widget())
 	right := container.NewVSplit(editorPane, a.logOutput)
 	right.SetOffset(0.55)
 
@@ -187,7 +240,7 @@ func (a *App) build() {
 	a.window.SetContent(content)
 }
 
-func (a *App) runPlaywrightInteractive() {
+func (a *App) runPlaywrightWithOptions(opts runOptions) {
 	if a.projectPath == "" {
 		dialog.ShowInformation("Scenaria", "Сначала откройте папку проекта", a.window)
 		return
@@ -223,7 +276,17 @@ func (a *App) runPlaywrightInteractive() {
 		close(done)
 		player.EmailCodePrompt = nil
 	}()
-	a.runCLI("playwright", []string{a.projectPath, "--engine", "playwright", "--headed", "--install-playwright"})
+	opts.engine = "playwright"
+	opts.headed = true
+	if !opts.installPW {
+		opts.installPW = true
+	}
+	a.runWithOptions("playwright", opts)
+}
+
+func (a *App) runWithOptions(name string, opts runOptions) {
+	args := a.buildRunArgs(opts)
+	a.runCLI(name, args)
 }
 
 func (a *App) runCLI(name string, args []string) {
@@ -254,8 +317,8 @@ func (a *App) loadFeature(path string) {
 		a.appendLog("Не удалось открыть: " + err.Error())
 		return
 	}
+	a.tabs.Open(path, string(payload))
 	a.selectedPath = path
-	a.featureEditor.SetText(string(payload))
 }
 
 func (a *App) refreshFeatures() {

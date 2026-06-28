@@ -2,7 +2,7 @@ package version
 
 const (
 	AppName = "Scenaria"
-	Version = "0.1.0-go"
+	Version = "0.12.0"
 	Module  = "github.com/bafgion/scenaria-golang"
 )
 

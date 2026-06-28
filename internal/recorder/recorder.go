@@ -82,6 +82,11 @@ func EventsToStep(eventType string, detail map[string]string) (string, bool) {
 			return "", false
 		}
 		return `ввожу "` + value + `" в "` + sel + `"`, true
+	case "draw-signature":
+		if sel == "" {
+			return "", false
+		}
+		return `рисую подпись в "` + sel + `"`, true
 	default:
 		return "", false
 	}
@@ -89,11 +94,16 @@ func EventsToStep(eventType string, detail map[string]string) (string, bool) {
 
 func BuildSelectorFromDetail(detail map[string]string) string {
 	return selector.BuildFromElement(selector.ElementInfo{
-		Tag:    detail["tag"],
-		ID:     detail["id"],
-		Name:   detail["name"],
-		Text:   detail["text"],
-		TestID: detail["testid"],
+		Tag:         detail["tag"],
+		ID:          detail["id"],
+		Name:        detail["name"],
+		Text:        detail["text"],
+		TestID:      detail["testid"],
+		Placeholder: detail["placeholder"],
+		Role:        detail["role"],
+		Label:       detail["captiontext"],
+		AriaLabel:   detail["arialabel"],
+		Type:        detail["inputtype"],
 	})
 }
 

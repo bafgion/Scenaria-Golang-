@@ -18,6 +18,7 @@ type PlaywrightExecutorOptions struct {
 	Headless    bool
 	BaseURL     string
 	AutoInstall bool
+	SlowMo      float64
 }
 
 type PlaywrightExecutor struct {
@@ -93,6 +94,9 @@ func launchBrowser(pw *playwright.Playwright, options PlaywrightExecutorOptions)
 	launchOpts := playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(options.Headless),
 	}
+	if options.SlowMo > 0 {
+		launchOpts.SlowMo = playwright.Float(options.SlowMo)
+	}
 
 	switch name {
 	case "chromium":
@@ -114,7 +118,14 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 
 	switch action.Kind {
 	case "goto":
-		_, err := page.Goto(stepdsl.ResolveURL(action.Value1, baseURL))
+		url := stepdsl.ResolveURL(action.Value1, baseURL)
+		if UrlsMatch(page.URL(), url) {
+			return nil
+		}
+		_, err := page.Goto(url, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(NavTimeoutMs),
+		})
 		if err != nil {
 			return fmt.Errorf("goto failed: %w", err)
 		}
@@ -238,7 +249,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "assert-url":
-		if page.URL() != action.Value1 {
+		if !UrlsMatch(page.URL(), action.Value1) {
 			return fmt.Errorf("expected URL %q, got %q", action.Value1, page.URL())
 		}
 		return nil
@@ -280,12 +291,18 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			return nil
 		}
 	case "reload":
-		if _, err := page.Reload(); err != nil {
+		if _, err := page.Reload(playwright.PageReloadOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(NavTimeoutMs),
+		}); err != nil {
 			return fmt.Errorf("reload failed: %w", err)
 		}
 		return nil
 	case "go-back":
-		if _, err := page.GoBack(); err != nil {
+		if _, err := page.GoBack(playwright.PageGoBackOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(NavTimeoutMs),
+		}); err != nil {
 			return fmt.Errorf("go back failed: %w", err)
 		}
 		return nil
@@ -417,25 +434,6 @@ func drawSignature(page playwright.Page, selector string) error {
 	return mouse.Up()
 }
 
-func runEmailCode(page playwright.Page, action stepdsl.Action, runCtx *RunContext) error {
-	code, err := runCtx.EmailCode()
-	if err != nil {
-		return err
-	}
-	_, _ = runCtx.ResolveEmailForCode(action.Value1, runCtx.PriorSteps())
-	locator := page.Locator(action.Value2)
-	if err := locator.First().WaitFor(playwright.LocatorWaitForOptions{
-		State: playwright.WaitForSelectorStateVisible,
-	}); err != nil {
-		return fmt.Errorf("email code field not visible: %w", err)
-	}
-	digits := action.IntVal
-	if digits <= 0 {
-		digits = len(code)
-	}
-	return fillVerificationCode(page, locator, code, digits, action.Value3)
-}
-
 func clickWithFallback(page playwright.Page, sel string) error {
 	locator := selector.ResolveChainedLocator(page, sel)
 	timeout := playwright.Float(9000)
@@ -493,8 +491,11 @@ func switchTab(session *browserSession, action stepdsl.Action, runCtx *RunContex
 	var target playwright.Page
 	switch action.Mode {
 	case "index":
-		if action.IntVal < 0 || action.IntVal >= len(pages) {
-			return fmt.Errorf("tab index %d out of range (0..%d)", action.IntVal, len(pages)-1)
+		if action.IntVal < 0 {
+			return fmt.Errorf("tab number must be at least 1")
+		}
+		if action.IntVal >= len(pages) {
+			return fmt.Errorf("tab index %d out of range (1..%d)", action.IntVal+1, len(pages))
 		}
 		target = pages[action.IntVal]
 	case "title":
@@ -548,9 +549,10 @@ func closeCurrentTab(session *browserSession, runCtx *RunContext) error {
 	if len(remaining) == 0 {
 		return fmt.Errorf("no tabs left after close")
 	}
-	session.setPage(remaining[0])
+	fallback := remaining[len(remaining)-1]
+	session.setPage(fallback)
 	if runCtx != nil {
-		runCtx.SetPage(remaining[0])
+		runCtx.SetPage(fallback)
 	}
 	return nil
 }

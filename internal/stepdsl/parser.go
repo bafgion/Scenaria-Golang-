@@ -84,6 +84,7 @@ var stepPatterns = []struct {
 	{regexp.MustCompile(`(?i)^жду исчезновения "` + quoted + `"$`), "wait-hidden", one("wait-hidden")},
 	{regexp.MustCompile(`(?i)^жду появления "` + quoted + `"$`), "wait-visible", one("wait-visible")},
 	{regexp.MustCompile(`(?i)^жду (\d+)\s*(?:мс|мсек)\s*$`), "wait", waitMillis},
+	{regexp.MustCompile(`(?i)^жду ([\d.,]+)\s*с\s*$`), "wait", waitSeconds},
 	{regexp.MustCompile(`(?i)^жду ([\d.,]+)\s*(?:сек|секунд|сек)\s*$`), "wait", waitSeconds},
 	{regexp.MustCompile(`(?i)^(?:жду|ожидаю) "` + quoted + `"$`), "wait", waitQuoted},
 }
@@ -165,8 +166,8 @@ func emailCodeSingleNoEmail(method string) func([]string) Action {
 }
 
 func switchTabIndex(groups []string) Action {
-	index, _ := strconv.Atoi(groups[1])
-	return Action{Kind: "switch-tab", Mode: "index", IntVal: index}
+	userIndex, _ := strconv.Atoi(groups[1])
+	return Action{Kind: "switch-tab", Mode: "index", IntVal: userIndex - 1}
 }
 
 func switchTabTitle(groups []string) Action {

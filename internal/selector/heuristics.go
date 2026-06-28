@@ -1,10 +1,17 @@
 package selector
 
 import (
+	_ "embed"
 	"fmt"
 	"regexp"
 	"strings"
 )
+
+//go:embed recorder_script.js
+var recorderScriptJS string
+
+// RecorderHeuristicsJS is injected into the browser during live recording.
+var RecorderHeuristicsJS = recorderScriptJS
 
 var cssEscapeRE = regexp.MustCompile(`([!"#$%&'()*+,./:;<=>?@[\\\]^` + "`" + `{|}~])`)
 
@@ -27,6 +34,14 @@ func BuildFromElement(el ElementInfo) string {
 	tag := strings.ToLower(strings.TrimSpace(el.Tag))
 	if tag == "" {
 		tag = "*"
+	}
+	if tag == "canvas" {
+		if testID := strings.TrimSpace(el.TestID); testID != "" {
+			return fmt.Sprintf(`[data-testid=%q]`, testID)
+		}
+		if aria := strings.TrimSpace(el.AriaLabel); aria != "" {
+			return fmt.Sprintf(`canvas[aria-label=%q]`, aria)
+		}
 	}
 	if id := strings.TrimSpace(el.ID); id != "" {
 		return "#" + cssEscape(id)
@@ -69,52 +84,3 @@ func cssEscape(value string) string {
 		return `\` + s
 	})
 }
-
-// RecorderHeuristicsJS is injected into the browser during live recording.
-const RecorderHeuristicsJS = `(() => {
-  if (window.__scenariaRecorder) return;
-  const visibleText = (el) => {
-    if (!el) return '';
-    const clone = el.cloneNode(true);
-    clone.querySelectorAll('script,style,input,textarea').forEach(n => n.remove());
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-  };
-  const clickableAncestor = (el) => {
-    let node = el;
-    while (node && node.nodeType === 1) {
-      const tag = (node.tagName || '').toLowerCase();
-      if (tag === 'button' || tag === 'a' || node.getAttribute('role') === 'button') return node;
-      if (node.onclick) return node;
-      node = node.parentElement;
-    }
-    return el;
-  };
-  const buildSelector = (el) => {
-    if (!el) return '';
-    const target = clickableAncestor(el);
-    if (target.id) return '#' + CSS.escape(target.id);
-    const testId = target.getAttribute('data-testid');
-    if (testId) return '[data-testid="' + testId + '"]';
-    const name = target.getAttribute('name');
-    if (name) return target.tagName.toLowerCase() + '[name="' + name + '"]';
-    const text = visibleText(target);
-    if (text && text.length <= 80) return 'text="' + text + '"';
-    return target.tagName.toLowerCase();
-  };
-  const collect = (el, type) => {
-    const target = type === 'click' ? clickableAncestor(el) : el;
-    return {
-      tag: (target.tagName || '').toUpperCase(),
-      id: target.id || '',
-      name: target.getAttribute('name') || '',
-      text: visibleText(target).slice(0, 80),
-      testid: target.getAttribute('data-testid') || '',
-      selector: buildSelector(target),
-      value: target.value || ''
-    };
-  };
-  window.__scenariaRecorder = { events: [] };
-  const push = (type, el) => window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
-  document.addEventListener('click', (e) => { if (e.target) push('click', e.target); }, true);
-  document.addEventListener('input', (e) => { if (e.target) push('input', e.target); }, true);
-})();`

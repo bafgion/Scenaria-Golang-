@@ -36,6 +36,11 @@ func main() {
 			description: "Export scenarios",
 			run:         cli.RunExport,
 		},
+		"import-json": {
+			name:        "import-json",
+			description: "Import scenario from JSON export",
+			run:         cli.RunImportJSON,
+		},
 		"record": {
 			name:        "record",
 			description: "Create baseline recorded scenario",
@@ -106,6 +111,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature|ts|python`)")
+	fmt.Println("  import-json  Import JSON export to .feature (`--output`, `--force`)")
 	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, `--live`)")
 	fmt.Println("  init      Initialize project scaffold (`.scenaria/`)")
 	fmt.Println("  update    Check for updates (`--check`)")

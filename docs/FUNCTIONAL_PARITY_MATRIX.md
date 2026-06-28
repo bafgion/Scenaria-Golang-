@@ -1,29 +1,35 @@
 # Functional Parity Matrix (Python MVP -> Go)
 
-Status: migration **complete** for runtime/core; Qt IDE replaced by Fyne desktop.
+Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, completions, splash, export/import.
 
 | Area | Python capability | Go target | Status |
 |---|---|---|---|
-| Scenario format | `.feature` read/write | `internal/gherkin` | validated |
-| Step DSL (~40 variants) | RU steps | `internal/stepdsl` | validated |
-| Control flow | Если/Повторяю/Пока/Для каждого | `internal/gherkin`, `internal/player` | validated |
-| Variables / generators | `{{name}}`, random data | `internal/player/context.go` | validated |
-| Run suite | batch, tags, outline | `internal/player/suite.go` | validated |
-| Playwright engine | playback + fallbacks | `internal/player`, `internal/selector/resolve.go` | validated |
+| Scenario format | `.feature` read/write + quote repair | `internal/gherkin`, `normalize.go` | validated |
+| Step DSL (~40 variants) | RU steps, 1-based tabs, `жду N с` | `internal/stepdsl` | validated |
+| Control flow | Если/Повторяю/Пока (max iter error)/Для каждого | `internal/gherkin`, `internal/player` | validated |
+| Variables / generators | checksum INN/OGRNIP, coherent names | `internal/player/generators.go` | validated |
+| Navigation | skip-goto, `urls_match`, nav timeout | `internal/player/urls.go` | validated |
+| Run suite | batch, tags, outline, multi-path, `--workers` | `internal/player/suite.go`, `cli/run` | validated |
+| Playwright engine | playback + fallbacks, `--slow-mo` | `internal/player`, `internal/selector` | validated |
 | TestClient | cookies/localStorage | `internal/settings`, `internal/player` | validated |
-| Validate | syntax + `--browser` | `internal/cli`, `internal/selector` | validated |
-| Export | JSON/feature/TS/Python | `internal/exporter` | validated |
+| Validate | syntax + `--browser chromium|firefox|webkit` | `internal/cli`, `internal/selector` | validated |
+| Export | JSON/feature/TS/Python + `--force` | `internal/exporter`, `internal/cli/export` | validated |
 | Reports | JUnit/HTML | `internal/report` | validated |
 | Run status | `.scenaria/run_status.json` | `internal/runstatus` | validated |
-| Recorder | live browser capture | `internal/recorder` | validated |
-| Selector heuristics | DOM → selector | `internal/selector/heuristics.go` | validated |
-| OTP / email code | env + inference + segmented fill | `internal/player/otp.go` | validated |
-| Vanessa add-on | `scenaria va run` | `internal/vanessa`, `internal/cli/va.go` | validated |
-| CLI | run/validate/export/record/va | `cmd/scenaria` | validated |
-| Desktop | IDE (Qt → Fyne) | `ui/desktop` | validated |
-| Plugins registry | list/install | `internal/plugin` | validated |
+| Recorder | live capture + step coalescing | `internal/recorder`, `normalize.go` | validated |
+| Selector heuristics | DOM → selector (canvas/signature) | `internal/selector/recorder_script.js` | validated |
+| OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
+| Vanessa add-on | exclude tags, rerun, epf install, JUnit monitor | `internal/vanessa` | partial |
+| CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
+| Desktop | syntax highlight, run options, test client picker | `ui/desktop` | validated |
+| Plugins registry | list/install zip/URL | `internal/plugin` | validated |
 | Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
+| Version | 0.12.x | `internal/version` | **0.12.0** |
+
+## Remaining gaps (not 100%)
+
+- **Python test suite**: full cross-language CI job against Python `tests/` repo (golden fixture embedded in Go).
 
 ## Intentional differences
 

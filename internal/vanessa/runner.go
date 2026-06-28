@@ -35,6 +35,39 @@ func Run(req RunRequest) (BatchResult, error) {
 	if err != nil {
 		return BatchResult{}, err
 	}
+	if req.PlatformExecutable != "" {
+		cfg.PlatformExecutable = req.PlatformExecutable
+	}
+	if req.EPFPath != "" {
+		cfg.EPFPath = req.EPFPath
+	}
+	if req.IBConnection != "" {
+		cfg.IBConnection = req.IBConnection
+	}
+	if req.ReportAllure {
+		cfg.ReportAllure = true
+	}
+	if req.InstallEPF {
+		dest := req.EPFDestination
+		if dest == "" {
+			dest = cfg.EPFPath
+		}
+		path, err := DownloadEPF(dest, req.EPFDownloadURL)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		cfg.EPFPath = path
+	}
+	if req.RerunFailedRunDir != "" {
+		rerun, err := BuildRerunRequest(req, req.RerunFailedRunDir)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		if rerun == nil {
+			return BatchResult{Success: true, Cases: []CaseResult{{Name: "rerun", Success: true, Message: "no failed scenarios"}}}, nil
+		}
+		req = *rerun
+	}
 	if req.DryRun || cfg.DryRunOnly {
 		files, ferr := resolveFeatureFiles(req)
 		if ferr != nil {
@@ -72,6 +105,11 @@ func Run(req RunRequest) (BatchResult, error) {
 	if err := cmd.Start(); err != nil {
 		return BatchResult{RunDir: runDir, Error: err.Error()}, err
 	}
+
+	files, _ := resolveFeatureFiles(req)
+	monitor := NewRunMonitor(runDir, len(files))
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
@@ -79,16 +117,27 @@ func Run(req RunRequest) (BatchResult, error) {
 	if timeout <= 0 {
 		timeout = time.Hour
 	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
 
+	liveCases := make([]CaseResult, 0)
 	var waitErr error
-	select {
-	case waitErr = <-done:
-	case <-timer.C:
-		_ = cmd.Process.Kill()
-		waitErr = fmt.Errorf("process timeout after %s", timeout)
+	for {
+		select {
+		case waitErr = <-done:
+			goto finished
+		case <-deadline.C:
+			_ = cmd.Process.Kill()
+			waitErr = fmt.Errorf("process timeout after %s", timeout)
+			goto finished
+		case <-ticker.C:
+			snapshot := monitor.Poll()
+			if len(snapshot.Cases) > 0 {
+				liveCases = append(liveCases, snapshot.Cases...)
+			}
+		}
 	}
+finished:
 
 	exitCode := 0
 	if waitErr != nil {
@@ -101,6 +150,9 @@ func Run(req RunRequest) (BatchResult, error) {
 
 	junitDir := filepath.Join(runDir, "junit")
 	cases := ParseJUnitDir(junitDir)
+	if len(cases) == 0 && len(liveCases) > 0 {
+		cases = liveCases
+	}
 	if len(cases) == 0 {
 		files, _ := resolveFeatureFiles(req)
 		success := exitCode == 0
@@ -213,9 +265,10 @@ type junitNode struct {
 }
 
 type junitCase struct {
-	Name    string       `xml:"name,attr"`
-	Failure *junitFault `xml:"failure"`
-	Error   *junitFault `xml:"error"`
+	Name      string       `xml:"name,attr"`
+	Classname string       `xml:"classname,attr"`
+	Failure   *junitFault `xml:"failure"`
+	Error     *junitFault `xml:"error"`
 }
 
 type junitFault struct {

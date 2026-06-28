@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -14,6 +15,7 @@ type exportOptions struct {
 	output  string
 	format  string
 	baseURL string
+	force   bool
 }
 
 func RunExport(args []string) error {
@@ -31,19 +33,27 @@ func RunExport(args []string) error {
 	switch opts.format {
 	case "json":
 		document := exporter.NewFeatureExportDocument(opts.input, feature)
-		if err := exporter.WriteFeatureJSON(opts.output, document); err != nil {
+		if err := writeFile(opts.output, opts.force, func() error {
+			return exporter.WriteFeatureJSON(opts.output, document)
+		}); err != nil {
 			return err
 		}
 	case "feature":
-		if err := store.Save(opts.output, feature); err != nil {
+		if err := writeFile(opts.output, opts.force, func() error {
+			return store.Save(opts.output, feature)
+		}); err != nil {
 			return err
 		}
 	case "ts":
-		if err := exporter.WritePlaywrightTS(opts.output, feature, opts.baseURL); err != nil {
+		if err := writeFile(opts.output, opts.force, func() error {
+			return exporter.WritePlaywrightTS(opts.output, feature, opts.baseURL)
+		}); err != nil {
 			return err
 		}
 	case "python":
-		if err := exporter.WritePlaywrightPython(opts.output, feature, opts.baseURL); err != nil {
+		if err := writeFile(opts.output, opts.force, func() error {
+			return exporter.WritePlaywrightPython(opts.output, feature, opts.baseURL)
+		}); err != nil {
 			return err
 		}
 	default:
@@ -82,6 +92,8 @@ func parseExportOptions(args []string) (exportOptions, error) {
 			}
 			i++
 			opts.baseURL = args[i]
+		case "--force":
+			opts.force = true
 		default:
 			return exportOptions{}, fmt.Errorf("unknown flag for export: %s", args[i])
 		}
@@ -113,4 +125,13 @@ func inferExportFormat(path string) string {
 	default:
 		return "json"
 	}
+}
+
+func writeFile(path string, force bool, writeFn func() error) error {
+	if !force {
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("output file %q already exists (use --force)", path)
+		}
+	}
+	return writeFn()
 }
