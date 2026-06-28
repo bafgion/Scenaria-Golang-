@@ -40,6 +40,28 @@ func TestWriteResults(t *testing.T) {
 	}
 }
 
+func TestWriteResultsWithTrace(t *testing.T) {
+	dir := t.TempDir()
+	result := player.ExecutionResult{
+		ScenarioResults: []player.ScenarioResult{
+			{
+				FeaturePath: "x.feature",
+				Scenario:    "fail",
+				Status:      "failed",
+				Message:     "boom",
+				TraceZIP:    []byte("PK\x03\x04"),
+			},
+		},
+	}
+	if err := WriteResults(dir, result); err != nil {
+		t.Fatalf("WriteResults: %v", err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 2 {
+		t.Fatalf("expected result + trace attachment, got %d", len(entries))
+	}
+}
+
 func TestMapStatus(t *testing.T) {
 	if mapStatus("passed") != "passed" || mapStatus("failed") != "failed" || mapStatus("skipped") != "skipped" {
 		t.Fatal("unexpected status mapping")

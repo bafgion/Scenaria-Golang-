@@ -11,7 +11,18 @@ scenaria run ./features --dry-run --allure ./allure-results
 
 Each scenario becomes one `*-result.json` file in the output directory.
 
-## View report
+On Playwright failures, attachments may include:
+
+- `screenshot` (PNG) — always when browser fails
+- `trace` (ZIP) — when `scenaria run --trace <dir>` is set
+- `video` (WebM) — when `scenaria run --video <dir>` is set
+
+## CLI flags
+
+```bash
+scenaria run ./features --allure ./allure-results
+scenaria run ./features --trace ./traces --video ./videos --allure ./allure-results
+```
 
 Install [Allure CLI](https://docs.qameta.io/allure/#_installing_a_commandline) and run:
 

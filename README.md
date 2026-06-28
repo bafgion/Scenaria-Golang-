@@ -6,11 +6,11 @@ plugins).
 
 ## Current state
 
-**Migration complete** for core runtime (~98% functional parity with Python v0.12).
+**v0.13** — Wails 2 + Svelte + Monaco IDE merged to `master`. CLI parity with Python v0.12.
 
-- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI
-- **Wails 2 + Svelte** GUI in development (`feat/wails-gui`) — primary desktop target
-- Legacy **Fyne** GUI (`-tags desktop`) — deprecated, maintained until Wails parity
+- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI + Wails GUI
+- Allure reports (`--allure`), failure screenshots; trace/video opt-in (`--trace`, `--video`)
+- Legacy **Fyne** GUI (`-tags desktop`) — deprecated
 - `go test ./...` passes
 
 See `docs/FUNCTIONAL_PARITY_MATRIX.md` and `docs/ROADMAP.md`.
@@ -63,8 +63,11 @@ go run ./cmd/scenaria update --check
 # run (default engine: playwright from project.json or auto)
 go run ./cmd/scenaria run ./examples --dry-run
 
-# generate JUnit and HTML reports
-go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml --html report.html
+# generate JUnit, HTML, and Allure reports
+go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml --html report.html --allure ./allure-results
+
+# Playwright trace/video on failure (opt-in)
+go run ./cmd/scenaria run ./examples --trace ./traces --video ./videos --allure ./allure-results
 
 # run with Playwright engine
 go run ./cmd/scenaria run ./examples/01-pervaya-proverka.feature --engine playwright --install-playwright --headed

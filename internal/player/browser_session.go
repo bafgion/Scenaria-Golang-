@@ -19,6 +19,8 @@ type PlaywrightExecutorOptions struct {
 	BaseURL     string
 	AutoInstall bool
 	SlowMo      float64
+	TraceDir    string
+	VideoDir    string
 }
 
 type PlaywrightExecutor struct {
@@ -30,10 +32,13 @@ func NewPlaywrightExecutor(options PlaywrightExecutorOptions) *PlaywrightExecuto
 }
 
 type browserSession struct {
-	browser playwright.Browser
-	context playwright.BrowserContext
-	page    playwright.Page
-	closed  bool
+	browser      playwright.Browser
+	context      playwright.BrowserContext
+	page         playwright.Page
+	closed       bool
+	traceEnabled bool
+	traceStopped bool
+	videoEnabled bool
 }
 
 func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOptions) (*browserSession, error) {
@@ -41,7 +46,15 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 	if err != nil {
 		return nil, err
 	}
-	bctx, err := browser.NewContext()
+	ctxOpts := playwright.BrowserNewContextOptions{}
+	if strings.TrimSpace(options.VideoDir) != "" {
+		if err := os.MkdirAll(options.VideoDir, 0o755); err != nil {
+			_ = browser.Close()
+			return nil, fmt.Errorf("create video dir: %w", err)
+		}
+		ctxOpts.RecordVideo = &playwright.RecordVideo{Dir: playwright.String(options.VideoDir)}
+	}
+	bctx, err := browser.NewContext(ctxOpts)
 	if err != nil {
 		_ = browser.Close()
 		return nil, fmt.Errorf("create browser context: %w", err)
@@ -52,12 +65,32 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 		_ = browser.Close()
 		return nil, fmt.Errorf("create browser page: %w", err)
 	}
-	return &browserSession{browser: browser, context: bctx, page: page}, nil
+	session := &browserSession{
+		browser:      browser,
+		context:      bctx,
+		page:         page,
+		videoEnabled: strings.TrimSpace(options.VideoDir) != "",
+	}
+	if strings.TrimSpace(options.TraceDir) != "" {
+		if err := bctx.Tracing().Start(playwright.TracingStartOptions{
+			Screenshots: playwright.Bool(true),
+			Snapshots:   playwright.Bool(true),
+		}); err != nil {
+			session.close()
+			return nil, fmt.Errorf("start playwright trace: %w", err)
+		}
+		session.traceEnabled = true
+	}
+	return session, nil
 }
 
 func (s *browserSession) close() {
 	if s.closed {
 		return
+	}
+	if s.traceEnabled && !s.traceStopped && s.context != nil {
+		_ = s.context.Tracing().Stop()
+		s.traceStopped = true
 	}
 	if s.page != nil {
 		_ = s.page.Close()
