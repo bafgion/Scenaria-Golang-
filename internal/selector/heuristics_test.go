@@ -1,6 +1,25 @@
 package selector
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestRecorderScriptGolden(t *testing.T) {
+	script := RecorderHeuristicsJS
+	for _, needle := range []string{
+		"function buildInputSelector",
+		"function buildClickSelector",
+		"MutationObserver",
+		"elementFromPoint",
+		"__scenariaRecorder",
+		"shadowRoot",
+	} {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("recorder script missing %q", needle)
+		}
+	}
+}
 
 func TestBuildFromElementPriority(t *testing.T) {
 	if got := BuildFromElement(ElementInfo{Tag: "button", ID: "submit"}); got != `#submit` {

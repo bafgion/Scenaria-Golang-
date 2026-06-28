@@ -19,6 +19,7 @@ type LiveOptions struct {
 	OutputPath   string
 	Headless     bool
 	IdleTimeout  time.Duration
+	Session      *LiveSession
 }
 
 type recorderEvent struct {
@@ -77,6 +78,10 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 	recorded := []RecordedStep{{Action: "goto", Value: opts.StartURL}}
 	lastURL := page.URL()
 	lastEventAt := time.Now()
+	session := opts.Session
+	if session == nil {
+		session = NewLiveSession()
+	}
 
 	for {
 		select {
@@ -84,6 +89,15 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 			return ctx.Err()
 		default:
 		}
+		for session.IsPaused() {
+			_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`, nil)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
 		if time.Since(lastEventAt) >= opts.IdleTimeout {
 			break
 		}

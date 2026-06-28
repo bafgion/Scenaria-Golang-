@@ -88,6 +88,7 @@
     return canvas.getAttribute('role') === 'img' && !!canvas.getAttribute('aria-label');
   }
 
+  function buildInputSelector(el) {
     if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return null;
     const tag = el.tagName.toLowerCase();
     const testId = el.getAttribute('data-testid');
@@ -192,19 +193,104 @@
     };
   }
 
-  window.__scenariaRecorder = { events: [] };
+  window.__scenariaRecorder = { events: [], paused: false };
   const push = (type, el) => {
-    if (!el) return;
+    if (!el || window.__scenariaRecorder.paused) return;
     window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
   };
-  document.addEventListener('click', (e) => {
-    const canvas = findCanvas(e.target);
+
+  let lastClickAt = 0;
+  let lastClickKey = '';
+
+  function resolveClickTarget(event) {
+    const x = event.clientX;
+    const y = event.clientY;
+    let el = event.target;
+    if (typeof document.elementFromPoint === 'function') {
+      const top = document.elementFromPoint(x, y);
+      if (top && top.nodeType === 1) {
+        el = top;
+      }
+    }
+    return el;
+  }
+
+  function shouldSkipDuplicateClick(target) {
+    const key = (target && (target.id || target.getAttribute('data-testid') || visibleText(target).slice(0, 40))) || '';
+    const now = Date.now();
+    if (key && key === lastClickKey && now-lastClickAt < 400) {
+      return true;
+    }
+    lastClickAt = now;
+    lastClickKey = key;
+    return false;
+  }
+
+  function onDocumentClick(e) {
+    const el = resolveClickTarget(e);
+    if (!el || shouldSkipDuplicateClick(el)) return;
+    const canvas = findCanvas(el);
     if (canvas && isSignatureCanvas(canvas)) {
       push('draw-signature', canvas);
       return;
     }
-    push('click', e.target);
-  }, true);
-  document.addEventListener('input', (e) => push('input', e.target), true);
-  document.addEventListener('change', (e) => push('change', e.target), true);
+    push('click', el);
+  }
+
+  function onDocumentInput(e) {
+    push('input', e.target);
+  }
+
+  function onDocumentChange(e) {
+    push('change', e.target);
+  }
+
+  const attachedRoots = new WeakSet();
+
+  function attachRoot(root) {
+    if (!root || attachedRoots.has(root)) return;
+    attachedRoots.add(root);
+    root.addEventListener('click', onDocumentClick, true);
+    root.addEventListener('input', onDocumentInput, true);
+    root.addEventListener('change', onDocumentChange, true);
+  }
+
+  function scanNode(node) {
+    if (!node || node.nodeType !== 1) return;
+    if (node.shadowRoot) attachRoot(node.shadowRoot);
+    if (node.tagName === 'IFRAME') {
+      const hookIframe = () => {
+        try {
+          const doc = node.contentDocument;
+          if (doc) {
+            attachRoot(doc);
+            observeRoot(doc);
+          }
+        } catch (_) {
+          /* cross-origin iframe */
+        }
+      };
+      hookIframe();
+      node.addEventListener('load', hookIframe);
+    }
+    if (node.querySelectorAll) {
+      node.querySelectorAll('*').forEach((child) => {
+        if (child.shadowRoot) attachRoot(child.shadowRoot);
+      });
+    }
+  }
+
+  function observeRoot(root) {
+    attachRoot(root);
+    if (typeof MutationObserver === 'undefined') return;
+    const target = root === document ? root.documentElement : root;
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((node) => scanNode(node));
+      }
+    });
+    observer.observe(target, { childList: true, subtree: true });
+  }
+
+  observeRoot(document);
 })();

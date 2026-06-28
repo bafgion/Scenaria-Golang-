@@ -1,4 +1,4 @@
-.PHONY: test run install-cli gui build build-windows
+.PHONY: test run install-cli gui gui-wails gui-fyne build build-windows
 
 test:
 	go test ./...
@@ -9,8 +9,13 @@ run:
 install-cli:
 	go install ./cmd/scenaria
 
-gui:
+gui-wails:
+	wails dev
+
+gui-fyne:
 	go run -tags desktop ./cmd/scenaria-gui
+
+gui: gui-fyne
 
 install-gui:
 	go install -tags desktop ./cmd/scenaria-gui

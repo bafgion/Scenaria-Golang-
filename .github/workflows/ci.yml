@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+    env:
+      SCENARIA_LOG: json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -15,6 +17,23 @@ jobs:
           go-version: "1.24"
       - name: Test
         run: go test ./...
+      - name: Coverage (soft gate 35%)
+        shell: pwsh
+        run: |
+          go test ./... -coverprofile=coverage.out -covermode=atomic
+          $line = go tool cover -func=coverage.out | Select-Object -Last 1
+          Write-Host $line
+          if ($line -match '(\d+\.\d+)%') {
+            $pct = [double]$matches[1]
+            if ($pct -lt 35) {
+              Write-Warning "Coverage below soft gate (35%): $pct%"
+            }
+          }
+      - name: Build Wails frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
       - name: Golden parity fixture
         run: go test ./internal/stepdsl/... ./internal/parity/... -count=1
 

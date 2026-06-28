@@ -84,6 +84,7 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 		if err := applyTestClient(session.page, input.TestClient); err != nil {
 			result.Status = "failed"
 			result.Message = err.Error()
+			result.ScreenshotPNG = captureFailureScreenshot(session)
 			return result, nil
 		}
 	}
@@ -91,6 +92,7 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	if err := run(ctx, session); err != nil {
 		result.Status = "failed"
 		result.Message = err.Error()
+		result.ScreenshotPNG = captureFailureScreenshot(session)
 	}
 	return result, nil
 }

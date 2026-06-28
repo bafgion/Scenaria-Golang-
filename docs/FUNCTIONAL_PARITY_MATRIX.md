@@ -1,6 +1,8 @@
 # Functional Parity Matrix (Python MVP -> Go)
 
-Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, completions, splash, export/import.
+Status: **CLI parity v0.12**; **Wails 2 GUI beta v0.13** (Fyne deprecated).
+
+| Wails beta | Monaco, tabs, splash, run/record/Vanessa/export/OTP/Allure | `frontend/`, `internal/gui` | ~85% |
 
 | Area | Python capability | Go target | Status |
 |---|---|---|---|
@@ -14,31 +16,28 @@ Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, co
 | TestClient | cookies/localStorage | `internal/settings`, `internal/player` | validated |
 | Validate | syntax + `--browser chromium|firefox|webkit` | `internal/cli`, `internal/selector` | validated |
 | Export | JSON/feature/TS/Python + `--force` | `internal/exporter`, `internal/cli/export` | validated |
-| Reports | JUnit/HTML | `internal/report` | validated |
+| Reports | JUnit/HTML/Allure | `internal/report`, `internal/report/allure` | validated |
 | Run status | `.scenaria/run_status.json` | `internal/runstatus` | validated |
-| Recorder | live capture + step coalescing | `internal/recorder`, `normalize.go` | validated |
-| Selector heuristics | DOM → selector (canvas/signature) | `internal/selector/recorder_script.js` | validated |
+| Recorder | live capture + pause + step coalescing | `internal/recorder`, `docs/RECORDER.md` | validated |
+| Selector heuristics | DOM → selector (canvas/signature/shadow) | `internal/selector/recorder_script.js` | validated |
 | OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
 | Vanessa add-on | exclude tags, rerun, epf install, JUnit monitor | `internal/vanessa` | partial |
 | CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
-| Desktop | syntax highlight, run options, test client picker | `ui/desktop` | validated |
+| Desktop (Wails) | primary IDE | `main.go`, `frontend/` | beta |
+| Desktop (Fyne) | legacy IDE | `ui/desktop` | deprecated |
 | Plugins registry | list/install zip/URL | `internal/plugin` | validated |
-| Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
+| Packaging | portable ZIP + Wails GUI + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
-| Version | 0.12.x | `internal/version` | **0.12.0** |
+| Version | 0.12.x | `internal/version` | **0.13.0** |
 
-## Remaining gaps (not 100%)
+## Remaining gaps
 
-- **Python test suite**: full cross-language CI job against Python `tests/` repo (golden fixture embedded in Go).
+- Allure trace/video opt-in
+- Cross-language CI with Python `tests/`
+- Remove Fyne from release (v0.15)
 
 ## Intentional differences
 
-- **Desktop UI**: Fyne instead of Qt (~feature parity for run/validate/record/edit; not pixel-identical).
-- **Email OTP**: interactive prompt in desktop (`player.EmailCodePrompt`); env/`--var` in CLI.
+- **Desktop UI**: Wails + Monaco (Fyne deprecated).
+- **Email OTP**: interactive prompt in Wails (`player.EmailCodePrompt`); env/`--var` in CLI.
 - **Vanessa**: requires local 1C platform + EPF paths in `.scenaria/vanessa.json`.
-
-## Optional future work
-
-- Golden cross-language CI against Python `tests/` fixtures
-- Full Qt parity (completions, splash, update UI) if needed
-- IMAP OTP fetch (net-new, not in Python MVP)
