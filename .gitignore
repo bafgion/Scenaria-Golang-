@@ -5,6 +5,7 @@
 dist/
 build/bin/
 node_modules/
-frontend/dist/
+frontend/dist/*
+!frontend/dist/index.html
 frontend/build/
 .DS_Store

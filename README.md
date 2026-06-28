@@ -6,14 +6,31 @@ plugins).
 
 ## Current state
 
-**Migration complete** for core runtime (~95% functional parity with Python v0.12).
+**Migration complete** for core runtime (~98% functional parity with Python v0.12).
 
-- Full step DSL, Playwright runner with chained/hover fallbacks
-- Live recorder, browser validate, Vanessa `va run`, portable build script
-- Fyne desktop: project tree, editor, run/validate/record/Vanessa
+- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI
+- **Wails 2 + Svelte** GUI in development (`feat/wails-gui`) — primary desktop target
+- Legacy **Fyne** GUI (`-tags desktop`) — deprecated, maintained until Wails parity
 - `go test ./...` passes
 
-See `docs/FUNCTIONAL_PARITY_MATRIX.md` for details.
+See `docs/FUNCTIONAL_PARITY_MATRIX.md` and `docs/ROADMAP.md`.
+
+## Desktop (Wails — recommended)
+
+Requires [Node.js](https://nodejs.org/) and [Wails CLI](https://wails.io/docs/gettingstarted/installation):
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+cd frontend && npm install && cd ..
+wails dev          # hot-reload development
+wails build        # scenaria-gui.exe
+```
+
+## Legacy desktop (Fyne, deprecated)
+
+```bash
+go run -tags desktop ./cmd/scenaria-gui
+```
 
 ## Project goals
 

@@ -1,6 +1,8 @@
 # Functional Parity Matrix (Python MVP -> Go)
 
-Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, completions, splash, export/import.
+Status: **runtime/CLI parity with Python v0.12**; **Wails 2 GUI** in active development (Fyne deprecated).
+
+| Desktop Wails | tabs, run options, test client, editor shell | `frontend/`, `internal/gui`, `internal/wailsapp` | in progress |
 
 | Area | Python capability | Go target | Status |
 |---|---|---|---|
@@ -21,7 +23,7 @@ Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, co
 | OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
 | Vanessa add-on | exclude tags, rerun, epf install, JUnit monitor | `internal/vanessa` | partial |
 | CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
-| Desktop | syntax highlight, run options, test client picker | `ui/desktop` | validated |
+| Desktop (Fyne) | legacy IDE | `ui/desktop` | deprecated |
 | Plugins registry | list/install zip/URL | `internal/plugin` | validated |
 | Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
@@ -29,7 +31,9 @@ Status: **runtime/CLI parity with Python v0.12**; Fyne desktop covers editor, co
 
 ## Remaining gaps (not 100%)
 
-- **Python test suite**: full cross-language CI job against Python `tests/` repo (golden fixture embedded in Go).
+- **Wails IDE parity**: Monaco editor, native folder picker, record/Vanessa/Allure UI.
+- **Allure**: native writer from Go runner (Vanessa partial).
+- **Python test suite**: cross-language CI against Python `tests/` repo.
 
 ## Intentional differences
 
