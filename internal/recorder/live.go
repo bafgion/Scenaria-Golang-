@@ -90,12 +90,14 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		default:
 		}
 		for session.IsPaused() {
+			_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`, nil)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
+		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
 		if time.Since(lastEventAt) >= opts.IdleTimeout {
 			break
 		}

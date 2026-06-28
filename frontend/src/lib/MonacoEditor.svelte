@@ -9,14 +9,18 @@
 
   export let value = ''
 
+  type MarkerIssue = { line: number; message: string }
+
   let container: HTMLDivElement
   let editor: MonacoEditor.IStandaloneCodeEditor | null = null
+  let monacoApi: typeof import('monaco-editor') | null = null
   let applyingExternal = false
 
   const dispatch = createEventDispatcher<{ change: string }>()
 
   onMount(async () => {
     const monaco = await loader.init()
+    monacoApi = monaco
     registerFeatureLanguage(monaco)
 
     editor = monaco.editor.create(container, {
@@ -76,6 +80,23 @@
       },
     ])
     editor.focus()
+  }
+
+  export function setMarkers(issues: MarkerIssue[]) {
+    const model = editor?.getModel()
+    if (!model || !monacoApi) return
+    monacoApi.editor.setModelMarkers(
+      model,
+      'scenaria',
+      issues.map((issue) => ({
+        startLineNumber: issue.line,
+        endLineNumber: issue.line,
+        startColumn: 1,
+        endColumn: model.getLineMaxColumn(issue.line),
+        message: issue.message,
+        severity: monacoApi!.MarkerSeverity.Error,
+      })),
+    )
   }
 </script>
 

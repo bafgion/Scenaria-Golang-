@@ -2,7 +2,7 @@
 
 Status: **runtime/CLI parity with Python v0.12**; **Wails 2 GUI** in active development (Fyne deprecated).
 
-| Desktop Wails | tabs, run options, test client, editor shell | `frontend/`, `internal/gui`, `internal/wailsapp` | in progress |
+| Desktop Wails | Monaco, tabs, run/record/Vanessa/export/OTP | `frontend/`, `internal/gui` | beta (~70%) |
 
 | Area | Python capability | Go target | Status |
 |---|---|---|---|
@@ -29,11 +29,11 @@ Status: **runtime/CLI parity with Python v0.12**; **Wails 2 GUI** in active deve
 | Update check | GitHub releases | `internal/update` | validated |
 | Version | 0.12.x | `internal/version` | **0.12.0** |
 
-## Remaining gaps (not 100%)
+## Remaining gaps (Wails beta)
 
-- **Wails IDE parity**: Monaco editor, native folder picker, record/Vanessa/Allure UI.
-- **Allure**: native writer from Go runner (Vanessa partial).
-- **Python test suite**: cross-language CI against Python `tests/` repo.
+- Splash, portable `wails build`, Allure native writer.
+- Recorder: MutationObserver, iframe/shadow DOM.
+- Cross-language CI with Python `tests/`.
 
 ## Intentional differences
 

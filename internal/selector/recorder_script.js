@@ -192,18 +192,48 @@
     };
   }
 
-  window.__scenariaRecorder = { events: [] };
+  window.__scenariaRecorder = { events: [], paused: false };
   const push = (type, el) => {
-    if (!el) return;
+    if (!el || window.__scenariaRecorder.paused) return;
     window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
   };
+
+  let lastClickAt = 0;
+  let lastClickKey = '';
+
+  function resolveClickTarget(event) {
+    const x = event.clientX;
+    const y = event.clientY;
+    let el = event.target;
+    if (typeof document.elementFromPoint === 'function') {
+      const top = document.elementFromPoint(x, y);
+      if (top && top.nodeType === 1) {
+        el = top;
+      }
+    }
+    return el;
+  }
+
+  function shouldSkipDuplicateClick(target) {
+    const key = (target && (target.id || target.getAttribute('data-testid') || visibleText(target).slice(0, 40))) || '';
+    const now = Date.now();
+    if (key && key === lastClickKey && now-lastClickAt < 400) {
+      return true;
+    }
+    lastClickAt = now;
+    lastClickKey = key;
+    return false;
+  }
+
   document.addEventListener('click', (e) => {
-    const canvas = findCanvas(e.target);
+    const el = resolveClickTarget(e);
+    if (!el || shouldSkipDuplicateClick(el)) return;
+    const canvas = findCanvas(el);
     if (canvas && isSignatureCanvas(canvas)) {
       push('draw-signature', canvas);
       return;
     }
-    push('click', e.target);
+    push('click', el);
   }, true);
   document.addEventListener('input', (e) => push('input', e.target), true);
   document.addEventListener('change', (e) => push('change', e.target), true);

@@ -2,6 +2,7 @@ package gui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/stepcatalog"
@@ -18,8 +20,10 @@ import (
 
 // Service exposes project and runner operations without UI framework dependencies.
 type Service struct {
-	mu          sync.RWMutex
-	projectPath string
+	mu           sync.RWMutex
+	projectPath  string
+	liveSession  *recorder.LiveSession
+	recordCancel context.CancelFunc
 }
 
 func NewService() *Service {
@@ -284,3 +288,7 @@ func maxInt(a, b int) int {
 	}
 	return b
 }
+
+func runExport(args []string) error     { return cli.RunExport(args) }
+func runImportJSON(args []string) error { return cli.RunImportJSON(args) }
+func runVA(args []string) error         { return cli.RunVA(args) }
