@@ -10,7 +10,7 @@ func TestSerializeFeature_RoundTrip(t *testing.T) {
 		Title: "Каталог",
 		Tags:  []string{"@api"},
 		Background: []Step{
-			{Keyword: "Допустим", Text: "пользователь авторизован"},
+			{Keyword: "Допустим", Text: `я подключаю TestClient "DemoUser"`},
 		},
 		Scenarios: []Scenario{
 			{

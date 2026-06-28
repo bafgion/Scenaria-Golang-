@@ -1,11 +1,13 @@
 package gherkin
 
 type Feature struct {
-	Title      string
-	Line       int
-	Tags       []string
-	Background []Step
-	Scenarios  []Scenario
+	Title           string
+	Line            int
+	Tags            []string
+	TestClient      string
+	HasContextBlock bool
+	Background      []Step
+	Scenarios       []Scenario
 }
 
 type Scenario struct {
@@ -18,12 +20,25 @@ type Scenario struct {
 	ExamplesLine int
 }
 
+type Condition struct {
+	Type     string
+	Selector string
+	Value    string
+}
+
 type Step struct {
-	Keyword   string
-	Text      string
-	Line      int
-	DocString string
-	Table     [][]string
+	Keyword         string
+	Text            string
+	Line            int
+	Indent          int
+	DocString       string
+	Table           [][]string
+	Block           string
+	Condition       *Condition
+	RepeatCount     int
+	ForEachSelector string
+	ForEachVariable string
+	Children        []Step
 }
 
 type Example struct {
@@ -35,3 +50,10 @@ type Issue struct {
 	Line    int
 	Message string
 }
+
+const (
+	BlockIf      = "if"
+	BlockRepeat  = "repeat"
+	BlockWhile   = "while"
+	BlockForEach = "for_each"
+)

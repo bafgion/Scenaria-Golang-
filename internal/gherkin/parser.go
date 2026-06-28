@@ -85,6 +85,7 @@ func ParseFeature(content string) (*Feature, error) {
 		}
 
 		if strings.HasPrefix(line, "Контекст:") {
+			feature.HasContextBlock = true
 			inBackground = true
 			currentScenario = nil
 			currentStep = nil
@@ -171,6 +172,7 @@ func ParseFeature(content string) (*Feature, error) {
 		if !ok {
 			return nil, fmt.Errorf("line %d: unsupported statement %q", lineNo, line)
 		}
+		step.Indent = lineIndentLevel(raw)
 
 		switch {
 		case inBackground:
@@ -191,6 +193,10 @@ func ParseFeature(content string) (*Feature, error) {
 		return nil, fmt.Errorf("line %d: dangling tags without section", len(lines))
 	}
 
+	if err := FinalizeStepTrees(feature); err != nil {
+		return nil, err
+	}
+
 	return feature, nil
 }
 
@@ -204,6 +210,13 @@ func parseStep(line string, lineNo int) (Step, bool) {
 				Line:    lineNo,
 			}, true
 		}
+	}
+	text := strings.TrimSpace(line)
+	if testClientRe.MatchString(text) {
+		return Step{Keyword: "Допустим", Text: text, Line: lineNo}, true
+	}
+	if header, err := detectBlockHeader(Step{Text: text, Line: lineNo}); err == nil && header != nil {
+		return Step{Keyword: "*", Text: text, Line: lineNo}, true
 	}
 	return Step{}, false
 }

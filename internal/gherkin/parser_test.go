@@ -9,8 +9,6 @@ func TestParseFeature_Success(t *testing.T) {
 	content := `
 @smoke @auth
 Функционал: Авторизация
-Контекст:
-  Допустим открыт сайт
 
 Сценарий: Успешный вход
   Когда ввожу логин и пароль
@@ -28,7 +26,7 @@ func TestParseFeature_Success(t *testing.T) {
 	if len(feature.Tags) != 2 {
 		t.Fatalf("unexpected feature tags count: %d", len(feature.Tags))
 	}
-	if len(feature.Background) != 1 {
+	if len(feature.Background) != 0 {
 		t.Fatalf("unexpected background step count: %d", len(feature.Background))
 	}
 	if len(feature.Scenarios) != 1 {

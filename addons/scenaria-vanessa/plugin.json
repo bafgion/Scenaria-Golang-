@@ -1,0 +1,7 @@
+{
+  "id": "vanessa",
+  "name": "Scenaria Vanessa",
+  "version": "0.1.0",
+  "description": "Run .feature scenarios via Vanessa Automation on 1C:Enterprise",
+  "commands": ["va run"]
+}

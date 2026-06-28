@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 )
 
@@ -12,12 +15,29 @@ type recordOptions struct {
 	featureTitle string
 	scenario     string
 	steps        []string
+	live         bool
+	startURL     string
+	headless     bool
+	idleSeconds  int
 }
 
 func RunRecord(args []string) error {
 	opts, err := parseRecordOptions(args)
 	if err != nil {
 		return err
+	}
+
+	if opts.live {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(opts.idleSeconds+15)*time.Second)
+		defer cancel()
+		return recorder.RecordLive(ctx, recorder.LiveOptions{
+			StartURL:     opts.startURL,
+			FeatureName:  opts.featureTitle,
+			ScenarioName: opts.scenario,
+			OutputPath:   opts.output,
+			Headless:     opts.headless,
+			IdleTimeout:  time.Duration(opts.idleSeconds) * time.Second,
+		})
 	}
 
 	store := scenario.NewFeatureStore()
@@ -56,6 +76,8 @@ func parseRecordOptions(args []string) (recordOptions, error) {
 	opts := recordOptions{
 		featureTitle: "Записанный сценарий",
 		scenario:     "Базовый сценарий",
+		headless:     false,
+		idleSeconds:  30,
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -83,12 +105,33 @@ func parseRecordOptions(args []string) (recordOptions, error) {
 			}
 			i++
 			opts.steps = append(opts.steps, args[i])
+		case "--live":
+			opts.live = true
+		case "--url":
+			if i+1 >= len(args) {
+				return recordOptions{}, fmt.Errorf("--url requires a URL")
+			}
+			i++
+			opts.startURL = args[i]
+		case "--headless":
+			opts.headless = true
+		case "--idle":
+			if i+1 >= len(args) {
+				return recordOptions{}, fmt.Errorf("--idle requires seconds")
+			}
+			i++
+			if _, err := fmt.Sscanf(args[i], "%d", &opts.idleSeconds); err != nil {
+				return recordOptions{}, fmt.Errorf("--idle expects integer seconds")
+			}
 		default:
 			return recordOptions{}, fmt.Errorf("unknown flag for record: %s", args[i])
 		}
 	}
 	if opts.output == "" {
-		return recordOptions{}, fmt.Errorf("usage: scenaria record --output <file.feature> [--feature <title>] [--scenario <title>] [--step <text> ...]")
+		return recordOptions{}, fmt.Errorf("usage: scenaria record --output <file.feature> [--feature <title>] [--scenario <title>] [--step <text> ...] [--live --url <url> [--idle 30] [--headless]]")
+	}
+	if opts.live && opts.startURL == "" {
+		return recordOptions{}, fmt.Errorf("--live requires --url")
 	}
 	return opts, nil
 }

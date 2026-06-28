@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
+	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
 type command struct {
@@ -40,10 +41,25 @@ func main() {
 			description: "Create baseline recorded scenario",
 			run:         cli.RunRecord,
 		},
+		"init": {
+			name:        "init",
+			description: "Initialize .scenaria project scaffold",
+			run:         cli.RunInit,
+		},
+		"update": {
+			name:        "update",
+			description: "Check for application updates",
+			run:         cli.RunUpdate,
+		},
 		"plugins": {
 			name:        "plugins",
 			description: "Manage plugins",
 			run:         cli.RunPlugins,
+		},
+		"va": {
+			name:        "va",
+			description: "Vanessa Automation (1C) runner",
+			run:         runVA,
 		},
 		"version": {
 			name:        "version",
@@ -90,8 +106,11 @@ func runHelp(_ []string) error {
 	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature|ts|python`)")
-	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, ...)")
+	fmt.Println("  record    Record baseline scenario (`--output`, `--step`, `--live`)")
+	fmt.Println("  init      Initialize project scaffold (`.scenaria/`)")
+	fmt.Println("  update    Check for updates (`--check`)")
 	fmt.Println("  plugins   Manage plugins (`list`, `install`, `uninstall`)")
+	fmt.Println("  va        Vanessa Automation runner (`va run`)")
 	fmt.Println("  version   Print version")
 	fmt.Println("  help      Show this help")
 	fmt.Println()
@@ -101,8 +120,12 @@ func runHelp(_ []string) error {
 }
 
 func runVersion(_ []string) error {
-	fmt.Println("scenaria dev")
+	fmt.Println(version.String())
 	return nil
+}
+
+func runVA(args []string) error {
+	return cli.RunVA(args)
 }
 
 func runNotImplemented(name string) func(args []string) error {

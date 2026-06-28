@@ -22,7 +22,8 @@ func testFeature() *gherkin.Feature {
 					{Keyword: "Когда", Text: `ввожу "admin" в "#username"`},
 					{Keyword: "И", Text: `ввожу "secret" в "#password"`},
 					{Keyword: "И", Text: `нажимаю "#submit"`},
-					{Keyword: "Тогда", Text: `вижу "Панель"`},
+					{Keyword: "Тогда", Text: `вижу ".dashboard"`},
+					{Keyword: "И", Text: `проверяю текст "Панель" в ".dashboard"`},
 					{Keyword: "И", Text: `url содержит "dashboard"`},
 				},
 			},
@@ -45,6 +46,8 @@ func TestWritePlaywrightTS(t *testing.T) {
 		"import { test, expect } from '@playwright/test';",
 		`await page.goto("https://example.com/login");`,
 		`await page.fill("#username", "admin");`,
+		`await expect(page.locator(".dashboard")).toBeVisible();`,
+		`await expect(page.locator(".dashboard")).toContainText("Панель");`,
 		`expect(page.url()).toContain("dashboard");`,
 	}
 	for _, expected := range mustContain {
@@ -69,6 +72,8 @@ func TestWritePlaywrightPython(t *testing.T) {
 		"from playwright.sync_api import sync_playwright",
 		`page.goto("https://example.com/login")`,
 		`page.fill("#username", "admin")`,
+		`assert page.locator(".dashboard").is_visible()`,
+		`assert "Панель" in page.locator(".dashboard").inner_text()`,
 		`assert "dashboard" in page.url`,
 	}
 	for _, expected := range mustContain {
