@@ -21,10 +21,12 @@ Requires [Node.js](https://nodejs.org/) and [Wails CLI](https://wails.io/docs/ge
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
-cd frontend && npm install && cd ..
-wails dev          # hot-reload development
+cd frontend && npm install && npm run build && cd ..
+wails dev          # hot-reload (Monaco editor)
 wails build        # scenaria-gui.exe
 ```
+
+Editor: **Monaco** with custom `scenaria-feature` syntax (Gherkin RU, tags, TestClient).
 
 ## Legacy desktop (Fyne, deprecated)
 

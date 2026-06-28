@@ -15,6 +15,11 @@ jobs:
           go-version: "1.24"
       - name: Test
         run: go test ./...
+      - name: Build Wails frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
       - name: Golden parity fixture
         run: go test ./internal/stepdsl/... ./internal/parity/... -count=1
 

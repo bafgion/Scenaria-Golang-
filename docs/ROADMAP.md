@@ -27,7 +27,8 @@
 
 ### 1.2 Layout IDE (неделя 2)
 - [ ] Трёхпанельный layout: дерево feature → редактор → лог/панель
-- [ ] Monaco или CodeMirror 6 для `.feature` + подсветка из `featurehighlight`
+- [x] Monaco editor + `scenaria-feature` syntax theme
+- [ ] Native folder picker — **done** (`PickProjectFolder`)
 - [ ] Вкладки файлов, сохранение, горячие клавиши
 
 ### 1.3 Паритет с Fyne (неделя 3)

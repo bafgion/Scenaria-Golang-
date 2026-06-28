@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import MonacoEditor from './lib/MonacoEditor.svelte'
   import {
     Version,
     OpenProject,
@@ -10,6 +11,7 @@
     SearchSteps,
     ListTestClients,
     InitProject,
+    PickProjectFolder,
   } from '../wailsjs/go/wailsapp/App'
 
   let version = ''
@@ -26,6 +28,7 @@
   let testClients: string[] = []
   let stepQuery = ''
   let stepResults: { category: string; template: string; help: string }[] = []
+  let monaco: MonacoEditor | undefined
 
   onMount(async () => {
     try {
@@ -41,7 +44,15 @@
   }
 
   async function openProjectDialog() {
-    const path = prompt('Путь к папке проекта:', projectPath || '')
+    let path = ''
+    try {
+      path = await PickProjectFolder()
+    } catch {
+      path = ''
+    }
+    if (!path) {
+      path = prompt('Путь к папке проекта:', projectPath || '') || ''
+    }
     if (!path) return
     try {
       const info = await OpenProject(path)
@@ -122,6 +133,11 @@
   async function searchSteps() {
     stepResults = await SearchSteps(stepQuery)
   }
+
+  function insertStep(template: string) {
+    const line = template.endsWith('\n') ? template : template + '\n'
+    monaco?.insertAtCursor(line)
+  }
 </script>
 
 <div class="app">
@@ -149,7 +165,7 @@
   </aside>
 
   <main class="editor">
-    <textarea bind:value={editorText} placeholder="Откройте .feature файл…" spellcheck="false"></textarea>
+    <MonacoEditor bind:this={monaco} bind:value={editorText} on:change={(e) => (editorText = e.detail)} />
     <div class="status">{statusText}</div>
   </main>
 
@@ -174,12 +190,7 @@
     <div class="run-form">
       <input bind:value={stepQuery} placeholder="Поиск шага" on:input={searchSteps} />
       {#each stepResults.slice(0, 8) as step}
-        <button
-          class="feature-item"
-          on:click={() => {
-            editorText += (editorText && !editorText.endsWith('\n') ? '\n' : '') + step.template
-          }}
-        >
+        <button class="feature-item" on:click={() => insertStep(step.template)}>
           {step.template}
         </button>
       {/each}

@@ -48,18 +48,7 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.editor textarea {
-  flex: 1;
-  resize: none;
-  border: none;
-  padding: 12px;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 13px;
-  line-height: 1.5;
   background: #12141a;
-  color: #e8eaed;
 }
 
 .panel {

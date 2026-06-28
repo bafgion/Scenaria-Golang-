@@ -1,3 +1,4 @@
+import './monaco-env'
 import './style.css'
 import App from './App.svelte'
 

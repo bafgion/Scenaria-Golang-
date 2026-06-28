@@ -2,8 +2,10 @@ package wailsapp
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App exposes methods to the Wails frontend (Svelte).
@@ -72,11 +74,12 @@ func (a *App) SaveSettings(dto gui.AppSettingsDTO) error {
 	return a.svc.SaveSettings(dto)
 }
 
-// PickProjectFolder opens a native directory dialog (Wails runtime).
+// PickProjectFolder opens a native directory picker.
 func (a *App) PickProjectFolder() (string, error) {
 	if a.ctx == nil {
-		return "", nil
+		return "", fmt.Errorf("application not ready")
 	}
-	// Placeholder: frontend uses runtime.OpenDirectoryDialog until bindings regenerated.
-	return "", nil
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Выберите папку проекта Scenaria",
+	})
 }
