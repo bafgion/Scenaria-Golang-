@@ -1,72 +1,39 @@
 # Scenaria Go — Roadmap (post-parity)
 
-Статус: **v0.14** в работе (`feat/v0.14-trace`); **master** = v0.13 Wails GUI.
+Статус: **master** = v0.14; **feat/v0.15-polish** — GUI trace/video, Fyne out of release.
+
 ## Приоритеты
 
-| # | Направление | Приоритет | Статус |
-|---|-------------|-----------|--------|
-| P0 | **Wails 2 + Svelte + Monaco** | Очень высокий | ~85% фазы 1 |
-| P0 | **Стабилизация Recorder** | Высокий | ~80% фазы 2 |
-| P1 | **Allure Report** | Высокий | screenshots done |
-| P1 | **slog + %w** | Средний | JSON в CI |
-| P1 | **Тесты 60–70%** | Средний | soft gate 35% |
-| P2 | **Документация** | Средний | RECORDER + ALLURE |
+| # | Направление | Статус |
+|---|-------------|--------|
+| P0 | Wails IDE | ~90% |
+| P0 | Recorder | ~80% |
+| P1 | Allure | done (screenshot + trace + video) |
+| P1 | Coverage | soft 40%, цель 60% |
+| P2 | Fyne | убран из portable (v0.15) |
 
 ---
 
-## Фаза 1 — Wails 2 GUI (`feat/wails-gui`)
+## Фаза 1 — Wails GUI
 
-### 1.4 Полировка
-- [x] Splash / about
-- [x] `wails build` в portable-скрипт
-- [ ] Снять Fyne из release (v0.15)
-
----
-
-## Фаза 2 — Стабилизация Recorder
-
-### 2.1 Pause / Resume
-- [x] Go + Wails + JS flag
-- [x] CLI `--idle` + `docs/RECORDER.md`
-
-### 2.2 Edge-cases
-- [x] elementFromPoint, debounce, MutationObserver, shadow/iframe
-
-### 2.3 Тесты
-- [x] `live_events_test.go`
-- [x] `live_integration_test.go` (`-tags=integration`)
-- [x] Golden smoke `recorder_script.js`
+- [x] Monaco IDE, run/record/Vanessa/OTP/Allure
+- [x] Splash, portable `wails build`
+- [x] GUI: trace/video чекбоксы
+- [x] Fyne снят с release
 
 ---
 
-## Фаза 3 — Allure Report
+## Фаза 3 — Allure
 
-### 3.1–3.3
-- [x] Writer + CLI `--allure` + GUI
-- [x] Screenshot on failure (Playwright → attachment PNG)
-- [x] trace/video opt-in (`--trace`, `--video` CLI + Allure attachments)
+- [x] Writer, CLI, GUI
+- [x] Screenshot + trace + video attachments
 
 ---
 
-## Фаза 4 — Observability
+## Фаза 5 — Тесты
 
-- [x] `SCENARIA_LOG=json` для slog
-- [ ] `%w` по пакетам
-
----
-
-## Фаза 5 — Тесты (цель 60–70%)
-
-- [x] `scripts/coverage.ps1`
-- [x] CI soft gate 35%
-- [x] `go test -tags=integration` (recorder)
-
----
-
-## Фаза 6 — Документация
-
-- [x] `docs/ALLURE.md`, `docs/RECORDER.md`
-- [x] `FUNCTIONAL_PARITY_MATRIX.md` — колонка Wails
+- [x] `scripts/coverage.ps1` (`-coverpkg=./...`)
+- [x] CI soft gate 40% (цель 60%)
 
 ---
 
@@ -74,6 +41,5 @@
 
 | Версия | Содержание |
 |--------|------------|
-| **0.13.0** | Wails beta + Allure base (**master**) |
-| **0.14.0** | trace/video + coverage 60% (в работе) |
-| **0.15.0** | Fyne removed from release |
+| **0.14.0** | trace/video Allure (**master**) |
+| **0.15.0** | GUI trace/video + Fyne out of release (в работе) |

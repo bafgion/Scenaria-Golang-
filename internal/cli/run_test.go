@@ -111,6 +111,9 @@ func TestParseRunOptions(t *testing.T) {
 		"--tag", "smoke",
 		"--test-client", "DemoUser",
 		"--var", "BASE=https://example.com",
+		"--allure", "allure-results",
+		"--trace", "traces",
+		"--video", "videos",
 	})
 	if err != nil {
 		t.Fatalf("parseRunOptions returned error: %v", err)
@@ -129,6 +132,9 @@ func TestParseRunOptions(t *testing.T) {
 	}
 	if opts.variables["BASE"] != "https://example.com" {
 		t.Fatalf("unexpected variables: %#v", opts.variables)
+	}
+	if opts.allureDir != "allure-results" || opts.traceDir != "traces" || opts.videoDir != "videos" {
+		t.Fatalf("unexpected report dirs: %+v", opts)
 	}
 }
 
