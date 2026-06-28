@@ -20,8 +20,12 @@ jobs:
       - name: Coverage (soft gate 40%, target 60%)
         shell: pwsh
         run: |
-          go test -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
-          $line = go tool cover "-func=coverage.out" | Select-String "total:"
+          go test -coverpkg=./... -coverprofile="coverage.out" -covermode=atomic ./...
+          if (-not (Test-Path "coverage.out")) {
+            Write-Error "coverage.out was not created"
+            exit 1
+          }
+          $line = go tool cover -func "coverage.out" | Select-String "total:"
           Write-Host $line
           if ($line -match '(\d+\.\d+)%') {
             $pct = [double]$matches[1]
