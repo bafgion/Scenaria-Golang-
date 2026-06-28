@@ -1,0 +1,132 @@
+(() => {
+  if (window.__scenariaRecorder) return;
+
+  function cssEscape(value) {
+    if (window.CSS && CSS.escape) return CSS.escape(value);
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
+
+  function visibleText(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('input, textarea, select, script, style, noscript, svg').forEach((n) => n.remove());
+    return (clone.innerText || clone.textContent || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function labelTextForControl(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const id = el.id;
+    if (id) {
+      const linked = el.ownerDocument.querySelector(`label[for="${cssEscape(id)}"]`);
+      if (linked) return visibleText(linked);
+    }
+    const parentLabel = el.closest('label');
+    if (parentLabel) return visibleText(parentLabel);
+    return '';
+  }
+
+  function hasTextSelector(el, text) {
+    const normalized = String(text || visibleText(el) || '').trim();
+    if (!normalized || normalized.length < 2 || normalized.length > 80) return null;
+    const escaped = normalized.replace(/"/g, '\\"');
+    const tag = (el.tagName || '').toUpperCase();
+    if (tag === 'BUTTON') return `button:has-text("${escaped}")`;
+    if (tag === 'A') return `a:has-text("${escaped}")`;
+    const role = el.getAttribute('role');
+    if (role === 'button') return `button:has-text("${escaped}")`;
+    if (role === 'link') return `a:has-text("${escaped}")`;
+    return `button:has-text("${escaped}")`;
+  }
+
+  function clickableAncestor(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const interactive = el.closest('button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"]');
+    if (interactive) return interactive;
+    let node = el;
+    for (let depth = 0; node && depth < 8; depth++) {
+      if (node.tagName === 'BUTTON' || node.tagName === 'A') return node;
+      const role = node.getAttribute('role');
+      if (role && ['button', 'link', 'menuitem', 'tab'].includes(role)) return node;
+      node = node.parentElement;
+    }
+    return el;
+  }
+
+  function buildInputSelector(el) {
+    if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return null;
+    const tag = el.tagName.toLowerCase();
+    const testId = el.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+    if (el.id) return `#${cssEscape(el.id)}`;
+    const label = labelTextForControl(el);
+    if (label && label.length >= 2) return `label:has-text("${label.slice(0, 60).replace(/"/g, '\\"')}")`;
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder) return `${tag}[placeholder="${cssEscape(placeholder)}"]`;
+    const aria = el.getAttribute('aria-label');
+    if (aria) return `[aria-label="${cssEscape(aria.trim())}"]`;
+    const name = el.getAttribute('name');
+    if (name) return `${tag}[name="${cssEscape(name)}"]`;
+    return null;
+  }
+
+  function buildClickSelector(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const target = clickableAncestor(el) || el;
+    const testId = target.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+    if (target.id) return `#${cssEscape(target.id)}`;
+    const aria = target.getAttribute('aria-label');
+    if (aria && aria.trim()) return `[aria-label="${cssEscape(aria.trim())}"]`;
+    return hasTextSelector(target, '');
+  }
+
+  function buildSelector(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const click = buildClickSelector(el);
+    if (click) return click;
+    const input = buildInputSelector(el);
+    if (input) return input;
+    if (el.id) return `#${cssEscape(el.id)}`;
+    return el.tagName.toLowerCase();
+  }
+
+  function clickContextCaption(clickEl) {
+    let node = clickEl && clickEl.parentElement;
+    for (let depth = 0; node && depth < 8; depth++) {
+      const text = visibleText(node);
+      if (text.length >= 8 && text.length <= 120) return text.slice(0, 80);
+      node = node.parentElement;
+    }
+    return '';
+  }
+
+  function collect(el, type) {
+    const isField = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+    const target = type === 'click' ? (clickableAncestor(el) || el) : el;
+    if (!target) return {};
+    return {
+      tag: (target.tagName || '').toUpperCase(),
+      id: target.id || '',
+      name: target.getAttribute('name') || '',
+      text: visibleText(target).slice(0, 120),
+      testid: target.getAttribute('data-testid') || '',
+      selector: buildSelector(el) || buildSelector(target),
+      value: target.value || '',
+      inputtype: (target.type || 'text').toLowerCase(),
+      captiontext: isField ? labelTextForControl(target).slice(0, 120) : '',
+      contexttext: type === 'click' ? clickContextCaption(target) : '',
+      placeholder: target.getAttribute('placeholder') || '',
+      arialabel: (target.getAttribute('aria-label') || '').trim(),
+      role: target.getAttribute('role') || ''
+    };
+  }
+
+  window.__scenariaRecorder = { events: [] };
+  const push = (type, el) => {
+    if (!el) return;
+    window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
+  };
+  document.addEventListener('click', (e) => push('click', e.target), true);
+  document.addEventListener('input', (e) => push('input', e.target), true);
+  document.addEventListener('change', (e) => push('change', e.target), true);
+})();

@@ -47,6 +47,27 @@ func Run(req RunRequest) (BatchResult, error) {
 	if req.ReportAllure {
 		cfg.ReportAllure = true
 	}
+	if req.InstallEPF {
+		dest := req.EPFDestination
+		if dest == "" {
+			dest = cfg.EPFPath
+		}
+		path, err := DownloadEPF(dest, req.EPFDownloadURL)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		cfg.EPFPath = path
+	}
+	if req.RerunFailedRunDir != "" {
+		rerun, err := BuildRerunRequest(req, req.RerunFailedRunDir)
+		if err != nil {
+			return BatchResult{}, err
+		}
+		if rerun == nil {
+			return BatchResult{Success: true, Cases: []CaseResult{{Name: "rerun", Success: true, Message: "no failed scenarios"}}}, nil
+		}
+		req = *rerun
+	}
 	if req.DryRun || cfg.DryRunOnly {
 		files, ferr := resolveFeatureFiles(req)
 		if ferr != nil {
@@ -225,9 +246,10 @@ type junitNode struct {
 }
 
 type junitCase struct {
-	Name    string       `xml:"name,attr"`
-	Failure *junitFault `xml:"failure"`
-	Error   *junitFault `xml:"error"`
+	Name      string       `xml:"name,attr"`
+	Classname string       `xml:"classname,attr"`
+	Failure   *junitFault `xml:"failure"`
+	Error     *junitFault `xml:"error"`
 }
 
 type junitFault struct {

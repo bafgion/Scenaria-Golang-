@@ -8,14 +8,17 @@ import (
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/selector"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 )
 
 type validateOptions struct {
 	target      string
 	json        string
 	browser     bool
+	noBrowser   bool
 	browserName string
 	headless    bool
 	baseURL     string
@@ -25,6 +28,9 @@ func RunValidate(args []string) error {
 	opts, err := parseValidateOptions(args)
 	if err != nil {
 		return err
+	}
+	if !opts.noBrowser && !opts.browser {
+		opts.browser = true
 	}
 
 	store := scenario.NewFeatureStore()
@@ -119,9 +125,20 @@ func RunValidate(args []string) error {
 
 func parseValidateOptions(args []string) (validateOptions, error) {
 	if len(args) == 0 {
-		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [--json <file>] [--browser [chromium|firefox|webkit]] [--headed] [--base-url <url>]")
+		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [--json <file>] [--browser [chromium|firefox|webkit]] [--no-browser] [--headed] [--base-url <url>]")
 	}
 	opts := validateOptions{target: args[0], headless: true, browserName: "chromium"}
+	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
+		if appCfg.Browser != "" {
+			opts.browserName = appCfg.Browser
+		}
+		opts.headless = appCfg.Headless
+	}
+	if root := paths.InferProjectRoot([]string{args[0]}); root != "" {
+		if projectCfg, err := settings.LoadProjectConfig(root); err == nil && projectCfg.BaseURL != "" && opts.baseURL == "" {
+			opts.baseURL = projectCfg.BaseURL
+		}
+	}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--json":
@@ -139,6 +156,9 @@ func parseValidateOptions(args []string) (validateOptions, error) {
 					opts.browserName = args[i]
 				}
 			}
+		case "--no-browser":
+			opts.noBrowser = true
+			opts.browser = false
 		case "--headed":
 			opts.headless = false
 		case "--base-url":

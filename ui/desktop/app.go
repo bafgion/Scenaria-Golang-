@@ -91,6 +91,10 @@ func (a *App) build() {
 		a.runCLI("vanessa", []string{"run", "--project", a.projectPath, "--dry-run"})
 	})
 
+	vaRunBtn := widget.NewButton("Vanessa run", func() {
+		a.runCLI("vanessa", []string{"run", "--project", a.projectPath})
+	})
+
 	recordBtn := widget.NewButton("Запись…", func() {
 		if a.projectPath == "" {
 			dialog.ShowInformation("Scenaria", "Сначала откройте папку проекта", a.window)
@@ -116,7 +120,12 @@ func (a *App) build() {
 	})
 
 	validateBtn := widget.NewButton("Проверить", func() {
-		a.runCLI("validate", []string{a.projectPath})
+		a.runCLI("validate", []string{a.projectPath, "--no-browser"})
+	})
+
+	browserValidateBtn := widget.NewButton("Проверить в браузере", func() {
+		args := []string{a.projectPath, "--browser", "chromium"}
+		a.runCLI("validate", args)
 	})
 
 	saveBtn := widget.NewButton("Сохранить feature", func() {
@@ -168,8 +177,10 @@ func (a *App) build() {
 			runBtn,
 			playwrightBtn,
 			vaBtn,
+			vaRunBtn,
 			recordBtn,
 			validateBtn,
+			browserValidateBtn,
 			saveBtn,
 			catalogBtn,
 			updateBtn,

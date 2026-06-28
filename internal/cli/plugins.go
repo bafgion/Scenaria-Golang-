@@ -43,7 +43,7 @@ func RunPlugins(args []string) error {
 		if opts.name == "" || opts.source == "" {
 			return fmt.Errorf("plugins install requires --name and --source")
 		}
-		if err := plugin.Install(opts.project, opts.name, opts.source); err != nil {
+		if err := plugin.FetchAndInstall(opts.project, opts.name, opts.source); err != nil {
 			return err
 		}
 		fmt.Printf("Installed plugin %q from %s\n", opts.name, opts.source)

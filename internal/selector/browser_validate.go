@@ -22,7 +22,7 @@ type BrowserValidateOptions struct {
 func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, feature *gherkin.Feature, opts BrowserValidateOptions) ([]ValidationIssue, error) {
 	startURL := firstGotoURL(feature, opts.BaseURL)
 	if startURL == "" {
-		return nil, fmt.Errorf("feature has no goto step for browser validation")
+		return nil, nil
 	}
 	if opts.Timeout <= 0 {
 		opts.Timeout = 8 * time.Second

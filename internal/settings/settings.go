@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type AppSettings struct {
@@ -28,6 +29,35 @@ type Cookie struct {
 	Path     string `json:"path"`
 	HTTPOnly bool   `json:"http_only"`
 	Secure   bool   `json:"secure"`
+}
+
+func DefaultAppSettingsPath() string {
+	if base := os.Getenv("APPDATA"); base != "" {
+		return filepath.Join(base, "Scenaria", "settings.json")
+	}
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(config, "Scenaria", "settings.json")
+}
+
+func LoadDefaultAppSettings() (*AppSettings, error) {
+	path := DefaultAppSettingsPath()
+	if path == "" {
+		return &AppSettings{Browser: "chromium"}, nil
+	}
+	cfg, err := LoadAppSettings(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &AppSettings{Browser: "chromium"}, nil
+		}
+		return nil, err
+	}
+	if strings.TrimSpace(cfg.Browser) == "" {
+		cfg.Browser = "chromium"
+	}
+	return cfg, nil
 }
 
 func LoadAppSettings(path string) (*AppSettings, error) {

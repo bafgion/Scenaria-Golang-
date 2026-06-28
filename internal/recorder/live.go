@@ -74,9 +74,9 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		return fmt.Errorf("inject recorder script: %w", err)
 	}
 
-	steps := []string{fmt.Sprintf(`открыт "%s"`, opts.StartURL)}
+	recorded := []RecordedStep{{Action: "goto", Value: opts.StartURL}}
+	lastURL := page.URL()
 	lastEventAt := time.Now()
-	seen := map[string]struct{}{}
 
 	for {
 		select {
@@ -87,6 +87,13 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		if time.Since(lastEventAt) >= opts.IdleTimeout {
 			break
 		}
+
+		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
+			recorded = append(recorded, RecordedStep{Action: "goto", Value: currentURL})
+			lastURL = currentURL
+			lastEventAt = time.Now()
+		}
+
 		raw, err := page.Evaluate(`() => {
 			const r = window.__scenariaRecorder;
 			if (!r || !r.events.length) return [];
@@ -105,19 +112,17 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		}
 		for _, event := range events {
 			detail := normalizeDetail(event.Detail)
-			step, ok := EventsToStep(event.Type, detail)
+			step, ok := EventToRecordedStep(event.Type, detail)
 			if !ok {
 				continue
 			}
-			if _, exists := seen[step]; exists {
-				continue
-			}
-			seen[step] = struct{}{}
-			steps = append(steps, step)
+			recorded = append(recorded, step)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
+	normalized := NormalizeSteps(recorded)
+	steps := RecordedStepsToLines(normalized)
 	return WriteFeature(opts.OutputPath, Options{
 		FeatureName:  opts.FeatureName,
 		ScenarioName: opts.ScenarioName,

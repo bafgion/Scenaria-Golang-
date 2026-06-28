@@ -21,6 +21,10 @@ type RunRequest struct {
 	EPFPath             string
 	IBConnection        string
 	ReportAllure        bool
+	RerunFailedRunDir   string
+	InstallEPF          bool
+	EPFDownloadURL      string
+	EPFDestination      string
 }
 
 func MergeVAParams(cfg Settings, req RunRequest, runDir string) (map[string]any, string, error) {

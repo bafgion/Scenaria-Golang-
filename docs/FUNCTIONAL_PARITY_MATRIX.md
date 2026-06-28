@@ -17,23 +17,22 @@ Status: **runtime/CLI parity with Python v0.12**; Qt IDE replaced by Fyne deskto
 | Reports | JUnit/HTML | `internal/report` | validated |
 | Run status | `.scenaria/run_status.json` | `internal/runstatus` | validated |
 | Recorder | live capture + step coalescing | `internal/recorder`, `normalize.go` | validated |
-| Selector heuristics | DOM → selector | `internal/selector/heuristics.go` | partial |
+| Selector heuristics | DOM → selector (expanded JS) | `internal/selector/recorder_script.js` | partial |
 | OTP / email code | segmented modes, auto-submit | `internal/player/otp.go` | validated |
-| Vanessa add-on | tags exclude, CLI overrides | `internal/vanessa`, `internal/cli/va.go` | validated |
-| CLI | run/validate/export/record/va flags | `cmd/scenaria` | validated |
+| Vanessa add-on | exclude tags, rerun, epf install | `internal/vanessa` | partial |
+| CLI | run/validate/export/import-json/record/va | `cmd/scenaria` | validated |
 | Desktop | IDE (Qt → Fyne) | `ui/desktop` | partial |
-| Plugins registry | list/install | `internal/plugin` | partial |
+| Plugins registry | list/install zip/URL | `internal/plugin` | validated |
 | Packaging | portable ZIP + Chromium | `scripts/build-portable.ps1`, CI | validated |
 | Update check | GitHub releases | `internal/update` | validated |
 | Version | 0.12.x | `internal/version` | **0.12.0** |
 
 ## Remaining gaps (not 100%)
 
-- **Desktop Qt IDE**: tabs, highlighter, completions, settings dialog, splash — Fyne covers run/edit/validate/record only.
-- **Selector heuristics JS**: full ~400-line Python port not byte-identical.
+- **Desktop Qt IDE**: tabs, highlighter, completions, settings dialog, splash.
+- **Selector heuristics JS**: contextual card clicks, canvas/signature paths from Python.
 - **Python test suite**: ~80 modules not ported to Go golden/CI cross-check.
-- **Vanessa extras**: `rerun_failed`, `epf_install`, incremental JUnit monitor, `parallel_workers`.
-- **CLI**: `import-json`, `plugins install` by URL/zip, `validate` default browser without flag.
+- **Vanessa extras**: incremental JUnit monitor, `parallel_workers`.
 
 ## Intentional differences
 

@@ -20,6 +20,10 @@ type vaOptions struct {
 	epfPath            string
 	ibConnection       string
 	allure             bool
+	rerunFailedRunDir  string
+	installEPF         bool
+	epfDownloadURL     string
+	epfDestination     string
 }
 
 func RunVA(args []string) error {
@@ -47,7 +51,11 @@ func RunVA(args []string) error {
 		PlatformExecutable: opts.platformExecutable,
 		EPFPath:            opts.epfPath,
 		IBConnection:       opts.ibConnection,
-		ReportAllure:         opts.allure,
+		ReportAllure:       opts.allure,
+		RerunFailedRunDir:  opts.rerunFailedRunDir,
+		InstallEPF:         opts.installEPF,
+		EPFDownloadURL:     opts.epfDownloadURL,
+		EPFDestination:     opts.epfDestination,
 	})
 	if err != nil && result.Error == "" {
 		return err
@@ -131,6 +139,26 @@ func parseVAOptions(args []string) (vaOptions, error) {
 			opts.ibConnection = args[i]
 		case "--allure":
 			opts.allure = true
+		case "--rerun-failed":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--rerun-failed requires a previous run directory")
+			}
+			opts.rerunFailedRunDir = args[i]
+		case "--epf-install":
+			opts.installEPF = true
+		case "--epf-url":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--epf-url requires a URL")
+			}
+			opts.epfDownloadURL = args[i]
+		case "--epf-dest":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--epf-dest requires a path")
+			}
+			opts.epfDestination = args[i]
 		case "--dry-run":
 			opts.dryRun = true
 		default:
@@ -162,7 +190,8 @@ func printVAHelp() error {
 	fmt.Println("Usage:")
 	fmt.Println("  scenaria va run [--project <dir>] [--dir <features>] [--files a.feature,b.feature]")
 	fmt.Println("                  [--tag smoke] [--exclude-tag wip] [--scenario \"Name\"]")
-	fmt.Println("                  [--platform-exe <path>] [--epf <path>] [--ib <conn>] [--allure] [--dry-run]")
+	fmt.Println("                  [--platform-exe <path>] [--epf <path>] [--ib <conn>] [--allure]")
+	fmt.Println("                  [--rerun-failed <run-dir>] [--epf-install] [--epf-url <url>] [--dry-run]")
 	fmt.Println()
 	fmt.Println("Configure platform in .scenaria/vanessa.json:")
 	fmt.Println(`  {"platform_executable":"C:\\Program Files\\1cv8\\bin\\1cv8.exe","epf_path":"C:\\vanessa\\vanessa-automation.epf"}`)
