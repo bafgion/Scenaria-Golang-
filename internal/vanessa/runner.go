@@ -35,6 +35,18 @@ func Run(req RunRequest) (BatchResult, error) {
 	if err != nil {
 		return BatchResult{}, err
 	}
+	if req.PlatformExecutable != "" {
+		cfg.PlatformExecutable = req.PlatformExecutable
+	}
+	if req.EPFPath != "" {
+		cfg.EPFPath = req.EPFPath
+	}
+	if req.IBConnection != "" {
+		cfg.IBConnection = req.IBConnection
+	}
+	if req.ReportAllure {
+		cfg.ReportAllure = true
+	}
 	if req.DryRun || cfg.DryRunOnly {
 		files, ferr := resolveFeatureFiles(req)
 		if ferr != nil {

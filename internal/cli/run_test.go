@@ -96,7 +96,7 @@ func TestParseRunOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseRunOptions returned error: %v", err)
 	}
-	if opts.target != "./features" || !opts.dryRun || opts.summaryJSON != "result.json" {
+	if len(opts.targets) != 1 || opts.targets[0] != "./features" || !opts.dryRun || opts.summaryJSON != "result.json" {
 		t.Fatalf("unexpected options: %+v", opts)
 	}
 	if opts.junitPath != "junit.xml" || opts.engine != "playwright" || opts.browser != "firefox" || !opts.headed || opts.baseURL != "https://example.local" || !opts.installPlaywright {

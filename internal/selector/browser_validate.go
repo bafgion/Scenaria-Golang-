@@ -13,9 +13,10 @@ import (
 )
 
 type BrowserValidateOptions struct {
-	Headless bool
-	BaseURL  string
-	Timeout  time.Duration
+	BrowserName string
+	Headless    bool
+	BaseURL     string
+	Timeout     time.Duration
 }
 
 func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, feature *gherkin.Feature, opts BrowserValidateOptions) ([]ValidationIssue, error) {
@@ -37,9 +38,24 @@ func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, fe
 	}
 	defer pw.Stop()
 
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+	name := strings.ToLower(strings.TrimSpace(opts.BrowserName))
+	if name == "" {
+		name = "chromium"
+	}
+	launchOpts := playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(opts.Headless),
-	})
+	}
+	var browser playwright.Browser
+	switch name {
+	case "chromium":
+		browser, err = pw.Chromium.Launch(launchOpts)
+	case "firefox":
+		browser, err = pw.Firefox.Launch(launchOpts)
+	case "webkit":
+		browser, err = pw.WebKit.Launch(launchOpts)
+	default:
+		return nil, fmt.Errorf("unsupported browser %q (supported: chromium, firefox, webkit)", name)
+	}
 	if err != nil {
 		return nil, err
 	}

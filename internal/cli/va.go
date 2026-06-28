@@ -10,11 +10,16 @@ import (
 )
 
 type vaOptions struct {
-	project  string
-	paths    []string
-	tag      string
-	dryRun   bool
-	scenario string
+	project            string
+	paths              []string
+	tag                string
+	excludeTags        []string
+	dryRun             bool
+	scenario           string
+	platformExecutable string
+	epfPath            string
+	ibConnection       string
+	allure             bool
 }
 
 func RunVA(args []string) error {
@@ -33,11 +38,16 @@ func RunVA(args []string) error {
 		projectRoot = paths.InferProjectRoot(opts.paths)
 	}
 	result, err := vanessa.Run(vanessa.RunRequest{
-		ProjectRoot:   projectRoot,
-		Paths:         opts.paths,
-		Tag:           opts.tag,
-		ScenarioNames: splitCSV(opts.scenario),
-		DryRun:        opts.dryRun,
+		ProjectRoot:        projectRoot,
+		Paths:              opts.paths,
+		Tag:                opts.tag,
+		ExcludeTags:        opts.excludeTags,
+		ScenarioNames:      splitCSV(opts.scenario),
+		DryRun:             opts.dryRun,
+		PlatformExecutable: opts.platformExecutable,
+		EPFPath:            opts.epfPath,
+		IBConnection:       opts.ibConnection,
+		ReportAllure:         opts.allure,
 	})
 	if err != nil && result.Error == "" {
 		return err
@@ -89,12 +99,38 @@ func parseVAOptions(args []string) (vaOptions, error) {
 				return vaOptions{}, fmt.Errorf("--tag requires a value")
 			}
 			opts.tag = args[i]
+		case "--exclude-tag":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--exclude-tag requires a value")
+			}
+			opts.excludeTags = append(opts.excludeTags, splitCSV(args[i])...)
 		case "--scenario":
 			i++
 			if i >= len(args) {
 				return vaOptions{}, fmt.Errorf("--scenario requires a value")
 			}
 			opts.scenario = args[i]
+		case "--platform-exe":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--platform-exe requires a path")
+			}
+			opts.platformExecutable = args[i]
+		case "--epf":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--epf requires a path")
+			}
+			opts.epfPath = args[i]
+		case "--ib":
+			i++
+			if i >= len(args) {
+				return vaOptions{}, fmt.Errorf("--ib requires a connection string")
+			}
+			opts.ibConnection = args[i]
+		case "--allure":
+			opts.allure = true
 		case "--dry-run":
 			opts.dryRun = true
 		default:
@@ -115,7 +151,7 @@ func parseVAOptions(args []string) (vaOptions, error) {
 		}
 	}
 	if len(opts.paths) == 0 {
-		return vaOptions{}, fmt.Errorf("usage: scenaria va run [--project <dir>] [--dir <dir>] [--files <paths>] [--tag <tag>] [--dry-run]")
+		return vaOptions{}, fmt.Errorf("usage: scenaria va run [--project <dir>] [--dir <dir>] [--files <paths>] [--tag <tag>] [--exclude-tag <tag>] [--dry-run]")
 	}
 	return opts, nil
 }
@@ -125,7 +161,8 @@ func printVAHelp() error {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  scenaria va run [--project <dir>] [--dir <features>] [--files a.feature,b.feature]")
-	fmt.Println("                  [--tag smoke] [--scenario \"Name\"] [--dry-run]")
+	fmt.Println("                  [--tag smoke] [--exclude-tag wip] [--scenario \"Name\"]")
+	fmt.Println("                  [--platform-exe <path>] [--epf <path>] [--ib <conn>] [--allure] [--dry-run]")
 	fmt.Println()
 	fmt.Println("Configure platform in .scenaria/vanessa.json:")
 	fmt.Println(`  {"platform_executable":"C:\\Program Files\\1cv8\\bin\\1cv8.exe","epf_path":"C:\\vanessa\\vanessa-automation.epf"}`)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
@@ -12,11 +13,12 @@ import (
 )
 
 type validateOptions struct {
-	target   string
-	json     string
-	browser  bool
-	headless bool
-	baseURL  string
+	target      string
+	json        string
+	browser     bool
+	browserName string
+	headless    bool
+	baseURL     string
 }
 
 func RunValidate(args []string) error {
@@ -65,8 +67,9 @@ func RunValidate(args []string) error {
 		}
 		if opts.browser && len(issues) == 0 {
 			browserIssues, browserErr := validator.ValidateFeatureInBrowser(context.Background(), path, feature, selector.BrowserValidateOptions{
-				Headless: opts.headless,
-				BaseURL:  opts.baseURL,
+				BrowserName: opts.browserName,
+				Headless:    opts.headless,
+				BaseURL:     opts.baseURL,
 			})
 			if browserErr != nil {
 				issues = append(issues, browserErr.Error())
@@ -116,9 +119,9 @@ func RunValidate(args []string) error {
 
 func parseValidateOptions(args []string) (validateOptions, error) {
 	if len(args) == 0 {
-		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [--json <file>] [--browser] [--headed] [--base-url <url>]")
+		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [--json <file>] [--browser [chromium|firefox|webkit]] [--headed] [--base-url <url>]")
 	}
-	opts := validateOptions{target: args[0], headless: true}
+	opts := validateOptions{target: args[0], headless: true, browserName: "chromium"}
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--json":
@@ -129,6 +132,13 @@ func parseValidateOptions(args []string) (validateOptions, error) {
 			opts.json = args[i]
 		case "--browser":
 			opts.browser = true
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				switch strings.ToLower(args[i+1]) {
+				case "chromium", "firefox", "webkit":
+					i++
+					opts.browserName = args[i]
+				}
+			}
 		case "--headed":
 			opts.headless = false
 		case "--base-url":

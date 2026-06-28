@@ -24,6 +24,7 @@ func ParseFeatureFile(path string) (*Feature, error) {
 }
 
 func ParseFeature(content string) (*Feature, error) {
+	content = NormalizeFeatureText(content)
 	feature := &Feature{}
 	lines := strings.Split(content, "\n")
 
@@ -204,6 +205,7 @@ func parseStep(line string, lineNo int) (Step, bool) {
 	for _, keyword := range stepKeywords {
 		if strings.HasPrefix(line, keyword+" ") || line == keyword {
 			text := strings.TrimSpace(strings.TrimPrefix(line, keyword))
+			text = NormalizeLegacyHasTextEscapes(text)
 			return Step{
 				Keyword: keyword,
 				Text:    text,

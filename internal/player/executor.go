@@ -44,16 +44,21 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		}
 		return nil
 	case gherkin.BlockWhile:
-		for i := 0; i < MaxLoopIterations; i++ {
+		iterations := 0
+		for iterations < MaxLoopIterations {
 			if runCtx == nil || !runCtx.EvaluateCondition(step.Condition) {
 				break
 			}
+			iterations++
 			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
 				return err
 			}
 			if session.closed {
 				return nil
 			}
+		}
+		if iterations >= MaxLoopIterations && runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
+			return fmt.Errorf("превышен лимит итераций цикла «пока»")
 		}
 		return nil
 	case gherkin.BlockRepeat:

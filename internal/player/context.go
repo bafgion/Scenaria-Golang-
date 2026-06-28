@@ -24,6 +24,7 @@ type RunContext struct {
 	Variables      map[string]string
 	values         map[string]string
 	rng            *rand.Rand
+	person         *personBundle
 	page           playwright.Page
 	projectRoot    string
 	lastDownload   string
@@ -120,8 +121,11 @@ func (c *RunContext) ResolveText(text string) (string, error) {
 }
 
 func (c *RunContext) GenerateByKind(kind string) (string, error) {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(kind), "ё", "е"))
-	return c.generate(normalized)
+	canonical, ok := NormalizeGeneratorName(kind)
+	if !ok {
+		return "", fmt.Errorf("unknown generator %q", kind)
+	}
+	return c.generateCanonical(canonical)
 }
 
 func (c *RunContext) EmailCode() (string, error) {
@@ -139,27 +143,11 @@ func (c *RunContext) EmailCode() (string, error) {
 }
 
 func (c *RunContext) generate(key string) (string, error) {
-	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), "ё", "е"))
-	switch normalized {
-	case "phone", "tel", "телефон":
-		return fmt.Sprintf("+79%09d", c.rng.Intn(1_000_000_000)), nil
-	case "first_name", "имя", "name":
-		return []string{"Иван", "Пётр", "Алексей"}[c.rng.Intn(3)], nil
-	case "last_name", "фамилия":
-		return []string{"Иванов", "Петров", "Сидоров"}[c.rng.Intn(3)], nil
-	case "patronymic", "отчество":
-		return []string{"Иванович", "Петрович", "Сергеевич"}[c.rng.Intn(3)], nil
-	case "address", "адрес":
-		return fmt.Sprintf("ул. Тестовая, д. %d", c.rng.Intn(200)+1), nil
-	case "inn", "инн":
-		return randomDigits(c.rng, 10), nil
-	case "bank_account", "расчетный счет", "расчётный счёт":
-		return randomDigits(c.rng, 20), nil
-	case "ogrnip", "огрнип":
-		return randomDigits(c.rng, 15), nil
-	default:
+	canonical, ok := NormalizeGeneratorName(key)
+	if !ok {
 		return "", fmt.Errorf("unknown generator %q", key)
 	}
+	return c.generateCanonical(canonical)
 }
 
 func randomDigits(rng *rand.Rand, count int) string {

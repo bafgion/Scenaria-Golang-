@@ -11,12 +11,16 @@ import (
 )
 
 type RunRequest struct {
-	ProjectRoot  string
-	Paths        []string
-	Tag          string
-	ExcludeTags  []string
-	ScenarioNames []string
-	DryRun       bool
+	ProjectRoot         string
+	Paths               []string
+	Tag                 string
+	ExcludeTags         []string
+	ScenarioNames       []string
+	DryRun              bool
+	PlatformExecutable  string
+	EPFPath             string
+	IBConnection        string
+	ReportAllure        bool
 }
 
 func MergeVAParams(cfg Settings, req RunRequest, runDir string) (map[string]any, string, error) {
@@ -59,6 +63,19 @@ func MergeVAParams(cfg Settings, req RunRequest, runDir string) (map[string]any,
 	if req.Tag != "" {
 		tag := strings.TrimPrefix(strings.TrimSpace(req.Tag), "@")
 		overlay["СписокТеговОтбор"] = []string{"@" + tag}
+	}
+	if len(req.ExcludeTags) > 0 {
+		tags := make([]string, 0, len(req.ExcludeTags))
+		for _, raw := range req.ExcludeTags {
+			tag := strings.TrimPrefix(strings.TrimSpace(raw), "@")
+			if tag == "" {
+				continue
+			}
+			tags = append(tags, "@"+tag)
+		}
+		if len(tags) > 0 {
+			overlay["СписокТеговИсключение"] = tags
+		}
 	}
 	files, err := resolveFeatureFiles(req)
 	if err != nil {
