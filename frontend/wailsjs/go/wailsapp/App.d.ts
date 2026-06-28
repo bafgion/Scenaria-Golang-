@@ -18,6 +18,8 @@ export function ListTestClients():Promise<Array<string>>;
 
 export function LoadSettings():Promise<gui.AppSettingsDTO>;
 
+export function OpenFolder(arg1:string):Promise<void>;
+
 export function OpenProject(arg1:string):Promise<gui.ProjectInfo>;
 
 export function PauseRecording():Promise<void>;

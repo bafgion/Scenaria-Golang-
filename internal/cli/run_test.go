@@ -80,6 +80,23 @@ func TestRunRun_WritesJUnit(t *testing.T) {
 	}
 }
 
+func TestRunRun_WritesAllure(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "ok.feature")
+	content := "Функционал: Demo\nСценарий: S1\nКогда выполняю шаг\n"
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+	allureDir := filepath.Join(tmp, "allure-results")
+	if err := RunRun([]string{tmp, "--dry-run", "--allure", allureDir}); err != nil {
+		t.Fatalf("RunRun returned error: %v", err)
+	}
+	entries, err := os.ReadDir(allureDir)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("expected allure results in %s: %v (%d files)", allureDir, err, len(entries))
+	}
+}
+
 func TestParseRunOptions(t *testing.T) {
 	opts, err := parseRunOptions([]string{
 		"./features",

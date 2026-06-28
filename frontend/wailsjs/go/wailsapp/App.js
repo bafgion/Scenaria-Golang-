@@ -34,6 +34,10 @@ export function LoadSettings() {
   return window['go']['wailsapp']['App']['LoadSettings']();
 }
 
+export function OpenFolder(arg1) {
+  return window['go']['wailsapp']['App']['OpenFolder'](arg1);
+}
+
 export function OpenProject(arg1) {
   return window['go']['wailsapp']['App']['OpenProject'](arg1);
 }

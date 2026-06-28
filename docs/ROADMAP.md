@@ -1,113 +1,73 @@
 # Scenaria Go — Roadmap (post-parity)
 
-Статус: **Wails GUI beta** на ветке `feat/wails-gui`; master = CLI parity v0.12.
+Статус: **Wails GUI beta** v0.13.0 на ветке `feat/wails-gui`.
 
 ## Приоритеты
 
 | # | Направление | Приоритет | Статус |
 |---|-------------|-----------|--------|
-| P0 | **Wails 2 + Svelte + Monaco** | Очень высокий | ~70% фазы 1 |
-| P0 | **Стабилизация Recorder** | Высокий | в работе |
-| P1 | **Allure Report** | Высокий | stub |
-| P1 | **slog + %w** | Средний | logx stub |
-| P1 | **Тесты 60–70%** | Средний | не начато |
-| P2 | **Документация** | Средний | частично |
+| P0 | **Wails 2 + Svelte + Monaco** | Очень высокий | ~85% фазы 1 |
+| P0 | **Стабилизация Recorder** | Высокий | ~80% фазы 2 |
+| P1 | **Allure Report** | Высокий | screenshots done |
+| P1 | **slog + %w** | Средний | JSON в CI |
+| P1 | **Тесты 60–70%** | Средний | soft gate 35% |
+| P2 | **Документация** | Средний | RECORDER + ALLURE |
 
 ---
 
 ## Фаза 1 — Wails 2 GUI (`feat/wails-gui`)
 
-### 1.1 Инфраструктура
-- [x] `wails.json`, `frontend/` (Svelte + TS + Vite)
-- [x] `internal/gui` — GUI-agnostic API
-- [x] `internal/wailsapp` — биндинги + OTP events
-- [x] CI: `npm install && npm run build` в `frontend/`
-- [x] Fyne **deprecated** в README
-
-### 1.2 Layout IDE
-- [x] Трёхпанельный layout (дерево → Monaco → лог/запуск)
-- [x] Monaco + язык `scenaria-feature`
-- [x] Native folder picker (`PickProjectFolder`)
-- [x] Вкладки файлов + Ctrl+S
-- [x] Маркеры ошибок шагов в Monaco (`ValidateFeature`)
-
-### 1.3 Паритет с Fyne
-- [x] Открытие проекта, init, список `.feature`
-- [x] Запуск: dry-run / Playwright, теги, vars, TestClient
-- [x] Validate syntax + browser
-- [x] Live-запись + Pause/Resume/Stop
-- [x] Экспорт / импорт JSON (native file dialogs)
-- [x] Настройки (browser, headless, workers, loops)
-- [x] Vanessa dry/run
-- [x] OTP prompt (modal + `SubmitOTPCode`)
-
-### 1.4 Полировка (осталось)
-- [ ] Splash / about
-- [ ] `wails build` в portable-скрипт
-- [ ] Снять Fyne из release по умолчанию
-
-**Критерий готовности:** сценарий IDE без CLI (запись → правка → run → validate).
+### 1.4 Полировка
+- [x] Splash / about
+- [x] `wails build` в portable-скрипт
+- [ ] Снять Fyne из release (v0.15)
 
 ---
 
 ## Фаза 2 — Стабилизация Recorder
 
 ### 2.1 Pause / Resume
-- [x] `LiveSession` в Go
-- [x] Pause/Resume в Wails UI
-- [x] Флаг `paused` в `recorder_script.js` (синхрон с Go)
-- [ ] CLI `--idle` + документация pause
+- [x] Go + Wails + JS flag
+- [x] CLI `--idle` + `docs/RECORDER.md`
 
 ### 2.2 Edge-cases
-- [x] `elementFromPoint` для кликов (модалки / top layer)
-- [x] Debounce дублирующих кликов (400 ms)
-- [ ] MutationObserver для динамических элементов
-- [ ] iframe/shadow DOM (best-effort + docs)
+- [x] elementFromPoint, debounce, MutationObserver, shadow/iframe
 
 ### 2.3 Тесты
-- [ ] `recorder/live_integration_test.go`
-- [ ] Golden tests для `recorder_script.js`
+- [x] `live_events_test.go`
+- [x] `live_integration_test.go` (`-tags=integration`)
+- [x] Golden smoke `recorder_script.js`
 
 ---
 
 ## Фаза 3 — Allure Report
 
-### 3.1 Модель
-- [x] `internal/report/allure` — stub + mkdir
-- [ ] Writer `allure-results/` + steps
-- [ ] CLI: `scenaria run ... --allure <dir>`
-
-### 3.2 Attachments
-- [ ] Screenshot on failure
+### 3.1–3.3
+- [x] Writer + CLI `--allure` + GUI
+- [x] Screenshot on failure (Playwright → attachment PNG)
 - [ ] trace/video opt-in
-
-### 3.3 GUI
-- [ ] Кнопка «Открыть Allure» после run
 
 ---
 
 ## Фаза 4 — Observability
 
-- [x] `internal/logx` (slog text)
-- [ ] JSON handler в CI
-- [ ] `%w` по пакетам, меньше `fmt.Printf` в CLI
+- [x] `SCENARIA_LOG=json` для slog
+- [ ] `%w` по пакетам
 
 ---
 
 ## Фаза 5 — Тесты (цель 60–70%)
 
-- [x] `internal/gui` validate + service smoke
-- [ ] `scripts/coverage.ps1` + soft gate в CI
-- [ ] `go test -tags=integration`
+- [x] `scripts/coverage.ps1`
+- [x] CI soft gate 35%
+- [x] `go test -tags=integration` (recorder)
 
 ---
 
 ## Фаза 6 — Документация
 
-- [x] `docs/MIGRATION_FROM_PYTHON.md`
-- [x] README — Wails primary
-- [ ] `FUNCTIONAL_PARITY_MATRIX.md` — колонка Wails (частично)
-- [ ] `docs/RECORDER.md`, `docs/ALLURE.md`
+- [x] `docs/ALLURE.md`, `docs/RECORDER.md`
+- [x] `FUNCTIONAL_PARITY_MATRIX.md` — колонка Wails
 
 ---
 
@@ -115,6 +75,6 @@
 
 | Версия | Содержание |
 |--------|------------|
-| **0.13.0** | Wails GUI beta (текущая ветка) |
-| **0.14.0** | Allure + recorder stable |
+| **0.13.0** | Wails beta + Allure + recorder docs (текущая) |
+| **0.14.0** | trace/video Allure, coverage 60% |
 | **0.15.0** | Fyne removed from release |

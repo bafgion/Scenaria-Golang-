@@ -88,6 +88,7 @@
     return canvas.getAttribute('role') === 'img' && !!canvas.getAttribute('aria-label');
   }
 
+  function buildInputSelector(el) {
     if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return null;
     const tag = el.tagName.toLowerCase();
     const testId = el.getAttribute('data-testid');
@@ -225,7 +226,7 @@
     return false;
   }
 
-  document.addEventListener('click', (e) => {
+  function onDocumentClick(e) {
     const el = resolveClickTarget(e);
     if (!el || shouldSkipDuplicateClick(el)) return;
     const canvas = findCanvas(el);
@@ -234,7 +235,62 @@
       return;
     }
     push('click', el);
-  }, true);
-  document.addEventListener('input', (e) => push('input', e.target), true);
-  document.addEventListener('change', (e) => push('change', e.target), true);
+  }
+
+  function onDocumentInput(e) {
+    push('input', e.target);
+  }
+
+  function onDocumentChange(e) {
+    push('change', e.target);
+  }
+
+  const attachedRoots = new WeakSet();
+
+  function attachRoot(root) {
+    if (!root || attachedRoots.has(root)) return;
+    attachedRoots.add(root);
+    root.addEventListener('click', onDocumentClick, true);
+    root.addEventListener('input', onDocumentInput, true);
+    root.addEventListener('change', onDocumentChange, true);
+  }
+
+  function scanNode(node) {
+    if (!node || node.nodeType !== 1) return;
+    if (node.shadowRoot) attachRoot(node.shadowRoot);
+    if (node.tagName === 'IFRAME') {
+      const hookIframe = () => {
+        try {
+          const doc = node.contentDocument;
+          if (doc) {
+            attachRoot(doc);
+            observeRoot(doc);
+          }
+        } catch (_) {
+          /* cross-origin iframe */
+        }
+      };
+      hookIframe();
+      node.addEventListener('load', hookIframe);
+    }
+    if (node.querySelectorAll) {
+      node.querySelectorAll('*').forEach((child) => {
+        if (child.shadowRoot) attachRoot(child.shadowRoot);
+      });
+    }
+  }
+
+  function observeRoot(root) {
+    attachRoot(root);
+    if (typeof MutationObserver === 'undefined') return;
+    const target = root === document ? root.documentElement : root;
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((node) => scanNode(node));
+      }
+    });
+    observer.observe(target, { childList: true, subtree: true });
+  }
+
+  observeRoot(document);
 })();

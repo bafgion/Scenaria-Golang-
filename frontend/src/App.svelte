@@ -27,6 +27,7 @@
     SaveSettings,
     SubmitOTPCode,
     CancelOTP,
+    OpenFolder,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -52,8 +53,13 @@
   let showSettings = false
   let showRecord = false
   let showOtp = false
+  let showAbout = false
+  let showSplash = true
   let recording = false
   let recordPaused = false
+
+  let runAllure = false
+  let lastAllureDir = ''
 
   let settingsBrowser = 'chromium'
   let settingsHeadless = false
@@ -109,6 +115,11 @@
     }
     window.addEventListener('keydown', onKey)
     unsubscribers.push(() => window.removeEventListener('keydown', onKey))
+
+    const splashTimer = window.setTimeout(() => {
+      showSplash = false
+    }, 750)
+    unsubscribers.push(() => window.clearTimeout(splashTimer))
   })
 
   onDestroy(() => {
@@ -249,6 +260,9 @@
 
   async function runProject(dryRun: boolean) {
     if (!projectPath) return
+    const allureDir =
+      runAllure && projectPath ? `${projectPath.replace(/\\/g, '/')}/.scenaria/allure-results` : ''
+    if (allureDir) lastAllureDir = allureDir
     const result = await Run({
       tag: runTag,
       testClient: runTestClient,
@@ -257,9 +271,19 @@
       headed: !dryRun,
       engine: dryRun ? '' : 'playwright',
       installPlaywright: !dryRun,
+      allureDir,
     })
     if (result.output) logText += result.output
     if (result.error) logText += `Ошибка: ${result.error}\n`
+  }
+
+  async function openAllureFolder() {
+    if (!lastAllureDir) return
+    try {
+      await OpenFolder(lastAllureDir)
+    } catch (e: any) {
+      logText += `Не удалось открыть папку: ${e}\n`
+    }
   }
 
   async function validateProject(browser: boolean) {
@@ -389,6 +413,7 @@
     <button on:click={exportFeature} disabled={!activeTab}>Экспорт</button>
     <button on:click={importJSON} disabled={!projectPath}>Импорт</button>
     <button on:click={openSettings}>Настройки</button>
+    <button on:click={() => (showAbout = true)}>О программе</button>
     <button on:click={saveFeature} disabled={!activeTab}>Сохранить</button>
   </header>
 
@@ -433,6 +458,10 @@
         </select>
       </label>
       <label>Переменные<textarea bind:value={runVars} rows="3" placeholder="KEY=value"></textarea></label>
+      <label><input type="checkbox" bind:checked={runAllure} /> Allure (.scenaria/allure-results)</label>
+      {#if lastAllureDir}
+        <button type="button" class="feature-item" on:click={openAllureFolder}>Открыть Allure</button>
+      {/if}
       {#if tags.length}<small>Теги: {tags.join(', ')}</small>{/if}
     </div>
     <h3>Шаги</h3>
@@ -446,6 +475,28 @@
     <div class="log">{logText}</div>
   </aside>
 </div>
+
+{#if showSplash}
+  <div class="splash">
+    <h1>Scenaria</h1>
+    <p class="splash-version">{version}</p>
+    <p class="splash-hint">Загрузка…</p>
+  </div>
+{/if}
+
+{#if showAbout}
+  <div class="modal-backdrop">
+    <div class="modal">
+      <h3>О программе</h3>
+      <p>{version}</p>
+      <p>Scenaria Go — IDE для Gherkin-сценариев с Playwright.</p>
+      <p class="hint">Wails 2 + Svelte + Monaco Editor</p>
+      <div class="modal-actions">
+        <button on:click={() => (showAbout = false)}>Закрыть</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 {#if showSettings}
   <div class="modal-backdrop">

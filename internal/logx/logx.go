@@ -8,7 +8,14 @@ import (
 var logger = slog.Default()
 
 func Init() {
-	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})
+	opts := &slog.HandlerOptions{Level: slog.LevelInfo}
+	var handler slog.Handler
+	switch os.Getenv("SCENARIA_LOG") {
+	case "json":
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	default:
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	}
 	logger = slog.New(handler)
 	slog.SetDefault(logger)
 }

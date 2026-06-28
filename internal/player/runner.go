@@ -23,10 +23,11 @@ type ExecutionResult struct {
 }
 
 type ScenarioResult struct {
-	FeaturePath string
-	Scenario    string
-	Status      string
-	Message     string
+	FeaturePath    string
+	Scenario       string
+	Status         string
+	Message        string
+	ScreenshotPNG  []byte
 }
 
 type BrowserExecutor interface {

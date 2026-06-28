@@ -44,6 +44,7 @@ type RunRequest struct {
 	Headed     bool              `json:"headed"`
 	Engine     string            `json:"engine"`
 	InstallPW  bool              `json:"installPlaywright"`
+	AllureDir  string            `json:"allureDir"`
 }
 
 type RunResult struct {
@@ -176,6 +177,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	}
 	if req.InstallPW {
 		args = append(args, "--install-playwright")
+	}
+	if req.AllureDir != "" {
+		args = append(args, "--allure", req.AllureDir)
 	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {

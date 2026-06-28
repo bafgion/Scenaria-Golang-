@@ -3,6 +3,9 @@ package wailsapp
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	goruntime "runtime"
 	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
@@ -180,4 +183,19 @@ func (a *App) PickOpenFile(title string) (string, error) {
 			{DisplayName: "Feature", Pattern: "*.feature"},
 		},
 	})
+}
+
+func (a *App) OpenFolder(path string) error {
+	path = filepath.Clean(path)
+	if path == "" {
+		return fmt.Errorf("path is required")
+	}
+	switch goruntime.GOOS {
+	case "windows":
+		return exec.Command("explorer", path).Start()
+	case "darwin":
+		return exec.Command("open", path).Start()
+	default:
+		return exec.Command("xdg-open", path).Start()
+	}
 }

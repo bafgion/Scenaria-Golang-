@@ -9,6 +9,7 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/report"
+	"github.com/bafgion/scenaria-golang/internal/report/allure"
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -21,6 +22,7 @@ type runOptions struct {
 	summaryJSON       string
 	junitPath         string
 	htmlPath          string
+	allureDir         string
 	engine            string
 	browser           string
 	headed            bool
@@ -118,6 +120,12 @@ func RunRun(args []string) error {
 		}
 		fmt.Printf("Wrote HTML report: %s\n", opts.htmlPath)
 	}
+	if opts.allureDir != "" {
+		if writeErr := allure.WriteResults(opts.allureDir, result); writeErr != nil {
+			return writeErr
+		}
+		fmt.Printf("Wrote Allure results: %s\n", opts.allureDir)
+	}
 
 	if !opts.dryRun {
 		if root := paths.InferProjectRoot(opts.targets); root != "" {
@@ -144,7 +152,7 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
 	}
 	opts := runOptions{
 		engine:  "",
@@ -189,6 +197,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.htmlPath = args[i]
+		case "--allure":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--allure requires a directory path")
+			}
+			i++
+			opts.allureDir = args[i]
 		case "--engine":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--engine requires a value (stub|playwright)")

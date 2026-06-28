@@ -1,6 +1,7 @@
 param(
     [string]$Version = "",
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$LegacyFyne
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,7 +30,30 @@ New-Item -ItemType Directory -Path $Dist | Out-Null
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 go build -ldflags "-s -w" -o (Join-Path $Dist "scenaria.exe") ./cmd/scenaria
-go build -tags desktop -ldflags "-s -w" -o (Join-Path $Dist "scenaria-gui.exe") ./cmd/scenaria-gui
+
+Write-Host "==> Build Wails frontend" -ForegroundColor Cyan
+Push-Location (Join-Path $Root "frontend")
+npm install --no-fund --no-audit
+npm run build
+Pop-Location
+
+Write-Host "==> Build Wails GUI" -ForegroundColor Cyan
+$wails = Get-Command wails -ErrorAction SilentlyContinue
+if (-not $wails) {
+    Write-Host "Installing wails CLI..." -ForegroundColor Yellow
+    go install github.com/wailsapp/wails/v2/cmd/wails@latest
+}
+wails build -clean -platform windows/amd64 -skipbindings
+$WailsBin = Join-Path $Root "build\bin\scenaria-gui.exe"
+if (-not (Test-Path $WailsBin)) {
+    throw "Wails build did not produce $WailsBin"
+}
+Copy-Item $WailsBin (Join-Path $Dist "scenaria-gui.exe") -Force
+
+if ($LegacyFyne) {
+    Write-Host "==> Build legacy Fyne GUI" -ForegroundColor Cyan
+    go build -tags desktop -ldflags "-s -w" -o (Join-Path $Dist "scenaria-gui-fyne.exe") ./cmd/scenaria-gui
+}
 
 Write-Host "==> Install Playwright Chromium" -ForegroundColor Cyan
 go run github.com/mxschmitt/playwright-go/cmd/playwright@latest install chromium
@@ -73,5 +97,6 @@ $Manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $ManifestPath -Encoding 
 
 Write-Host "Build complete:" -ForegroundColor Green
 Write-Host "  $Dist\scenaria.exe"
+Write-Host "  $Dist\scenaria-gui.exe"
 Write-Host "  $ZipPath"
 Write-Host "  $ManifestPath"

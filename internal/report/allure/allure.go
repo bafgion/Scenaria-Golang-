@@ -1,5 +1,5 @@
 // Package allure writes Allure 2 result files for scenaria runs.
-// See docs/ROADMAP.md phase 3.
+// See docs/ALLURE.md and docs/ROADMAP.md phase 3.
 package allure
 
 import (
@@ -12,7 +12,7 @@ type Options struct {
 	OutputDir string
 }
 
-// WritePlaceholder creates the output directory; full writer is planned in v0.14.
+// WritePlaceholder creates the output directory (legacy helper for smoke tests).
 func WritePlaceholder(opts Options) error {
 	if opts.OutputDir == "" {
 		return fmt.Errorf("allure output directory is required")
