@@ -78,21 +78,27 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	if err != nil {
 		return ScenarioResult{}, err
 	}
-	defer session.close()
 
+	failed := false
 	if input.TestClient != nil {
 		if err := applyTestClient(session.page, input.TestClient); err != nil {
+			failed = true
 			result.Status = "failed"
 			result.Message = err.Error()
-			result.ScreenshotPNG = captureFailureScreenshot(session)
-			return result, nil
 		}
 	}
-
-	if err := run(ctx, session); err != nil {
-		result.Status = "failed"
-		result.Message = err.Error()
-		result.ScreenshotPNG = captureFailureScreenshot(session)
+	if !failed {
+		if err := run(ctx, session); err != nil {
+			failed = true
+			result.Status = "failed"
+			result.Message = err.Error()
+		}
 	}
+	if failed {
+		result.ScreenshotPNG, result.TraceZIP, result.VideoWebM = captureFailureArtifacts(
+			session, input, e.options.TraceDir, e.options.VideoDir,
+		)
+	}
+	session.close()
 	return result, nil
 }

@@ -23,6 +23,8 @@ type runOptions struct {
 	junitPath         string
 	htmlPath          string
 	allureDir         string
+	traceDir          string
+	videoDir          string
 	engine            string
 	browser           string
 	headed            bool
@@ -152,7 +154,7 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
 	}
 	opts := runOptions{
 		engine:  "",
@@ -203,6 +205,18 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.allureDir = args[i]
+		case "--trace":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--trace requires a directory path")
+			}
+			i++
+			opts.traceDir = args[i]
+		case "--video":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--video requires a directory path")
+			}
+			i++
+			opts.videoDir = args[i]
 		case "--engine":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--engine requires a value (stub|playwright)")
@@ -325,6 +339,8 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 				BaseURL:     opts.baseURL,
 				AutoInstall: opts.installPlaywright,
 				SlowMo:      opts.slowMo,
+				TraceDir:    opts.traceDir,
+				VideoDir:    opts.videoDir,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil

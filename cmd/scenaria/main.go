@@ -108,7 +108,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  scenaria <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--allure`, `--engine`)")
+	fmt.Println("  run       Execute scenarios (`--dry-run`, `--summary-json`, `--junit`, `--allure`, `--trace`, `--video`, `--engine`)")
 	fmt.Println("  validate  Validate scenario files and project consistency")
 	fmt.Println("  export    Export scenarios (`--output`, `--format json|feature|ts|python`)")
 	fmt.Println("  import-json  Import JSON export to .feature (`--output`, `--force`)")

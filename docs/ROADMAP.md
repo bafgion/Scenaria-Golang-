@@ -1,7 +1,6 @@
 # Scenaria Go — Roadmap (post-parity)
 
-Статус: **Wails GUI beta** v0.13.0 на ветке `feat/wails-gui`.
-
+Статус: **v0.14** в работе (`feat/v0.14-trace`); **master** = v0.13 Wails GUI.
 ## Приоритеты
 
 | # | Направление | Приоритет | Статус |
@@ -45,7 +44,7 @@
 ### 3.1–3.3
 - [x] Writer + CLI `--allure` + GUI
 - [x] Screenshot on failure (Playwright → attachment PNG)
-- [ ] trace/video opt-in
+- [x] trace/video opt-in (`--trace`, `--video` CLI + Allure attachments)
 
 ---
 
@@ -75,6 +74,6 @@
 
 | Версия | Содержание |
 |--------|------------|
-| **0.13.0** | Wails beta + Allure + recorder docs (текущая) |
-| **0.14.0** | trace/video Allure, coverage 60% |
+| **0.13.0** | Wails beta + Allure base (**master**) |
+| **0.14.0** | trace/video + coverage 60% (в работе) |
 | **0.15.0** | Fyne removed from release |

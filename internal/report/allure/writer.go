@@ -83,17 +83,12 @@ func writeScenarioResult(dir string, scenario player.ScenarioResult, now int64) 
 	if scenario.Message != "" && status != "passed" {
 		entry.StatusDetails = &statusDetails{Message: scenario.Message}
 	}
-	if len(scenario.ScreenshotPNG) > 0 && status != "passed" {
-		attachID := uuid.New().String()
-		source := attachID + "-attachment.png"
-		if err := os.WriteFile(filepath.Join(dir, source), scenario.ScreenshotPNG, 0o644); err != nil {
-			return fmt.Errorf("write allure attachment: %w", err)
+	if status != "passed" {
+		var err error
+		entry.Attachments, err = writeFailureAttachments(dir, entry.Attachments, scenario)
+		if err != nil {
+			return err
 		}
-		entry.Attachments = []attachment{{
-			Name:   "screenshot",
-			Source: source,
-			Type:   "image/png",
-		}}
 	}
 	payload, err := json.Marshal(entry)
 	if err != nil {
@@ -122,4 +117,39 @@ func mapStatus(status string) string {
 func historyID(scenario player.ScenarioResult) string {
 	key := scenario.FeaturePath + "::" + scenario.Scenario
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(key)).String()
+}
+
+func writeFailureAttachments(dir string, existing []attachment, scenario player.ScenarioResult) ([]attachment, error) {
+	out := existing
+	if len(scenario.ScreenshotPNG) > 0 {
+		item, err := saveAttachment(dir, "screenshot", ".png", "image/png", scenario.ScreenshotPNG)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if len(scenario.TraceZIP) > 0 {
+		item, err := saveAttachment(dir, "trace", ".zip", "application/zip", scenario.TraceZIP)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if len(scenario.VideoWebM) > 0 {
+		item, err := saveAttachment(dir, "video", ".webm", "video/webm", scenario.VideoWebM)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func saveAttachment(dir, name, ext, mime string, payload []byte) (attachment, error) {
+	attachID := uuid.New().String()
+	source := attachID + "-attachment" + ext
+	if err := os.WriteFile(filepath.Join(dir, source), payload, 0o644); err != nil {
+		return attachment{}, fmt.Errorf("write allure attachment: %w", err)
+	}
+	return attachment{Name: name, Source: source, Type: mime}, nil
 }
