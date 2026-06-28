@@ -45,6 +45,8 @@ type RunRequest struct {
 	Engine     string            `json:"engine"`
 	InstallPW  bool              `json:"installPlaywright"`
 	AllureDir  string            `json:"allureDir"`
+	TraceDir   string            `json:"traceDir"`
+	VideoDir   string            `json:"videoDir"`
 }
 
 type RunResult struct {
@@ -180,6 +182,12 @@ func (s *Service) Run(req RunRequest) RunResult {
 	}
 	if req.AllureDir != "" {
 		args = append(args, "--allure", req.AllureDir)
+	}
+	if req.TraceDir != "" {
+		args = append(args, "--trace", req.TraceDir)
+	}
+	if req.VideoDir != "" {
+		args = append(args, "--video", req.VideoDir)
 	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {

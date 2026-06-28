@@ -1,7 +1,6 @@
 param(
     [string]$Version = "",
-    [switch]$SkipTests,
-    [switch]$LegacyFyne
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,11 +48,6 @@ if (-not (Test-Path $WailsBin)) {
     throw "Wails build did not produce $WailsBin"
 }
 Copy-Item $WailsBin (Join-Path $Dist "scenaria-gui.exe") -Force
-
-if ($LegacyFyne) {
-    Write-Host "==> Build legacy Fyne GUI" -ForegroundColor Cyan
-    go build -tags desktop -ldflags "-s -w" -o (Join-Path $Dist "scenaria-gui-fyne.exe") ./cmd/scenaria-gui
-}
 
 Write-Host "==> Install Playwright Chromium" -ForegroundColor Cyan
 go run github.com/mxschmitt/playwright-go/cmd/playwright@latest install chromium

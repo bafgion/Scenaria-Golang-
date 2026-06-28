@@ -6,11 +6,10 @@ plugins).
 
 ## Current state
 
-**v0.13** — Wails 2 + Svelte + Monaco IDE merged to `master`. CLI parity with Python v0.12.
+**v0.14** on `master` — Wails IDE, Allure, trace/video on failure.
 
-- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI + Wails GUI
-- Allure reports (`--allure`), failure screenshots; trace/video opt-in (`--trace`, `--video`)
-- Legacy **Fyne** GUI (`-tags desktop`) — deprecated
+- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI + **Wails GUI** (`scenaria-gui.exe`)
+- Allure (`--allure`), trace/video (`--trace`, `--video`) with failure attachments
 - `go test ./...` passes
 
 See `docs/FUNCTIONAL_PARITY_MATRIX.md` and `docs/ROADMAP.md`.
@@ -28,11 +27,15 @@ wails build        # scenaria-gui.exe
 
 Editor: **Monaco** with custom `scenaria-feature` syntax (Gherkin RU, tags, TestClient).
 
-## Legacy desktop (Fyne, deprecated)
+## Legacy Fyne GUI (source only)
+
+Fyne is **removed from portable releases**. For local debugging only:
 
 ```bash
 go run -tags desktop ./cmd/scenaria-gui
 ```
+
+Primary desktop: **Wails** (`wails dev` / `scenaria-gui.exe` from portable zip).
 
 ## Project goals
 
@@ -75,8 +78,11 @@ go run ./cmd/scenaria run ./examples/01-pervaya-proverka.feature --engine playwr
 # filter by tag, pass variables
 go run ./cmd/scenaria run ./examples --tag smoke --var BASE=https://example.com
 
-# desktop GUI (requires CGO + OpenGL)
-make gui
+# desktop GUI (Wails)
+make gui-wails
+
+# legacy Fyne (source only, not in release)
+go run -tags desktop ./cmd/scenaria-gui
 
 # export scenario to JSON / feature / Playwright
 go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json

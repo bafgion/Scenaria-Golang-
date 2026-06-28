@@ -7,11 +7,11 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
 
-Write-Host "==> go test -coverprofile=$OutFile" -ForegroundColor Cyan
-go test ./... -coverprofile=$OutFile -covermode=atomic
+Write-Host "==> go test -coverpkg=./... -coverprofile=$OutFile" -ForegroundColor Cyan
+go test -coverpkg=./... -coverprofile=$OutFile -covermode=atomic ./...
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-go tool cover -func=$OutFile | Select-Object -Last 1
+go tool cover -func=$OutFile | Select-String "total:"
 
 if ($Html) {
     $HtmlPath = [System.IO.Path]::ChangeExtension($OutFile, ".html")

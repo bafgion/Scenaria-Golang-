@@ -59,7 +59,11 @@
   let recordPaused = false
 
   let runAllure = false
+  let runTrace = false
+  let runVideo = false
   let lastAllureDir = ''
+  let lastTraceDir = ''
+  let lastVideoDir = ''
 
   let settingsBrowser = 'chromium'
   let settingsHeadless = false
@@ -258,11 +262,19 @@
     return out
   }
 
+  function scenariaSubdir(sub: string): string {
+    if (!projectPath) return ''
+    return `${projectPath.replace(/\\/g, '/')}/.scenaria/${sub}`
+  }
+
   async function runProject(dryRun: boolean) {
     if (!projectPath) return
-    const allureDir =
-      runAllure && projectPath ? `${projectPath.replace(/\\/g, '/')}/.scenaria/allure-results` : ''
+    const allureDir = runAllure ? scenariaSubdir('allure-results') : ''
+    const traceDir = !dryRun && runTrace ? scenariaSubdir('traces') : ''
+    const videoDir = !dryRun && runVideo ? scenariaSubdir('videos') : ''
     if (allureDir) lastAllureDir = allureDir
+    if (traceDir) lastTraceDir = traceDir
+    if (videoDir) lastVideoDir = videoDir
     const result = await Run({
       tag: runTag,
       testClient: runTestClient,
@@ -272,9 +284,29 @@
       engine: dryRun ? '' : 'playwright',
       installPlaywright: !dryRun,
       allureDir,
+      traceDir,
+      videoDir,
     })
     if (result.output) logText += result.output
     if (result.error) logText += `Ошибка: ${result.error}\n`
+  }
+
+  async function openTraceFolder() {
+    if (!lastTraceDir) return
+    try {
+      await OpenFolder(lastTraceDir)
+    } catch (e: any) {
+      logText += `Не удалось открыть traces: ${e}\n`
+    }
+  }
+
+  async function openVideoFolder() {
+    if (!lastVideoDir) return
+    try {
+      await OpenFolder(lastVideoDir)
+    } catch (e: any) {
+      logText += `Не удалось открыть videos: ${e}\n`
+    }
   }
 
   async function openAllureFolder() {
@@ -459,8 +491,16 @@
       </label>
       <label>Переменные<textarea bind:value={runVars} rows="3" placeholder="KEY=value"></textarea></label>
       <label><input type="checkbox" bind:checked={runAllure} /> Allure (.scenaria/allure-results)</label>
+      <label><input type="checkbox" bind:checked={runTrace} disabled={!projectPath} /> Trace (Playwright)</label>
+      <label><input type="checkbox" bind:checked={runVideo} disabled={!projectPath} /> Video (Playwright)</label>
       {#if lastAllureDir}
         <button type="button" class="feature-item" on:click={openAllureFolder}>Открыть Allure</button>
+      {/if}
+      {#if lastTraceDir}
+        <button type="button" class="feature-item" on:click={openTraceFolder}>Открыть traces</button>
+      {/if}
+      {#if lastVideoDir}
+        <button type="button" class="feature-item" on:click={openVideoFolder}>Открыть videos</button>
       {/if}
       {#if tags.length}<small>Теги: {tags.join(', ')}</small>{/if}
     </div>

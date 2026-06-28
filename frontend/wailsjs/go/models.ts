@@ -93,6 +93,8 @@ export namespace gui {
 	    engine: string;
 	    installPlaywright: boolean;
 	    allureDir: string;
+	    traceDir: string;
+	    videoDir: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -108,6 +110,8 @@ export namespace gui {
 	        this.engine = source["engine"];
 	        this.installPlaywright = source["installPlaywright"];
 	        this.allureDir = source["allureDir"];
+	        this.traceDir = source["traceDir"];
+	        this.videoDir = source["videoDir"];
 	    }
 	}
 	export class RunResult {
