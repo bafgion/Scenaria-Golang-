@@ -21,6 +21,7 @@ func NormalizeSteps(steps []RecordedStep) []RecordedStep {
 	}
 	out := make([]RecordedStep, 0, len(steps))
 	fillBySel := map[string]int{}
+	selectBySel := map[string]int{}
 	for _, step := range steps {
 		step = upgradeFillSelector(step)
 		switch step.Action {
@@ -36,18 +37,32 @@ func NormalizeSteps(steps []RecordedStep) []RecordedStep {
 				fillBySel[sel] = len(out)
 				out = append(out, step)
 			}
+		case "select":
+			sel := step.Selector
+			if sel == "" {
+				out = append(out, step)
+				continue
+			}
+			if idx, ok := selectBySel[sel]; ok {
+				out[idx] = step
+			} else {
+				selectBySel[sel] = len(out)
+				out = append(out, step)
+			}
 		case "click":
 			if len(out) > 0 && out[len(out)-1].Action == "click" && out[len(out)-1].Selector == step.Selector {
 				continue
 			}
 			out = append(out, upgradeClickSelector(step))
 			fillBySel = map[string]int{}
+			selectBySel = map[string]int{}
 		case "goto":
 			if len(out) > 0 && out[len(out)-1].Action == "goto" && out[len(out)-1].Value == step.Value {
 				continue
 			}
 			out = append(out, step)
 			fillBySel = map[string]int{}
+			selectBySel = map[string]int{}
 		default:
 			out = append(out, step)
 		}

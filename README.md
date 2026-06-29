@@ -1,12 +1,12 @@
-# Scenaria (Go Migration)
+# Scenaria (Go)
 
-This repository contains the Go implementation of Scenaria with a goal of full
-functional parity with the Python MVP (desktop + recorder + runner + export +
-plugins).
+**Scenaria Go** is the primary product: CLI + Wails IDE for RU Gherkin scenarios, Playwright runner, recorder, Vanessa, and plugins.
+
+Legacy **Python/Qt Scenaria is discontinued**. Compatibility is via `.feature` / `.scenaria` files and optional **export to Python** (`scenaria export --format python`).
 
 ## Current state
 
-**v0.14** on `master` — Wails IDE, Allure, trace/video on failure.
+**v0.15** on `master` — Wails IDE, Allure, trace/video on failure.
 
 - Full step DSL, Playwright runner, recorder, Vanessa, portable CLI + **Wails GUI** (`scenaria-gui.exe`)
 - Allure (`--allure`), trace/video (`--trace`, `--video`) with failure attachments
@@ -27,22 +27,12 @@ wails build        # scenaria-gui.exe
 
 Editor: **Monaco** with custom `scenaria-feature` syntax (Gherkin RU, tags, TestClient).
 
-## Legacy Fyne GUI (source only)
-
-Fyne is **removed from portable releases**. For local debugging only:
-
-```bash
-go run -tags desktop ./cmd/scenaria-gui
-```
-
-Primary desktop: **Wails** (`wails dev` / `scenaria-gui.exe` from portable zip).
-
 ## Project goals
 
-1. Preserve existing user-facing functionality from Python MVP.
+1. Deliver a self-contained Go toolchain (CLI + Wails IDE).
 2. Keep compatibility for existing scenario and settings files.
 3. Provide a globally installable CLI command (`scenaria`).
-4. Rebuild desktop functionality in Go after core parity is stable.
+4. Support export to Python/TypeScript for external test runners when needed.
 
 ## Local development
 
@@ -81,9 +71,6 @@ go run ./cmd/scenaria run ./examples --tag smoke --var BASE=https://example.com
 # desktop GUI (Wails)
 make gui-wails
 
-# legacy Fyne (source only, not in release)
-go run -tags desktop ./cmd/scenaria-gui
-
 # export scenario to JSON / feature / Playwright
 go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json
 go run ./cmd/scenaria export ./path/to/login.feature --output login.spec.ts --format ts --base-url https://example.com
@@ -100,8 +87,9 @@ go run ./cmd/scenaria record --live --url https://example.com --output recorded.
 # Vanessa Automation (1C)
 go run ./cmd/scenaria va run --project . --dry-run
 
-# portable Windows build (bundles Chromium)
+# portable Windows build (bundles Chromium + Wails IDE)
 make build-portable
+# dist/Scenaria/: scenaria.exe, scenaria-gui.exe, browsers/, Start-GUI.bat
 ```
 
 ## Install CLI as a global command
@@ -121,4 +109,4 @@ See details in `docs/CLI_GLOBAL_INSTALL.md`.
 ## Migration documentation
 
 - `docs/MIGRATION_PLAN.md` — staged migration roadmap.
-- `docs/FUNCTIONAL_PARITY_MATRIX.md` — functional parity contract.
+- `docs/FUNCTIONAL_PARITY_MATRIX.md` — feature coverage (Go primary).

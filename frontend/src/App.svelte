@@ -38,7 +38,7 @@
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
-  import { scenarioAtLine, listScenarioTitles } from './lib/scenarioAtLine'
+  import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -77,6 +77,7 @@
     CancelRecording,
     FocusBrowser,
     UndoRecordedStep,
+    UpdateRecordingOptions,
     PickSelector,
     PickerStepChoices,
     LoadSettings,
@@ -260,6 +261,8 @@
   let contextMenu: { x: number; y: number; path: string } | null = null
   let runDialogTitle = 'Запуск сценария'
   let runDialogScenarios: string[] = []
+  let vanessaDialogScenarios: string[] = []
+  let pluginRunScenarios: string[] = []
 
   let recording = false
   let recordPaused = false
@@ -1701,16 +1704,22 @@
     return out
   }
 
+  function editorScenarioNames(): string[] {
+    return !isWelcome && activeTab ? listScenarioTitles(editorText) : []
+  }
+
+  function cursorScenarioName(): string {
+    return !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
+  }
+
+  function dialogScenarioNames(): string[] {
+    return mergeScenarioNames(editorScenarioNames(), projectScenarios)
+  }
+
   function openRunDialog(title: string, defaults: Partial<RunForm>) {
     runDialogTitle = title
-    const fileScenarios = !isWelcome && activeTab ? listScenarioTitles(editorText) : []
-    const merged = [...fileScenarios]
-    for (const name of projectScenarios) {
-      if (!merged.includes(name)) merged.push(name)
-    }
-    runDialogScenarios = merged
-    const cursorScenario =
-      !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
+    runDialogScenarios = dialogScenarioNames()
+    const cursorScenario = cursorScenarioName()
     runForm = {
       ...lastRun,
       baseUrl: lastRun.baseUrl || startURL || '',
@@ -1724,8 +1733,8 @@
     vanessaDry = dry
     vanessaTag = ''
     vanessaExcludeTags = ''
-    vanessaScenario =
-      !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
+    vanessaScenario = cursorScenarioName()
+    vanessaDialogScenarios = dialogScenarioNames()
     vanessaRerunDir = ''
     vanessaPreferRerun = preferRerun
     vanessaInstallEpf = false
@@ -2045,7 +2054,8 @@
     pluginRunName = name
     pluginRunDry = dry
     pluginRunTag = ''
-    pluginRunScenario = ''
+    pluginRunScenario = cursorScenarioName()
+    pluginRunScenarios = dialogScenarioNames()
     showPluginRun = true
   }
 
@@ -2159,6 +2169,16 @@
       recentFeatures,
       checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
     })
+  }
+
+  async function syncRecordingOptions() {
+    if (!recording) return
+    try {
+      await UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord)
+      await persistSettings()
+    } catch {
+      /* session may be closing */
+    }
   }
 
   async function applySettings() {
@@ -2814,10 +2834,10 @@
             {#if showRecordingBar}
               <div class="recording-bar">
                 <span class="rec-label">Запись:</span>
-                <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => filterRecording && (navOnlyRecording = false)} /> Только важные</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => navOnlyRecording && (filterRecording = false)} /> Только ссылки</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => { if (filterRecording) navOnlyRecording = false; void syncRecordingOptions() }} /> Только важные</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => { if (navOnlyRecording) filterRecording = false; void syncRecordingOptions() }} /> Только ссылки</label>
                 <label class="check-inline"><input type="checkbox" bind:checked={settingsHeadless} /> Без окна браузера</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} /> Записывать наведение</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} on:change={() => void syncRecordingOptions()} /> Записывать наведение</label>
               </div>
             {/if}
             <div class="gherkin-hints">
@@ -2980,7 +3000,7 @@
     bind:vaDir={vanessaVaDir}
     bind:vaFiles={vanessaVaFiles}
     {tags}
-    scenarios={projectScenarios}
+    scenarios={vanessaDialogScenarios}
     onConfirm={confirmVanessaRun}
     onCancel={() => (showVanessaRun = false)}
   />
@@ -2993,6 +3013,8 @@
     bind:tag={pluginRunTag}
     bind:scenario={pluginRunScenario}
     bind:dryRun={pluginRunDry}
+    scenarios={pluginRunScenarios}
+    {tags}
     onConfirm={confirmPluginRun}
     onCancel={() => (showPluginRun = false)}
   />

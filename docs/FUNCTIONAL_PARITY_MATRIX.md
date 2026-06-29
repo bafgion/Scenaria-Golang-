@@ -2,7 +2,7 @@
 
 Status: **Go is the primary product** (CLI + Wails IDE). Python Scenaria is **deprecated** — interoperability via `.feature` / `.scenaria` files and **export to Python** only.
 
-| Wails IDE | Monaco, run/record/Vanessa/export/OTP/Allure | `frontend/`, `internal/gui` | ~95% |
+| Wails IDE | Monaco, run/record/Vanessa/export/OTP/Allure | `frontend/`, `internal/gui` | ~96% |
 
 | Area | Legacy (Python/Qt) | Go target | Status |
 |---|---|---|---|
@@ -16,14 +16,18 @@ Status: **Go is the primary product** (CLI + Wails IDE). Python Scenaria is **de
 | Recorder | live + baseline steps | `internal/recorder` | validated |
 | Vanessa | JUnit monitor, rerun, EPF | `internal/vanessa`, Wails monitor UI | validated |
 | Desktop IDE | Qt (deprecated) | **Wails 2 + Svelte** | primary |
-| Desktop (Fyne) | legacy | `ui/desktop` | deprecated, not in release |
 | Plugins | registry + run | `internal/plugin` | validated |
 
 ## Remaining (Go-only roadmap)
 
-- Recorder polish (coalescing edge cases, picker UX)
-- Optional: remove `ui/desktop` (Fyne) from repo entirely
-- Portable packaging polish (v0.15)
+- Minor IDE/recorder UX polish
+
+## Done (v0.15)
+
+- Recorder: SELECT → «выбираю», live option sync during recording
+- Portable zip: README, launchers, version from `internal/version`
+- Run/Vanessa/Plugin dialogs: project scenario catalog + chips
+- Legacy Fyne `ui/desktop` removed from repo
 
 ## Intentional differences
 

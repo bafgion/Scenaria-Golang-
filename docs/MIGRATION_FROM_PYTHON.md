@@ -18,7 +18,7 @@ This guide is for teams moving from **Python Scenaria (v0.12)** to **Scenaria Go
 
 | Area | Python | Go |
 |------|--------|-----|
-| Desktop IDE | Qt | **Wails 2 + Svelte** (Fyne deprecated) |
+| Desktop IDE | Qt | **Wails 2 + Svelte** |
 | Runtime | Python + Playwright | Go + `playwright-go` |
 | Install | `pip install scenaria` | Portable ZIP or `go install ./cmd/scenaria` |
 | Email OTP | env / prompt | Same + Wails modal |
@@ -87,12 +87,6 @@ wails dev
 
 # Production build
 wails build -o scenaria-gui.exe
-```
-
-Legacy Fyne UI (deprecated):
-
-```bash
-go run -tags desktop ./cmd/scenaria-gui
 ```
 
 ## Known gaps

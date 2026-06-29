@@ -6,10 +6,10 @@
 
 | # | Направление | Статус |
 |---|-------------|--------|
-| P0 | Wails IDE | ~95% |
-| P0 | Recorder | ~85% |
+| P0 | Wails IDE | ~96% |
+| P0 | Recorder | ~90% |
 | P1 | Allure | done |
-| P2 | Fyne `ui/desktop` | deprecated, вне release |
+| P1 | Portable release | done |
 
 ---
 
@@ -23,7 +23,13 @@
 - [x] Command palette (Ctrl+Shift+P), recording bar, dirty banner, ресайз панелей
 - [x] Welcome: недавние проекты/файлы, примеры; Results/Error панели из run_status.json
 - [x] Модалки: Запустить, TestClient, шаги, экспорт (ts/python)
-- [x] Fyne снят с release
+
+---
+
+## Фаза 2 — Portable
+
+- [x] `scripts/build-portable.ps1` — CLI + Wails + Chromium
+- [x] `README-PORTABLE.txt`, `Start-GUI.bat`, CI artifact on tag
 
 ---
 
@@ -46,4 +52,4 @@
 | Версия | Содержание |
 |--------|------------|
 | **0.14.0** | trace/video Allure (**master**) |
-| **0.15.0** | GUI trace/video + Fyne out of release (в работе) |
+| **0.15.0** | GUI trace/video + scenario catalog + recorder polish (**master**) |

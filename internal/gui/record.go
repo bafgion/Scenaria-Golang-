@@ -259,6 +259,16 @@ func (s *Service) FocusBrowser() error {
 	return session.FocusBrowser()
 }
 
+func (s *Service) UpdateRecordingOptions(filter, navOnly, hover bool) error {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session == nil {
+		return fmt.Errorf("запись не активна")
+	}
+	return session.ApplyRecorderConfig(filter, navOnly, hover)
+}
+
 func (s *Service) UndoRecordedStep() bool {
 	s.mu.RLock()
 	session := s.liveSession

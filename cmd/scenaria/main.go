@@ -133,9 +133,3 @@ func runVersion(_ []string) error {
 func runVA(args []string) error {
 	return cli.RunVA(args)
 }
-
-func runNotImplemented(name string) func(args []string) error {
-	return func(_ []string) error {
-		return fmt.Errorf("command %q is not implemented yet (see docs/MIGRATION_PLAN.md)", name)
-	}
-}

@@ -32,6 +32,21 @@ func TestEventPipelineClickAndFill(t *testing.T) {
 	}
 }
 
+func TestEventPipelineSelect(t *testing.T) {
+	step, ok := EventToRecordedStep("change", map[string]string{
+		"tag":      "SELECT",
+		"selector": "#lang",
+		"value":    "ru",
+	})
+	if !ok || step.Action != "select" {
+		t.Fatalf("unexpected select step: %+v ok=%v", step, ok)
+	}
+	line, ok := RecordedStepToLine(step)
+	if !ok || line != `выбираю "ru" в "#lang"` {
+		t.Fatalf("unexpected line: %q ok=%v", line, ok)
+	}
+}
+
 func TestEventPipelineSignature(t *testing.T) {
 	step, ok := EventToRecordedStep("draw-signature", map[string]string{
 		"selector": "canvas",

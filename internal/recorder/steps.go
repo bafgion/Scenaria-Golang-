@@ -40,8 +40,12 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 		if sel == "" || value == "" {
 			return RecordedStep{}, false
 		}
+		action := "fill"
+		if strings.ToUpper(detail["tag"]) == "SELECT" {
+			action = "select"
+		}
 		return RecordedStep{
-			Action:    "fill",
+			Action:    action,
 			Selector:  sel,
 			Value:     value,
 			Text:      detail["captiontext"],
@@ -94,6 +98,11 @@ func RecordedStepToLine(step RecordedStep) (string, bool) {
 			return "", false
 		}
 		return fmt.Sprintf(`ввожу "%s" в "%s"`, escapeStepText(step.Value), escapeStepText(step.Selector)), true
+	case "select":
+		if step.Selector == "" || step.Value == "" {
+			return "", false
+		}
+		return fmt.Sprintf(`выбираю "%s" в "%s"`, escapeStepText(step.Value), escapeStepText(step.Selector)), true
 	case "draw-signature":
 		if step.Selector == "" {
 			return "", false

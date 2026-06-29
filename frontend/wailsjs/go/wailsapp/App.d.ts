@@ -46,9 +46,9 @@ export function ListPlugins():Promise<Array<gui.PluginEntryDTO>>;
 
 export function ListRunResults(arg1:number):Promise<Array<gui.RunResultEntry>>;
 
-export function ListTestClients():Promise<Array<string>>;
-
 export function ListScenarioTitles():Promise<Array<string>>;
+
+export function ListTestClients():Promise<Array<string>>;
 
 export function ListVanessaRunDirs(arg1:number):Promise<Array<string>>;
 
@@ -147,6 +147,8 @@ export function TestClientDetails(arg1:string):Promise<string>;
 export function UndoRecordedStep():Promise<boolean>;
 
 export function UninstallPlugin(arg1:string):Promise<void>;
+
+export function UpdateRecordingOptions(arg1:boolean,arg2:boolean,arg3:boolean):Promise<void>;
 
 export function Validate(arg1:gui.ValidateRequest):Promise<gui.RunResult>;
 

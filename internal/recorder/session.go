@@ -51,6 +51,23 @@ func (s *LiveSession) FocusBrowser() error {
 	return page.BringToFront()
 }
 
+func (s *LiveSession) ApplyRecorderConfig(filterImportant, navOnly, hoverRecord bool) error {
+	s.mu.Lock()
+	page := s.page
+	s.mu.Unlock()
+	if page == nil {
+		return fmt.Errorf("браузер не открыт")
+	}
+	script := fmt.Sprintf(`() => {
+		if (!window.__scenariaRecorder) return;
+		window.__scenariaRecorder.filterImportant = %v;
+		window.__scenariaRecorder.navOnly = %v;
+		window.__scenariaRecorder.hoverRecord = %v;
+	}`, filterImportant, navOnly, hoverRecord)
+	_, err := page.Evaluate(script)
+	return err
+}
+
 func (s *LiveSession) UndoLastStep() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -90,12 +90,12 @@ export function ListRunResults(arg1) {
   return window['go']['wailsapp']['App']['ListRunResults'](arg1);
 }
 
-export function ListTestClients() {
-  return window['go']['wailsapp']['App']['ListTestClients']();
-}
-
 export function ListScenarioTitles() {
   return window['go']['wailsapp']['App']['ListScenarioTitles']();
+}
+
+export function ListTestClients() {
+  return window['go']['wailsapp']['App']['ListTestClients']();
 }
 
 export function ListVanessaRunDirs(arg1) {
@@ -292,6 +292,10 @@ export function UndoRecordedStep() {
 
 export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
+}
+
+export function UpdateRecordingOptions(arg1, arg2, arg3) {
+  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3);
 }
 
 export function Validate(arg1) {

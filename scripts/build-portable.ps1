@@ -7,11 +7,20 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
 
-if (-not $Version) {
-    $Version = (go run ./internal/version 2>$null)
-    if (-not $Version) {
-        $Version = "0.1.0-go"
+function Get-ScenariaVersion {
+    $path = Join-Path $Root "internal\version\version.go"
+    if (Test-Path $path) {
+        $m = Select-String -Path $path -Pattern 'Version\s*=\s*"([^"]+)"' | Select-Object -First 1
+        if ($m) { return $m.Matches[0].Groups[1].Value }
     }
+    return "0.15.0"
+}
+
+if (-not $Version) {
+    $Version = Get-ScenariaVersion
+}
+if ($Version -match '^v') {
+    $Version = $Version.Substring(1)
 }
 
 Write-Host "==> Scenaria Go portable build v$Version" -ForegroundColor Cyan
@@ -69,6 +78,35 @@ if (Test-Path $ExamplesSource) {
     Copy-Item $ExamplesSource (Join-Path $Dist "examples") -Recurse -Force
 }
 Set-Content -Path (Join-Path $Dist "version.txt") -Value $Version -Encoding UTF8
+
+$PortableReadme = @"
+Scenaria Portable v$Version
+=========================
+
+  scenaria-gui.exe   Wails IDE (основной продукт)
+  scenaria.exe       CLI
+  browsers\          Chromium для Playwright (подхватывается автоматически)
+  examples\          примеры сценариев
+
+Запуск IDE: двойной клик Start-GUI.bat или scenaria-gui.exe
+CLI:        scenaria.exe run examples --dry-run
+Справка:    scenaria.exe help
+
+Экспорт в Python: scenaria.exe export login.feature --format python --output test_login.py
+"@
+Set-Content -Path (Join-Path $Dist "README-PORTABLE.txt") -Value $PortableReadme -Encoding UTF8
+
+@'
+@echo off
+cd /d "%~dp0"
+start "" scenaria-gui.exe
+'@ | Set-Content -Path (Join-Path $Dist "Start-GUI.bat") -Encoding ASCII
+
+@'
+@echo off
+cd /d "%~dp0"
+scenaria.exe %*
+'@ | Set-Content -Path (Join-Path $Dist "scenaria-cli.bat") -Encoding ASCII
 
 $ZipPath = Join-Path $Root "dist\Scenaria-Portable.zip"
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }

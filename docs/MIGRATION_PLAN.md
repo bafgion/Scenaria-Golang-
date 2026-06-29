@@ -25,7 +25,8 @@ existing user workflows and file compatibility.
 ```text
 cmd/
   scenaria/           # CLI entrypoint and command routing
-  scenaria-gui/       # desktop entrypoint (phase 2+)
+main.go               # Wails IDE entrypoint (scenaria-gui.exe)
+frontend/             # Svelte + Monaco IDE
 internal/
   gherkin/            # parse, serialize, context, outline
   scenario/           # feature I/O and models
@@ -36,8 +37,8 @@ internal/
   settings/           # app and project settings
   plugin/             # plugin lifecycle and runner registry
   update/             # app update checks and downloads
-ui/
-  desktop/            # desktop composition and state wiring
+  gui/                # IDE backend services
+  wailsapp/           # Wails bindings
 ```
 
 ## Phase plan
