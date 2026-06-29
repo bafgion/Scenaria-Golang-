@@ -222,12 +222,20 @@ func (a *App) Export(req gui.ExportRequest) gui.RunResult {
 	return a.svc.Export(req)
 }
 
+func (a *App) PreviewExport(text string) gui.ExportPreview {
+	return a.svc.PreviewExport(text)
+}
+
 func (a *App) ImportJSON(req gui.ImportRequest) gui.RunResult {
 	return a.svc.ImportJSON(req)
 }
 
 func (a *App) RunVanessa(dryRun bool) gui.RunResult {
 	return a.svc.RunVanessa(dryRun)
+}
+
+func (a *App) RunPlugin(name string, dryRun bool) gui.RunResult {
+	return a.svc.RunPlugin(name, dryRun)
 }
 
 func (a *App) StartRecord(req gui.RecordRequest) {

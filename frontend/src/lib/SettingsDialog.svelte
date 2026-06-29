@@ -9,6 +9,7 @@
   export let toolbarCompact = false
   export let stepsPanelVisible = true
   export let stepsPanelHeight = 160
+  export let checkUpdatesOnStartup = true
 
   export let onSave: () => void
   export let onCancel: () => void
@@ -32,6 +33,7 @@
     if (!q) return
     if ('записьбраузерheadless'.includes(q.replace(/\s/g, ''))) tab = 'record'
     else if ('плагинvanessa'.includes(q.replace(/\s/g, ''))) tab = 'plugins'
+    else if ('обновлен'.includes(q.replace(/\s/g, ''))) tab = 'ui'
     else tab = 'ui'
   }
 </script>
@@ -69,6 +71,10 @@
           <label>
             Лимит итераций циклов
             <input type="number" bind:value={loops} min="1" />
+          </label>
+          <label class="check-row">
+            <input type="checkbox" bind:checked={checkUpdatesOnStartup} />
+            Проверять обновления при запуске
           </label>
         {:else if tab === 'record'}
           <label>

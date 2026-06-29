@@ -62,6 +62,10 @@ export function Export(arg1) {
   return window['go']['wailsapp']['App']['Export'](arg1);
 }
 
+export function PreviewExport(arg1) {
+  return window['go']['wailsapp']['App']['PreviewExport'](arg1);
+}
+
 export function FocusBrowser() {
   return window['go']['wailsapp']['App']['FocusBrowser']();
 }
@@ -196,6 +200,10 @@ export function Run(arg1) {
 
 export function RunVanessa(arg1) {
   return window['go']['wailsapp']['App']['RunVanessa'](arg1);
+}
+
+export function RunPlugin(arg1, arg2) {
+  return window['go']['wailsapp']['App']['RunPlugin'](arg1, arg2);
 }
 
 export function SaveFeature(arg1, arg2) {

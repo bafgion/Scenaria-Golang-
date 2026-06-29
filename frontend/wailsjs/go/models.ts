@@ -14,6 +14,7 @@ export namespace gui {
 	    sidebarWidth: number;
 	    recentProjects: string[];
 	    recentFeatures: string[];
+	    checkUpdatesOnStartup: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettingsDTO(source);
@@ -34,6 +35,7 @@ export namespace gui {
 	        this.sidebarWidth = source["sidebarWidth"];
 	        this.recentProjects = source["recentProjects"];
 	        this.recentFeatures = source["recentFeatures"];
+	        this.checkUpdatesOnStartup = source["checkUpdatesOnStartup"];
 	    }
 	}
 	export class EditorStepRow {
@@ -65,6 +67,7 @@ export namespace gui {
 	    output: string;
 	    format: string;
 	    baseURL: string;
+	    force: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExportRequest(source);
@@ -76,7 +79,48 @@ export namespace gui {
 	        this.output = source["output"];
 	        this.format = source["format"];
 	        this.baseURL = source["baseURL"];
+	        this.force = source["force"];
 	    }
+	}
+	export class ExportPreview {
+	    stepCount: number;
+	    scenarioTitle: string;
+	    issues: ValidationIssue[];
+	    hints: ScenarioHintDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stepCount = source["stepCount"];
+	        this.scenarioTitle = source["scenarioTitle"];
+	        this.issues = this.convertValues(source["issues"], ValidationIssue);
+	        this.hints = this.convertValues(source["hints"], ScenarioHintDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => {
+		            if (typeof elem === 'object' && elem !== null) {
+		                if (asMap) {
+		                    for (const key of Object.keys(elem)) {
+		                        elem[key] = new classs(elem[key]);
+		                    }
+		                    return elem;
+		                }
+		                return new classs(elem);
+		            } else {
+		                return elem;
+		            }
+		        });
+		    }
+		    return a;
+		}
 	}
 	export class HighlightSpan {
 	    text: string;
@@ -280,6 +324,11 @@ export namespace gui {
 	    name: string;
 	    source: string;
 	    installedAt: string;
+	    id: string;
+	    description: string;
+	    commands: string[];
+	    runnable: boolean;
+	    vanessa: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginEntryDTO(source);
@@ -290,6 +339,11 @@ export namespace gui {
 	        this.name = source["name"];
 	        this.source = source["source"];
 	        this.installedAt = source["installedAt"];
+	        this.id = source["id"];
+	        this.description = source["description"];
+	        this.commands = source["commands"];
+	        this.runnable = source["runnable"];
+	        this.vanessa = source["vanessa"];
 	    }
 	}
 	export class ScenarioHintDTO {

@@ -61,3 +61,46 @@ func TestAnalyzeFillNoAssert(t *testing.T) {
 		t.Fatalf("expected fill_no_assert, got %+v", hints)
 	}
 }
+
+func TestAnalyzeGotoNoWait(t *testing.T) {
+	text := "\tДопустим открыт \"https://example.com\"\n\tКогда нажимаю \"#login\"\n"
+	hints := AnalyzeScenarioHints(text)
+	found := false
+	for _, h := range hints {
+		if h.ID == "goto_no_wait" {
+			found = true
+			if !h.AutoFixable {
+				t.Fatalf("expected auto-fixable goto_no_wait")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected goto_no_wait, got %+v", hints)
+	}
+}
+
+func TestApplyFillNoAssertFix(t *testing.T) {
+	text := "\tКогда ввожу \"alice\" в \"#name\"\n\tИ нажимаю \"#submit\"\n"
+	result := ApplyScenarioHintFix(ScenarioHintFixRequest{
+		Text: text, HintID: "fill_no_assert", StepIndex: 0,
+	})
+	if result.Count != 1 {
+		t.Fatalf("count=%d", result.Count)
+	}
+	if !strings.Contains(result.Text, `проверяю текст "alice" в "#name"`) {
+		t.Fatalf("got %q", result.Text)
+	}
+}
+
+func TestApplyGotoNoWaitFix(t *testing.T) {
+	text := "\tДопустим открыт \"https://example.com\"\n\tКогда нажимаю \"#login\"\n"
+	result := ApplyScenarioHintFix(ScenarioHintFixRequest{
+		Text: text, HintID: "goto_no_wait", StepIndex: 0,
+	})
+	if result.Count != 1 {
+		t.Fatalf("count=%d", result.Count)
+	}
+	if !strings.Contains(result.Text, `жду появления "#login"`) {
+		t.Fatalf("got %q", result.Text)
+	}
+}

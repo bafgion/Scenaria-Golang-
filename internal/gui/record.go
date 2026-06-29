@@ -29,6 +29,7 @@ type ExportRequest struct {
 	Output    string `json:"output"`
 	Format    string `json:"format"`
 	BaseURL   string `json:"baseURL"`
+	Force     bool   `json:"force"`
 }
 
 type ImportRequest struct {
@@ -48,6 +49,9 @@ func (s *Service) Export(req ExportRequest) RunResult {
 	args := []string{input, "--output", req.Output, "--format", req.Format}
 	if req.BaseURL != "" {
 		args = append(args, "--base-url", req.BaseURL)
+	}
+	if req.Force {
+		args = append(args, "--force")
 	}
 	out, err := captureCLI(func() error { return cliRunExport(args) })
 	if err != nil {

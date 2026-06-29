@@ -78,6 +78,7 @@ type AppSettingsDTO struct {
 	SidebarWidth      int      `json:"sidebarWidth"`
 	RecentProjects    []string `json:"recentProjects"`
 	RecentFeatures    []string `json:"recentFeatures"`
+	CheckUpdatesOnStartup bool `json:"checkUpdatesOnStartup"`
 }
 
 type RunResultEntry struct {
@@ -341,6 +342,7 @@ func defaultAppSettingsDTO() AppSettingsDTO {
 		MaxLoopIterations: 100,
 		StepsPanelVisible: true,
 		StepsPanelHeight:  160,
+		CheckUpdatesOnStartup: true,
 	}
 }
 
@@ -363,6 +365,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		SidebarWidth:        clampSidebarWidth(cfg.SidebarWidth),
 		RecentProjects:      trimRecents(cfg.RecentProjects),
 		RecentFeatures:      trimRecents(cfg.RecentFeatures),
+		CheckUpdatesOnStartup: settings.CheckUpdatesOnStartupEnabled(cfg),
 	}
 }
 
@@ -391,11 +394,16 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 		RecentProjects:        trimRecents(dto.RecentProjects),
 		RecentFeatures:        trimRecents(dto.RecentFeatures),
 	}
-	if len(cfg.RecentProjects) == 0 && existing != nil {
-		cfg.RecentProjects = existing.RecentProjects
-	}
-	if len(cfg.RecentFeatures) == 0 && existing != nil {
-		cfg.RecentFeatures = existing.RecentFeatures
+	checkUpdates := dto.CheckUpdatesOnStartup
+	cfg.CheckUpdatesOnStartup = &checkUpdates
+	if existing != nil {
+		cfg.HTTPAuth = existing.HTTPAuth
+		if len(cfg.RecentProjects) == 0 {
+			cfg.RecentProjects = existing.RecentProjects
+		}
+		if len(cfg.RecentFeatures) == 0 {
+			cfg.RecentFeatures = existing.RecentFeatures
+		}
 	}
 	sidebarW := dto.SidebarWidth
 	if sidebarW < 120 && existing != nil && existing.SidebarWidth >= 120 {

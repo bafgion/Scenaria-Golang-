@@ -32,6 +32,8 @@ export function MoveFeature(arg1:string,arg2:string):Promise<string>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
 
+export function PreviewExport(arg1:string):Promise<gui.ExportPreview>;
+
 export function FocusBrowser():Promise<void>;
 
 export function HighlightFeature(arg1:string):Promise<Array<gui.HighlightSpan>>;
@@ -99,6 +101,8 @@ export function ResumeRecording():Promise<void>;
 export function Run(arg1:gui.RunRequest):Promise<gui.RunResult>;
 
 export function RunVanessa(arg1:boolean):Promise<gui.RunResult>;
+
+export function RunPlugin(arg1:string,arg2:boolean):Promise<gui.RunResult>;
 
 export function SaveFeature(arg1:string,arg2:string):Promise<void>;
 

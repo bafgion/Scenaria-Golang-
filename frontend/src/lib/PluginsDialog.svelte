@@ -4,7 +4,7 @@
   import type { gui } from '../../wailsjs/go/models'
 
   export let onClose: () => void = () => {}
-  export let onRunVanessa: (dryRun: boolean) => void = () => {}
+  export let onRunPlugin: (name: string, dryRun: boolean) => void = () => {}
 
   let entries: gui.PluginEntryDTO[] = []
   let name = 'vanessa'
@@ -60,8 +60,12 @@
     }
   }
 
-  function hasVanessa(): boolean {
-    return entries.some((e) => e.name.toLowerCase() === 'vanessa')
+  function pluginTitle(entry: gui.PluginEntryDTO): string {
+    return entry.description || entry.id || entry.name
+  }
+
+  function runnableEntries(): gui.PluginEntryDTO[] {
+    return entries.filter((e) => e.runnable)
   }
 
   function onKey(e: KeyboardEvent) {
@@ -88,7 +92,10 @@
         <tbody>
           {#each entries as entry}
             <tr>
-              <td>{entry.name}</td>
+              <td>
+                <div>{entry.name}</div>
+                {#if entry.description}<div class="meta">{entry.description}</div>{/if}
+              </td>
               <td class="source" title={entry.source}>{entry.source}</td>
               <td><button type="button" class="danger" disabled={busy} on:click={() => uninstall(entry)}>Удалить</button></td>
             </tr>
@@ -105,13 +112,17 @@
       <button type="button" class="primary" disabled={busy} on:click={install}>Установить</button>
     </div>
 
-    {#if hasVanessa()}
+    {#each runnableEntries() as entry (entry.name)}
       <div class="runners">
-        <span>Vanessa:</span>
-        <button type="button" disabled={busy} on:click={() => { onClose(); onRunVanessa(true) }}>Dry-run</button>
-        <button type="button" disabled={busy} on:click={() => { onClose(); onRunVanessa(false) }}>Запуск</button>
+        <span>{pluginTitle(entry)}:</span>
+        {#if entry.vanessa}
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>Dry-run</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск</button>
+        {:else}
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск</button>
+        {/if}
       </div>
-    {/if}
+    {/each}
 
     {#if error}<p class="error">{error}</p>{/if}
 
@@ -159,6 +170,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--color-muted);
+  }
+
+  .meta {
+    font-size: 10px;
+    color: var(--color-muted);
+    margin-top: 2px;
   }
 
   .install-form {

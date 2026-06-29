@@ -22,6 +22,7 @@ type AppSettings struct {
 	SidebarWidth        int      `json:"sidebar_width"`
 	RecentProjects      []string `json:"recent_projects"`
 	RecentFeatures      []string `json:"recent_features"`
+	CheckUpdatesOnStartup *bool  `json:"check_updates_on_startup,omitempty"`
 	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
 }
 
@@ -73,6 +74,13 @@ func LoadDefaultAppSettings() (*AppSettings, error) {
 		cfg.Browser = "chromium"
 	}
 	return cfg, nil
+}
+
+func CheckUpdatesOnStartupEnabled(cfg *AppSettings) bool {
+	if cfg == nil || cfg.CheckUpdatesOnStartup == nil {
+		return true
+	}
+	return *cfg.CheckUpdatesOnStartup
 }
 
 func LoadAppSettings(path string) (*AppSettings, error) {

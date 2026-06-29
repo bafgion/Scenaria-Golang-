@@ -12,6 +12,7 @@
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
   import PluginsDialog from './lib/PluginsDialog.svelte'
+  import ExportDialog from './lib/ExportDialog.svelte'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -44,9 +45,8 @@
     PickProjectFolder,
     PickSaveFile,
     PickOpenFile,
-    Export,
     ImportJSON,
-    RunVanessa,
+    RunPlugin,
     StartRecord,
     PauseRecording,
     ResumeRecording,
@@ -77,6 +77,7 @@
     DuplicateFeature,
     MoveFeature,
     ImportFeatures,
+    ListPlugins,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -124,12 +125,14 @@
   let showRun = false
   let showTestClient = false
   let showExport = false
+  let exportInputPath = ''
   let showSteps = false
   let showStepsHelp = false
   let stepsHelpQuery = ''
   let catalogDropTarget = ''
   let showAbout = false
   let showPlugins = false
+  let installedPlugins: gui.PluginEntryDTO[] = []
   let showFindReplace = false
   let showProjectReplace = false
   let showHotkeys = false
@@ -199,6 +202,7 @@
   let settingsHeadless = false
   let settingsWorkers = 1
   let settingsLoops = 100
+  let settingsCheckUpdatesOnStartup = true
 
   let recordURL = 'https://site.com'
   let startURL = 'https://site.com'
@@ -217,10 +221,6 @@
 
   let selectedClient = ''
   let clientDetails = ''
-
-  let exportFormat = 'json'
-  let exportPath = ''
-  let exportBaseURL = ''
 
   let recentProjects: string[] = []
   let recentFeatures: string[] = []
@@ -466,6 +466,7 @@
     await dismissSplash(startedAt)
     applyDevUiMock()
     syncIdleStatus()
+    void checkUpdatesOnStartup()
   })
 
   onDestroy(() => {
@@ -488,6 +489,7 @@
     toolbarCompact = s.toolbarCompact
     stepsPanelVisible = s.stepsPanelVisible !== false
     stepsPanelHeight = s.stepsPanelHeight || 160
+    settingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup !== false
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
@@ -502,7 +504,7 @@
       { id: 'new', label: 'Новый сценарий', group: 'Сценарий', shortcut: 'Ctrl+N', run: newScenario },
       { id: 'open-file', label: 'Открыть файл…', group: 'Сценарий', shortcut: 'Ctrl+O', run: openFileDialog },
       { id: 'save', label: 'Сохранить', group: 'Сценарий', shortcut: 'Ctrl+S', run: saveFeature },
-      { id: 'export', label: 'Экспорт JSON…', group: 'Сценарий', run: openExportDialog },
+      { id: 'export', label: 'Экспорт…', group: 'Сценарий', run: openExportDialog },
       { id: 'import', label: 'Импорт JSON…', group: 'Сценарий', run: importJSON },
       { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
       { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
@@ -529,8 +531,12 @@
       { id: 'testclient', label: 'TestClient…', group: 'Запись и тест', run: openTestClientDialog },
       { id: 'validate', label: 'Проверить', group: 'Запись и тест', run: () => validateProject(false) },
       { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => validateProject(true) },
-      { id: 'vanessa-dry', label: 'Vanessa (dry)', group: 'Запись и тест', run: () => runVanessa(true) },
-      { id: 'vanessa', label: 'Vanessa run', group: 'Запись и тест', run: () => runVanessa(false) },
+      ...(hasVanessaPlugin()
+        ? [
+            { id: 'vanessa-dry', label: 'Vanessa (dry)', group: 'Запись и тест', run: () => runPlugin('vanessa', true) },
+            { id: 'vanessa', label: 'Vanessa run', group: 'Запись и тест', run: () => runPlugin('vanessa', false) },
+          ]
+        : []),
       { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
       { id: 'journal', label: 'Журнал', group: 'Вид', shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
       { id: 'results', label: 'Результаты', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
@@ -1022,6 +1028,28 @@
     features = info.features || []
     tags = info.tags || []
     testClients = await ListTestClients().catch(() => [])
+    await refreshInstalledPlugins()
+  }
+
+  async function refreshInstalledPlugins() {
+    if (!projectPath) {
+      installedPlugins = []
+      return
+    }
+    try {
+      installedPlugins = await ListPlugins()
+    } catch {
+      installedPlugins = []
+    }
+  }
+
+  function hasVanessaPlugin(): boolean {
+    return installedPlugins.some((p) => p.vanessa)
+  }
+
+  function pluginLabel(plugin: gui.PluginEntryDTO): string {
+    if (plugin.vanessa) return 'Vanessa'
+    return plugin.description || plugin.id || plugin.name
   }
 
   async function moveFeatureInCatalog(src: string, destDir: string) {
@@ -1438,45 +1466,10 @@
     focusBrowser()
   }
 
-  const exportExtensions: Record<string, string> = {
-    json: '.json',
-    feature: '.feature',
-    ts: '.ts',
-    python: '.py',
-  }
-
-  function syncExportPathForFormat() {
+  function openExportDialog() {
     if (!activeTab || isWelcome) return
-    const base = activeTab.replace(/\.[^./\\]+$/, '')
-    exportPath = base + (exportExtensions[exportFormat] || '.json')
-  }
-
-  async function openExportDialog() {
-    if (!activeTab || isWelcome) return
-    exportFormat = 'json'
-    syncExportPathForFormat()
-    exportBaseURL = ''
+    exportInputPath = activeTab
     showExport = true
-  }
-
-  async function browseExportPath() {
-    const ext = exportExtensions[exportFormat] || '.json'
-    const picked = await PickSaveFile('Экспорт сценария', `export${ext}`)
-    if (picked) exportPath = picked
-  }
-
-  async function confirmExport() {
-    if (!activeTab || isWelcome || !exportPath) return
-    const result = await Export({
-      inputPath: activeTab,
-      output: exportPath,
-      format: exportFormat,
-      baseURL: exportBaseURL,
-    })
-    if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
-    else appendLog(`Экспортировано: ${exportPath}`)
-    showExport = false
   }
 
   async function importJSON() {
@@ -1492,11 +1485,27 @@
     await loadFeature(out)
   }
 
-  async function runVanessa(dry: boolean) {
-    appendLog(dry ? 'Vanessa dry…' : 'Vanessa run…')
-    const result = await RunVanessa(dry)
+  async function runPlugin(name: string, dry: boolean) {
+    const label = pluginLabel(installedPlugins.find((p) => p.name === name) || { name, id: name, vanessa: false } as gui.PluginEntryDTO)
+    appendLog(dry ? `${label} (dry)…` : `${label}…`)
+    const result = await RunPlugin(name, dry)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(`Ошибка: ${result.error}`)
+  }
+
+  async function checkUpdatesOnStartup() {
+    if (!settingsCheckUpdatesOnStartup) return
+    try {
+      const result = await CheckUpdate()
+      const out = (result.output || '').trim()
+      if (result.error || !out) return
+      if (out.includes('Update available')) {
+        appendLog(out)
+        setStatus('Доступно обновление — Справка → Проверить обновления', 'normal')
+      }
+    } catch {
+      /* offline or dev without wails */
+    }
   }
 
   async function checkUpdates() {
@@ -1528,6 +1537,7 @@
       sidebarWidth,
       recentProjects,
       recentFeatures,
+      checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
     })
   }
 
@@ -1762,7 +1772,7 @@
           <button class="menu-item" on:click={openFindReplace} disabled={isWelcome}>Найти и заменить…<span class="menu-shortcut">Ctrl+H</span></button>
           <button class="menu-item" on:click={() => (showProjectReplace = true)} disabled={!projectPath}>Замена по проекту…</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>Экспорт JSON…</button>
+          <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>Экспорт…</button>
           <button class="menu-item" on:click={importJSON} disabled={!projectPath}>Импорт JSON…</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openSnippetPalette}>Палитра сниппетов…<span class="menu-shortcut">Ctrl+Shift+Space</span></button>
@@ -1804,8 +1814,10 @@
           <button class="menu-item" on:click={() => validateProject(false)} disabled={!projectPath}>Проверить</button>
           <button class="menu-item" on:click={() => validateProject(true)} disabled={!projectPath}>Проверить в браузере</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => runVanessa(true)} disabled={!projectPath}>Vanessa (dry)</button>
-          <button class="menu-item" on:click={() => runVanessa(false)} disabled={!projectPath}>Vanessa run</button>
+          {#if hasVanessaPlugin()}
+            <button class="menu-item" on:click={() => runPlugin('vanessa', true)} disabled={!projectPath}>Vanessa (dry)</button>
+            <button class="menu-item" on:click={() => runPlugin('vanessa', false)} disabled={!projectPath}>Vanessa run</button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -1815,9 +1827,24 @@
       {#if openMenu === 'plugins'}
         <div class="menu-dropdown">
           <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>Управление плагинами…</button>
-          <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => runVanessa(true)} disabled={!projectPath}>Vanessa (dry)</button>
-          <button class="menu-item" on:click={() => runVanessa(false)} disabled={!projectPath}>Vanessa run</button>
+          {#if installedPlugins.length > 0}
+            <div class="menu-sep"></div>
+            {#each installedPlugins as plugin (plugin.name)}
+              {#if plugin.runnable}
+                {#if plugin.vanessa}
+                  <button class="menu-item" on:click={() => runPlugin(plugin.name, true)} disabled={!projectPath}>Vanessa (dry)</button>
+                  <button class="menu-item" on:click={() => runPlugin(plugin.name, false)} disabled={!projectPath}>Vanessa run</button>
+                {:else}
+                  <button class="menu-item" on:click={() => runPlugin(plugin.name, false)} disabled={!projectPath}>Запустить {pluginLabel(plugin)}</button>
+                {/if}
+              {:else}
+                <button class="menu-item" disabled title="Нет команды запуска в plugin.json">{pluginLabel(plugin)} — установлен</button>
+              {/if}
+            {/each}
+          {:else if projectPath}
+            <div class="menu-sep"></div>
+            <button class="menu-item" disabled>Нет установленных плагинов</button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -2304,30 +2331,12 @@
 {/if}
 
 {#if showExport}
-  <div class="modal-backdrop">
-    <div class="modal">
-      <h3>Экспорт сценария</h3>
-      <label>Формат
-        <select bind:value={exportFormat} on:change={syncExportPathForFormat}>
-          <option value="json">json</option>
-          <option value="feature">feature</option>
-          <option value="ts">ts</option>
-          <option value="python">python</option>
-        </select>
-      </label>
-      <label>Файл
-        <div class="input-row">
-          <input bind:value={exportPath} />
-          <button type="button" on:click={browseExportPath}>Обзор…</button>
-        </div>
-      </label>
-      <label>Base URL <input bind:value={exportBaseURL} placeholder="https://example.com" /></label>
-      <div class="modal-actions">
-        <button class="primary" on:click={confirmExport}>Экспорт</button>
-        <button on:click={() => (showExport = false)}>Отмена</button>
-      </div>
-    </div>
-  </div>
+  <ExportDialog
+    inputPath={exportInputPath}
+    featureText={editorText}
+    onClose={() => (showExport = false)}
+    onLog={appendLog}
+  />
 {/if}
 
 {#if showSettings}
@@ -2342,6 +2351,7 @@
     bind:toolbarCompact
     bind:stepsPanelVisible
     bind:stepsPanelHeight
+    bind:checkUpdatesOnStartup={settingsCheckUpdatesOnStartup}
     onSave={applySettings}
     onCancel={() => (showSettings = false)}
   />
@@ -2426,7 +2436,13 @@
 {/if}
 
 {#if showPlugins}
-  <PluginsDialog onClose={() => (showPlugins = false)} onRunVanessa={(dry) => runVanessa(dry)} />
+  <PluginsDialog
+    onClose={() => {
+      showPlugins = false
+      void refreshInstalledPlugins()
+    }}
+    onRunPlugin={(name, dry) => runPlugin(name, dry)}
+  />
 {/if}
 
 {#if showRunHistory}

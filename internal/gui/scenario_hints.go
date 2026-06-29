@@ -165,7 +165,7 @@ func fillNoAssertHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
 	}
 	return &ScenarioHintDTO{
 		ID: "fill_no_assert", Title: "Ввод без проверки в следующих шагах",
-		StepIndex: index, Severity: "info", AutoFixable: false,
+		StepIndex: index, Severity: "info", AutoFixable: true,
 	}
 }
 
@@ -185,7 +185,7 @@ func gotoNoWaitHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
 	}
 	return &ScenarioHintDTO{
 		ID: "goto_no_wait", Title: "После перехода сразу действие — добавьте «жду» или «жду появления»",
-		StepIndex: index, Severity: "info", AutoFixable: false,
+		StepIndex: index, Severity: "info", AutoFixable: true,
 	}
 }
 
@@ -233,6 +233,10 @@ func ApplyScenarioHintFix(req ScenarioHintFixRequest) RefactorResult {
 		return applyMenuHoverFix(req.Text, req.StepIndex)
 	case "duplicate_goto":
 		return removeScenarioStepLine(req.Text, req.StepIndex)
+	case "goto_no_wait":
+		return applyGotoNoWaitFix(req.Text, req.StepIndex)
+	case "fill_no_assert":
+		return applyFillNoAssertFix(req.Text, req.StepIndex)
 	default:
 		return RefactorResult{Text: req.Text}
 	}
@@ -274,6 +278,75 @@ func applyMenuHoverFix(text string, stepIndex int) RefactorResult {
 	}
 	updated := append([]string{}, all[:lineNo]...)
 	updated = append(updated, hoverLine, clickLine)
+	updated = append(updated, all[lineNo+1:]...)
+	return RefactorResult{Text: joinLines(updated, text), Count: 1}
+}
+
+func applyGotoNoWaitFix(text string, stepIndex int) RefactorResult {
+	steps := parseScenarioSteps(text)
+	if stepIndex < 0 || stepIndex >= len(steps) || stepIndex+1 >= len(steps) {
+		return RefactorResult{Text: text}
+	}
+	gotoStep := steps[stepIndex]
+	next := steps[stepIndex+1]
+	if gotoStep.err != nil || gotoStep.action.Kind != "goto" || next.err != nil {
+		return RefactorResult{Text: text}
+	}
+
+	waitBody := `жду 1 с`
+	if sel := selectorFromAction(next.action); sel != "" {
+		waitBody = fmt.Sprintf(`жду появления "%s"`, escapeGherkinString(sel))
+	}
+	waitLine := gotoStep.line.indent + gotoStep.line.keyword + waitBody
+
+	all := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	gotoLineNo := gotoStep.line.lineNo - 1
+	if gotoLineNo < 0 || gotoLineNo >= len(all) {
+		return RefactorResult{Text: text}
+	}
+	updated := append([]string{}, all[:gotoLineNo+1]...)
+	updated = append(updated, waitLine)
+	updated = append(updated, all[gotoLineNo+1:]...)
+	return RefactorResult{Text: joinLines(updated, text), Count: 1}
+}
+
+func applyFillNoAssertFix(text string, stepIndex int) RefactorResult {
+	steps := parseScenarioSteps(text)
+	if stepIndex < 0 || stepIndex >= len(steps) {
+		return RefactorResult{Text: text}
+	}
+	step := steps[stepIndex]
+	if step.err != nil {
+		return RefactorResult{Text: text}
+	}
+
+	var assertBody string
+	switch step.action.Kind {
+	case "fill", "type":
+		value := step.action.Value1
+		selector := step.action.Value2
+		if value == "" || selector == "" {
+			return RefactorResult{Text: text}
+		}
+		assertBody = fmt.Sprintf(`проверяю текст "%s" в "%s"`, escapeGherkinString(value), escapeGherkinString(selector))
+	case "fill-generated":
+		selector := step.action.Value2
+		if selector == "" {
+			return RefactorResult{Text: text}
+		}
+		assertBody = fmt.Sprintf(`вижу "%s"`, escapeGherkinString(selector))
+	default:
+		return RefactorResult{Text: text}
+	}
+
+	assertLine := step.line.indent + step.line.keyword + assertBody
+	all := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	lineNo := step.line.lineNo - 1
+	if lineNo < 0 || lineNo >= len(all) {
+		return RefactorResult{Text: text}
+	}
+	updated := append([]string{}, all[:lineNo+1]...)
+	updated = append(updated, assertLine)
 	updated = append(updated, all[lineNo+1:]...)
 	return RefactorResult{Text: joinLines(updated, text), Count: 1}
 }
