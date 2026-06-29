@@ -3,6 +3,8 @@
   import { type CatalogNode, fileTreeLabel, fileTreeTooltip } from './catalogTree'
   import Self from './CatalogTreeNode.svelte'
 
+  const DRAG_TYPE = 'application/x-scenaria-feature'
+
   export let node: CatalogNode
   export let depth = 0
   export let activeFeature = ''
@@ -10,13 +12,18 @@
   export let batchMode = false
   export let expandAll = false
   export let collapsed: Set<string> = new Set()
+  export let dropTarget = ''
 
   export let onActivate: (path: string, kind: CatalogNode['kind']) => void = () => {}
   export let onToggleBatch: (path: string) => void = () => {}
   export let onCollapseChange: (key: string, collapsed: boolean) => void = () => {}
   export let onFileContextMenu: (event: MouseEvent, path: string) => void = () => {}
+  export let onMoveFeature: (src: string, destDir: string) => void = () => {}
+  export let onDropTarget: (path: string) => void = () => {}
 
   $: expanded = node.kind === 'file' ? false : expandAll || !collapsed.has(node.path)
+  $: isFolder = node.kind !== 'file'
+  $: isDropTarget = isFolder && dropTarget === node.path
 
   function toggleExpand() {
     if (node.kind === 'file') return
@@ -44,6 +51,35 @@
     if (node.kind !== 'file') onActivate(node.path, node.kind)
   }
 
+  function onDragStart(e: DragEvent) {
+    if (node.kind !== 'file' || !e.dataTransfer) return
+    e.dataTransfer.setData(DRAG_TYPE, node.path)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function onDragEnd() {
+    onDropTarget('')
+  }
+
+  function onDragOver(e: DragEvent) {
+    if (!isFolder || !e.dataTransfer?.types.includes(DRAG_TYPE)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    onDropTarget(node.path)
+  }
+
+  function onDragLeave() {
+    if (isDropTarget) onDropTarget('')
+  }
+
+  function onDrop(e: DragEvent) {
+    if (!isFolder) return
+    e.preventDefault()
+    onDropTarget('')
+    const src = e.dataTransfer?.getData(DRAG_TYPE)
+    if (src) onMoveFeature(src, node.path)
+  }
+
   $: rowClass = [
     'catalog-tree-row',
     node.kind === 'file' ? 'file' : 'folder',
@@ -52,6 +88,7 @@
     node.kind === 'file' && node.runSuccess === true ? 'run-ok' : '',
     node.kind === 'file' && node.runSuccess === false ? 'run-fail' : '',
     node.kind === 'file' && node.runSuccess === null ? 'run-none' : '',
+    isDropTarget ? 'drop-target' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -66,9 +103,15 @@
     class={rowClass}
     style="padding-left: calc({indent} + 4px)"
     title={node.kind === 'file' ? fileTreeTooltip(node) : node.path}
+    draggable={node.kind === 'file'}
     on:click={onRowClick}
     on:dblclick={onRowDblClick}
     on:contextmenu={(e) => node.kind === 'file' && onFileContextMenu(e, node.path)}
+    on:dragstart={onDragStart}
+    on:dragend={onDragEnd}
+    on:dragover={onDragOver}
+    on:dragleave={onDragLeave}
+    on:drop={onDrop}
   >
     {#if node.kind !== 'file'}
       <span class="tree-chevron" aria-hidden="true">
@@ -95,10 +138,13 @@
         {batchMode}
         {expandAll}
         {collapsed}
+        {dropTarget}
         {onActivate}
         {onToggleBatch}
         {onCollapseChange}
         {onFileContextMenu}
+        {onMoveFeature}
+        {onDropTarget}
       />
     {/each}
   {/if}
@@ -136,6 +182,11 @@
 
   .catalog-tree-row.batch-selected {
     background: rgba(9, 71, 113, 0.35);
+  }
+
+  .catalog-tree-row.drop-target {
+    outline: 1px dashed var(--color-accent);
+    background: rgba(9, 71, 113, 0.25);
   }
 
   .catalog-tree-row.run-ok .tree-file-label {

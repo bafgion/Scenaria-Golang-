@@ -182,6 +182,14 @@ func (a *App) DuplicateFeature(path string) (string, error) {
 	return a.svc.DuplicateFeature(path)
 }
 
+func (a *App) MoveFeature(src, destDir string) (string, error) {
+	return a.svc.MoveFeature(src, destDir)
+}
+
+func (a *App) ImportFeatures(destDir string, paths []string) ([]string, error) {
+	return a.svc.ImportFeatures(destDir, paths)
+}
+
 func (a *App) LoadSettings() (gui.AppSettingsDTO, error) {
 	return a.svc.LoadSettings()
 }

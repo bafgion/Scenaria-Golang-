@@ -12,6 +12,7 @@ import (
 type EditorStepRow struct {
 	Line    int    `json:"line"`
 	Keyword string `json:"keyword"`
+	Text    string `json:"text"`
 	Action  string `json:"action"`
 	Element string `json:"element"`
 	Value   string `json:"value"`
@@ -33,11 +34,12 @@ func ParseEditorSteps(text string) []EditorStepRow {
 		if stepText == "" && keyword == "" {
 			continue
 		}
-		row := EditorStepRow{
-			Line:    i + 1,
-			Keyword: keyword,
-			Action:  stepText,
-		}
+	row := EditorStepRow{
+		Line:    i + 1,
+		Keyword: keyword,
+		Action:  stepText,
+		Text:    stepText,
+	}
 		action, err := stepdsl.Parse(gherkin.Step{Line: i + 1, Text: stepText})
 		if err != nil {
 			row.Error = fmt.Sprintf("%v", err)

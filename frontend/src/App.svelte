@@ -26,7 +26,7 @@
   import SplashScreen from './lib/SplashScreen.svelte'
   import { loadRecents, rememberProject, rememberFeature } from './lib/recents'
   import { icons, toolbarIcons } from './lib/icons'
-  import { EventsOn } from '../wailsjs/runtime/runtime'
+  import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
   import {
     Version,
     OpenProject,
@@ -71,6 +71,8 @@
     ReplaceInProject,
     DeleteFeature,
     DuplicateFeature,
+    MoveFeature,
+    ImportFeatures,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -120,6 +122,8 @@
   let showExport = false
   let showSteps = false
   let showStepsHelp = false
+  let stepsHelpQuery = ''
+  let catalogDropTarget = ''
   let showAbout = false
   let showFindReplace = false
   let showProjectReplace = false
@@ -331,6 +335,15 @@
     await sleep(80)
 
     setSplashStage('Готово', 100)
+
+    try {
+      OnFileDrop((_x, _y, paths) => {
+        if (projectPath && paths?.length) void importDroppedFeatures(projectPath, paths)
+      }, false)
+      unsubscribers.push(() => OnFileDropOff())
+    } catch {
+      /* dev without wails runtime */
+    }
 
     try {
       unsubscribers.push(
@@ -911,6 +924,36 @@
     testClients = await ListTestClients().catch(() => [])
   }
 
+  async function moveFeatureInCatalog(src: string, destDir: string) {
+    if (!src || !destDir) return
+    try {
+      const newPath = await MoveFeature(src, destDir)
+      const wasActive = activeTab === src
+      if (tabs.some((t) => t.path === src)) {
+        tabs = tabs.map((t) => (t.path === src ? { ...t, path: newPath } : t))
+        if (wasActive) activeTab = newPath
+      }
+      batchSelected = batchSelected.map((p) => (p === src ? newPath : p))
+      await refreshProject()
+      if (wasActive) await loadFeature(newPath)
+      appendLog(`Перемещён: ${basename(newPath)}`)
+    } catch (e: any) {
+      appendLog(`Ошибка: ${e}`)
+    }
+  }
+
+  async function importDroppedFeatures(destDir: string, paths: string[]) {
+    if (!destDir || !paths.length) return
+    try {
+      const imported = await ImportFeatures(destDir, paths)
+      await refreshProject()
+      appendLog(`Импортировано файлов: ${imported.length}`)
+      if (imported.length === 1) await loadFeature(imported[0])
+    } catch (e: any) {
+      appendLog(`Ошибка импорта: ${e}`)
+    }
+  }
+
   async function openProjectDialog() {
     let path = ''
     try {
@@ -1220,12 +1263,18 @@
     showSteps = true
   }
 
-  function openStepsHelp() {
+  function openStepsHelp(query = '') {
     if (recordingBlocksManualTools()) {
       appendLog('Поставьте запись на паузу, чтобы открыть справку по шагам')
       return
     }
+    stepsHelpQuery = query
     showStepsHelp = true
+  }
+
+  function openStepHelpFromPanel(step: EditorStepRow) {
+    if (!step.text) return
+    openStepsHelp(step.text)
   }
 
   async function searchSteps() {
@@ -1771,6 +1820,7 @@
                 {batchMode}
                 expandAll={catalogViewState.expandAll}
                 collapsed={catalogCollapsed}
+                dropTarget={catalogDropTarget}
                 onActivate={onCatalogActivate}
                 onToggleBatch={(path) => {
                   if (!batchMode) batchMode = true
@@ -1778,6 +1828,8 @@
                 }}
                 onCollapseChange={onCatalogCollapse}
                 onFileContextMenu={onFileContextMenu}
+                onMoveFeature={moveFeatureInCatalog}
+                onDropTarget={(path) => (catalogDropTarget = path)}
               />
             {/if}
           </div>
@@ -1961,7 +2013,13 @@
                         </thead>
                         <tbody>
                           {#each editorSteps as step, i}
-                            <tr class:error={!!step.error} class:clickable={!!step.line} on:click={() => step.line && gotoEditorLine(step.line)}>
+                            <tr
+                              class:error={!!step.error}
+                              class:clickable={!!step.line}
+                              on:click={() => step.line && gotoEditorLine(step.line)}
+                              on:dblclick={() => openStepHelpFromPanel(step)}
+                              title={step.text ? 'Двойной клик — справка по шагу' : ''}
+                            >
                               <td>{i + 1}</td>
                               <td>{step.action}{step.error ? ' ⚠' : ''}</td>
                               <td>{step.element || '—'}</td>
@@ -2109,7 +2167,11 @@
 {/if}
 
 {#if showStepsHelp}
-  <StepsHelpDialog onClose={() => (showStepsHelp = false)} onInsert={insertStep} />
+  <StepsHelpDialog
+    initialQuery={stepsHelpQuery}
+    onClose={() => { showStepsHelp = false; stepsHelpQuery = '' }}
+    onInsert={insertStep}
+  />
 {/if}
 
 {#if showSteps}

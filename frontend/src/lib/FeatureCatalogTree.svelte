@@ -8,11 +8,14 @@
   export let batchMode = false
   export let expandAll = false
   export let collapsed: Set<string> = new Set()
+  export let dropTarget = ''
 
   export let onActivate: (path: string, kind: CatalogNode['kind']) => void = () => {}
   export let onToggleBatch: (path: string) => void = () => {}
   export let onCollapseChange: (key: string, collapsed: boolean) => void = () => {}
   export let onFileContextMenu: (event: MouseEvent, path: string) => void = () => {}
+  export let onMoveFeature: (src: string, destDir: string) => void = () => {}
+  export let onDropTarget: (path: string) => void = () => {}
 </script>
 
 <div class="catalog-tree" role="tree">
@@ -24,10 +27,13 @@
     {batchMode}
     {expandAll}
     {collapsed}
+    {dropTarget}
     {onActivate}
     {onToggleBatch}
     {onCollapseChange}
     {onFileContextMenu}
+    {onMoveFeature}
+    {onDropTarget}
   />
 </div>
 

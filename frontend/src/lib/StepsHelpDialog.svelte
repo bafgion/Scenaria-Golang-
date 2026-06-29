@@ -6,6 +6,7 @@
 
   export let onClose: () => void = () => {}
   export let onInsert: ((template: string) => void) | null = null
+  export let initialQuery = ''
 
   let query = ''
   let entries: StepEntry[] = []
@@ -13,8 +14,9 @@
   let loading = true
 
   onMount(async () => {
+    query = initialQuery
     try {
-      entries = await SearchSteps('')
+      entries = await SearchSteps(initialQuery)
     } catch {
       entries = []
     } finally {

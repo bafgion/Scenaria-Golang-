@@ -16,6 +16,10 @@ export function DeleteFeature(arg1:string):Promise<void>;
 
 export function DuplicateFeature(arg1:string):Promise<string>;
 
+export function ImportFeatures(arg1:string,arg2:Array<string>):Promise<Array<string>>;
+
+export function MoveFeature(arg1:string,arg2:string):Promise<string>;
+
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
 
 export function FocusBrowser():Promise<void>;

@@ -39,6 +39,7 @@ export namespace gui {
 	export class EditorStepRow {
 	    line: number;
 	    keyword: string;
+	    text: string;
 	    action: string;
 	    element: string;
 	    value: string;
@@ -52,6 +53,7 @@ export namespace gui {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.line = source["line"];
 	        this.keyword = source["keyword"];
+	        this.text = source["text"];
 	        this.action = source["action"];
 	        this.element = source["element"];
 	        this.value = source["value"];

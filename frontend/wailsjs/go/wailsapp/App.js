@@ -26,6 +26,14 @@ export function DuplicateFeature(arg1) {
   return window['go']['wailsapp']['App']['DuplicateFeature'](arg1);
 }
 
+export function ImportFeatures(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ImportFeatures'](arg1, arg2);
+}
+
+export function MoveFeature(arg1, arg2) {
+  return window['go']['wailsapp']['App']['MoveFeature'](arg1, arg2);
+}
+
 export function CheckUpdate() {
   return window['go']['wailsapp']['App']['CheckUpdate']();
 }
