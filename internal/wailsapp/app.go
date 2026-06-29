@@ -234,8 +234,8 @@ func (a *App) RunVanessa(dryRun bool) gui.RunResult {
 	return a.svc.RunVanessa(dryRun)
 }
 
-func (a *App) RunPlugin(name string, dryRun bool) gui.RunResult {
-	return a.svc.RunPlugin(name, dryRun)
+func (a *App) RunPlugin(req gui.PluginRunRequest) gui.RunResult {
+	return a.svc.RunPlugin(req)
 }
 
 func (a *App) StartRecord(req gui.RecordRequest) {

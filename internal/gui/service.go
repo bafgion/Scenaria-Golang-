@@ -50,7 +50,19 @@ type RunRequest struct {
 	TraceDir   string            `json:"traceDir"`
 	VideoDir   string            `json:"videoDir"`
 	HTMLPath   string            `json:"htmlPath"`
+	JUnitPath  string            `json:"junitPath"`
 	Targets    []string          `json:"targets"`
+	Browser    string            `json:"browser"`
+	Workers    int               `json:"workers"`
+	SlowMo     int               `json:"slowMo"`
+}
+
+type PluginRunRequest struct {
+	Name        string   `json:"name"`
+	DryRun      bool     `json:"dryRun"`
+	Tag         string   `json:"tag"`
+	ExcludeTags []string `json:"excludeTags"`
+	Scenario    string   `json:"scenario"`
 }
 
 type RunResult struct {
@@ -259,6 +271,18 @@ func (s *Service) Run(req RunRequest) RunResult {
 	}
 	if req.HTMLPath != "" {
 		args = append(args, "--html", req.HTMLPath)
+	}
+	if req.JUnitPath != "" {
+		args = append(args, "--junit", req.JUnitPath)
+	}
+	if req.Browser != "" && !req.DryRun {
+		args = append(args, "--browser", req.Browser)
+	}
+	if req.Workers > 1 {
+		args = append(args, "--workers", fmt.Sprintf("%d", req.Workers))
+	}
+	if req.SlowMo > 0 && !req.DryRun {
+		args = append(args, "--slow-mo", fmt.Sprintf("%d", req.SlowMo))
 	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {

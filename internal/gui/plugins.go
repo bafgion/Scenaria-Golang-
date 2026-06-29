@@ -59,32 +59,32 @@ func pluginEntryDTO(projectRoot string, entry plugin.Entry) PluginEntryDTO {
 	return dto
 }
 
-func (s *Service) RunPlugin(name string, dryRun bool) RunResult {
+func (s *Service) RunPlugin(req PluginRunRequest) RunResult {
 	path := s.ProjectPath()
 	if path == "" {
 		return RunResult{Error: "open a project folder first"}
 	}
-	name = strings.TrimSpace(name)
+	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		return RunResult{Error: "plugin name is required"}
-	}
-	if strings.EqualFold(name, "vanessa") {
-		return s.RunVanessa(dryRun)
 	}
 	desc, err := plugin.LoadDescriptor(path, name)
 	if err != nil {
 		if strings.EqualFold(name, "vanessa") {
-			return s.RunVanessa(dryRun)
+			return s.runVanessa(req)
 		}
 		return RunResult{Error: err.Error()}
 	}
-	target, err := plugin.ResolveRun(path, desc, dryRun)
+	if plugin.IsVanessa(desc) {
+		return s.runVanessa(req)
+	}
+	target, err := plugin.ResolveRun(path, desc, req.DryRun)
 	if err != nil {
 		return RunResult{Error: err.Error()}
 	}
 	switch target.Runner {
 	case "va":
-		out, runErr := captureCLI(func() error { return cliRunVA(target.Args) })
+		out, runErr := captureCLI(func() error { return cliRunVA(appendVanessaArgs(target.Args, req)) })
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
@@ -98,6 +98,41 @@ func (s *Service) RunPlugin(name string, dryRun bool) RunResult {
 	default:
 		return RunResult{Error: fmt.Sprintf("unsupported plugin runner %q", target.Runner)}
 	}
+}
+
+func (s *Service) runVanessa(req PluginRunRequest) RunResult {
+	path := s.ProjectPath()
+	args := []string{"run", "--project", path}
+	if req.DryRun {
+		args = append(args, "--dry-run")
+	}
+	args = appendVanessaArgs(args, req)
+	out, err := captureCLI(func() error { return cliRunVA(args) })
+	if err != nil {
+		return RunResult{Output: out, Error: err.Error()}
+	}
+	return RunResult{Output: out}
+}
+
+func appendVanessaArgs(args []string, req PluginRunRequest) []string {
+	if tag := strings.TrimSpace(req.Tag); tag != "" {
+		args = append(args, "--tag", tag)
+	}
+	for _, tag := range req.ExcludeTags {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			args = append(args, "--exclude-tag", tag)
+		}
+	}
+	if scenario := strings.TrimSpace(req.Scenario); scenario != "" {
+		args = append(args, "--scenario", scenario)
+	}
+	return args
+}
+
+// RunVanessa keeps backward compatibility for simple dry/run calls.
+func (s *Service) RunVanessa(dryRun bool) RunResult {
+	return s.RunPlugin(PluginRunRequest{Name: "vanessa", DryRun: dryRun})
 }
 
 func (s *Service) InstallPlugin(name, source string) error {

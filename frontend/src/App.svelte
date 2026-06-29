@@ -13,6 +13,10 @@
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
   import PluginsDialog from './lib/PluginsDialog.svelte'
   import ExportDialog from './lib/ExportDialog.svelte'
+  import RunDialog from './lib/RunDialog.svelte'
+  import RecordDialog from './lib/RecordDialog.svelte'
+  import VanessaRunDialog from './lib/VanessaRunDialog.svelte'
+  import { defaultRunForm, type RunForm } from './lib/runTypes'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -84,19 +88,6 @@
   const WELCOME_KEY = '__welcome__'
 
   type EditorTab = { path: string; content: string; dirty: boolean }
-  type RunOpts = {
-    tag: string
-    testClient: string
-    vars: string
-    engine: string
-    dryRun: boolean
-    headed: boolean
-    installPW: boolean
-    allure: boolean
-    trace: boolean
-    video: boolean
-    html: boolean
-  }
   type EditorStepRow = gui.EditorStepRow
 
   let version = ''
@@ -137,6 +128,11 @@
   let showProjectReplace = false
   let showHotkeys = false
   let showRunHistory = false
+  let showVanessaRun = false
+  let vanessaDry = false
+  let vanessaTag = ''
+  let vanessaExcludeTags = ''
+  let vanessaScenario = ''
   let showHttpAuth = false
   let httpAuthHost = ''
   let showPickerStep = false
@@ -183,20 +179,8 @@
   let hoverRecord = false
   let stepsPanelVisible = true
 
-  let lastRun: RunOpts = {
-    tag: '',
-    testClient: '',
-    vars: '',
-    engine: 'playwright',
-    dryRun: false,
-    headed: true,
-    installPW: true,
-    allure: false,
-    trace: false,
-    video: false,
-    html: true,
-  }
-  let runForm: RunOpts = { ...lastRun }
+  let lastRun: RunForm = defaultRunForm({ headed: true, installPW: true, html: true })
+  let runForm: RunForm = { ...lastRun }
 
   let settingsBrowser = 'chromium'
   let settingsHeadless = false
@@ -490,6 +474,11 @@
     stepsPanelVisible = s.stepsPanelVisible !== false
     stepsPanelHeight = s.stepsPanelHeight || 160
     settingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup !== false
+    lastRun = {
+      ...lastRun,
+      workers: s.parallelWorkers || 1,
+      browser: s.browser || 'chromium',
+    }
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
@@ -533,8 +522,8 @@
       { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => validateProject(true) },
       ...(hasVanessaPlugin()
         ? [
-            { id: 'vanessa-dry', label: 'Vanessa (dry)', group: 'Запись и тест', run: () => runPlugin('vanessa', true) },
-            { id: 'vanessa', label: 'Vanessa run', group: 'Запись и тест', run: () => runPlugin('vanessa', false) },
+            { id: 'vanessa-dry', label: 'Vanessa (dry)…', group: 'Запись и тест', run: () => openVanessaDialog(true) },
+            { id: 'vanessa', label: 'Vanessa run…', group: 'Запись и тест', run: () => openVanessaDialog(false) },
           ]
         : []),
       { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
@@ -997,6 +986,10 @@
     openMenu = openMenu === name ? null : name
   }
 
+  function closeMenu() {
+    openMenu = null
+  }
+
   async function refreshArtifacts() {
     try {
       projectArtifacts = await ProjectArtifacts()
@@ -1268,13 +1261,34 @@
     return out
   }
 
-  function openRunDialog(title: string, defaults: Partial<RunOpts>) {
+  function openRunDialog(title: string, defaults: Partial<RunForm>) {
     runDialogTitle = title
     runForm = { ...lastRun, ...defaults }
     showRun = true
   }
 
-  async function executeRun(opts: RunOpts, targets: string[] = []) {
+  function openVanessaDialog(dry: boolean) {
+    vanessaDry = dry
+    vanessaTag = ''
+    vanessaExcludeTags = ''
+    vanessaScenario = ''
+    showVanessaRun = true
+  }
+
+  async function confirmVanessaRun() {
+    showVanessaRun = false
+    const exclude = vanessaExcludeTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    await runPlugin('vanessa', vanessaDry, {
+      tag: vanessaTag.trim(),
+      excludeTags: exclude,
+      scenario: vanessaScenario.trim(),
+    })
+  }
+
+  async function executeRun(opts: RunForm, targets: string[] = []) {
     if (!projectPath) return
     lastRun = { ...opts }
     showRun = false
@@ -1284,6 +1298,8 @@
     const videoDir = !opts.dryRun && opts.video ? scenariaSubdir('videos') : ''
 
     const htmlPath = opts.html ? scenariaSubdir('report.html') : ''
+
+    const junitPath = opts.junit ? scenariaSubdir('junit.xml') : ''
 
     playing = !opts.dryRun
     setStatus('▶ Идёт тест', 'busy')
@@ -1303,6 +1319,10 @@
       traceDir,
       videoDir,
       htmlPath,
+      junitPath,
+      browser: opts.dryRun ? '' : opts.browser || settingsBrowser || 'chromium',
+      workers: opts.workers || settingsWorkers || 1,
+      slowMo: opts.dryRun ? 0 : opts.slowMo || 0,
       targets,
     })
     playing = false
@@ -1485,10 +1505,16 @@
     await loadFeature(out)
   }
 
-  async function runPlugin(name: string, dry: boolean) {
+  async function runPlugin(name: string, dry: boolean, opts: Partial<gui.PluginRunRequest> = {}) {
     const label = pluginLabel(installedPlugins.find((p) => p.name === name) || { name, id: name, vanessa: false } as gui.PluginEntryDTO)
     appendLog(dry ? `${label} (dry)…` : `${label}…`)
-    const result = await RunPlugin(name, dry)
+    const result = await RunPlugin({
+      name,
+      dryRun: dry,
+      tag: opts.tag || '',
+      excludeTags: opts.excludeTags || [],
+      scenario: opts.scenario || '',
+    })
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(`Ошибка: ${result.error}`)
   }
@@ -1599,11 +1625,6 @@
   async function cancelOtp() {
     await CancelOTP()
     showOtp = false
-  }
-
-  function tagsHint(): string {
-    if (!tags.length) return 'Теги в проекте: нет'
-    return 'Теги в проекте: ' + tags.slice(0, 8).join(', ')
   }
 
   async function newScenario() {
@@ -1745,11 +1766,11 @@
 
 <div class="ide" class:panel-open={bottomPanelOpen}>
   <!-- Menu bar (Python: Проект / Сценарий / Запись и тест / Вид / Справка) -->
-  <div class="menubar" role="menubar" on:click|stopPropagation>
+  <div class="menubar" role="menubar">
     <div class="menu-root" class:open={openMenu === 'project'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('project', e)}>Проект</button>
       {#if openMenu === 'project'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={openExamples}>Открыть примеры сценариев</button>
           <button class="menu-item" on:click={openProjectDialog}>Открыть проект…</button>
           <button class="menu-item" on:click={openSettings}>Настройки…<span class="menu-shortcut">Ctrl+,</span></button>
@@ -1762,7 +1783,7 @@
     <div class="menu-root" class:open={openMenu === 'scenario'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('scenario', e)}>Сценарий</button>
       {#if openMenu === 'scenario'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={newScenario}>Новый</button>
           <button class="menu-item" on:click={openFileDialog}>Открыть…</button>
           <button class="menu-item" on:click={saveFeature} disabled={isWelcome}>Сохранить<span class="menu-shortcut">Ctrl+S</span></button>
@@ -1788,7 +1809,7 @@
     <div class="menu-root" class:open={openMenu === 'run'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('run', e)}>Запись и тест</button>
       {#if openMenu === 'run'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
           <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
           <button class="menu-item" on:click={stopRecord} disabled={!recording}>Стоп</button>
@@ -1815,8 +1836,8 @@
           <button class="menu-item" on:click={() => validateProject(true)} disabled={!projectPath}>Проверить в браузере</button>
           <div class="menu-sep"></div>
           {#if hasVanessaPlugin()}
-            <button class="menu-item" on:click={() => runPlugin('vanessa', true)} disabled={!projectPath}>Vanessa (dry)</button>
-            <button class="menu-item" on:click={() => runPlugin('vanessa', false)} disabled={!projectPath}>Vanessa run</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
           {/if}
         </div>
       {/if}
@@ -1825,15 +1846,15 @@
     <div class="menu-root" class:open={openMenu === 'plugins'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>Плагины</button>
       {#if openMenu === 'plugins'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>Управление плагинами…</button>
           {#if installedPlugins.length > 0}
             <div class="menu-sep"></div>
             {#each installedPlugins as plugin (plugin.name)}
               {#if plugin.runnable}
                 {#if plugin.vanessa}
-                  <button class="menu-item" on:click={() => runPlugin(plugin.name, true)} disabled={!projectPath}>Vanessa (dry)</button>
-                  <button class="menu-item" on:click={() => runPlugin(plugin.name, false)} disabled={!projectPath}>Vanessa run</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
                 {:else}
                   <button class="menu-item" on:click={() => runPlugin(plugin.name, false)} disabled={!projectPath}>Запустить {pluginLabel(plugin)}</button>
                 {/if}
@@ -1852,7 +1873,7 @@
     <div class="menu-root" class:open={openMenu === 'view'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('view', e)}>Вид</button>
       {#if openMenu === 'view'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>Старт</button>
           <button class="menu-item" on:click={() => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) }}>Сценарии</button>
           <button class="menu-item" on:click={() => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) }}>Скрыть сценарии</button>
@@ -1879,7 +1900,7 @@
     <div class="menu-root" class:open={openMenu === 'help'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>Справка</button>
       {#if openMenu === 'help'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={openStepsHelp}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
           <button class="menu-item" on:click={() => (showHotkeys = true)}>Горячие клавиши<span class="menu-shortcut">Shift+F1</span></button>
           <button class="menu-item" on:click={checkUpdates}>Проверить обновления…</button>
@@ -2243,41 +2264,26 @@
 {/if}
 
 {#if showRun}
-  <div class="modal-backdrop">
-    <div class="modal wide">
-      <h3>{runDialogTitle}</h3>
-      <label>Тег <input bind:value={runForm.tag} placeholder="@smoke" /></label>
-      <label>TestClient
-        <select bind:value={runForm.testClient}>
-          <option value="">(из feature / не задан)</option>
-          {#each testClients as client}
-            <option value={client}>{client}</option>
-          {/each}
-        </select>
-      </label>
-      <label>Движок
-        <select bind:value={runForm.engine}>
-          <option value="playwright">playwright</option>
-          <option value="stub">stub</option>
-        </select>
-      </label>
-      <label>Переменные (NAME=VALUE)
-        <textarea bind:value={runForm.vars} placeholder="BASE_URL=https://example.com"></textarea>
-      </label>
-      <p class="hint">{tagsHint()}</p>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.dryRun} /> Dry-run (без браузера)</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.headed} /> Headed (видимый браузер)</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.installPW} /> Установить Playwright при необходимости</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.allure} /> Allure (.scenaria/allure-results)</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.trace} disabled={runForm.dryRun} /> Trace</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.video} disabled={runForm.dryRun} /> Video</label>
-      <label class="check-row"><input type="checkbox" bind:checked={runForm.html} disabled={runForm.dryRun} /> HTML-отчёт (.scenaria/report.html)</label>
-      <div class="modal-actions">
-        <button class="primary" on:click={confirmRun}>Запустить</button>
-        <button on:click={() => (showRun = false)}>Отмена</button>
-      </div>
-    </div>
-  </div>
+  <RunDialog
+    title={runDialogTitle}
+    bind:form={runForm}
+    {testClients}
+    {tags}
+    onConfirm={confirmRun}
+    onCancel={() => (showRun = false)}
+  />
+{/if}
+
+{#if showVanessaRun}
+  <VanessaRunDialog
+    dryRun={vanessaDry}
+    bind:tag={vanessaTag}
+    bind:excludeTags={vanessaExcludeTags}
+    bind:scenario={vanessaScenario}
+    {tags}
+    onConfirm={confirmVanessaRun}
+    onCancel={() => (showVanessaRun = false)}
+  />
 {/if}
 
 {#if showTestClient}
@@ -2366,33 +2372,25 @@
 {/if}
 
 {#if showRecord}
-  <div class="modal-backdrop">
-    <div class="modal">
-      <h3>Live-запись</h3>
-      <label>URL <input bind:value={recordURL} /></label>
-      <label>Файл <input bind:value={recordOutput} /></label>
-      <label>TestClient
-        <select bind:value={recordTestClient}>
-          <option value="">(без профиля)</option>
-          {#each testClients as client}
-            <option value={client}>{client}</option>
-          {/each}
-        </select>
-      </label>
-      <label>Idle (сек) <input type="number" bind:value={recordIdle} min="5" /></label>
-      <p class="hint">В URL можно указать user:pass@host — пароль сохранится для хоста.</p>
-      <div class="modal-actions">
-        <button type="button" on:click={openHttpAuthDialog}>HTTP Auth…</button>
-        {#if recording}
-          <button on:click={toggleRecordPause}>{recordPaused ? 'Resume' : 'Pause'}</button>
-          <button on:click={stopRecord}>Стоп</button>
-        {:else}
-          <button class="primary" on:click={startRecord}>Начать</button>
-        {/if}
-        <button on:click={() => (showRecord = false)}>Закрыть</button>
-      </div>
-    </div>
-  </div>
+  <RecordDialog
+    bind:url={recordURL}
+    bind:output={recordOutput}
+    bind:testClient={recordTestClient}
+    bind:idleSeconds={recordIdle}
+    bind:appendTo={recordAppendTo}
+    bind:headless={settingsHeadless}
+    bind:filterRecording
+    bind:navOnlyRecording
+    bind:hoverRecord
+    {testClients}
+    {recording}
+    {recordPaused}
+    onHttpAuth={openHttpAuthDialog}
+    onStart={startRecord}
+    onTogglePause={toggleRecordPause}
+    onStop={stopRecord}
+    onClose={() => (showRecord = false)}
+  />
 {/if}
 
 {#if showOtp}

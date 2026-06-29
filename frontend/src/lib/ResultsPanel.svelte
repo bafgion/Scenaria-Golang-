@@ -36,6 +36,9 @@
       {#if artifacts.htmlReport}
         <button type="button" on:click={() => onOpenFolder(artifacts.htmlReport)}>HTML-отчёт</button>
       {/if}
+      {#if artifacts.junitReport}
+        <button type="button" on:click={() => onOpenFolder(artifacts.junitReport)}>JUnit</button>
+      {/if}
       {#if artifacts.tracesDir}
         <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>Trace</button>
       {/if}

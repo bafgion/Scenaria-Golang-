@@ -70,22 +70,6 @@ func (s *Service) ImportJSON(req ImportRequest) RunResult {
 	return RunResult{Output: out}
 }
 
-func (s *Service) RunVanessa(dryRun bool) RunResult {
-	path := s.ProjectPath()
-	if path == "" {
-		return RunResult{Error: "open a project folder first"}
-	}
-	args := []string{"run", "--project", path}
-	if dryRun {
-		args = append(args, "--dry-run")
-	}
-	out, err := captureCLI(func() error { return cliRunVA(args) })
-	if err != nil {
-		return RunResult{Output: out, Error: err.Error()}
-	}
-	return RunResult{Output: out}
-}
-
 func (s *Service) RecordLive(req RecordRequest) RunResult {
 	path := s.ProjectPath()
 	if path == "" {

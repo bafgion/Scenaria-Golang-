@@ -62,24 +62,38 @@ export namespace gui {
 	        this.error = source["error"];
 	    }
 	}
-	export class ExportRequest {
-	    inputPath: string;
-	    output: string;
-	    format: string;
-	    baseURL: string;
-	    force: boolean;
+	export class ScenarioHintDTO {
+	    id: string;
+	    title: string;
+	    stepIndex: number;
+	    severity: string;
+	    autoFixable: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new ExportRequest(source);
+	        return new ScenarioHintDTO(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.inputPath = source["inputPath"];
-	        this.output = source["output"];
-	        this.format = source["format"];
-	        this.baseURL = source["baseURL"];
-	        this.force = source["force"];
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.stepIndex = source["stepIndex"];
+	        this.severity = source["severity"];
+	        this.autoFixable = source["autoFixable"];
+	    }
+	}
+	export class ValidationIssue {
+	    line: number;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ValidationIssue(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.line = source["line"];
+	        this.message = source["message"];
 	    }
 	}
 	export class ExportPreview {
@@ -105,35 +119,37 @@ export namespace gui {
 		        return a;
 		    }
 		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => {
-		            if (typeof elem === 'object' && elem !== null) {
-		                if (asMap) {
-		                    for (const key of Object.keys(elem)) {
-		                        elem[key] = new classs(elem[key]);
-		                    }
-		                    return elem;
-		                }
-		                return new classs(elem);
-		            } else {
-		                return elem;
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
 		            }
-		        });
+		            return a;
+		        }
+		        return new classs(a);
 		    }
 		    return a;
 		}
 	}
-	export class HighlightSpan {
-	    text: string;
-	    kind: string;
+	export class ExportRequest {
+	    inputPath: string;
+	    output: string;
+	    format: string;
+	    baseURL: string;
+	    force: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new HighlightSpan(source);
+	        return new ExportRequest(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.text = source["text"];
-	        this.kind = source["kind"];
+	        this.inputPath = source["inputPath"];
+	        this.output = source["output"];
+	        this.format = source["format"];
+	        this.baseURL = source["baseURL"];
+	        this.force = source["force"];
 	    }
 	}
 	export class HTTPAuthCredentials {
@@ -166,6 +182,20 @@ export namespace gui {
 	        this.password = source["password"];
 	    }
 	}
+	export class HighlightSpan {
+	    text: string;
+	    kind: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HighlightSpan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.kind = source["kind"];
+	    }
+	}
 	export class ImportRequest {
 	    jsonPath: string;
 	    outputPath: string;
@@ -180,11 +210,70 @@ export namespace gui {
 	        this.outputPath = source["outputPath"];
 	    }
 	}
+	export class PickSelectorResult {
+	    selector: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PickSelectorResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selector = source["selector"];
+	        this.error = source["error"];
+	    }
+	}
+	export class PickerStepChoice {
+	    label: string;
+	    stepBody: string;
+	    description: string;
+	    preview: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PickerStepChoice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.stepBody = source["stepBody"];
+	        this.description = source["description"];
+	        this.preview = source["preview"];
+	    }
+	}
+	export class PluginEntryDTO {
+	    name: string;
+	    source: string;
+	    installedAt: string;
+	    id: string;
+	    description: string;
+	    commands: string[];
+	    runnable: boolean;
+	    vanessa: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginEntryDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.source = source["source"];
+	        this.installedAt = source["installedAt"];
+	        this.id = source["id"];
+	        this.description = source["description"];
+	        this.commands = source["commands"];
+	        this.runnable = source["runnable"];
+	        this.vanessa = source["vanessa"];
+	    }
+	}
 	export class ProjectArtifacts {
 	    allureDir: string;
 	    tracesDir: string;
 	    videosDir: string;
 	    htmlReport: string;
+	    junitReport: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProjectArtifacts(source);
@@ -196,6 +285,27 @@ export namespace gui {
 	        this.tracesDir = source["tracesDir"];
 	        this.videosDir = source["videosDir"];
 	        this.htmlReport = source["htmlReport"];
+	        this.junitReport = source["junitReport"];
+	    }
+	}
+	export class PluginRunRequest {
+	    name: string;
+	    dryRun: boolean;
+	    tag: string;
+	    excludeTags: string[];
+	    scenario: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginRunRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.dryRun = source["dryRun"];
+	        this.tag = source["tag"];
+	        this.excludeTags = source["excludeTags"];
+	        this.scenario = source["scenario"];
 	    }
 	}
 	export class ProjectInfo {
@@ -260,38 +370,6 @@ export namespace gui {
 	        this.features = source["features"];
 	    }
 	}
-	export class PickSelectorResult {
-	    selector: string;
-	    error: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PickSelectorResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.selector = source["selector"];
-	        this.error = source["error"];
-	    }
-	}
-	export class PickerStepChoice {
-	    label: string;
-	    stepBody: string;
-	    description: string;
-	    preview: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PickerStepChoice(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.label = source["label"];
-	        this.stepBody = source["stepBody"];
-	        this.description = source["description"];
-	        this.preview = source["preview"];
-	    }
-	}
 	export class RecordRequest {
 	    url: string;
 	    output: string;
@@ -320,68 +398,6 @@ export namespace gui {
 	        this.testClient = source["testClient"];
 	    }
 	}
-	export class PluginEntryDTO {
-	    name: string;
-	    source: string;
-	    installedAt: string;
-	    id: string;
-	    description: string;
-	    commands: string[];
-	    runnable: boolean;
-	    vanessa: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new PluginEntryDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.source = source["source"];
-	        this.installedAt = source["installedAt"];
-	        this.id = source["id"];
-	        this.description = source["description"];
-	        this.commands = source["commands"];
-	        this.runnable = source["runnable"];
-	        this.vanessa = source["vanessa"];
-	    }
-	}
-	export class ScenarioHintDTO {
-	    id: string;
-	    title: string;
-	    stepIndex: number;
-	    severity: string;
-	    autoFixable: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScenarioHintDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.title = source["title"];
-	        this.stepIndex = source["stepIndex"];
-	        this.severity = source["severity"];
-	        this.autoFixable = source["autoFixable"];
-	    }
-	}
-	export class ScenarioHintFixRequest {
-	    text: string;
-	    hintId: string;
-	    stepIndex: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScenarioHintFixRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.text = source["text"];
-	        this.hintId = source["hintId"];
-	        this.stepIndex = source["stepIndex"];
-	    }
-	}
 	export class RefactorResult {
 	    text: string;
 	    count: number;
@@ -408,7 +424,11 @@ export namespace gui {
 	    traceDir: string;
 	    videoDir: string;
 	    htmlPath: string;
+	    junitPath: string;
 	    targets: string[];
+	    browser: string;
+	    workers: number;
+	    slowMo: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -427,7 +447,11 @@ export namespace gui {
 	        this.traceDir = source["traceDir"];
 	        this.videoDir = source["videoDir"];
 	        this.htmlPath = source["htmlPath"];
+	        this.junitPath = source["junitPath"];
 	        this.targets = source["targets"];
+	        this.browser = source["browser"];
+	        this.workers = source["workers"];
+	        this.slowMo = source["slowMo"];
 	    }
 	}
 	export class RunResult {
@@ -464,6 +488,23 @@ export namespace gui {
 	        this.at = source["at"];
 	    }
 	}
+	
+	export class ScenarioHintFixRequest {
+	    text: string;
+	    hintId: string;
+	    stepIndex: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScenarioHintFixRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.hintId = source["hintId"];
+	        this.stepIndex = source["stepIndex"];
+	    }
+	}
 	export class StepCatalogEntry {
 	    category: string;
 	    template: string;
@@ -478,20 +519,6 @@ export namespace gui {
 	        this.category = source["category"];
 	        this.template = source["template"];
 	        this.help = source["help"];
-	    }
-	}
-	export class ValidationIssue {
-	    line: number;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ValidationIssue(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.line = source["line"];
-	        this.message = source["message"];
 	    }
 	}
 

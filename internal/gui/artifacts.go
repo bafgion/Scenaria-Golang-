@@ -11,6 +11,7 @@ type ProjectArtifacts struct {
 	TracesDir  string `json:"tracesDir"`
 	VideosDir  string `json:"videosDir"`
 	HTMLReport string `json:"htmlReport"`
+	JUnitReport string `json:"junitReport"`
 }
 
 func (s *Service) ProjectArtifacts() ProjectArtifacts {
@@ -31,6 +32,9 @@ func (s *Service) ProjectArtifacts() ProjectArtifacts {
 	}
 	if s.ArtifactExists(filepath.Join(scenaria, "report.html")) {
 		out.HTMLReport = filepath.Join(scenaria, "report.html")
+	}
+	if s.ArtifactExists(filepath.Join(scenaria, "junit.xml")) {
+		out.JUnitReport = filepath.Join(scenaria, "junit.xml")
 	}
 	return out
 }

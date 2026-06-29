@@ -86,6 +86,8 @@ button {
   border-bottom: 1px solid var(--color-border);
   padding: 0 4px;
   user-select: none;
+  position: relative;
+  z-index: 200;
 }
 
 .menu-root {
@@ -114,8 +116,9 @@ button {
   background: var(--color-sidebar);
   border: 1px solid var(--color-border);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  z-index: 500;
+  z-index: 1000;
   padding: 4px 0;
+  overflow: hidden;
 }
 
 .menu-item {
