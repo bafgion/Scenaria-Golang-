@@ -11,6 +11,7 @@
   import FindReplaceDialog from './lib/FindReplaceDialog.svelte'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
+  import PluginsDialog from './lib/PluginsDialog.svelte'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -128,6 +129,7 @@
   let stepsHelpQuery = ''
   let catalogDropTarget = ''
   let showAbout = false
+  let showPlugins = false
   let showFindReplace = false
   let showProjectReplace = false
   let showHotkeys = false
@@ -529,6 +531,7 @@
       { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => validateProject(true) },
       { id: 'vanessa-dry', label: 'Vanessa (dry)', group: 'Запись и тест', run: () => runVanessa(true) },
       { id: 'vanessa', label: 'Vanessa run', group: 'Запись и тест', run: () => runVanessa(false) },
+      { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
       { id: 'journal', label: 'Журнал', group: 'Вид', shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
       { id: 'results', label: 'Результаты', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
       { id: 'validate-panel', label: 'Проверка селекторов', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'validate' } },
@@ -1811,6 +1814,8 @@
       <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>Плагины</button>
       {#if openMenu === 'plugins'}
         <div class="menu-dropdown">
+          <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>Управление плагинами…</button>
+          <div class="menu-sep"></div>
           <button class="menu-item" on:click={() => runVanessa(true)} disabled={!projectPath}>Vanessa (dry)</button>
           <button class="menu-item" on:click={() => runVanessa(false)} disabled={!projectPath}>Vanessa run</button>
         </div>
@@ -2418,6 +2423,10 @@
 
 {#if showHotkeys}
   <HotkeysDialog commands={paletteCommands} onClose={() => (showHotkeys = false)} />
+{/if}
+
+{#if showPlugins}
+  <PluginsDialog onClose={() => (showPlugins = false)} onRunVanessa={(dry) => runVanessa(dry)} />
 {/if}
 
 {#if showRunHistory}

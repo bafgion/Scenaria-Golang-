@@ -178,6 +178,18 @@ func (a *App) ApplyScenarioHintFix(req gui.ScenarioHintFixRequest) gui.RefactorR
 	return gui.ApplyScenarioHintFix(req)
 }
 
+func (a *App) ListPlugins() ([]gui.PluginEntryDTO, error) {
+	return a.svc.ListPlugins()
+}
+
+func (a *App) InstallPlugin(name, source string) error {
+	return a.svc.InstallPlugin(name, source)
+}
+
+func (a *App) UninstallPlugin(name string) error {
+	return a.svc.UninstallPlugin(name)
+}
+
 func (a *App) ReplaceInProject(req gui.ProjectReplaceRequest) (gui.ProjectReplaceResult, error) {
 	return a.svc.ReplaceInProject(req)
 }

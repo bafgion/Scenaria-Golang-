@@ -33,3 +33,31 @@ func TestAnalyzeDuplicateGoto(t *testing.T) {
 		t.Fatalf("got %+v", hints)
 	}
 }
+
+func TestAnalyzeFragileSelector(t *testing.T) {
+	text := "\tКогда нажимаю \"div > input:nth-of-type(2)\"\n"
+	hints := AnalyzeScenarioHints(text)
+	found := false
+	for _, h := range hints {
+		if h.ID == "fragile_selector" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected fragile_selector, got %+v", hints)
+	}
+}
+
+func TestAnalyzeFillNoAssert(t *testing.T) {
+	text := "\tКогда ввожу \"alice\" в \"#name\"\n\tИ нажимаю \"#submit\"\n"
+	hints := AnalyzeScenarioHints(text)
+	found := false
+	for _, h := range hints {
+		if h.ID == "fill_no_assert" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected fill_no_assert, got %+v", hints)
+	}
+}

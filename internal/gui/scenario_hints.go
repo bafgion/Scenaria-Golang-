@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
@@ -9,6 +10,25 @@ import (
 )
 
 const playwrightChainSep = " >> "
+
+var (
+	fragileNthRE     = regexp.MustCompile(`(?i)nth-of-type`)
+	fragileInputTail = regexp.MustCompile(`>\s*input\s*$`)
+)
+
+var assertKinds = map[string]struct{}{
+	"assert-text": {}, "assert-visible": {}, "assert-hidden": {}, "assert-url": {},
+	"assert-url-contains": {}, "assert-tab-count": {}, "assert-download-contains": {},
+}
+
+var interactiveAfterGoto = map[string]struct{}{
+	"click": {}, "double-click": {}, "fill": {}, "fill-generated": {}, "type": {},
+	"select": {}, "check": {}, "uncheck": {}, "download-click": {},
+}
+
+var waitKinds = map[string]struct{}{
+	"wait": {}, "wait-visible": {}, "wait-hidden": {},
+}
 
 type ScenarioHintDTO struct {
 	ID          string `json:"id"`
@@ -32,45 +52,82 @@ type scenarioStepLine struct {
 	body    string
 }
 
+type parsedScenarioStep struct {
+	line   scenarioStepLine
+	action stepdsl.Action
+	err    error
+}
+
 func AnalyzeScenarioHints(text string) []ScenarioHintDTO {
-	lines := parseScenarioStepLines(text)
+	steps := parseScenarioSteps(text)
 	hints := make([]ScenarioHintDTO, 0)
-	for i, line := range lines {
-		action, err := stepdsl.Parse(gherkin.Step{Text: line.body})
-		if err != nil {
+	for i, step := range steps {
+		if step.err != nil {
 			continue
 		}
+		action := step.action
 		switch action.Kind {
 		case "click", "double-click":
-			if hint := menuHoverHint(lines, i, action.Value1); hint != nil {
+			if hint := menuHoverHint(steps, i, action.Value1); hint != nil {
+				hints = append(hints, *hint)
+			}
+			if hint := divClickHint(i, action.Value1); hint != nil {
 				hints = append(hints, *hint)
 			}
 		case "goto":
 			if i > 0 {
-				prev, err := stepdsl.Parse(gherkin.Step{Text: lines[i-1].body})
-				if err == nil && prev.Kind == "goto" {
+				prev := steps[i-1]
+				if prev.err == nil && prev.action.Kind == "goto" {
 					hints = append(hints, ScenarioHintDTO{
-						ID:          "duplicate_goto",
-						Title:       "Два шага «открыт» подряд",
-						StepIndex:   i,
-						Severity:    "warning",
-						AutoFixable: true,
+						ID: "duplicate_goto", Title: "Два шага «открыт» подряд",
+						StepIndex: i, Severity: "warning", AutoFixable: true,
 					})
 				}
+			}
+			if hint := gotoNoWaitHint(steps, i); hint != nil {
+				hints = append(hints, *hint)
+			}
+		case "fill", "fill-generated", "type":
+			if hint := fillNoAssertHint(steps, i); hint != nil {
+				hints = append(hints, *hint)
+			}
+		}
+		if sel := selectorFromAction(action); sel != "" {
+			if isFragileSelector(sel) {
+				hints = append(hints, ScenarioHintDTO{
+					ID: "fragile_selector", Title: "Хрупкий CSS-селектор — добавьте data-testid или id",
+					StepIndex: i, Severity: "warning", AutoFixable: false,
+				})
+			}
+			if strings.Count(sel, playwrightChainSep) >= 2 {
+				hints = append(hints, ScenarioHintDTO{
+					ID: "long_chain", Title: "Длинная цепочка селекторов (>>) — возможно, стоит разбить",
+					StepIndex: i, Severity: "info", AutoFixable: false,
+				})
 			}
 		}
 	}
 	return hints
 }
 
-func menuHoverHint(lines []scenarioStepLine, index int, selector string) *ScenarioHintDTO {
+func parseScenarioSteps(text string) []parsedScenarioStep {
+	lines := parseScenarioStepLines(text)
+	out := make([]parsedScenarioStep, 0, len(lines))
+	for _, line := range lines {
+		action, err := stepdsl.Parse(gherkin.Step{Text: line.body})
+		out = append(out, parsedScenarioStep{line: line, action: action, err: err})
+	}
+	return out
+}
+
+func menuHoverHint(steps []parsedScenarioStep, index int, selector string) *ScenarioHintDTO {
 	selector = strings.TrimSpace(selector)
 	if !strings.Contains(selector, playwrightChainSep) {
 		return nil
 	}
 	if index > 0 {
-		prev, err := stepdsl.Parse(gherkin.Step{Text: lines[index-1].body})
-		if err == nil && prev.Kind == "hover" {
+		prev := steps[index-1]
+		if prev.err == nil && prev.action.Kind == "hover" {
 			return nil
 		}
 	}
@@ -81,6 +138,93 @@ func menuHoverHint(lines []scenarioStepLine, index int, selector string) *Scenar
 		Severity:    "warning",
 		AutoFixable: true,
 	}
+}
+
+func divClickHint(index int, selector string) *ScenarioHintDTO {
+	lower := strings.ToLower(strings.TrimSpace(selector))
+	if !strings.Contains(lower, "div:has-text") {
+		return nil
+	}
+	if strings.Contains(lower, "button") || strings.Contains(lower, " a:") || strings.HasPrefix(lower, "a:") {
+		return nil
+	}
+	return &ScenarioHintDTO{
+		ID: "div_click", Title: "Клик по div:has-text — уточните до button или a",
+		StepIndex: index, Severity: "info", AutoFixable: false,
+	}
+}
+
+func fillNoAssertHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
+	for j := index + 1; j < len(steps) && j <= index+3; j++ {
+		if steps[j].err != nil {
+			continue
+		}
+		if _, ok := assertKinds[steps[j].action.Kind]; ok {
+			return nil
+		}
+	}
+	return &ScenarioHintDTO{
+		ID: "fill_no_assert", Title: "Ввод без проверки в следующих шагах",
+		StepIndex: index, Severity: "info", AutoFixable: false,
+	}
+}
+
+func gotoNoWaitHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
+	if index+1 >= len(steps) {
+		return nil
+	}
+	next := steps[index+1]
+	if next.err != nil {
+		return nil
+	}
+	if _, ok := interactiveAfterGoto[next.action.Kind]; !ok {
+		return nil
+	}
+	if _, ok := waitKinds[next.action.Kind]; ok {
+		return nil
+	}
+	return &ScenarioHintDTO{
+		ID: "goto_no_wait", Title: "После перехода сразу действие — добавьте «жду» или «жду появления»",
+		StepIndex: index, Severity: "info", AutoFixable: false,
+	}
+}
+
+func selectorFromAction(action stepdsl.Action) string {
+	switch action.Kind {
+	case "click", "hover", "double-click", "download-click", "press":
+		return action.Value1
+	case "fill", "type":
+		if action.Value2 != "" {
+			return action.Value2
+		}
+		return action.Value1
+	case "fill-generated":
+		return action.Value2
+	case "press-in":
+		return action.Value2
+	default:
+		return ""
+	}
+}
+
+func isFragileSelector(selector string) bool {
+	lower := strings.ToLower(strings.TrimSpace(selector))
+	if lower == "" {
+		return false
+	}
+	if fragileNthRE.MatchString(lower) {
+		return true
+	}
+	if fragileInputTail.MatchString(lower) {
+		return true
+	}
+	if strings.Contains(lower, "[data-testid=") || strings.Contains(lower, "#") {
+		return false
+	}
+	if strings.Contains(lower, "nth-child") {
+		return true
+	}
+	return false
 }
 
 func ApplyScenarioHintFix(req ScenarioHintFixRequest) RefactorResult {

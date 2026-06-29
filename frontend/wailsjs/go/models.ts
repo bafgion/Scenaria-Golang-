@@ -276,6 +276,22 @@ export namespace gui {
 	        this.testClient = source["testClient"];
 	    }
 	}
+	export class PluginEntryDTO {
+	    name: string;
+	    source: string;
+	    installedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginEntryDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.source = source["source"];
+	        this.installedAt = source["installedAt"];
+	    }
+	}
 	export class ScenarioHintDTO {
 	    id: string;
 	    title: string;
