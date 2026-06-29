@@ -165,6 +165,9 @@ func appendRunPluginArgs(args []string, req PluginRunRequest) []string {
 	if tag := strings.TrimSpace(req.Tag); tag != "" {
 		args = append(args, "--tag", tag)
 	}
+	if scenario := strings.TrimSpace(req.Scenario); scenario != "" {
+		args = append(args, "--scenario", scenario)
+	}
 	return args
 }
 

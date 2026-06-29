@@ -22,14 +22,14 @@ type ExecutionPlan struct {
 }
 
 func BuildExecutionPlan(features []FeatureInput, tag string, variables map[string]string) ExecutionPlan {
-	return buildExecutionPlan(features, tag, variables, "")
+	return buildExecutionPlan(features, tag, "", variables, "")
 }
 
-func BuildExecutionPlanWithTestClient(features []FeatureInput, tag string, variables map[string]string, testClientOverride string) ExecutionPlan {
-	return buildExecutionPlan(features, tag, variables, testClientOverride)
+func BuildExecutionPlanWithTestClient(features []FeatureInput, tag, scenario string, variables map[string]string, testClientOverride string) ExecutionPlan {
+	return buildExecutionPlan(features, tag, scenario, variables, testClientOverride)
 }
 
-func buildExecutionPlan(features []FeatureInput, tag string, variables map[string]string, testClientOverride string) ExecutionPlan {
+func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables map[string]string, testClientOverride string) ExecutionPlan {
 	plan := ExecutionPlan{
 		Cases: make([]RunCase, 0),
 	}
@@ -51,6 +51,9 @@ func buildExecutionPlan(features []FeatureInput, tag string, variables map[strin
 		}
 		for _, runnable := range gherkin.ExpandFeature(input.Feature) {
 			if tag != "" && !gherkin.TagsInclude(runnable.Tags, tag) {
+				continue
+			}
+			if scenario != "" && !strings.EqualFold(strings.TrimSpace(runnable.Title), strings.TrimSpace(scenario)) {
 				continue
 			}
 			plan.Cases = append(plan.Cases, RunCase{

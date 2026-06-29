@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PickOpenFile } from '../../wailsjs/go/wailsapp/App'
+  import { PickOpenFile, PickOpenFiles } from '../../wailsjs/go/wailsapp/App'
 
   export let projectPath = ''
   export let destDirs: string[] = []
@@ -20,6 +20,22 @@
     const norm = path.replace(/\\/g, '/')
     const parts = norm.split('/').filter(Boolean)
     return parts.length ? parts[parts.length - 1] : norm || '(корень)'
+  }
+
+  async function addFiles() {
+    error = ''
+    const picked = await PickOpenFiles('Импорт .feature')
+    if (!picked?.length) return
+    const valid = picked.filter((p) => p.toLowerCase().endsWith('.feature'))
+    if (valid.length === 0) {
+      error = 'Выберите файлы .feature'
+      return
+    }
+    const merged = [...paths]
+    for (const p of valid) {
+      if (!merged.includes(p)) merged.push(p)
+    }
+    paths = merged
   }
 
   async function addFile() {
@@ -66,7 +82,10 @@
     </label>
     <div class="files-header">
       <span>Файлы ({paths.length})</span>
-      <button type="button" disabled={busy} on:click={addFile}>Добавить файл…</button>
+      <div class="file-actions">
+        <button type="button" disabled={busy} on:click={addFiles}>Добавить файлы…</button>
+        <button type="button" disabled={busy} on:click={addFile}>Добавить файл…</button>
+      </div>
     </div>
     <ul class="file-list">
       {#if paths.length === 0}
@@ -124,6 +143,11 @@
     justify-content: space-between;
     margin: 12px 0 6px;
     font-size: 12px;
+  }
+
+  .file-actions {
+    display: flex;
+    gap: 6px;
   }
 
   .file-list {

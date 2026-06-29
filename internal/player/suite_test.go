@@ -75,6 +75,24 @@ func TestBuildExecutionPlan_SkipsUntaggedFile(t *testing.T) {
 	}
 }
 
+func TestBuildExecutionPlan_ScenarioFilter(t *testing.T) {
+	feature := &gherkin.Feature{
+		Title: "Demo",
+		Scenarios: []gherkin.Scenario{
+			{Title: "Login", Steps: []gherkin.Step{{Keyword: "Когда", Text: "шаг"}}},
+			{Title: "Logout", Steps: []gherkin.Step{{Keyword: "Когда", Text: "шаг"}}},
+		},
+	}
+	plan := BuildExecutionPlan([]FeatureInput{{Path: "demo.feature", Feature: feature}}, "", nil)
+	if len(plan.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(plan.Cases))
+	}
+	filtered := BuildExecutionPlanWithTestClient([]FeatureInput{{Path: "demo.feature", Feature: feature}}, "", "Login", nil, "")
+	if len(filtered.Cases) != 1 || filtered.Cases[0].Name != "Login" {
+		t.Fatalf("unexpected filtered plan: %+v", filtered.Cases)
+	}
+}
+
 func TestBuildExecutionPlan_TestClientOverride(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, ".scenaria", "test_clients")
@@ -98,7 +116,7 @@ func TestBuildExecutionPlan_TestClientOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := BuildExecutionPlanWithTestClient([]FeatureInput{{Path: featurePath, Feature: feature}}, "", nil, "OverrideUser")
+	plan := BuildExecutionPlanWithTestClient([]FeatureInput{{Path: featurePath, Feature: feature}}, "", "", nil, "OverrideUser")
 	if len(plan.Cases) != 1 {
 		t.Fatalf("expected one case, got %d", len(plan.Cases))
 	}

@@ -106,6 +106,10 @@
     editor.focus()
   }
 
+  export function getCursorLine(): number {
+    return editor?.getPosition()?.lineNumber ?? 1
+  }
+
   let findCache = { query: '', caseSensitive: false, matches: [] as MonacoEditor.IRange[], index: -1 }
 
   function resetFindCache() {

@@ -366,6 +366,18 @@ func (a *App) PickOpenFile(title string) (string, error) {
 	})
 }
 
+func (a *App) PickOpenFiles(title string) ([]string, error) {
+	if a.ctx == nil {
+		return nil, fmt.Errorf("application not ready")
+	}
+	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: title,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Feature", Pattern: "*.feature"},
+		},
+	})
+}
+
 func (a *App) OpenFolder(path string) error {
 	path = filepath.Clean(path)
 	if path == "" {

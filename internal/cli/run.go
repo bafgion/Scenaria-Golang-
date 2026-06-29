@@ -31,6 +31,7 @@ type runOptions struct {
 	baseURL           string
 	installPlaywright bool
 	tag               string
+	scenario          string
 	variables         map[string]string
 	testClient        string
 	slowMo            float64
@@ -87,8 +88,11 @@ func RunRun(args []string) error {
 		return fmt.Errorf("run preflight failed with %d issue(s)", errorsCount)
 	}
 
-	plan := player.BuildExecutionPlanWithTestClient(featureInputs, opts.tag, opts.variables, opts.testClient)
+	plan := player.BuildExecutionPlanWithTestClient(featureInputs, opts.tag, opts.scenario, opts.variables, opts.testClient)
 	if len(plan.Cases) == 0 {
+		if opts.scenario != "" {
+			return fmt.Errorf("no scenarios found with name %q in %v", opts.scenario, opts.targets)
+		}
 		if opts.tag != "" {
 			return fmt.Errorf("no scenarios found with tag %q in %v", opts.tag, opts.targets)
 		}
@@ -154,7 +158,7 @@ func RunRun(args []string) error {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--var NAME=VALUE] [--slow-mo <ms>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>]")
 	}
 	opts := runOptions{
 		engine:  "",
@@ -245,6 +249,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.tag = args[i]
+		case "--scenario":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--scenario requires a scenario name")
+			}
+			i++
+			opts.scenario = args[i]
 		case "--test-client":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--test-client requires a client name")

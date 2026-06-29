@@ -68,6 +68,8 @@ export function PauseRecording():Promise<void>;
 
 export function PickOpenFile(arg1:string):Promise<string>;
 
+export function PickOpenFiles(arg1:string):Promise<Array<string>>;
+
 export function PickProjectFolder():Promise<string>;
 
 export function PickSaveFile(arg1:string,arg2:string):Promise<string>;
@@ -132,9 +134,9 @@ export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
 export function ServeAllure(arg1:string):Promise<gui.RunResult>;
 
-export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
-
 export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
+
+export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
 
 export function SubmitOTPCode(arg1:string):Promise<void>;
 

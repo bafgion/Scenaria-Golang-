@@ -134,6 +134,10 @@ export function PickOpenFile(arg1) {
   return window['go']['wailsapp']['App']['PickOpenFile'](arg1);
 }
 
+export function PickOpenFiles(arg1) {
+  return window['go']['wailsapp']['App']['PickOpenFiles'](arg1);
+}
+
 export function PickProjectFolder() {
   return window['go']['wailsapp']['App']['PickProjectFolder']();
 }
@@ -262,12 +266,12 @@ export function ServeAllure(arg1) {
   return window['go']['wailsapp']['App']['ServeAllure'](arg1);
 }
 
-export function StartVanessaRun(arg1) {
-  return window['go']['wailsapp']['App']['StartVanessaRun'](arg1);
-}
-
 export function StartRecord(arg1) {
   return window['go']['wailsapp']['App']['StartRecord'](arg1);
+}
+
+export function StartVanessaRun(arg1) {
+  return window['go']['wailsapp']['App']['StartVanessaRun'](arg1);
 }
 
 export function SubmitOTPCode(arg1) {

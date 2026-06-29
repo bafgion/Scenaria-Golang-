@@ -5,6 +5,7 @@
   export let form: RunForm
   export let testClients: string[] = []
   export let tags: string[] = []
+  export let scenarios: string[] = []
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
 
@@ -23,6 +24,19 @@
   <div class="modal wide run-dialog" role="dialog" aria-label={title} on:click|stopPropagation>
     <h3>{title}</h3>
     <label>Тег <input bind:value={form.tag} placeholder="@smoke" /></label>
+    <label>Сценарий (опционально) <input bind:value={form.scenario} placeholder="Название сценария" list="run-scenario-list" /></label>
+    {#if scenarios.length > 0}
+      <datalist id="run-scenario-list">
+        {#each scenarios as name}
+          <option value={name}></option>
+        {/each}
+      </datalist>
+      <div class="tag-chips">
+        {#each scenarios as name}
+          <button type="button" class="chip" class:active={form.scenario === name} on:click={() => (form = { ...form, scenario: name })}>{name}</button>
+        {/each}
+      </div>
+    {/if}
     {#if tags.length > 0}
       <div class="tag-chips">
         {#each tags as tag}

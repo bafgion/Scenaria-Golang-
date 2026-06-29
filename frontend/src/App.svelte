@@ -38,6 +38,7 @@
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
+  import { scenarioAtLine, listScenarioTitles } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -256,6 +257,7 @@
   let postRecordDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
   let runDialogTitle = 'Запуск сценария'
+  let runDialogScenarios: string[] = []
 
   let recording = false
   let recordPaused = false
@@ -539,7 +541,10 @@
         e.preventDefault()
         saveFeature()
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault()
+        if (projectPath && !isWelcome) runCurrentScenario(false)
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
         if (projectPath) executeRun({ ...lastRun, dryRun: false })
       }
@@ -672,12 +677,15 @@
       { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
       { id: 'pause', label: 'Пауза', group: 'Запись и тест', run: toggleRecordPause },
       { id: 'run', label: 'Запустить', group: 'Запись и тест', shortcut: 'Ctrl+Enter', run: () => executeRun({ ...lastRun, dryRun: false }) },
+      { id: 'run-current', label: 'Запустить текущий сценарий', group: 'Запись и тест', shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
+      { id: 'run-current-dry', label: 'Dry-run текущего сценария', group: 'Запись и тест', run: () => runCurrentScenario(true) },
       { id: 'run-dialog', label: 'Запустить…', group: 'Запись и тест', run: () => openRunDialog('Запуск сценария', {}) },
       { id: 'run-tag', label: 'Запустить сценарии с тегом…', group: 'Запись и тест', run: () => openRunDialog('Запуск с тегом', {}) },
       { id: 'playwright', label: 'Playwright…', group: 'Запись и тест', run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
       { id: 'dry', label: 'Dry-run', group: 'Запись и тест', run: () => executeRun({ ...lastRun, dryRun: true }) },
       { id: 'batch', label: 'Пакетный выбор', group: 'Запись и тест', run: () => (batchMode = !batchMode) },
-      { id: 'batch-run', label: 'Запустить выбранные', group: 'Запись и тест', run: runBatchSelected },
+      { id: 'batch-run', label: 'Запустить выбранные', group: 'Запись и тест', run: () => runBatchSelected(false) },
+      { id: 'batch-dry', label: 'Dry-run выбранных', group: 'Запись и тест', run: () => runBatchSelected(true) },
       { id: 'rerun-failed', label: 'Перезапустить упавшие', group: 'Запись и тест', run: rerunFailed },
       { id: 'run-history', label: 'История запусков…', group: 'Запись и тест', run: openRunHistory },
       { id: 'testclient', label: 'TestClient…', group: 'Запись и тест', run: openTestClientDialog },
@@ -892,10 +900,10 @@
     }
   }
 
-  async function runFeatureFile(path: string) {
+  async function runFeatureFile(path: string, dryRun = false) {
     if (!path) return
     await loadFeature(path)
-    await executeRun({ ...lastRun, dryRun: false }, [path])
+    await executeRun({ ...lastRun, dryRun }, [path])
   }
 
   function onFileContextMenu(e: MouseEvent, path: string) {
@@ -911,7 +919,14 @@
     if (!contextMenu) return
     const path = contextMenu.path
     dismissContextMenu()
-    runFeatureFile(path)
+    runFeatureFile(path, false)
+  }
+
+  function contextMenuDryRun() {
+    if (!contextMenu) return
+    const path = contextMenu.path
+    dismissContextMenu()
+    runFeatureFile(path, true)
   }
 
   function contextMenuOpen() {
@@ -1209,9 +1224,23 @@
     batchSelected = []
   }
 
-  async function runBatchSelected() {
+  async function runBatchSelected(dryRun = false) {
     if (!batchSelected.length) return
-    await executeRun({ ...lastRun, dryRun: false }, batchSelected)
+    await executeRun({ ...lastRun, dryRun }, batchSelected)
+  }
+
+  async function runCurrentScenario(dryRun = false) {
+    if (!projectPath || !activeTab || isWelcome) return
+    const line = monaco?.getCursorLine() ?? 1
+    const scenario = scenarioAtLine(editorText, line)
+    const targets = [activeTab]
+    if (scenario) {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}»…`)
+      await executeRun({ ...lastRun, dryRun, scenario }, targets)
+      return
+    }
+    appendLog(dryRun ? 'Dry-run текущего файла…' : 'Запуск текущего файла…')
+    await executeRun({ ...lastRun, dryRun, scenario: '' }, targets)
   }
 
   function startResizePreview(e: MouseEvent) {
@@ -1671,7 +1700,15 @@
 
   function openRunDialog(title: string, defaults: Partial<RunForm>) {
     runDialogTitle = title
-    runForm = { ...lastRun, baseUrl: lastRun.baseUrl || startURL || '', ...defaults }
+    runDialogScenarios = !isWelcome && activeTab ? listScenarioTitles(editorText) : []
+    const cursorScenario =
+      !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
+    runForm = {
+      ...lastRun,
+      baseUrl: lastRun.baseUrl || startURL || '',
+      scenario: defaults.scenario ?? cursorScenario ?? lastRun.scenario ?? '',
+      ...defaults,
+    }
     showRun = true
   }
 
@@ -1725,6 +1762,7 @@
 
     const result = await Run({
       tag: opts.tag,
+      scenario: opts.scenario || '',
       testClient: opts.testClient,
       vars: parseVars(opts.vars),
       dryRun: opts.dryRun,
@@ -2403,8 +2441,17 @@
           <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false })} disabled={!projectPath}>
             Запустить<span class="menu-shortcut">Ctrl+Enter</span>
           </button>
-          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false }, batchSelected)} disabled={!projectPath || !batchSelected.length}>
+          <button class="menu-item" on:click={() => runCurrentScenario(false)} disabled={isWelcome || !projectPath}>
+            Запустить текущий сценарий<span class="menu-shortcut">Ctrl+Shift+Enter</span>
+          </button>
+          <button class="menu-item" on:click={() => runCurrentScenario(true)} disabled={isWelcome || !projectPath}>
+            Dry-run текущего сценария
+          </button>
+          <button class="menu-item" on:click={() => runBatchSelected(false)} disabled={!projectPath || !batchSelected.length}>
             Запустить выбранные
+          </button>
+          <button class="menu-item" on:click={() => runBatchSelected(true)} disabled={!projectPath || !batchSelected.length}>
+            Dry-run выбранных
           </button>
           <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>Перезапустить упавшие</button>
           <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>История запусков…</button>
@@ -2623,6 +2670,14 @@
                 disabled={!projectPath}
               >
                 {@html toolbarIcons.play()}<span>Запустить</span>
+              </button>
+              <button
+                class="tool-btn"
+                title="Текущий сценарий (Ctrl+Shift+Enter)"
+                on:click={() => runCurrentScenario(false)}
+                disabled={!projectPath || isWelcome}
+              >
+                {@html toolbarIcons.play()}<span>Сценарий</span>
               </button>
               <button class="tool-btn primary" on:click={saveFeature} disabled={isWelcome} title="Сохранить файл сценария (Ctrl+S)">
                 {@html toolbarIcons.save()}<span>Сохранить</span>
@@ -2892,6 +2947,7 @@
     bind:form={runForm}
     {testClients}
     {tags}
+    scenarios={runDialogScenarios}
     onConfirm={confirmRun}
     onCancel={() => (showRun = false)}
   />
@@ -3222,6 +3278,7 @@
     y={contextMenu.y}
     path={contextMenu.path}
     onRun={contextMenuRun}
+    onDryRun={contextMenuDryRun}
     onOpen={contextMenuOpen}
     onDuplicate={contextMenuDuplicate}
     onRename={contextMenuRename}

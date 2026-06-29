@@ -1,5 +1,6 @@
 export type RunForm = {
   tag: string
+  scenario: string
   testClient: string
   vars: string
   engine: string
@@ -21,6 +22,7 @@ export type RunForm = {
 export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
   return {
     tag: '',
+    scenario: '',
     testClient: '',
     vars: '',
     engine: 'playwright',

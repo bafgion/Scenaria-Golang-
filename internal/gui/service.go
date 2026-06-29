@@ -41,6 +41,7 @@ type ProjectInfo struct {
 
 type RunRequest struct {
 	Tag        string            `json:"tag"`
+	Scenario   string            `json:"scenario"`
 	TestClient string            `json:"testClient"`
 	Vars       map[string]string `json:"vars"`
 	DryRun     bool              `json:"dryRun"`
@@ -279,6 +280,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	}
 	if req.Tag != "" {
 		args = append(args, "--tag", req.Tag)
+	}
+	if req.Scenario != "" {
+		args = append(args, "--scenario", req.Scenario)
 	}
 	if req.TestClient != "" {
 		args = append(args, "--test-client", req.TestClient)

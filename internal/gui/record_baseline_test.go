@@ -49,8 +49,8 @@ func TestRecordBaseline_WritesFeature(t *testing.T) {
 }
 
 func TestAppendRunPluginArgs(t *testing.T) {
-	args := appendRunPluginArgs([]string{"/proj", "--dry-run"}, PluginRunRequest{Tag: "@smoke"})
-	want := []string{"/proj", "--dry-run", "--tag", "@smoke"}
+	args := appendRunPluginArgs([]string{"/proj", "--dry-run"}, PluginRunRequest{Tag: "@smoke", Scenario: "Login"})
+	want := []string{"/proj", "--dry-run", "--tag", "@smoke", "--scenario", "Login"}
 	if len(args) != len(want) {
 		t.Fatalf("got %v", args)
 	}
