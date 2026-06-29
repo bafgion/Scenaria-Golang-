@@ -166,6 +166,10 @@ export function ReadTestClientJSON(arg1) {
   return window['go']['wailsapp']['App']['ReadTestClientJSON'](arg1);
 }
 
+export function ReadVanessaSettingsJSON() {
+  return window['go']['wailsapp']['App']['ReadVanessaSettingsJSON']();
+}
+
 export function RefactorCollapseBlankLines(arg1) {
   return window['go']['wailsapp']['App']['RefactorCollapseBlankLines'](arg1);
 }
@@ -228,6 +232,10 @@ export function SaveSettings(arg1) {
 
 export function SaveTestClientJSON(arg1, arg2) {
   return window['go']['wailsapp']['App']['SaveTestClientJSON'](arg1, arg2);
+}
+
+export function SaveVanessaSettingsJSON(arg1) {
+  return window['go']['wailsapp']['App']['SaveVanessaSettingsJSON'](arg1);
 }
 
 export function SearchSteps(arg1) {

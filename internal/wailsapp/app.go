@@ -126,6 +126,14 @@ func (a *App) ListVanessaRunDirs(limit int) ([]string, error) {
 	return a.svc.ListVanessaRunDirs(limit)
 }
 
+func (a *App) ReadVanessaSettingsJSON() (string, error) {
+	return a.svc.ReadVanessaSettingsJSON()
+}
+
+func (a *App) SaveVanessaSettingsJSON(content string) error {
+	return a.svc.SaveVanessaSettingsJSON(content)
+}
+
 func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }

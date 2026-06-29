@@ -20,6 +20,8 @@
   import ImportJSONDialog from './lib/ImportJSONDialog.svelte'
   import AboutDialog from './lib/AboutDialog.svelte'
   import OtpDialog from './lib/OtpDialog.svelte'
+  import StepsInsertDialog from './lib/StepsInsertDialog.svelte'
+  import VanessaSettingsDialog from './lib/VanessaSettingsDialog.svelte'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
@@ -46,7 +48,6 @@
     Run,
     Validate,
     ValidateFeature,
-    SearchSteps,
     ListTestClients,
     InitProject,
     PickProjectFolder,
@@ -133,6 +134,7 @@
   let showHotkeys = false
   let showRunHistory = false
   let showVanessaRun = false
+  let showVanessaSettings = false
   let vanessaDry = false
   let vanessaTag = ''
   let vanessaExcludeTags = ''
@@ -207,9 +209,6 @@
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
-
-  let stepQuery = ''
-  let stepResults: { category: string; template: string; help: string }[] = []
 
   let testClientSelection = ''
 
@@ -540,6 +539,7 @@
             { id: 'vanessa-dry', label: 'Vanessa (dry)…', group: 'Запись и тест', run: () => openVanessaDialog(true) },
             { id: 'vanessa', label: 'Vanessa run…', group: 'Запись и тест', run: () => openVanessaDialog(false) },
             { id: 'vanessa-rerun', label: 'Vanessa rerun-failed…', group: 'Запись и тест', run: () => openVanessaDialog(false, true) },
+            { id: 'vanessa-settings', label: 'Настройки Vanessa…', group: 'Запись и тест', run: openVanessaSettingsDialog },
           ]
         : []),
       { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
@@ -1424,9 +1424,12 @@
       appendLog('Поставьте запись на паузу, чтобы вставить шаг')
       return
     }
-    stepQuery = ''
-    stepResults = await SearchSteps('')
     showSteps = true
+  }
+
+  function openVanessaSettingsDialog() {
+    if (!projectPath) return
+    showVanessaSettings = true
   }
 
   function openStepsHelp(query = '') {
@@ -1441,10 +1444,6 @@
   function openStepHelpFromPanel(step: EditorStepRow) {
     if (!step.text) return
     openStepsHelp(step.text)
-  }
-
-  async function searchSteps() {
-    stepResults = await SearchSteps(stepQuery)
   }
 
   function insertStep(template: string) {
@@ -1858,6 +1857,7 @@
             <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
             <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
             <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
+            <button class="menu-item" on:click={openVanessaSettingsDialog} disabled={!projectPath}>Настройки Vanessa…</button>
           {/if}
         </div>
       {/if}
@@ -2345,23 +2345,11 @@
 {/if}
 
 {#if showSteps}
-  <div class="modal-backdrop">
-    <div class="modal wide tall">
-      <h3>Вставить шаг</h3>
-      <input bind:value={stepQuery} placeholder="Поиск шага…" on:input={searchSteps} />
-      <div class="step-list">
-        {#each stepResults as step}
-          <button class="step-row" on:click={() => insertStep(step.template)}>
-            <div class="template">{step.template}</div>
-            <div class="meta">{step.category} — {step.help}</div>
-          </button>
-        {/each}
-      </div>
-      <div class="modal-actions">
-        <button on:click={() => (showSteps = false)}>Закрыть</button>
-      </div>
-    </div>
-  </div>
+  <StepsInsertDialog onInsert={insertStep} onClose={() => (showSteps = false)} />
+{/if}
+
+{#if showVanessaSettings}
+  <VanessaSettingsDialog onClose={() => (showVanessaSettings = false)} onLog={appendLog} />
 {/if}
 
 {#if showExport}

@@ -13,11 +13,11 @@ func TestCollectFeatureTags(t *testing.T) {
 	root := t.TempDir()
 	featurePath := filepath.Join(root, "smoke.feature")
 	content := `@smoke
-Feature: Demo
+Функционал: Демо
 
   @ui
-  Scenario: One
-    Given noop
+  Сценарий: Один
+    Допустим пустой шаг
 `
 	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
 		t.Fatal(err)

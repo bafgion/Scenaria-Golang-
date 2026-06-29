@@ -84,6 +84,8 @@ export function ReadFeature(arg1:string):Promise<string>;
 
 export function ReadTestClientJSON(arg1:string):Promise<string>;
 
+export function ReadVanessaSettingsJSON():Promise<string>;
+
 export function RefactorCollapseBlankLines(arg1:string):Promise<string>;
 
 export function RefactorNormalizeIndents(arg1:string):Promise<string>;
@@ -115,6 +117,8 @@ export function SaveHTTPAuth(arg1:gui.HTTPAuthRequest):Promise<void>;
 export function SaveSettings(arg1:gui.AppSettingsDTO):Promise<void>;
 
 export function SaveTestClientJSON(arg1:string,arg2:string):Promise<void>;
+
+export function SaveVanessaSettingsJSON(arg1:string):Promise<void>;
 
 export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
