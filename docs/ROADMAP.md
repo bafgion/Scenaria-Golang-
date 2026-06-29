@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap (post-parity)
 
-Статус: **master** = v0.14; **feat/v0.15-polish** — GUI trace/video, Fyne out of release.
+Статус: **master** v0.15; UI по Python/Qt (IDE shell: activity bar, explorer, toolbar, bottom panel).
 
 ## Приоритеты
 
@@ -18,7 +18,12 @@
 
 - [x] Monaco IDE, run/record/Vanessa/OTP/Allure
 - [x] Splash, portable `wails build`
-- [x] GUI: trace/video чекбоксы
+- [x] UI shell как Python Qt: menubar, activity bar, explorer, action bar, bottom panel, status bar
+- [x] Настройки с вкладками (Интерфейс / Запись / Плагины)
+- [x] Пакетный запуск в explorer (Выбор, Ctrl+клик)
+- [x] Command palette (Ctrl+Shift+P), recording bar, dirty banner, ресайз панелей
+- [x] Welcome: недавние проекты/файлы, примеры; Results/Error панели из run_status.json
+- [x] Модалки: Запустить, TestClient, шаги, экспорт (ts/python)
 - [x] Fyne снят с release
 
 ---

@@ -47,6 +47,15 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 			Text:      detail["captiontext"],
 			InputType: detail["inputtype"],
 		}, true
+	case "hover":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		if sel == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "hover", Selector: sel}, true
 	case "goto":
 		url := strings.TrimSpace(detail["url"])
 		if url == "" {
@@ -90,6 +99,11 @@ func RecordedStepToLine(step RecordedStep) (string, bool) {
 			return "", false
 		}
 		return fmt.Sprintf(`рисую подпись в "%s"`, escapeStepText(step.Selector)), true
+	case "hover":
+		if step.Selector == "" {
+			return "", false
+		}
+		return fmt.Sprintf(`навожу "%s"`, escapeStepText(step.Selector)), true
 	default:
 		return "", false
 	}

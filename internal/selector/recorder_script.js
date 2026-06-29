@@ -193,9 +193,36 @@
     };
   }
 
-  window.__scenariaRecorder = { events: [], paused: false };
+  window.__scenariaRecorder = { events: [], paused: false, filterImportant: false, navOnly: false, hoverRecord: false };
+  const cfg = () => window.__scenariaRecorder || {};
+
+  function isNavTarget(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toUpperCase();
+    if (tag === 'A') return true;
+    const role = el.getAttribute('role');
+    return role === 'link';
+  }
+
+  function isImportantTarget(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toUpperCase();
+    if (['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT', 'LABEL'].includes(tag)) return true;
+    if (findCanvas(el)) return true;
+    const role = el.getAttribute('role');
+    if (role && ['button', 'link', 'menuitem', 'tab', 'checkbox', 'radio', 'combobox'].includes(role)) return true;
+    if (el.getAttribute('data-testid') || el.id) return true;
+    return false;
+  }
+
   const push = (type, el) => {
-    if (!el || window.__scenariaRecorder.paused) return;
+    if (!el || cfg().paused) return;
+    const c = cfg();
+    if (c.navOnly) {
+      if (type !== 'click' || !isNavTarget(clickableAncestor(el) || el)) return;
+    } else if (c.filterImportant && type === 'click' && !isImportantTarget(clickableAncestor(el) || el)) {
+      return;
+    }
     window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
   };
 
@@ -238,11 +265,27 @@
   }
 
   function onDocumentInput(e) {
+    if (cfg().navOnly) return;
     push('input', e.target);
   }
 
   function onDocumentChange(e) {
+    if (cfg().navOnly) return;
     push('change', e.target);
+  }
+
+  let lastHoverAt = 0;
+  let lastHoverKey = '';
+  function onDocumentMouseOver(e) {
+    if (!cfg().hoverRecord || cfg().paused) return;
+    const el = e.target;
+    if (!el || el.nodeType !== 1) return;
+    const key = (el.id || el.getAttribute('data-testid') || visibleText(el).slice(0, 40)) || '';
+    const now = Date.now();
+    if (key && key === lastHoverKey && now - lastHoverAt < 600) return;
+    lastHoverAt = now;
+    lastHoverKey = key;
+    push('hover', el);
   }
 
   const attachedRoots = new WeakSet();
@@ -253,6 +296,7 @@
     root.addEventListener('click', onDocumentClick, true);
     root.addEventListener('input', onDocumentInput, true);
     root.addEventListener('change', onDocumentChange, true);
+    root.addEventListener('mouseover', onDocumentMouseOver, true);
   }
 
   function scanNode(node) {
@@ -293,4 +337,18 @@
   }
 
   observeRoot(document);
+
+  window.__scenariaHeuristics = {
+    cssEscape,
+    visibleText,
+    labelTextForControl,
+    hasTextSelector,
+    clickableAncestor,
+    findCanvas,
+    buildCanvasSelector,
+    isSignatureCanvas,
+    buildInputSelector,
+    buildSelector,
+    collect,
+  };
 })();

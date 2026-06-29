@@ -9,7 +9,8 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
-func applyTestClient(page playwright.Page, client *settings.TestClient) error {
+// ApplyTestClient applies cookies and localStorage from a test client profile to a page.
+func ApplyTestClient(page playwright.Page, client *settings.TestClient) error {
 	if client == nil {
 		return nil
 	}
@@ -81,7 +82,7 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 
 	failed := false
 	if input.TestClient != nil {
-		if err := applyTestClient(session.page, input.TestClient); err != nil {
+		if err := ApplyTestClient(session.page, input.TestClient); err != nil {
 			failed = true
 			result.Status = "failed"
 			result.Message = err.Error()

@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/httpauth"
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 	playwright "github.com/mxschmitt/playwright-go"
 )
@@ -61,7 +63,19 @@ func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, fe
 	}
 	defer browser.Close()
 
-	page, err := browser.NewPage()
+	appCfg, _ := settings.LoadDefaultAppSettings()
+	httpCreds := httpauth.PlaywrightHTTPCredentials(startURL, appCfg)
+	ctxOpts := playwright.BrowserNewContextOptions{}
+	if httpCreds != nil {
+		ctxOpts.HttpCredentials = httpCreds
+	}
+	browserCtx, err := browser.NewContext(ctxOpts)
+	if err != nil {
+		return nil, err
+	}
+	defer browserCtx.Close()
+
+	page, err := browserCtx.NewPage()
 	if err != nil {
 		return nil, err
 	}

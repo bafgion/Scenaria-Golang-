@@ -98,6 +98,78 @@
       })),
     )
   }
+
+  export function gotoLine(line: number) {
+    if (!editor || line < 1) return
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: 1 })
+    editor.focus()
+  }
+
+  let findCache = { query: '', caseSensitive: false, matches: [] as MonacoEditor.IRange[], index: -1 }
+
+  function resetFindCache() {
+    findCache = { query: '', caseSensitive: false, matches: [], index: -1 }
+  }
+
+  function collectMatches(query: string, caseSensitive: boolean) {
+    const model = editor?.getModel()
+    if (!model || !query) return []
+    return model.findMatches(query, true, false, caseSensitive, null, true).map((m) => m.range)
+  }
+
+  export function findNext(query: string, caseSensitive = false): boolean {
+    if (!editor || !query) return false
+    if (findCache.query !== query || findCache.caseSensitive !== caseSensitive) {
+      findCache.matches = collectMatches(query, caseSensitive)
+      findCache.query = query
+      findCache.caseSensitive = caseSensitive
+      findCache.index = -1
+    }
+    if (findCache.matches.length === 0) return false
+    findCache.index = (findCache.index + 1) % findCache.matches.length
+    const range = findCache.matches[findCache.index]
+    editor.setSelection(range)
+    editor.revealRangeInCenter(range)
+    editor.focus()
+    return true
+  }
+
+  export function replaceNext(query: string, replace: string, caseSensitive = false): boolean {
+    if (!editor || !query) return false
+    const model = editor.getModel()
+    const selection = editor.getSelection()
+    if (model && selection && !selection.isEmpty()) {
+      const selected = model.getValueInRange(selection)
+      const same = caseSensitive ? selected === query : selected.toLowerCase() === query.toLowerCase()
+      if (same) {
+        editor.executeEdits('replace', [{ range: selection, text: replace, forceMoveMarkers: true }])
+        resetFindCache()
+        return true
+      }
+    }
+    if (!findNext(query, caseSensitive)) return false
+    const nextSel = editor.getSelection()
+    if (!nextSel) return false
+    editor.executeEdits('replace', [{ range: nextSel, text: replace, forceMoveMarkers: true }])
+    resetFindCache()
+    return true
+  }
+
+  export function replaceAll(query: string, replace: string, caseSensitive = false): number {
+    if (!editor || !query) return 0
+    const model = editor.getModel()
+    if (!model) return 0
+    const matches = collectMatches(query, caseSensitive)
+    if (matches.length === 0) return 0
+    editor.pushUndoStop()
+    for (let i = matches.length - 1; i >= 0; i--) {
+      editor.executeEdits('replace-all', [{ range: matches[i], text: replace, forceMoveMarkers: true }])
+    }
+    editor.pushUndoStop()
+    resetFindCache()
+    return matches.length
+  }
 </script>
 
 <div class="monaco-wrap" bind:this={container}></div>

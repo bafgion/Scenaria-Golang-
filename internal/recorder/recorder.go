@@ -47,6 +47,37 @@ func WriteFeature(path string, opts Options) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+// AppendStepsToFeature appends recorded step lines to the first scenario in an existing feature file.
+func AppendStepsToFeature(path string, newLines []string) error {
+	feature, err := gherkin.ParseFeatureFile(path)
+	if err != nil {
+		return fmt.Errorf("read feature: %w", err)
+	}
+	if len(feature.Scenarios) == 0 {
+		return WriteFeature(path, Options{
+			FeatureName:  feature.Title,
+			ScenarioName: "Запись",
+			Steps:        newLines,
+		})
+	}
+	scenario := &feature.Scenarios[0]
+	if len(scenario.Steps) > 0 && len(newLines) > 0 && strings.HasPrefix(newLines[0], "открыт ") {
+		newLines = newLines[1:]
+	}
+	for _, line := range newLines {
+		step, ok := parseRecordedStep(line)
+		if !ok {
+			continue
+		}
+		scenario.Steps = append(scenario.Steps, step)
+	}
+	content, err := gherkin.SerializeFeature(feature)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
 func parseRecordedStep(line string) (gherkin.Step, bool) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {

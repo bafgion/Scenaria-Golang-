@@ -14,13 +14,14 @@ import (
 )
 
 type PlaywrightExecutorOptions struct {
-	BrowserName string
-	Headless    bool
-	BaseURL     string
-	AutoInstall bool
-	SlowMo      float64
-	TraceDir    string
-	VideoDir    string
+	BrowserName       string
+	Headless          bool
+	BaseURL           string
+	AutoInstall       bool
+	SlowMo            float64
+	TraceDir          string
+	VideoDir          string
+	HTTPCredentials   *playwright.HttpCredentials
 }
 
 type PlaywrightExecutor struct {
@@ -47,6 +48,9 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 		return nil, err
 	}
 	ctxOpts := playwright.BrowserNewContextOptions{}
+	if options.HTTPCredentials != nil {
+		ctxOpts.HttpCredentials = options.HTTPCredentials
+	}
 	if strings.TrimSpace(options.VideoDir) != "" {
 		if err := os.MkdirAll(options.VideoDir, 0o755); err != nil {
 			_ = browser.Close()

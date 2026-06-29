@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
+	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/stepcatalog"
@@ -47,6 +49,8 @@ type RunRequest struct {
 	AllureDir  string            `json:"allureDir"`
 	TraceDir   string            `json:"traceDir"`
 	VideoDir   string            `json:"videoDir"`
+	HTMLPath   string            `json:"htmlPath"`
+	Targets    []string          `json:"targets"`
 }
 
 type RunResult struct {
@@ -65,6 +69,66 @@ type AppSettingsDTO struct {
 	Headless          bool   `json:"headless"`
 	ParallelWorkers   int    `json:"parallelWorkers"`
 	MaxLoopIterations int    `json:"maxLoopIterations"`
+	FilterRecording   bool   `json:"filterRecording"`
+	NavOnlyRecording  bool   `json:"navOnlyRecording"`
+	HoverRecord       bool   `json:"hoverRecord"`
+	ToolbarCompact    bool     `json:"toolbarCompact"`
+	StepsPanelVisible bool     `json:"stepsPanelVisible"`
+	StepsPanelHeight  int      `json:"stepsPanelHeight"`
+	SidebarWidth      int      `json:"sidebarWidth"`
+	RecentProjects    []string `json:"recentProjects"`
+	RecentFeatures    []string `json:"recentFeatures"`
+}
+
+type RunResultEntry struct {
+	Path    string `json:"path"`
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Runner  string `json:"runner"`
+	At      string `json:"at"`
+}
+
+func (s *Service) ListRunResults(limit int) ([]RunResultEntry, error) {
+	path := s.ProjectPath()
+	if path == "" {
+		return []RunResultEntry{}, nil
+	}
+	store, err := runstatus.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := store.List(limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RunResultEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, RunResultEntry{
+			Path:    e.Path,
+			Success: e.Success,
+			Message: e.Message,
+			Runner:  e.Runner,
+			At:      e.At,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) BundledExamplesPath() string {
+	candidates := []string{"examples"}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "examples"))
+	}
+	for _, c := range candidates {
+		abs, err := filepath.Abs(c)
+		if err != nil {
+			continue
+		}
+		if st, err := os.Stat(abs); err == nil && st.IsDir() {
+			return abs
+		}
+	}
+	return ""
 }
 
 func (s *Service) Version() string {
@@ -159,6 +223,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 		return RunResult{Error: "open a project folder first"}
 	}
 	args := []string{path}
+	if len(req.Targets) > 0 {
+		args = append([]string{}, req.Targets...)
+	}
 	if req.DryRun {
 		args = append(args, "--dry-run")
 	}
@@ -189,6 +256,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.VideoDir != "" {
 		args = append(args, "--video", req.VideoDir)
 	}
+	if req.HTMLPath != "" {
+		args = append(args, "--html", req.HTMLPath)
+	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
@@ -208,6 +278,14 @@ func (s *Service) Validate(browser string, skipBrowser bool) RunResult {
 		args = append(args, "--browser", browser)
 	}
 	out, err := captureCLI(func() error { return cli.RunValidate(args) })
+	if err != nil {
+		return RunResult{Output: out, Error: err.Error()}
+	}
+	return RunResult{Output: out}
+}
+
+func (s *Service) CheckUpdate() RunResult {
+	out, err := captureCLI(func() error { return cli.RunUpdate([]string{"--check"}) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -251,14 +329,41 @@ func (s *Service) SearchSteps(query string) []StepCatalogEntry {
 func (s *Service) LoadSettings() (AppSettingsDTO, error) {
 	cfg, err := settings.LoadDefaultAppSettings()
 	if err != nil || cfg == nil {
-		return AppSettingsDTO{Browser: "chromium", ParallelWorkers: 1, MaxLoopIterations: 100}, nil
+		return defaultAppSettingsDTO(), nil
+	}
+	return appSettingsFromCfg(cfg), nil
+}
+
+func defaultAppSettingsDTO() AppSettingsDTO {
+	return AppSettingsDTO{
+		Browser:           "chromium",
+		ParallelWorkers:   1,
+		MaxLoopIterations: 100,
+		StepsPanelVisible: true,
+		StepsPanelHeight:  160,
+	}
+}
+
+func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
+	height := cfg.StepsPanelHeight
+	if height < 80 {
+		height = 160
 	}
 	return AppSettingsDTO{
 		Browser:           cfg.Browser,
 		Headless:          cfg.Headless,
 		ParallelWorkers:   maxInt(1, cfg.ParallelWorkers),
 		MaxLoopIterations: maxInt(1, cfg.MaxLoopIterations),
-	}, nil
+		FilterRecording:   cfg.RecordingFilterMode,
+		NavOnlyRecording:    cfg.NavOnlyRecording,
+		HoverRecord:         cfg.RecordingHoverMode,
+		ToolbarCompact:      cfg.ToolbarCompact,
+		StepsPanelVisible:   cfg.StepsPanelVisible,
+		StepsPanelHeight:    height,
+		SidebarWidth:        clampSidebarWidth(cfg.SidebarWidth),
+		RecentProjects:      trimRecents(cfg.RecentProjects),
+		RecentFeatures:      trimRecents(cfg.RecentFeatures),
+	}
 }
 
 func (s *Service) SaveSettings(dto AppSettingsDTO) error {
@@ -266,12 +371,37 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	if path == "" {
 		return fmt.Errorf("settings path unavailable")
 	}
-	cfg := &settings.AppSettings{
-		Browser:           dto.Browser,
-		Headless:          dto.Headless,
-		ParallelWorkers:   maxInt(1, dto.ParallelWorkers),
-		MaxLoopIterations: maxInt(1, dto.MaxLoopIterations),
+	height := dto.StepsPanelHeight
+	if height < 80 {
+		height = 160
 	}
+	existing, _ := settings.LoadDefaultAppSettings()
+	cfg := &settings.AppSettings{
+		Browser:             dto.Browser,
+		Headless:            dto.Headless,
+		ParallelWorkers:     maxInt(1, dto.ParallelWorkers),
+		MaxLoopIterations:   maxInt(1, dto.MaxLoopIterations),
+		RecordingFilterMode: dto.FilterRecording,
+		NavOnlyRecording:      dto.NavOnlyRecording,
+		RecordingHoverMode:    dto.HoverRecord,
+		ToolbarCompact:        dto.ToolbarCompact,
+		StepsPanelVisible:     dto.StepsPanelVisible,
+		StepsPanelHeight:      height,
+		SidebarWidth:          clampSidebarWidth(dto.SidebarWidth),
+		RecentProjects:        trimRecents(dto.RecentProjects),
+		RecentFeatures:        trimRecents(dto.RecentFeatures),
+	}
+	if len(cfg.RecentProjects) == 0 && existing != nil {
+		cfg.RecentProjects = existing.RecentProjects
+	}
+	if len(cfg.RecentFeatures) == 0 && existing != nil {
+		cfg.RecentFeatures = existing.RecentFeatures
+	}
+	sidebarW := dto.SidebarWidth
+	if sidebarW < 120 && existing != nil && existing.SidebarWidth >= 120 {
+		sidebarW = existing.SidebarWidth
+	}
+	cfg.SidebarWidth = clampSidebarWidth(sidebarW)
 	if err := settings.SaveAppSettings(path, cfg); err != nil {
 		return fmt.Errorf("save settings: %w", err)
 	}

@@ -95,7 +95,7 @@ func RunRun(args []string) error {
 		return fmt.Errorf("no runnable scenarios found in %v", opts.targets)
 	}
 
-	runner, err := buildRunner(opts)
+	runner, err := buildRunner(opts, plan)
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func resolveRunEngine(target, engine string) string {
 	return "playwright"
 }
 
-func buildRunner(opts runOptions) (player.Runner, error) {
+func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, error) {
 	if opts.dryRun {
 		return player.DryRunner{}, nil
 	}
@@ -332,15 +332,18 @@ func buildRunner(opts runOptions) (player.Runner, error) {
 			ParallelWorkers: opts.workers,
 		}, nil
 	case "playwright":
+		appCfg, _ := settings.LoadDefaultAppSettings()
+		httpCreds := player.ResolveRunHTTPCredentials(opts.baseURL, plan, appCfg)
 		return player.BrowserRunner{
 			Executor: player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
-				BrowserName: opts.browser,
-				Headless:    !opts.headed,
-				BaseURL:     opts.baseURL,
-				AutoInstall: opts.installPlaywright,
-				SlowMo:      opts.slowMo,
-				TraceDir:    opts.traceDir,
-				VideoDir:    opts.videoDir,
+				BrowserName:     opts.browser,
+				Headless:        !opts.headed,
+				BaseURL:         opts.baseURL,
+				AutoInstall:     opts.installPlaywright,
+				SlowMo:          opts.slowMo,
+				TraceDir:        opts.traceDir,
+				VideoDir:        opts.videoDir,
+				HTTPCredentials: httpCreds,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil

@@ -9,17 +9,25 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
 type LiveOptions struct {
-	StartURL     string
-	FeatureName  string
-	ScenarioName string
-	OutputPath   string
-	Headless     bool
-	IdleTimeout  time.Duration
-	Session      *LiveSession
+	StartURL         string
+	FeatureName      string
+	ScenarioName     string
+	OutputPath       string
+	Headless         bool
+	IdleTimeout      time.Duration
+	Session          *LiveSession
+	AppendTo         string
+	FilterImportant  bool
+	NavOnly          bool
+	HoverRecord      bool
+	TestClient       *settings.TestClient
+	HTTPCredentials  *playwright.HttpCredentials
 }
 
 type recorderEvent struct {
@@ -64,15 +72,33 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 	}
 	defer browser.Close()
 
-	page, err := browser.NewPage()
+	contextOpts := playwright.BrowserNewContextOptions{}
+	if opts.HTTPCredentials != nil {
+		contextOpts.HttpCredentials = opts.HTTPCredentials
+	}
+	bctx, err := browser.NewContext(contextOpts)
+	if err != nil {
+		return fmt.Errorf("create browser context: %w", err)
+	}
+	defer bctx.Close()
+
+	page, err := bctx.NewPage()
 	if err != nil {
 		return fmt.Errorf("create page: %w", err)
+	}
+	if opts.TestClient != nil {
+		if err := player.ApplyTestClient(page, opts.TestClient); err != nil {
+			return fmt.Errorf("apply test client: %w", err)
+		}
 	}
 	if _, err := page.Goto(opts.StartURL); err != nil {
 		return fmt.Errorf("goto start URL: %w", err)
 	}
 	if _, err := page.Evaluate(RecorderScript); err != nil {
 		return fmt.Errorf("inject recorder script: %w", err)
+	}
+	if err := applyRecorderConfig(page, opts); err != nil {
+		return fmt.Errorf("configure recorder: %w", err)
 	}
 
 	recorded := []RecordedStep{{Action: "goto", Value: opts.StartURL}}
@@ -82,6 +108,8 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 	if session == nil {
 		session = NewLiveSession()
 	}
+	session.Bind(page, &recorded)
+	defer session.Clear()
 
 	for {
 		select {
@@ -137,6 +165,9 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 
 	normalized := NormalizeSteps(recorded)
 	steps := RecordedStepsToLines(normalized)
+	if strings.TrimSpace(opts.AppendTo) != "" {
+		return AppendStepsToFeature(opts.AppendTo, steps)
+	}
 	return WriteFeature(opts.OutputPath, Options{
 		FeatureName:  opts.FeatureName,
 		ScenarioName: opts.ScenarioName,
@@ -168,6 +199,17 @@ func normalizeDetail(detail map[string]string) map[string]string {
 		out["tag"] = strings.ToUpper(tag)
 	}
 	return out
+}
+
+func applyRecorderConfig(page playwright.Page, opts LiveOptions) error {
+	script := fmt.Sprintf(`() => {
+		if (!window.__scenariaRecorder) return;
+		window.__scenariaRecorder.filterImportant = %v;
+		window.__scenariaRecorder.navOnly = %v;
+		window.__scenariaRecorder.hoverRecord = %v;
+	}`, opts.FilterImportant, opts.NavOnly, opts.HoverRecord)
+	_, err := page.Evaluate(script)
+	return err
 }
 
 // StepsFromFeature extracts plain step texts from a feature (for validation helpers).

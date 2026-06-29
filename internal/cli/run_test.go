@@ -224,7 +224,8 @@ func TestParseRunOptionsErrors(t *testing.T) {
 }
 
 func TestBuildRunner(t *testing.T) {
-	runner, err := buildRunner(runOptions{dryRun: true})
+	emptyPlan := player.ExecutionPlan{}
+	runner, err := buildRunner(runOptions{dryRun: true}, emptyPlan)
 	if err != nil {
 		t.Fatalf("buildRunner dry-run failed: %v", err)
 	}
@@ -232,7 +233,7 @@ func TestBuildRunner(t *testing.T) {
 		t.Fatalf("expected DryRunner, got %T", runner)
 	}
 
-	runner, err = buildRunner(runOptions{engine: "stub"})
+	runner, err = buildRunner(runOptions{engine: "stub"}, emptyPlan)
 	if err != nil {
 		t.Fatalf("buildRunner stub failed: %v", err)
 	}
@@ -240,7 +241,7 @@ func TestBuildRunner(t *testing.T) {
 		t.Fatalf("expected BrowserRunner for stub, got %T", runner)
 	}
 
-	runner, err = buildRunner(runOptions{engine: "playwright", browser: "chromium"})
+	runner, err = buildRunner(runOptions{engine: "playwright", browser: "chromium"}, emptyPlan)
 	if err != nil {
 		t.Fatalf("buildRunner playwright failed: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestBuildRunner(t *testing.T) {
 		t.Fatalf("expected BrowserRunner for playwright, got %T", runner)
 	}
 
-	if _, err := buildRunner(runOptions{engine: "unknown"}); err == nil {
+	if _, err := buildRunner(runOptions{engine: "unknown"}, emptyPlan); err == nil {
 		t.Fatal("expected error for unknown engine")
 	}
 }

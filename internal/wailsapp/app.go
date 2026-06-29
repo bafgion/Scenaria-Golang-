@@ -114,6 +114,74 @@ func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }
 
+func (a *App) CheckUpdate() gui.RunResult {
+	return a.svc.CheckUpdate()
+}
+
+func (a *App) ListRunResults(limit int) ([]gui.RunResultEntry, error) {
+	return a.svc.ListRunResults(limit)
+}
+
+func (a *App) BundledExamplesPath() string {
+	return a.svc.BundledExamplesPath()
+}
+
+func (a *App) ProjectArtifacts() gui.ProjectArtifacts {
+	return a.svc.ProjectArtifacts()
+}
+
+func (a *App) ParseEditorSteps(text string) []gui.EditorStepRow {
+	return a.svc.ParseEditorSteps(text)
+}
+
+func (a *App) ArtifactExists(path string) bool {
+	return a.svc.ArtifactExists(path)
+}
+
+func (a *App) LoadRecents() gui.RecentsDTO {
+	return a.svc.LoadRecents()
+}
+
+func (a *App) RememberRecentProject(path string) error {
+	return a.svc.RememberRecentProject(path)
+}
+
+func (a *App) RememberRecentFeature(path string) error {
+	return a.svc.RememberRecentFeature(path)
+}
+
+func (a *App) HighlightFeature(text string) []gui.HighlightSpan {
+	return a.svc.HighlightFeature(text)
+}
+
+func (a *App) RefactorUpdateStartURLs(text, newURL string) gui.RefactorResult {
+	return a.svc.RefactorUpdateStartURLs(text, newURL)
+}
+
+func (a *App) RefactorNormalizeIndents(text string) string {
+	return a.svc.RefactorNormalizeIndents(text)
+}
+
+func (a *App) RefactorCollapseBlankLines(text string) string {
+	return a.svc.RefactorCollapseBlankLines(text)
+}
+
+func (a *App) RefactorReplaceInText(text, find, replace string, caseSensitive bool) gui.RefactorResult {
+	return a.svc.RefactorReplaceInText(text, find, replace, caseSensitive)
+}
+
+func (a *App) ReplaceInProject(req gui.ProjectReplaceRequest) (gui.ProjectReplaceResult, error) {
+	return a.svc.ReplaceInProject(req)
+}
+
+func (a *App) DeleteFeature(path string) error {
+	return a.svc.DeleteFeature(path)
+}
+
+func (a *App) DuplicateFeature(path string) (string, error) {
+	return a.svc.DuplicateFeature(path)
+}
+
 func (a *App) LoadSettings() (gui.AppSettingsDTO, error) {
 	return a.svc.LoadSettings()
 }
@@ -147,6 +215,38 @@ func (a *App) ResumeRecording() { a.svc.ResumeRecording() }
 func (a *App) CancelRecording() { a.svc.CancelRecording() }
 func (a *App) IsRecordingPaused() bool {
 	return a.svc.IsRecordingPaused()
+}
+
+func (a *App) FocusBrowser() error {
+	return a.svc.FocusBrowser()
+}
+
+func (a *App) UndoRecordedStep() bool {
+	return a.svc.UndoRecordedStep()
+}
+
+func (a *App) PickSelector() gui.PickSelectorResult {
+	return a.svc.PickSelector()
+}
+
+func (a *App) PickerStepChoices(selector, keyword string) []gui.PickerStepChoice {
+	return gui.PickerStepChoices(selector, keyword)
+}
+
+func (a *App) ListHTTPAuthHosts() ([]string, error) {
+	return a.svc.ListHTTPAuthHosts()
+}
+
+func (a *App) HTTPAuthForHost(host string) (gui.HTTPAuthCredentials, error) {
+	return a.svc.HTTPAuthForHost(host)
+}
+
+func (a *App) SaveHTTPAuth(req gui.HTTPAuthRequest) error {
+	return a.svc.SaveHTTPAuth(req)
+}
+
+func (a *App) RemoveHTTPAuth(host string) error {
+	return a.svc.RemoveHTTPAuth(host)
 }
 
 func (a *App) PickProjectFolder() (string, error) {

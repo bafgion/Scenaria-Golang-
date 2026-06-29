@@ -7,14 +7,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/httpauth"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 )
 
 type RecordRequest struct {
-	URL         string `json:"url"`
-	Output      string `json:"output"`
-	IdleSeconds int    `json:"idleSeconds"`
-	Headless    bool   `json:"headless"`
+	URL              string `json:"url"`
+	Output           string `json:"output"`
+	IdleSeconds      int    `json:"idleSeconds"`
+	Headless         bool   `json:"headless"`
+	FilterRecording  bool   `json:"filterRecording"`
+	NavOnlyRecording bool   `json:"navOnlyRecording"`
+	HoverRecord      bool   `json:"hoverRecord"`
+	AppendTo         string `json:"appendTo"`
+	TestClient       string `json:"testClient"`
 }
 
 type ExportRequest struct {
@@ -95,6 +102,16 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 		idle = 30
 	}
 
+	appCfg, err := s.loadAppSettings()
+	if err != nil {
+		return RunResult{Error: err.Error()}
+	}
+	cleanURL := httpauth.ApplyURLCredentials(url, appCfg)
+	if err := s.saveAppSettings(appCfg); err != nil {
+		return RunResult{Error: err.Error()}
+	}
+	httpCreds := httpauth.PlaywrightHTTPCredentials(cleanURL, appCfg)
+
 	s.mu.Lock()
 	if s.recordCancel != nil {
 		s.recordCancel()
@@ -105,14 +122,29 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 	s.recordCancel = cancel
 	s.mu.Unlock()
 
-	err := recorder.RecordLive(ctx, recorder.LiveOptions{
-		StartURL:     url,
-		FeatureName:  "Записанный сценарий",
-		ScenarioName: "Запись",
-		OutputPath:   output,
-		Headless:     req.Headless,
-		IdleTimeout:  time.Duration(idle) * time.Second,
-		Session:      session,
+	var testClient *settings.TestClient
+	if name := strings.TrimSpace(req.TestClient); name != "" {
+		client, err := settings.LoadTestClientByName(path, name)
+		if err != nil {
+			return RunResult{Error: err.Error()}
+		}
+		testClient = client
+	}
+
+	err = recorder.RecordLive(ctx, recorder.LiveOptions{
+		StartURL:        cleanURL,
+		FeatureName:     "Записанный сценарий",
+		ScenarioName:    "Запись",
+		OutputPath:      output,
+		Headless:        req.Headless,
+		IdleTimeout:     time.Duration(idle) * time.Second,
+		Session:         session,
+		AppendTo:        strings.TrimSpace(req.AppendTo),
+		FilterImportant: req.FilterRecording,
+		NavOnly:         req.NavOnlyRecording,
+		HoverRecord:     req.HoverRecord,
+		TestClient:      testClient,
+		HTTPCredentials: httpCreds,
 	})
 
 	s.mu.Lock()
@@ -158,11 +190,35 @@ func (s *Service) CancelRecording() {
 	s.mu.Lock()
 	cancel := s.recordCancel
 	s.recordCancel = nil
+	session := s.liveSession
 	s.liveSession = nil
 	s.mu.Unlock()
+	if session != nil {
+		session.Clear()
+	}
 	if cancel != nil {
 		cancel()
 	}
+}
+
+func (s *Service) FocusBrowser() error {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session == nil {
+		return fmt.Errorf("браузер не открыт")
+	}
+	return session.FocusBrowser()
+}
+
+func (s *Service) UndoRecordedStep() bool {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session == nil {
+		return false
+	}
+	return session.UndoLastStep()
 }
 
 // cli hooks for testing

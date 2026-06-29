@@ -13,8 +13,21 @@ type AppSettings struct {
 	Headless            bool   `json:"headless"`
 	RecordingHoverMode  bool   `json:"recording_hover_mode"`
 	RecordingFilterMode bool   `json:"recording_filter_mode"`
+	NavOnlyRecording    bool   `json:"nav_only_recording"`
 	ParallelWorkers     int    `json:"parallel_workers"`
 	MaxLoopIterations   int    `json:"max_loop_iterations"`
+	ToolbarCompact      bool   `json:"toolbar_compact"`
+	StepsPanelVisible   bool     `json:"steps_panel_visible"`
+	StepsPanelHeight    int      `json:"steps_panel_height"`
+	SidebarWidth        int      `json:"sidebar_width"`
+	RecentProjects      []string `json:"recent_projects"`
+	RecentFeatures      []string `json:"recent_features"`
+	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
+}
+
+type HTTPAuthEntry struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type TestClient struct {

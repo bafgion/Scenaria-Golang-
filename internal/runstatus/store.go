@@ -61,6 +61,18 @@ func (s *Store) Latest(path string) (*Entry, error) {
 	return nil, nil
 }
 
+// List returns the most recent run entries (newest first).
+func (s *Store) List(limit int) ([]Entry, error) {
+	entries, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries, nil
+}
+
 func (s *Store) load() ([]Entry, error) {
 	payload, err := os.ReadFile(s.path)
 	if err != nil {
