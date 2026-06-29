@@ -127,6 +127,10 @@ func (a *App) ListVanessaRunDirs(limit int) ([]string, error) {
 	return a.svc.ListVanessaRunDirs(limit)
 }
 
+func (a *App) ListScenarioTitles() ([]string, error) {
+	return a.svc.ListScenarioTitles()
+}
+
 func (a *App) ReadVanessaSettingsJSON() (string, error) {
 	return a.svc.ReadVanessaSettingsJSON()
 }

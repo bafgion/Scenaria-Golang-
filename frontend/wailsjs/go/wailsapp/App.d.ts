@@ -48,6 +48,8 @@ export function ListRunResults(arg1:number):Promise<Array<gui.RunResultEntry>>;
 
 export function ListTestClients():Promise<Array<string>>;
 
+export function ListScenarioTitles():Promise<Array<string>>;
+
 export function ListVanessaRunDirs(arg1:number):Promise<Array<string>>;
 
 export function LoadRecents():Promise<gui.RecentsDTO>;

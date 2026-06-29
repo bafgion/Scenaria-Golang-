@@ -99,9 +99,16 @@ go run -tags desktop ./cmd/scenaria-gui
 
 See `docs/FUNCTIONAL_PARITY_MATRIX.md` and `docs/ROADMAP.md`.
 
-- Cross-language CI against Python `tests/` repo (planned)
-- Allure native writer from Go runner (in progress)
-- Full Qt pixel-parity in desktop (not a goal)
+## Not planned
+
+- Cross-language CI with legacy Python `tests/` repo (Python product discontinued).
+- Qt pixel-parity in desktop UI.
+
+## Export to Python
+
+```bash
+scenaria export ./login.feature --format python --output test_login.py
+```
 
 ## Getting help
 

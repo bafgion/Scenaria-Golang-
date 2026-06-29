@@ -18,6 +18,7 @@
   export let vaDir = ''
   export let vaFiles = ''
   export let tags: string[] = []
+  export let scenarios: string[] = []
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
 
@@ -77,7 +78,19 @@
       </div>
     {/if}
     <label>Исключить теги (через запятую) <input bind:value={excludeTags} placeholder="@wip, @draft" /></label>
-    <label>Имя сценария <input bind:value={scenario} placeholder="Необязательно" /></label>
+    <label>Имя сценария <input bind:value={scenario} placeholder="Необязательно" list="vanessa-scenario-list" /></label>
+    {#if scenarios.length > 0}
+      <datalist id="vanessa-scenario-list">
+        {#each scenarios as name}
+          <option value={name}></option>
+        {/each}
+      </datalist>
+      <div class="tag-chips">
+        {#each scenarios as name}
+          <button type="button" class="chip" class:active={scenario === name} on:click={() => (scenario = name)}>{name}</button>
+        {/each}
+      </div>
+    {/if}
     <label>
       Перезапуск упавших (run-dir)
       <select bind:value={rerunFailedRunDir} disabled={loadingDirs || runDirs.length === 0}>

@@ -106,6 +106,7 @@
     ImportFeatures,
     ListPlugins,
     ListVanessaRunDirs,
+    ListScenarioTitles,
     StartVanessaRun,
     PollVanessaRun,
   } from '../wailsjs/go/wailsapp/App'
@@ -120,6 +121,7 @@
   let projectPath = ''
   let features: string[] = []
   let tags: string[] = []
+  let projectScenarios: string[] = []
   let featureTags: Record<string, string[]> = {}
   let tabs: EditorTab[] = []
   let activeTab = WELCOME_KEY
@@ -1430,6 +1432,7 @@
     tags = info.tags || []
     featureTags = info.featureTags || {}
     testClients = await ListTestClients().catch(() => [])
+    projectScenarios = await ListScenarioTitles().catch(() => [])
     await refreshInstalledPlugins()
   }
 
@@ -1700,7 +1703,12 @@
 
   function openRunDialog(title: string, defaults: Partial<RunForm>) {
     runDialogTitle = title
-    runDialogScenarios = !isWelcome && activeTab ? listScenarioTitles(editorText) : []
+    const fileScenarios = !isWelcome && activeTab ? listScenarioTitles(editorText) : []
+    const merged = [...fileScenarios]
+    for (const name of projectScenarios) {
+      if (!merged.includes(name)) merged.push(name)
+    }
+    runDialogScenarios = merged
     const cursorScenario =
       !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
     runForm = {
@@ -1716,7 +1724,8 @@
     vanessaDry = dry
     vanessaTag = ''
     vanessaExcludeTags = ''
-    vanessaScenario = ''
+    vanessaScenario =
+      !isWelcome && activeTab ? scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1) : ''
     vanessaRerunDir = ''
     vanessaPreferRerun = preferRerun
     vanessaInstallEpf = false
@@ -2971,6 +2980,7 @@
     bind:vaDir={vanessaVaDir}
     bind:vaFiles={vanessaVaFiles}
     {tags}
+    scenarios={projectScenarios}
     onConfirm={confirmVanessaRun}
     onCancel={() => (showVanessaRun = false)}
   />

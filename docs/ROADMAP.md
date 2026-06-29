@@ -1,16 +1,15 @@
-# Scenaria Go — Roadmap (post-parity)
+# Scenaria Go — Roadmap
 
-Статус: **master** v0.15; UI по Python/Qt (IDE shell: activity bar, explorer, toolbar, bottom panel).
+Статус: **master** v0.15; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
 | # | Направление | Статус |
 |---|-------------|--------|
-| P0 | Wails IDE | ~90% |
-| P0 | Recorder | ~80% |
-| P1 | Allure | done (screenshot + trace + video) |
-| P1 | Coverage | soft 40%, цель 60% |
-| P2 | Fyne | убран из portable (v0.15) |
+| P0 | Wails IDE | ~95% |
+| P0 | Recorder | ~85% |
+| P1 | Allure | done |
+| P2 | Fyne `ui/desktop` | deprecated, вне release |
 
 ---
 
@@ -18,7 +17,7 @@
 
 - [x] Monaco IDE, run/record/Vanessa/OTP/Allure
 - [x] Splash, portable `wails build`
-- [x] UI shell как Python Qt: menubar, activity bar, explorer, action bar, bottom panel, status bar
+- [x] UI shell: menubar, activity bar, explorer, action bar, bottom panel, status bar
 - [x] Настройки с вкладками (Интерфейс / Запись / Плагины)
 - [x] Пакетный запуск в explorer (Выбор, Ctrl+клик)
 - [x] Command palette (Ctrl+Shift+P), recording bar, dirty banner, ресайз панелей

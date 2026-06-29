@@ -94,6 +94,10 @@ export function ListTestClients() {
   return window['go']['wailsapp']['App']['ListTestClients']();
 }
 
+export function ListScenarioTitles() {
+  return window['go']['wailsapp']['App']['ListScenarioTitles']();
+}
+
 export function ListVanessaRunDirs(arg1) {
   return window['go']['wailsapp']['App']['ListVanessaRunDirs'](arg1);
 }
