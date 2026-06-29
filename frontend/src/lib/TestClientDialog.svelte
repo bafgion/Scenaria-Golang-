@@ -117,8 +117,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal wide tall test-client-dialog" role="dialog" aria-label="TestClient" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide tall test-client-dialog" role="dialog" aria-modal="true" aria-label="TestClient" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>TestClient</h3>
     <div class="test-client-body">
       <div class="client-list">

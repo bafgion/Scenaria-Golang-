@@ -27,8 +27,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal move-dialog" role="dialog" aria-label="Переместить сценарий" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal move-dialog" role="dialog" aria-modal="true" aria-label="Переместить сценарий" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Переместить сценарий</h3>
     <p class="file">{basename(featurePath)}</p>
     <label>

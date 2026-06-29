@@ -25,8 +25,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal" role="dialog" aria-label="Переименовать сценарий" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Переименовать сценарий" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Переименовать сценарий</h3>
     <label>
       Новое имя файла

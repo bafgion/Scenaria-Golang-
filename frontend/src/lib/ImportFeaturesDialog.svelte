@@ -1,7 +1,6 @@
 <script lang="ts">
   import { PickOpenFile, PickOpenFiles } from '../../wailsjs/go/wailsapp/App'
 
-  export let projectPath = ''
   export let destDirs: string[] = []
   export let destDir = ''
   export let busy = false
@@ -68,8 +67,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal wide import-features-dialog" role="dialog" aria-label="Импорт feature" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide import-features-dialog" role="dialog" aria-modal="true" aria-label="Импорт feature" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Импорт .feature в проект</h3>
     <p class="hint">Копирует внешние сценарии в папку проекта (аналог drag-and-drop на каталог).</p>
     <label>

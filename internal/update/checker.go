@@ -15,11 +15,17 @@ type Release struct {
 
 func LatestRelease(owner, repo string) (*Release, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+	return fetchRelease(&http.Client{Timeout: 15 * time.Second}, url)
+}
+
+func fetchRelease(client *http.Client, url string) (*Release, error) {
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch latest release: %w", err)

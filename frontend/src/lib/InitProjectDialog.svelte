@@ -10,8 +10,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal init-dialog" role="dialog" aria-label="Init проекта" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal init-dialog" role="dialog" aria-modal="true" aria-label="Init проекта" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Init проекта</h3>
     <p class="hint">
       Создать или обновить каталог <code>.scenaria/</code> в проекте

@@ -42,8 +42,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal wide tall" role="dialog" aria-label="Настройки Vanessa" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Настройки Vanessa" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Настройки Vanessa (1C)</h3>
     <p class="hint">Файл <code>.scenaria/vanessa.json</code> — пути к платформе 1C, EPF Vanessa и каталогу запусков.</p>
     <textarea bind:value={jsonText} spellcheck="false" disabled={busy}></textarea>

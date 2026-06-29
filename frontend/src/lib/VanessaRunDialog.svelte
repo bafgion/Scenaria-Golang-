@@ -66,8 +66,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal wide tall" role="dialog" aria-label="Запуск Vanessa" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Запуск Vanessa" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Vanessa {dryRun ? '(dry-run)' : ''}</h3>
     <label>Тег <input bind:value={tag} placeholder="@smoke" /></label>
     {#if tags.length > 0}

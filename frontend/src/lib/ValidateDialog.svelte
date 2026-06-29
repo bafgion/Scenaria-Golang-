@@ -18,8 +18,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal validate-dialog" role="dialog" aria-label="Проверка сценария" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal validate-dialog" role="dialog" aria-modal="true" aria-label="Проверка сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Проверка сценария</h3>
     <fieldset class="scope">
       <legend>Область</legend>

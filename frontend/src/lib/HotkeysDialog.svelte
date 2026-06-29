@@ -18,10 +18,12 @@
 
 <svelte:window on:keydown={onKey} />
 
-<div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette hotkeys" role="dialog" aria-label="Горячие клавиши" on:click|stopPropagation>
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+<div class="modal-backdrop" role="presentation" on:click={onClose}>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide hotkeys-dialog" role="dialog" aria-modal="true" aria-label="Горячие клавиши" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Горячие клавиши</h3>
-    <ul>
+    <ul class="hotkeys-list">
       {#each hotkeys as cmd}
         <li>
           <span class="label">{cmd.label}</span>
@@ -29,42 +31,40 @@
         </li>
       {/each}
     </ul>
-    <div class="actions">
+    <div class="modal-actions">
       <button type="button" class="primary" on:click={onClose}>OK</button>
     </div>
   </div>
 </div>
 
 <style>
-  .hotkeys {
+  .hotkeys-dialog {
     width: min(480px, 92vw);
     max-height: 70vh;
-    overflow: auto;
-    padding: 16px;
-    background: var(--color-sidebar);
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
   }
 
-  h3 {
-    margin: 0 0 12px;
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  ul {
+  .hotkeys-list {
     list-style: none;
     margin: 0;
     padding: 0;
+    overflow: auto;
+    flex: 1;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-bg);
   }
 
   li {
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    padding: 6px 0;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--color-divider);
     font-size: 12px;
+  }
+
+  li:last-child {
+    border-bottom: none;
   }
 
   .label {
@@ -75,20 +75,5 @@
     color: var(--color-muted);
     font-family: var(--font-mono);
     white-space: nowrap;
-  }
-
-  .actions {
-    margin-top: 12px;
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .actions button {
-    padding: 5px 16px;
-    font-size: 12px;
-    background: var(--color-primary);
-    border: 1px solid var(--color-primary);
-    border-radius: 3px;
-    color: #fff;
   }
 </style>

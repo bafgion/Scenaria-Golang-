@@ -1,8 +1,46 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
+  import { asStepSearchQuery } from './stepSearch'
 
-  export type StepEntry = { category: string; template: string; help: string }
+  export type StepEntry = {
+    label: string
+    action: string
+    category: string
+    description: string
+    template: string
+    example: string
+    parameters: string[]
+    help: string
+  }
+
+  function entryText(entry: StepEntry): string {
+    return [
+      entry.label,
+      entry.action,
+      entry.category,
+      entry.description,
+      entry.template,
+      entry.example,
+      entry.help,
+      ...(entry.parameters ?? []),
+    ].join(' ')
+  }
+
+  function displayLabel(entry: StepEntry): string {
+    if (entry.label) {
+      return entry.action ? `${entry.label} (${entry.action})` : entry.label
+    }
+    return entry.template
+  }
+
+  function detailDescription(entry: StepEntry): string {
+    return entry.description || entry.help || ''
+  }
+
+  function detailExample(entry: StepEntry): string {
+    return entry.example || entry.template || ''
+  }
 
   export let onClose: () => void = () => {}
   export let onInsert: ((template: string) => void) | null = null
@@ -12,34 +50,39 @@
   let entries: StepEntry[] = []
   let selected = 0
   let loading = true
+  let searchInput: HTMLInputElement
 
-  onMount(async () => {
-    query = initialQuery
+  async function loadEntries(q: unknown) {
+    const searchQ = asStepSearchQuery(q)
+    loading = true
     try {
-      entries = await SearchSteps(initialQuery)
+      entries = await SearchSteps(searchQ)
     } catch {
       entries = []
     } finally {
       loading = false
     }
+  }
+
+  onMount(async () => {
+    query = asStepSearchQuery(initialQuery)
+    await loadEntries(query)
+    await tick()
+    searchInput?.focus()
   })
 
   $: filtered = entries.filter((e) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
-    return (e.template + e.category + e.help).toLowerCase().includes(q)
+    return entryText(e).toLowerCase().includes(q)
   })
 
   $: if (selected >= filtered.length) selected = Math.max(0, filtered.length - 1)
   $: current = filtered[selected]
 
   async function onQueryInput() {
-    try {
-      entries = await SearchSteps(query)
-      selected = 0
-    } catch {
-      /* keep previous */
-    }
+    await loadEntries(query)
+    selected = 0
   }
 
   function onKey(e: KeyboardEvent) {
@@ -62,10 +105,13 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette steps-help" role="dialog" aria-label="Справка по шагам" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette steps-help" role="dialog" aria-modal="true" aria-label="Справка по шагам" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Справка по шагам</h3>
     <input
+      bind:this={searchInput}
       class="search"
       bind:value={query}
       placeholder="Поиск по шаблону, категории или описанию…"
@@ -82,7 +128,7 @@
             <li>
               <button type="button" class:selected={i === selected} on:click={() => (selected = i)}>
                 <span class="cat">{entry.category}</span>
-                <span class="tpl">{entry.template}</span>
+                <span class="tpl">{displayLabel(entry)}</span>
               </button>
             </li>
           {/each}
@@ -90,9 +136,28 @@
       </ul>
       <div class="detail">
         {#if current}
-          <div class="detail-cat">{current.category}</div>
-          <pre class="detail-template">{current.template}</pre>
-          <p class="detail-help">{current.help}</p>
+          <header class="detail-header">
+            <h4 class="detail-title">{current.label || displayLabel(current)}</h4>
+            <p class="detail-meta">
+              <span class="badge">{current.category}</span>
+              {#if current.action}<code class="action">{current.action}</code>{/if}
+            </p>
+          </header>
+          {#if detailDescription(current)}
+            <p class="detail-desc">{detailDescription(current)}</p>
+          {/if}
+          {#if current.parameters?.length}
+            <section class="detail-block">
+              <div class="block-title">Параметры</div>
+              {#each current.parameters as param}
+                <p class="param-line">{param}</p>
+              {/each}
+            </section>
+          {/if}
+          <section class="detail-block">
+            <div class="block-title">Пример</div>
+            <pre class="detail-example">{detailExample(current)}</pre>
+          </section>
           {#if onInsert}
             <button type="button" class="insert-btn" on:click={() => { onInsert(current.template); onClose() }}>
               Вставить в редактор
@@ -112,7 +177,7 @@
 <style>
   .steps-help {
     width: min(920px, 96vw);
-    max-height: 86vh;
+    padding: 16px;
     display: flex;
     flex-direction: column;
   }
@@ -168,7 +233,7 @@
 
   .list button:hover,
   .list button.selected {
-    background: var(--color-selection);
+    background: var(--color-selected);
   }
 
   .cat {
@@ -186,42 +251,97 @@
 
   .detail {
     overflow: auto;
-    padding: 10px;
+    padding: 12px;
     border: 1px solid var(--color-divider);
     border-radius: 3px;
     background: var(--color-toolbar);
   }
 
-  .detail-cat {
-    font-size: 11px;
-    color: var(--color-muted);
-    margin-bottom: 8px;
+  .detail-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-divider);
   }
 
-  .detail-template {
-    margin: 0 0 10px;
-    padding: 8px;
-    background: var(--color-input);
-    border-radius: 3px;
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
+  .detail-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text);
   }
 
-  .detail-help {
+  .detail-meta {
     margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+
+  .action {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: #9cdc8a;
+    background: transparent;
+  }
+
+  .detail-desc {
+    margin: 0 0 12px;
     font-size: 13px;
     line-height: 1.45;
     color: var(--color-text);
   }
 
+  .detail-block {
+    margin-top: 12px;
+  }
+
+  .block-title {
+    margin-bottom: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+  }
+
+  .param-line {
+    margin: 0 0 6px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-text);
+  }
+
+  .detail-example {
+    margin: 0;
+    padding: 0 0 0 10px;
+    border-left: 2px solid var(--color-border);
+    background: transparent;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #ce9178;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   .insert-btn {
     margin-top: 12px;
     padding: 6px 12px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-primary);
     border-radius: 3px;
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
+    background: var(--color-primary);
+    color: #fff;
     cursor: pointer;
   }
 

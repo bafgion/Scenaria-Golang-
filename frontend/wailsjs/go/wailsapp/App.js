@@ -14,6 +14,10 @@ export function ArtifactExists(arg1) {
   return window['go']['wailsapp']['App']['ArtifactExists'](arg1);
 }
 
+export function BrowserInstallStatus(arg1) {
+  return window['go']['wailsapp']['App']['BrowserInstallStatus'](arg1);
+}
+
 export function BundledExamplesPath() {
   return window['go']['wailsapp']['App']['BundledExamplesPath']();
 }
@@ -28,6 +32,10 @@ export function CancelRecording() {
 
 export function CheckUpdate() {
   return window['go']['wailsapp']['App']['CheckUpdate']();
+}
+
+export function CompletionsForLine(arg1, arg2) {
+  return window['go']['wailsapp']['App']['CompletionsForLine'](arg1, arg2);
 }
 
 export function DeleteFeature(arg1) {
@@ -68,6 +76,10 @@ export function ImportJSON(arg1) {
 
 export function InitProject() {
   return window['go']['wailsapp']['App']['InitProject']();
+}
+
+export function InstallBrowserEngine(arg1) {
+  return window['go']['wailsapp']['App']['InstallBrowserEngine'](arg1);
 }
 
 export function InstallPlugin(arg1, arg2) {
@@ -308,4 +320,8 @@ export function ValidateFeature(arg1) {
 
 export function Version() {
   return window['go']['wailsapp']['App']['Version']();
+}
+
+export function WriteTempFeature(arg1) {
+  return window['go']['wailsapp']['App']['WriteTempFeature'](arg1);
 }

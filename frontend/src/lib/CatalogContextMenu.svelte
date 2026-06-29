@@ -1,7 +1,6 @@
 <script lang="ts">
   export let x = 0
   export let y = 0
-  export let path = ''
   export let onRun: () => void = () => {}
   export let onDryRun: () => void = () => {}
   export let onOpen: () => void = () => {}
@@ -20,7 +19,7 @@
 <svelte:window on:keydown={onKey} />
 
 <div class="context-menu-backdrop" role="presentation" on:click={onClose} on:contextmenu|preventDefault={onClose}>
-  <div class="context-menu" style="left: {x}px; top: {y}px" role="menu" on:click|stopPropagation>
+  <div class="context-menu" style="left: {x}px; top: {y}px" role="menu" tabindex="0" on:click|stopPropagation on:keydown|stopPropagation>
     <button type="button" on:click={onRun}>Запустить</button>
     <button type="button" on:click={onDryRun}>Dry-run</button>
     <button type="button" on:click={onOpen}>Открыть</button>

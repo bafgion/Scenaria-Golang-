@@ -15,3 +15,11 @@ func TestResolveEmailForCodeFromPriorFill(t *testing.T) {
 		t.Fatalf("unexpected email: %v %q", err, email)
 	}
 }
+
+func TestResolveEmailForCodeFromStepField(t *testing.T) {
+	ctx := NewRunContext(map[string]string{}, 1, "")
+	email, err := ctx.ResolveEmailForCode("qa@test.com", nil)
+	if err != nil || email != "qa@test.com" {
+		t.Fatalf("unexpected email: %v %q", err, email)
+	}
+}

@@ -20,8 +20,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal" role="dialog" aria-label="Обновить стартовый URL" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Обновить стартовый URL" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Обновить стартовый URL</h3>
     <p class="hint">Заменяет URL во всех шагах «открыт» в текущем файле.</p>
     <label>

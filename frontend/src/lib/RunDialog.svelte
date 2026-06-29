@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RunForm } from './runTypes'
+  import NumberInput from './NumberInput.svelte'
 
   export let title = 'Запуск сценария'
   export let form: RunForm
@@ -20,8 +21,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal wide run-dialog" role="dialog" aria-label={title} on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide run-dialog" role="dialog" aria-modal="true" aria-label={title} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>{title}</h3>
     <label>Тег <input bind:value={form.tag} placeholder="@smoke" /></label>
     <label>Сценарий (опционально) <input bind:value={form.scenario} placeholder="Название сценария" list="run-scenario-list" /></label>
@@ -68,12 +71,14 @@
       </label>
     </div>
     <div class="row-2">
-      <label>Параллельные воркеры
-        <input type="number" bind:value={form.workers} min="1" max="16" disabled={form.dryRun} />
-      </label>
-      <label>Slow-mo (мс)
-        <input type="number" bind:value={form.slowMo} min="0" step="50" disabled={form.dryRun} />
-      </label>
+      <div>
+        <label for="run-workers">Параллельные воркеры</label>
+        <NumberInput inputId="run-workers" bind:value={form.workers} min={1} max={16} disabled={form.dryRun} width="100%" />
+      </div>
+      <div>
+        <label for="run-slowmo">Slow-mo (мс)</label>
+        <NumberInput inputId="run-slowmo" bind:value={form.slowMo} min={0} step={50} disabled={form.dryRun} width="100%" />
+      </div>
     </div>
     <label>Переменные (NAME=VALUE)
       <textarea bind:value={form.vars} placeholder="BASE_URL=https://example.com"></textarea>

@@ -14,11 +14,33 @@
   const HINT_ID = '__shopPickerHint';
   const SKIP_IDS = new Set([SHIELD_ID, OVERLAY_ID, HINT_ID]);
 
+  function buildIframeSelector(el) {
+    if (!el || el.tagName !== 'IFRAME') return null;
+    const src = el.getAttribute('src') || '';
+    if (src.includes('telegram.org')) {
+      return 'iframe[src*="telegram.org"]';
+    }
+    if (el.id) return `#${H.cssEscape(el.id)}`;
+    const title = el.getAttribute('title');
+    if (title) return `iframe[title="${H.cssEscape(title)}"]`;
+    const name = el.getAttribute('name');
+    if (name) return `iframe[name="${H.cssEscape(name)}"]`;
+    try {
+      const url = new URL(src, window.location.href);
+      if (url.host) {
+        return `iframe[src*="${H.cssEscape(url.host)}"]`;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    return H.buildSelector(el);
+  }
+
   function resolvePickTarget(rawEl) {
     if (!rawEl || rawEl.nodeType !== 1) return { el: null, selector: null };
     if (SKIP_IDS.has(rawEl.id)) return { el: null, selector: null };
     if (rawEl.tagName === 'IFRAME') {
-      return { el: rawEl, selector: H.buildSelector(rawEl) };
+      return { el: rawEl, selector: buildIframeSelector(rawEl) };
     }
     const canvas = H.findCanvas(rawEl);
     if (canvas) {

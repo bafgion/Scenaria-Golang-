@@ -26,8 +26,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal" role="dialog" aria-label="Открыть проект" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Открыть проект" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Открыть проект</h3>
     <p class="hint">Укажите папку с .feature сценариями (если диалог выбора папки недоступен).</p>
     <label>

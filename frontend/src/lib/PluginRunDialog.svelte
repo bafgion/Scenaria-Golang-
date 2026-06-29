@@ -24,8 +24,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal plugin-run-dialog" role="dialog" aria-label="Запуск плагина" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal plugin-run-dialog" role="dialog" aria-modal="true" aria-label="Запуск плагина" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Запуск: {pluginTitle || pluginName}</h3>
     <label>Тег (опционально)
       <input bind:value={tag} placeholder="@smoke" />

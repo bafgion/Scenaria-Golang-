@@ -48,8 +48,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette" role="dialog" aria-label="Палитра команд" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Палитра команд" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <input class="palette-input" bind:value={query} placeholder="Введите команду…" autofocus />
     <ul class="palette-list">
       {#each filtered as cmd, i}

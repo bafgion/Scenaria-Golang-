@@ -25,8 +25,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal duplicate-dialog" role="dialog" aria-label="Дублировать сценарий" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal duplicate-dialog" role="dialog" aria-modal="true" aria-label="Дублировать сценарий" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Дублировать сценарий</h3>
     <p class="source">Источник: {basename(featurePath)}</p>
     <label>Имя копии (без .feature)

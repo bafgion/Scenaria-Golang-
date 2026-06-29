@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="scenaria" tests="3" failures="1" skipped="1">
+  <testcase classname="login.feature" name="Успешный вход"></testcase>
+  <testcase classname="login.feature" name="Неверный пароль">
+    <failure message="текст не совпал"></failure>
+  </testcase>
+  <testcase classname="smoke.feature" name="Dry-run">
+    <skipped message="dry-run mode"></skipped>
+  </testcase>
+</testsuite>

@@ -59,3 +59,22 @@ func TestEventPipelineSignature(t *testing.T) {
 		t.Fatalf("unexpected line: %q ok=%v", line, ok)
 	}
 }
+
+func TestEventPipelineCheckboxCheckEvent(t *testing.T) {
+	step, ok := EventToRecordedStep("check", map[string]string{
+		"selector": `#agree`,
+	})
+	if !ok || step.Action != "check" {
+		t.Fatalf("unexpected check step: %+v ok=%v", step, ok)
+	}
+
+	var recorded []RecordedStep
+	appendCoalescedStep(&recorded, step)
+	if len(recorded) != 1 || recorded[0].Action != "check" {
+		t.Fatalf("pipeline: %+v", recorded)
+	}
+	line, ok := RecordedStepToLine(recorded[0])
+	if !ok || line != `отмечаю "#agree"` {
+		t.Fatalf("line: %q ok=%v", line, ok)
+	}
+}

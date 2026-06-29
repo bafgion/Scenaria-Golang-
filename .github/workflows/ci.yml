@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main, feat/**]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,11 +17,11 @@ jobs:
         with:
           go-version: "1.24"
       - name: Test
-        run: go test ./...
+        run: go test ./internal/... ./cmd/...
       - name: Coverage (soft gate 40%, target 60%)
         shell: pwsh
         run: |
-          go test -coverpkg=./... -coverprofile="coverage.out" -covermode=atomic ./...
+          go test -coverpkg=./... -coverprofile="coverage.out" -covermode=atomic ./internal/... ./cmd/...
           if (-not (Test-Path "coverage.out")) {
             Write-Error "coverage.out was not created"
             exit 1
@@ -37,9 +38,55 @@ jobs:
         run: |
           cd frontend
           npm install
+          npm run check
+          npm test
           npm run build
+      - name: Install Playwright Chromium
+        run: |
+          cd frontend
+          npx playwright install chromium
+      - name: UI E2E (Playwright)
+        run: |
+          cd frontend
+          npm run test:e2e
       - name: Golden parity fixture
         run: go test ./internal/stepdsl/... ./internal/parity/... -count=1
+
+  integration:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install Playwright Chromium
+        run: go run github.com/mxschmitt/playwright-go/cmd/playwright@latest install chromium
+      - name: Integration tests
+        run: go test -tags=integration ./internal/recorder/... ./internal/selector/... ./internal/player/... -count=1 -timeout 3m
+
+  desktop-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build Wails frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      - name: Build scenaria-gui.exe
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          wails build -platform windows/amd64 -skipbindings
+      - name: Desktop smoke
+        shell: pwsh
+        run: ./scripts/desktop-smoke.ps1
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

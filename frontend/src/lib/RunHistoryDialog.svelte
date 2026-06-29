@@ -48,8 +48,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette run-history" role="dialog" aria-label="История запусков" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette run-history" role="dialog" aria-modal="true" aria-label="История запусков" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>История запусков</h3>
     <div class="toolbar">
       <input class="search" bind:value={query} placeholder="Поиск по сценарию или сообщению…" />

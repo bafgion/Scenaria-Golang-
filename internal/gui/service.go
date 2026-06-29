@@ -91,9 +91,26 @@ type RunResult struct {
 }
 
 type StepCatalogEntry struct {
-	Category string `json:"category"`
-	Template string `json:"template"`
-	Help     string `json:"help"`
+	Label       string   `json:"label"`
+	Action      string   `json:"action"`
+	Category    string   `json:"category"`
+	Description string   `json:"description"`
+	Template    string   `json:"template"`
+	Example     string   `json:"example"`
+	Parameters  []string `json:"parameters"`
+	Help        string   `json:"help"`
+}
+
+type StepCompletionSnippet struct {
+	Label       string `json:"label"`
+	Insert      string `json:"insert"`
+	Description string `json:"description"`
+}
+
+type StepCompletionsDTO struct {
+	Start int                     `json:"start"`
+	End   int                     `json:"end"`
+	Items []StepCompletionSnippet `json:"items"`
 }
 
 type AppSettingsDTO struct {
@@ -258,6 +275,18 @@ func (s *Service) SaveFeature(path, content string) error {
 	return nil
 }
 
+func (s *Service) WriteTempFeature(content string) (string, error) {
+	dir, err := os.MkdirTemp("", "scenaria-run-")
+	if err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
+	}
+	path := filepath.Join(dir, "scenario.feature")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return "", fmt.Errorf("write temp feature: %w", err)
+	}
+	return path, nil
+}
+
 func (s *Service) InitProject() (string, error) {
 	path := s.ProjectPath()
 	if path == "" {
@@ -268,12 +297,13 @@ func (s *Service) InitProject() (string, error) {
 
 func (s *Service) Run(req RunRequest) RunResult {
 	path := s.ProjectPath()
-	if path == "" {
-		return RunResult{Error: "open a project folder first"}
-	}
-	args := []string{path}
+	args := []string{}
 	if len(req.Targets) > 0 {
-		args = append([]string{}, req.Targets...)
+		args = append(args, req.Targets...)
+	} else if path != "" {
+		args = append(args, path)
+	} else {
+		return RunResult{Error: "нет файлов для запуска — откройте сценарий или проект"}
 	}
 	if req.DryRun {
 		args = append(args, "--dry-run")
@@ -417,9 +447,31 @@ func (s *Service) SearchSteps(query string) []StepCatalogEntry {
 	out := make([]StepCatalogEntry, 0, len(entries))
 	for _, entry := range entries {
 		out = append(out, StepCatalogEntry{
-			Category: entry.Category,
-			Template: entry.Template,
-			Help:     entry.Help,
+			Label:       entry.Label,
+			Action:      entry.Action,
+			Category:    entry.Category,
+			Description: entry.Description,
+			Template:    entry.Template,
+			Example:     entry.Example,
+			Parameters:  entry.Parameters,
+			Help:        entry.Help,
+		})
+	}
+	return out
+}
+
+func (s *Service) CompletionsForLine(line string, column int) StepCompletionsDTO {
+	result := stepcatalog.CompletionsForLine(line, column)
+	out := StepCompletionsDTO{
+		Start: result.Start,
+		End:   result.End,
+		Items: make([]StepCompletionSnippet, 0, len(result.Items)),
+	}
+	for _, item := range result.Items {
+		out.Items = append(out.Items, StepCompletionSnippet{
+			Label:       item.Label,
+			Insert:      item.Insert,
+			Description: item.Description,
 		})
 	}
 	return out

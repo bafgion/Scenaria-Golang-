@@ -16,8 +16,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette find-replace" role="dialog" aria-label="Замена по проекту" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette find-replace" role="dialog" aria-modal="true" aria-label="Замена по проекту" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Замена по проекту</h3>
     <p class="hint">Заменяет текст во всех .feature файлах открытого проекта.</p>
     <label>Найти <input bind:value={findText} autofocus /></label>

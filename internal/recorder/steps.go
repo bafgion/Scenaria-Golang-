@@ -17,10 +17,12 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 			return RecordedStep{}, false
 		}
 		return RecordedStep{
-			Action:   "click",
-			Selector: sel,
-			Text:     detail["text"],
-			Context:  detail["contexttext"],
+			Action:        "click",
+			Selector:      sel,
+			Text:          detail["text"],
+			Context:       detail["contexttext"],
+			HoverSelector: strings.TrimSpace(detail["hoverselector"]),
+			HoverText:     strings.TrimSpace(detail["hovertext"]),
 		}, true
 	case "draw-signature":
 		sel := strings.TrimSpace(detail["selector"])
@@ -134,7 +136,15 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 
 func RecordedStepsToLines(steps []RecordedStep) []string {
 	out := make([]string, 0, len(steps))
-	for _, step := range steps {
+	for i, step := range steps {
+		if step.Action == "click" {
+			hover := strings.TrimSpace(step.HoverSelector)
+			if hover != "" && (i == 0 || steps[i-1].Action != "hover" || steps[i-1].Selector != hover) {
+				if line, ok := RecordedStepToLine(RecordedStep{Action: "hover", Selector: hover}); ok {
+					out = append(out, line)
+				}
+			}
+		}
 		if line, ok := RecordedStepToLine(step); ok {
 			out = append(out, line)
 		}

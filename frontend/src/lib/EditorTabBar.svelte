@@ -5,6 +5,7 @@
   export let welcomeKey = '__welcome__'
   export let tabs: { path: string; dirty: boolean }[] = []
   export let tabLabel: (path: string) => string = (p) => p
+  export let tabUnsaved: (tab: { path: string; dirty: boolean }) => boolean = (t) => t.dirty
 
   export let onSelect: (key: string) => void = () => {}
   export let onClose: (path: string) => void = () => {}
@@ -59,7 +60,7 @@
         }
       }}
     >
-      <span class="tab-label">{tabLabel(tab.path)}{tab.dirty ? ' *' : ''}</span>
+      <span class="tab-label">{tabLabel(tab.path)}{tabUnsaved(tab) ? ' *' : ''}</span>
       <button
         type="button"
         class="tab-close"

@@ -98,8 +98,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal wide import-dialog" role="dialog" aria-label="Импорт JSON" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide import-dialog" role="dialog" aria-modal="true" aria-label="Импорт JSON" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Импорт JSON</h3>
     <label>
       JSON-файл

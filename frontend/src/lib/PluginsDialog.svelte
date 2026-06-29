@@ -77,8 +77,10 @@
 
 <svelte:window on:keydown={onKey} />
 
-<div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette plugins-dialog" role="dialog" aria-label="Плагины" on:click|stopPropagation>
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+<div class="modal-backdrop" role="presentation" on:click={onClose}>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide tall plugins-dialog" role="dialog" aria-modal="true" aria-label="Плагины" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Плагины проекта</h3>
     <p class="hint">Плагины устанавливаются в <code>addons/&lt;имя&gt;/</code> и регистрируются в <code>.scenaria/plugins.json</code>.</p>
 
@@ -129,7 +131,7 @@
 
     {#if error}<p class="error">{error}</p>{/if}
 
-    <div class="actions">
+    <div class="modal-actions">
       <button type="button" on:click={onClose}>Закрыть</button>
     </div>
   </div>
@@ -220,24 +222,10 @@
     color: var(--color-error);
   }
 
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
   button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
     justify-self: start;
   }
 

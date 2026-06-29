@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
+  import { asStepSearchQuery } from './stepSearch'
 
   export type StepEntry = { category: string; template: string; help: string }
 
@@ -24,7 +25,7 @@
   async function onQueryInput() {
     loading = true
     try {
-      entries = await SearchSteps(query)
+      entries = await SearchSteps(asStepSearchQuery(query))
     } catch {
       entries = []
     } finally {
@@ -44,8 +45,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal wide tall" role="dialog" aria-label="Вставить шаг" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Вставить шаг" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Вставить шаг</h3>
     <input bind:value={query} placeholder="Поиск шага…" on:input={onQueryInput} />
     <div class="step-list">

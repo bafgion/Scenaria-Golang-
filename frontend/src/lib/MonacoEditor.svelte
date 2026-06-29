@@ -1,13 +1,19 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte'
-  import loader from '@monaco-editor/loader'
-  import * as monaco from 'monaco-editor'
-  import { registerFeatureLanguage } from './featureLanguage'
+  import { preloadMonacoEditor } from './appBootstrap'
+  import {
+    registerHintCodeActions,
+    setHintMarkers,
+    type HintActionHandlers,
+  } from './gherkinHintActions'
+  import type { gui } from '../../wailsjs/go/models'
+  import type { HotkeyId } from './hotkeys'
   import type { editor as MonacoEditor } from 'monaco-editor'
 
-  loader.config({ monaco })
-
   export let value = ''
+  export let onHotkey: ((id: HotkeyId) => void) | null = null
+  export let hintActions: HintActionHandlers | null = null
+  export let scenarioHints: gui.ScenarioHintDTO[] = []
 
   type MarkerIssue = { line: number; message: string }
 
@@ -19,9 +25,11 @@
   const dispatch = createEventDispatcher<{ change: string }>()
 
   onMount(async () => {
-    const monaco = await loader.init()
+    const monaco = await preloadMonacoEditor()
     monacoApi = monaco
-    registerFeatureLanguage(monaco)
+    if (hintActions) {
+      registerHintCodeActions(monaco, hintActions)
+    }
 
     editor = monaco.editor.create(container, {
       value,
@@ -29,13 +37,19 @@
       theme: 'scenaria-dark',
       automaticLayout: true,
       fontSize: 13,
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace',
       minimap: { enabled: true, scale: 1 },
       scrollBeyondLastLine: false,
       wordWrap: 'on',
       lineNumbers: 'on',
       renderWhitespace: 'selection',
       padding: { top: 8 },
+      tabSize: 4,
+      insertSpaces: false,
+      wordBasedSuggestions: 'currentDocument',
+      wordBasedSuggestionsOnlySameLanguage: true,
+      quickSuggestions: { other: true, comments: false, strings: true },
+      lightbulb: { enabled: 'on' as const },
     })
 
     editor.onDidChangeModelContent(() => {
@@ -45,6 +59,38 @@
       value = editor.getValue()
       dispatch('change', value)
     })
+
+    const KeyMod = monaco.KeyMod
+    const KeyCode = monaco.KeyCode
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.Space, () => {
+      editor?.trigger('keyboard', 'editor.action.triggerSuggest', {})
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.Period, () => {
+      editor?.trigger('keyboard', 'editor.action.quickFix', {})
+    })
+
+    applyScenarioHintMarkers()
+
+    if (onHotkey) {
+      const bindings: Array<[number, HotkeyId]> = [
+        [KeyMod.CtrlCmd | KeyCode.KeyS, 'save'],
+        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyS, 'save-as'],
+        [KeyMod.CtrlCmd | KeyCode.Enter, 'run'],
+        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, 'run-current'],
+        [KeyMod.CtrlCmd | KeyCode.KeyB, 'browser'],
+        [KeyMod.CtrlCmd | KeyCode.KeyR, 'record'],
+        [KeyMod.CtrlCmd | KeyCode.KeyN, 'new'],
+        [KeyMod.CtrlCmd | KeyCode.KeyO, 'open'],
+        [KeyMod.CtrlCmd | KeyCode.KeyH, 'find'],
+        [KeyMod.CtrlCmd | KeyCode.Comma, 'settings'],
+        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyP, 'palette'],
+        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Space, 'snippets'],
+        [KeyMod.CtrlCmd | KeyCode.Backquote, 'journal'],
+      ]
+      for (const [keybinding, id] of bindings) {
+        editor.addCommand(keybinding, () => onHotkey?.(id))
+      }
+    }
   })
 
   onDestroy(() => {
@@ -52,15 +98,26 @@
     editor = null
   })
 
-  $: if (editor && editor.getValue() !== value) {
+  export function setContent(text: string) {
+    if (!editor) {
+      value = text
+      return
+    }
     applyingExternal = true
     const model = editor.getModel()
     if (model) {
       editor.pushUndoStop()
-      model.setValue(value)
+      model.setValue(text)
+      editor.setPosition({ lineNumber: 1, column: 1 })
       editor.pushUndoStop()
     }
-    applyingExternal = false
+    queueMicrotask(() => {
+      applyingExternal = false
+    })
+  }
+
+  $: if (editor && !applyingExternal && editor.getValue() !== value) {
+    setContent(value)
   }
 
   export function insertAtCursor(text: string) {
@@ -97,7 +154,16 @@
         severity: monacoApi!.MarkerSeverity.Error,
       })),
     )
+    applyScenarioHintMarkers()
   }
+
+  function applyScenarioHintMarkers() {
+    const model = editor?.getModel()
+    if (!model || !monacoApi) return
+    setHintMarkers(monacoApi, model, scenarioHints)
+  }
+
+  $: scenarioHints, editor, monacoApi, applyScenarioHintMarkers()
 
   export function gotoLine(line: number) {
     if (!editor || line < 1) return

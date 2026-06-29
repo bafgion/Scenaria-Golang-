@@ -8,6 +8,8 @@ node_modules/
 frontend/dist/*
 !frontend/dist/index.html
 frontend/build/
+frontend/test-results/
+frontend/playwright-report/
 .DS_Store
 coverage
 coverage.out

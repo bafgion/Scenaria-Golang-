@@ -136,8 +136,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette export-dialog" role="dialog" aria-label="Экспорт сценария" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette export-dialog" role="dialog" aria-modal="true" aria-label="Экспорт сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Экспорт сценария</h3>
     <p class="hint">Источник: <code>{basename(inputPath)}</code></p>
 

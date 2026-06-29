@@ -50,12 +50,60 @@ button {
   color: inherit;
 }
 
+/* —— Нативные поля ввода (тёмная тема, без системных «белых» контролов) —— */
+input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 28px;
+  background-color: var(--color-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23858585' d='M1 1 L5 5 L9 1 Z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+
+select:focus {
+  outline: 1px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+input[type='radio'] {
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 /* —— Shell —— */
 .ide {
   display: grid;
   grid-template-rows: var(--menubar-height) 1fr var(--status-height);
   height: 100vh;
   background: var(--color-bg);
+}
+
+.ide.app-booting {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .ide.panel-open {
@@ -153,6 +201,45 @@ button {
   color: var(--color-muted);
   font-size: 12px;
   margin-left: 24px;
+}
+
+/* —— Floating palettes (справка, команды, сниппеты…) —— */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh 16px 16px;
+  box-sizing: border-box;
+}
+
+.palette-backdrop > .palette {
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  color: var(--color-text);
+  max-height: calc(100vh - 10vh);
+  overflow: auto;
+  padding: 16px 18px;
+}
+
+.palette-backdrop .palette button {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-input);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.palette-backdrop .palette button.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
 }
 
 /* —— Activity bar —— */
@@ -578,6 +665,7 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: var(--color-bg);
 }
 
 /* Steps strip */
@@ -1032,33 +1120,36 @@ button {
   background: var(--color-recording);
 }
 
-/* —— Modals —— */
+/* —— Modals & dialogs (оригинальная Scenaria) —— */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.62);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
+  padding: 24px 16px;
+  box-sizing: border-box;
 }
 
 .modal {
   background: var(--color-sidebar);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 16px 18px;
   min-width: 360px;
   max-width: 92vw;
-  max-height: 88vh;
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  color: var(--color-text);
 }
 
 .modal.wide {
-  width: 560px;
+  width: min(560px, 92vw);
 }
 
 .modal.tall {
@@ -1092,11 +1183,11 @@ button {
 .modal input,
 .modal select,
 .modal textarea {
-  padding: 6px 8px;
+  padding: 6px 10px;
   background: var(--color-input);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  border-radius: 3px;
+  border-radius: 4px;
   font-family: inherit;
   font-size: 13px;
 }
@@ -1112,27 +1203,291 @@ button {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 8px;
-  padding-top: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-border);
 }
 
-.modal-actions button {
-  padding: 6px 14px;
+.modal-actions button,
+.dialog-footer button {
+  min-width: 84px;
+  padding: 6px 16px;
   border: 1px solid var(--color-border);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--color-input);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.modal-actions button:hover,
+.dialog-footer button:hover {
+  background: #4a4a4a;
+}
+
+.modal-actions button.primary,
+.dialog-footer button.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: #fff;
 }
 
-.modal-actions button.primary {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+.modal-actions button.primary:hover,
+.dialog-footer button.primary:hover {
+  filter: brightness(1.08);
+}
+
+.modal-actions button:disabled,
+.dialog-footer button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Большой диалог с боковой навигацией (настройки) */
+.app-dialog {
+  width: min(720px, 94vw);
+  max-height: calc(100vh - 48px);
+  background: var(--color-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--color-text);
+}
+
+.dialog-search-bar {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.dialog-search-bar input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.dialog-search-bar input::placeholder {
+  color: var(--color-muted);
+}
+
+.dialog-body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  flex: 1;
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.dialog-sidebar {
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-border);
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dialog-sidebar button {
+  text-align: left;
+  padding: 8px 12px;
+  margin: 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.dialog-sidebar button:hover {
+  background: var(--color-input);
+}
+
+.dialog-sidebar button.active {
+  background: var(--color-selected);
+  color: #fff;
+}
+
+.dialog-content {
+  padding: 16px 18px;
+  overflow-y: auto;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-sidebar);
+  flex-shrink: 0;
+}
+
+.setting-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.setting-section-desc {
+  margin: -4px 0 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.setting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-sidebar);
+}
+
+.setting-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.setting-card-desc {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.setting-card-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-card-control input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.setting-card-control select {
+  min-width: 120px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-input);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.setting-card-control .num-with-unit,
+.num-with-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-sidebar);
+  font-size: 13px;
+}
+
+.plugin-row .status {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.plugin-row .status.ok {
+  color: var(--color-success);
+}
+
+.plugin-row .status.warn {
+  color: var(--color-warning);
+}
+
+.dialog-link-btn {
+  align-self: center;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--color-brand);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.selector-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-sidebar);
+  overflow: hidden;
+}
+
+.selector-list li {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-divider);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.selector-list li:last-child {
+  border-bottom: none;
+}
+
+.status-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-success);
 }
 
 .hint {
   font-size: 11px;
   color: var(--color-muted);
   margin: 0;
+  line-height: 1.45;
 }
 
 .step-list {

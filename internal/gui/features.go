@@ -42,7 +42,7 @@ func (s *Service) ReplaceInProject(req ProjectReplaceRequest) (ProjectReplaceRes
 			continue
 		}
 		original := string(payload)
-		replaced := ReplaceInText(original, find, req.Replace, req.CaseSensitive)
+		replaced := ReplaceAllInText(original, find, req.Replace, req.CaseSensitive, true)
 		if replaced.Count == 0 {
 			continue
 		}

@@ -14,11 +14,13 @@
 
 <svelte:window on:keydown={onKey} />
 
-<div class="palette-backdrop" role="presentation" on:click={onCancel}>
-  <div class="palette unsaved-close" role="dialog" aria-label="Несохранённые изменения" on:click|stopPropagation>
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+<div class="modal-backdrop" role="presentation" on:click={onCancel}>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal unsaved-close" role="dialog" aria-modal="true" aria-label="Несохранённые изменения" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Несохранённые изменения</h3>
-    <p class="hint">Сохранить изменения в «{fileName}» перед закрытием?</p>
-    <div class="actions">
+    <p class="message">Сохранить изменения в «{fileName}» перед закрытием?</p>
+    <div class="modal-actions">
       <button type="button" class="primary" on:click={() => onSave()}>Сохранить</button>
       <button type="button" on:click={() => onDiscard()}>Не сохранять</button>
       <button type="button" on:click={() => onCancel()}>Отмена</button>
@@ -27,20 +29,9 @@
 </div>
 
 <style>
-  .unsaved-close {
-    width: min(420px, 92vw);
-  }
-
-  .hint {
-    margin: 0 0 12px;
-    font-size: 12px;
-    color: var(--color-muted);
-  }
-
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    flex-wrap: wrap;
+  .message {
+    margin: 0;
+    font-size: 13px;
+    color: var(--color-text);
   }
 </style>

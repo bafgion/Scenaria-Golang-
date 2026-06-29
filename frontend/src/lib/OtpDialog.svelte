@@ -17,8 +17,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 <div class="modal-backdrop" role="presentation">
-  <div class="modal" role="dialog" aria-label="Код из почты" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Код из почты" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Код из почты</h3>
     {#if email}<p class="hint">{email}</p>{/if}
     <input bind:value={code} placeholder="123456" autofocus />

@@ -39,8 +39,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette find-replace" role="dialog" aria-label="Найти и заменить" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette find-replace" role="dialog" aria-modal="true" aria-label="Найти и заменить" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Найти и заменить</h3>
     <label>Найти <input bind:value={findText} autofocus /></label>
     <label>Заменить <input bind:value={replaceText} /></label>

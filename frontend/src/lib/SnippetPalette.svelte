@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
+  import { asStepSearchQuery } from './stepSearch'
 
   export type SnippetEntry = { category: string; template: string; help: string }
 
@@ -32,7 +33,7 @@
 
   async function onQueryInput() {
     try {
-      entries = await SearchSteps(query)
+      entries = await SearchSteps(asStepSearchQuery(query))
     } catch {
       /* keep previous */
     }
@@ -64,8 +65,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
-  <div class="palette" role="dialog" aria-label="Палитра сниппетов" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Палитра сниппетов" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <input
       class="palette-input"
       bind:value={query}

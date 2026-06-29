@@ -9,8 +9,10 @@
 
 <svelte:window on:keydown={onKey} />
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
-  <div class="modal about-modal" role="dialog" aria-label="О программе" on:click|stopPropagation>
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal about-modal" role="dialog" aria-modal="true" aria-label="О программе" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Scenaria</h3>
     <p class="about-version">{version}</p>
     <p class="hint">Автотесты сайтов · Gherkin · Playwright · Vanessa (1C)</p>

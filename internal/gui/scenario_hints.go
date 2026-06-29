@@ -34,6 +34,7 @@ type ScenarioHintDTO struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	StepIndex   int    `json:"stepIndex"`
+	Line        int    `json:"line"`
 	Severity    string `json:"severity"`
 	AutoFixable bool   `json:"autoFixable"`
 }
@@ -71,17 +72,16 @@ func AnalyzeScenarioHints(text string) []ScenarioHintDTO {
 			if hint := menuHoverHint(steps, i, action.Value1); hint != nil {
 				hints = append(hints, *hint)
 			}
-			if hint := divClickHint(i, action.Value1); hint != nil {
+			if hint := divClickHint(steps, i, action.Value1); hint != nil {
 				hints = append(hints, *hint)
 			}
 		case "goto":
 			if i > 0 {
 				prev := steps[i-1]
 				if prev.err == nil && prev.action.Kind == "goto" {
-					hints = append(hints, ScenarioHintDTO{
-						ID: "duplicate_goto", Title: "Два шага «открыт» подряд",
-						StepIndex: i, Severity: "warning", AutoFixable: true,
-					})
+					hints = append(hints, scenarioHint(
+						"duplicate_goto", "Два шага «открыт» подряд", i, steps, "warning", true,
+					))
 				}
 			}
 			if hint := gotoNoWaitHint(steps, i); hint != nil {
@@ -94,20 +94,31 @@ func AnalyzeScenarioHints(text string) []ScenarioHintDTO {
 		}
 		if sel := selectorFromAction(action); sel != "" {
 			if isFragileSelector(sel) {
-				hints = append(hints, ScenarioHintDTO{
-					ID: "fragile_selector", Title: "Хрупкий CSS-селектор — добавьте data-testid или id",
-					StepIndex: i, Severity: "warning", AutoFixable: false,
-				})
+				hints = append(hints, scenarioHint(
+					"fragile_selector", "Хрупкий CSS-селектор — добавьте data-testid или id",
+					i, steps, "warning", false,
+				))
 			}
 			if strings.Count(sel, playwrightChainSep) >= 2 {
-				hints = append(hints, ScenarioHintDTO{
-					ID: "long_chain", Title: "Длинная цепочка селекторов (>>) — возможно, стоит разбить",
-					StepIndex: i, Severity: "info", AutoFixable: false,
-				})
+				hints = append(hints, scenarioHint(
+					"long_chain", "Длинная цепочка селекторов (>>) — возможно, стоит разбить",
+					i, steps, "info", false,
+				))
 			}
 		}
 	}
 	return hints
+}
+
+func scenarioHint(id, title string, index int, steps []parsedScenarioStep, severity string, autoFixable bool) ScenarioHintDTO {
+	line := 1
+	if index >= 0 && index < len(steps) {
+		line = steps[index].line.lineNo
+	}
+	return ScenarioHintDTO{
+		ID: id, Title: title, StepIndex: index, Line: line,
+		Severity: severity, AutoFixable: autoFixable,
+	}
 }
 
 func parseScenarioSteps(text string) []parsedScenarioStep {
@@ -122,7 +133,11 @@ func parseScenarioSteps(text string) []parsedScenarioStep {
 
 func menuHoverHint(steps []parsedScenarioStep, index int, selector string) *ScenarioHintDTO {
 	selector = strings.TrimSpace(selector)
-	if !strings.Contains(selector, playwrightChainSep) {
+	if selector == "" {
+		return nil
+	}
+	hasChain := strings.Contains(selector, playwrightChainSep)
+	if !hasChain {
 		return nil
 	}
 	if index > 0 {
@@ -135,12 +150,51 @@ func menuHoverHint(steps []parsedScenarioStep, index int, selector string) *Scen
 		ID:          "menu_hover",
 		Title:       "Клик по меню без предшествующего «навожу»",
 		StepIndex:   index,
+		Line:        steps[index].line.lineNo,
 		Severity:    "warning",
 		AutoFixable: true,
 	}
 }
 
-func divClickHint(index int, selector string) *ScenarioHintDTO {
+// SplitPlaywrightChainSelector splits a chained Playwright selector into hover and click parts.
+func SplitPlaywrightChainSelector(selector string) (hover string, click string, ok bool) {
+	text := strings.TrimSpace(selector)
+	if !strings.Contains(text, playwrightChainSep) {
+		return "", "", false
+	}
+	parts := make([]string, 0)
+	for _, part := range strings.Split(text, playwrightChainSep) {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	return parts[0], parts[len(parts)-1], true
+}
+
+// ProposeMenuHoverSelectors returns hover/click selectors for a menu click step.
+func ProposeMenuHoverSelectors(clickSelector, hoverSelector string) (hover string, click string, ok bool) {
+	clickSelector = strings.TrimSpace(clickSelector)
+	hoverSelector = strings.TrimSpace(hoverSelector)
+	if clickSelector == "" {
+		return "", "", false
+	}
+	if hover, click, ok := SplitPlaywrightChainSelector(clickSelector); ok {
+		if hoverSelector != "" {
+			hover = hoverSelector
+		}
+		return hover, click, true
+	}
+	if hoverSelector != "" {
+		return hoverSelector, clickSelector, true
+	}
+	return "", "", false
+}
+
+func divClickHint(steps []parsedScenarioStep, index int, selector string) *ScenarioHintDTO {
 	lower := strings.ToLower(strings.TrimSpace(selector))
 	if !strings.Contains(lower, "div:has-text") {
 		return nil
@@ -148,10 +202,11 @@ func divClickHint(index int, selector string) *ScenarioHintDTO {
 	if strings.Contains(lower, "button") || strings.Contains(lower, " a:") || strings.HasPrefix(lower, "a:") {
 		return nil
 	}
-	return &ScenarioHintDTO{
-		ID: "div_click", Title: "Клик по div:has-text — уточните до button или a",
-		StepIndex: index, Severity: "info", AutoFixable: false,
-	}
+	hint := scenarioHint(
+		"div_click", "Клик по div:has-text — уточните до button или a",
+		index, steps, "info", false,
+	)
+	return &hint
 }
 
 func fillNoAssertHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
@@ -163,10 +218,11 @@ func fillNoAssertHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
 			return nil
 		}
 	}
-	return &ScenarioHintDTO{
-		ID: "fill_no_assert", Title: "Ввод без проверки в следующих шагах",
-		StepIndex: index, Severity: "info", AutoFixable: true,
-	}
+	hint := scenarioHint(
+		"fill_no_assert", "Ввод без проверки в следующих шагах",
+		index, steps, "info", true,
+	)
+	return &hint
 }
 
 func gotoNoWaitHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
@@ -183,10 +239,11 @@ func gotoNoWaitHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
 	if _, ok := waitKinds[next.action.Kind]; ok {
 		return nil
 	}
-	return &ScenarioHintDTO{
-		ID: "goto_no_wait", Title: "После перехода сразу действие — добавьте «жду» или «жду появления»",
-		StepIndex: index, Severity: "info", AutoFixable: true,
-	}
+	hint := scenarioHint(
+		"goto_no_wait", "После перехода сразу действие — добавьте «жду» или «жду появления»",
+		index, steps, "info", true,
+	)
+	return &hint
 }
 
 func selectorFromAction(action stepdsl.Action) string {
@@ -253,11 +310,17 @@ func applyMenuHoverFix(text string, stepIndex int) RefactorResult {
 		return RefactorResult{Text: text}
 	}
 	parts := strings.Split(action.Value1, playwrightChainSep)
+	var hoverSel, clickSel string
 	if len(parts) < 2 {
-		return RefactorResult{Text: text}
+		if hover, click, ok := ProposeMenuHoverSelectors(action.Value1, ""); ok {
+			hoverSel, clickSel = hover, click
+		} else {
+			return RefactorResult{Text: text}
+		}
+	} else {
+		hoverSel = strings.TrimSpace(parts[0])
+		clickSel = strings.TrimSpace(parts[len(parts)-1])
 	}
-	hoverSel := strings.TrimSpace(parts[0])
-	clickSel := strings.TrimSpace(parts[len(parts)-1])
 	if hoverSel == "" || clickSel == "" {
 		return RefactorResult{Text: text}
 	}

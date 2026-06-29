@@ -87,6 +87,10 @@ func (a *App) SaveFeature(path, content string) error {
 	return a.svc.SaveFeature(path, content)
 }
 
+func (a *App) WriteTempFeature(content string) (string, error) {
+	return a.svc.WriteTempFeature(content)
+}
+
 func (a *App) InitProject() (string, error) {
 	return a.svc.InitProject()
 }
@@ -143,8 +147,20 @@ func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }
 
+func (a *App) CompletionsForLine(line string, column int) gui.StepCompletionsDTO {
+	return a.svc.CompletionsForLine(line, column)
+}
+
 func (a *App) CheckUpdate() gui.RunResult {
 	return a.svc.CheckUpdate()
+}
+
+func (a *App) BrowserInstallStatus(engine string) gui.BrowserInstallStatusDTO {
+	return a.svc.BrowserInstallStatus(engine)
+}
+
+func (a *App) InstallBrowserEngine(engine string) gui.RunResult {
+	return a.svc.InstallBrowserEngine(engine)
 }
 
 func (a *App) ListRunResults(limit int) ([]gui.RunResultEntry, error) {

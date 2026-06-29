@@ -43,7 +43,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(8, 10, 12, 0.55);
+    background: #141618;
     opacity: 1;
     transition: opacity 320ms cubic-bezier(0.33, 1, 0.68, 1);
   }

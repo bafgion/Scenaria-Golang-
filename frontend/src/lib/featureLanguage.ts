@@ -2,6 +2,12 @@ import type * as Monaco from 'monaco-editor'
 
 let registered = false
 
+const STEP_KEYWORDS =
+  'Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But'
+const GHERKIN_HEADERS =
+  'Функционал|Функциональность|Функция|Feature|Сценарий|Scenario|Контекст|Background|Структура сценария|Scenario Outline|Примеры|Examples'
+const BLOCK_KEYWORDS = 'Если|Повторяю|Пока|Для каждого|Иначе|Конец если|Конец'
+
 export function registerFeatureLanguage(monaco: typeof Monaco) {
   if (registered) {
     return
@@ -16,35 +22,46 @@ export function registerFeatureLanguage(monaco: typeof Monaco) {
     tokenizer: {
       root: [
         [/^\s*#.*$/, 'comment'],
-        [/@[\w-]+/, 'tag'],
+        [/^\s*@[\w-]+(?:\s+@[\w-]+)*\s*$/, 'tag'],
         [
-          /^(Функционал|Функциональность|Функция|Feature|Сценарий|Scenario|Контекст|Background|Структура сценария|Scenario Outline|Примеры|Examples)\s*:/,
+          new RegExp(`^\\s*(${GHERKIN_HEADERS})\\s*:`),
           'keyword.gherkin',
         ],
-        [/^(Допустим|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+/, 'keyword.step'],
-        [/^(Если|Повторяю|Пока|Для каждого|Иначе|Конец если|Конец)\b/, 'keyword.block'],
+        [new RegExp(`^\\s*(${STEP_KEYWORDS})\\s+`), 'keyword.step'],
+        [new RegExp(`^\\s*(${BLOCK_KEYWORDS})\\b`), 'keyword.block'],
         [/TestClient/, 'type.testclient'],
+        [/^\s*\|.*\|\s*$/, 'string.table'],
         [/"(?:[^"\\]|\\.)*"/, 'string'],
       ],
     },
   })
 
+  // VS Code–like dark palette aligned with frontend/src/style.css
   monaco.editor.defineTheme('scenaria-dark', {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'comment', foreground: '6a737d', fontStyle: 'italic' },
-      { token: 'tag', foreground: '79c0ff' },
-      { token: 'keyword.gherkin', foreground: 'd2a8ff', fontStyle: 'bold' },
-      { token: 'keyword.step', foreground: 'ff7b72', fontStyle: 'bold' },
-      { token: 'keyword.block', foreground: 'ffa657', fontStyle: 'bold' },
-      { token: 'string', foreground: 'a5d6ff' },
-      { token: 'type.testclient', foreground: 'ffa657', fontStyle: 'bold' },
+      { token: 'comment', foreground: '858585', fontStyle: 'italic' },
+      { token: 'tag', foreground: '5ec8f2' },
+      { token: 'keyword.gherkin', foreground: '569cd6', fontStyle: 'bold' },
+      { token: 'keyword.step', foreground: 'c586c0', fontStyle: 'bold' },
+      { token: 'keyword.block', foreground: 'dcdcaa', fontStyle: 'bold' },
+      { token: 'string', foreground: 'ce9178' },
+      { token: 'string.table', foreground: '9cdcfe' },
+      { token: 'type.testclient', foreground: '4ec9b0', fontStyle: 'bold' },
     ],
     colors: {
-      'editor.background': '#12141a',
-      'editor.lineHighlightBackground': '#1a1d26',
-      'editorGutter.background': '#12141a',
+      'editor.background': '#1e1e1e',
+      'editor.foreground': '#cccccc',
+      'editor.lineHighlightBackground': '#2a2d2e',
+      'editorGutter.background': '#252526',
+      'editorLineNumber.foreground': '#858585',
+      'editorLineNumber.activeForeground': '#cccccc',
+      'editor.selectionBackground': '#094771',
+      'editor.inactiveSelectionBackground': '#3a3d41',
+      'editorCursor.foreground': '#cccccc',
+      'editorWidget.background': '#252526',
+      'editorWidget.border': '#454545',
     },
   })
 }

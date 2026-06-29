@@ -3,9 +3,14 @@ package stepcatalog
 import "strings"
 
 type Entry struct {
-	Category string
-	Template string
-	Help     string
+	Label       string
+	Action      string
+	Category    string
+	Description string
+	Template    string
+	Example     string
+	Parameters  []string
+	Help        string // same as Description; kept for older clients
 }
 
 func Entries() []Entry {
@@ -19,11 +24,27 @@ func Search(query string) []Entry {
 	}
 	out := make([]Entry, 0)
 	for _, entry := range Entries() {
-		if containsFold(entry.Template, query) || containsFold(entry.Help, query) || containsFold(entry.Category, query) {
+		if entryMatches(entry, query) {
 			out = append(out, entry)
 		}
 	}
 	return out
+}
+
+func entryMatches(entry Entry, query string) bool {
+	parts := []string{
+		entry.Label,
+		entry.Action,
+		entry.Category,
+		entry.Description,
+		entry.Template,
+		entry.Example,
+		entry.Help,
+	}
+	for _, p := range entry.Parameters {
+		parts = append(parts, p)
+	}
+	return containsFold(strings.Join(parts, " "), query)
 }
 
 func stringsToLower(s string) string {

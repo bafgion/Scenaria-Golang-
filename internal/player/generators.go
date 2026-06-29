@@ -48,34 +48,40 @@ func NormalizeGeneratorName(raw string) (string, bool) {
 }
 
 func (c *RunContext) generateCanonical(canonical string) (string, error) {
+	if v, ok := c.values[canonical]; ok {
+		return v, nil
+	}
 	if c.person == nil {
 		c.person = c.newPerson()
 	}
+	var value string
 	switch canonical {
 	case "phone":
-		return fmt.Sprintf("+79%09d", c.rng.Intn(1_000_000_000)), nil
+		value = fmt.Sprintf("+79%09d", c.rng.Intn(1_000_000_000))
 	case "first_name":
-		return c.person.first, nil
+		value = c.person.first
 	case "last_name":
-		return c.person.last, nil
+		value = c.person.last
 	case "patronymic":
-		return c.person.patronymic, nil
+		value = c.person.patronymic
 	case "address":
-		return fmt.Sprintf("г. %s, ул. %s, д. %d, кв. %d",
+		value = fmt.Sprintf("г. %s, ул. %s, д. %d, кв. %d",
 			cities[c.rng.Intn(len(cities))],
 			streets[c.rng.Intn(len(streets))],
 			c.rng.Intn(120)+1,
 			c.rng.Intn(200)+1,
-		), nil
+		)
 	case "inn":
-		return generateINN(c.rng), nil
+		value = generateINN(c.rng)
 	case "bank_account":
-		return "40817810" + randomDigits(c.rng, 12), nil
+		value = "40817810" + randomDigits(c.rng, 12)
 	case "ogrnip":
-		return generateOGRNIP(c.rng), nil
+		value = generateOGRNIP(c.rng)
 	default:
 		return "", fmt.Errorf("unknown generator %q", canonical)
 	}
+	c.values[canonical] = value
+	return value, nil
 }
 
 func (c *RunContext) newPerson() *personBundle {

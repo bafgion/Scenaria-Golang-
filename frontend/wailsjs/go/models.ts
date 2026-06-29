@@ -56,6 +56,24 @@ export namespace gui {
 	        this.steps = source["steps"];
 	    }
 	}
+	export class BrowserInstallStatusDTO {
+	    engine: string;
+	    label: string;
+	    installed: boolean;
+	    detail: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserInstallStatusDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.label = source["label"];
+	        this.installed = source["installed"];
+	        this.detail = source["detail"];
+	    }
+	}
 	export class EditorStepRow {
 	    line: number;
 	    keyword: string;
@@ -84,6 +102,7 @@ export namespace gui {
 	    id: string;
 	    title: string;
 	    stepIndex: number;
+	    line: number;
 	    severity: string;
 	    autoFixable: boolean;
 	
@@ -96,6 +115,7 @@ export namespace gui {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.stepIndex = source["stepIndex"];
+	        this.line = source["line"];
 	        this.severity = source["severity"];
 	        this.autoFixable = source["autoFixable"];
 	    }
@@ -560,8 +580,13 @@ export namespace gui {
 	    }
 	}
 	export class StepCatalogEntry {
+	    label: string;
+	    action: string;
 	    category: string;
+	    description: string;
 	    template: string;
+	    example: string;
+	    parameters: string[];
 	    help: string;
 	
 	    static createFrom(source: any = {}) {
@@ -570,10 +595,65 @@ export namespace gui {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.action = source["action"];
 	        this.category = source["category"];
+	        this.description = source["description"];
 	        this.template = source["template"];
+	        this.example = source["example"];
+	        this.parameters = source["parameters"];
 	        this.help = source["help"];
 	    }
+	}
+	export class StepCompletionSnippet {
+	    label: string;
+	    insert: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StepCompletionSnippet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.insert = source["insert"];
+	        this.description = source["description"];
+	    }
+	}
+	export class StepCompletionsDTO {
+	    start: number;
+	    end: number;
+	    items: StepCompletionSnippet[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StepCompletionsDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.items = this.convertValues(source["items"], StepCompletionSnippet);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ValidateRequest {
 	    browser: string;

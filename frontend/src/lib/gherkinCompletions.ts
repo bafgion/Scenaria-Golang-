@@ -1,0 +1,61 @@
+import type * as Monaco from 'monaco-editor'
+import type { gui } from '../../wailsjs/go/models'
+
+export type CompletionFetcher = (line: string, column: number) => Promise<gui.StepCompletionsDTO>
+
+const STEP_KEYWORD_RE = /^(?:Допустим|Дано|Когда|Тогда|И|Но)\s+/i
+
+export function formatInsertText(line: string, snippet: gui.StepCompletionSnippet): string {
+  const trimmed = line.trimStart()
+  const indent = line.slice(0, line.length - trimmed.length)
+  if (snippet.label === snippet.insert && /^(Допустим|Дано|Когда|Тогда|И|Но)$/i.test(snippet.label)) {
+    if (!trimmed) {
+      return `${indent}${snippet.insert} `
+    }
+    return `${snippet.insert} `
+  }
+  if (!STEP_KEYWORD_RE.test(trimmed)) {
+    return `Когда ${snippet.insert}`
+  }
+  return snippet.insert
+}
+
+export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletions: CompletionFetcher) {
+  monaco.languages.registerCompletionItemProvider('scenaria-feature', {
+    triggerCharacters: [' ', '"', '.'],
+    provideCompletionItems: async (model, position) => {
+      const line = model.getLineContent(position.lineNumber)
+      const column = position.column - 1
+      let result: gui.StepCompletionsDTO
+      try {
+        result = await fetchCompletions(line, column)
+      } catch {
+        return { suggestions: [] }
+      }
+      if (!result.items?.length) {
+        return { suggestions: [] }
+      }
+
+      const startCol = result.start + 1
+      const endCol = result.end + 1
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: startCol,
+        endColumn: endCol,
+      }
+
+      const suggestions = result.items.map((item) => ({
+        label: item.label,
+        kind: monaco.languages.CompletionItemKind.Snippet,
+        insertText: formatInsertText(line, item),
+        detail: item.description,
+        documentation: { value: `\`\`\`\n${item.insert}\n\`\`\`` },
+        range,
+        sortText: `0_${item.label.toLowerCase()}`,
+      }))
+
+      return { suggestions }
+    },
+  })
+}

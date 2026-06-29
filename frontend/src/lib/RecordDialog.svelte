@@ -1,5 +1,6 @@
 <script lang="ts">
   import StepsInsertDialog from './StepsInsertDialog.svelte'
+  import NumberInput from './NumberInput.svelte'
 
   export let mode: 'live' | 'baseline' = 'live'
   export let url = ''
@@ -95,8 +96,10 @@
     onClose={() => (showStepPicker = false)}
   />
 {:else}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="modal-backdrop" role="presentation" on:click={onClose}>
-    <div class="modal wide record-dialog" role="dialog" aria-label="Запись сценария" on:click|stopPropagation>
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal wide record-dialog" role="dialog" aria-modal="true" aria-label="Запись сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="tabs" role="tablist">
         <button
           type="button"
@@ -135,7 +138,8 @@
             {/each}
           </select>
         </label>
-        <label>Idle (сек) <input type="number" bind:value={idleSeconds} min="5" disabled={recording} /></label>
+        <label for="record-idle">Idle (сек)</label>
+        <NumberInput inputId="record-idle" bind:value={idleSeconds} min={5} disabled={recording} width="72px" />
         <label class="check-row"><input type="checkbox" bind:checked={headless} disabled={recording} /> Headless</label>
         <label class="check-row">
           <input type="checkbox" bind:checked={filterRecording} disabled={recording} on:change={() => filterRecording && (navOnlyRecording = false)} />
@@ -187,9 +191,9 @@
           <button type="button" disabled={baselineBusy} on:click={addStep}>Добавить</button>
         </div>
 
-        <label class="preview-label">Предпросмотр Gherkin
+        <div class="preview-label">Предпросмотр Gherkin
           <pre class="preview">{previewText}</pre>
-        </label>
+        </div>
 
         <div class="modal-actions">
           <button type="button" class="primary" disabled={baselineBusy} on:click={saveBaseline}>Сохранить feature</button>

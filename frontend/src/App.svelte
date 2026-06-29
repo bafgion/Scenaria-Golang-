@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import MonacoEditor from './lib/MonacoEditor.svelte'
   import WelcomePanel from './lib/WelcomePanel.svelte'
   import CatalogEmptyState from './lib/CatalogEmptyState.svelte'
@@ -24,7 +24,6 @@
   import OtpDialog from './lib/OtpDialog.svelte'
   import StepsInsertDialog from './lib/StepsInsertDialog.svelte'
   import VanessaSettingsDialog from './lib/VanessaSettingsDialog.svelte'
-  import NewScenarioDialog from './lib/NewScenarioDialog.svelte'
   import RefactorUrlDialog from './lib/RefactorUrlDialog.svelte'
   import ConfirmDialog from './lib/ConfirmDialog.svelte'
   import CatalogContextMenu from './lib/CatalogContextMenu.svelte'
@@ -37,9 +36,12 @@
   import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
+  import { isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
+  import { matchHotkey, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
+  import type { HintActionHandlers } from './lib/gherkinHintActions'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
   import UnsavedCloseDialog from './lib/UnsavedCloseDialog.svelte'
@@ -53,6 +55,7 @@
   import SnippetPalette from './lib/SnippetPalette.svelte'
   import BrowserOverlay from './lib/BrowserOverlay.svelte'
   import SplashScreen from './lib/SplashScreen.svelte'
+  import { preloadMonacoEditor } from './lib/appBootstrap'
   import { loadRecents, rememberProject, rememberFeature } from './lib/recents'
   import { icons, toolbarIcons } from './lib/icons'
   import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
@@ -61,6 +64,7 @@
     OpenProject,
     ReadFeature,
     SaveFeature,
+    WriteTempFeature,
     Run,
     Validate,
     ValidateFeature,
@@ -135,6 +139,7 @@
   let monaco: MonacoEditor | undefined
 
   let showSplash = true
+  let appReady = false
   let splashMessage = 'Запуск…'
   let splashProgress = 0
   let splashFading = false
@@ -160,7 +165,6 @@
   let showDuplicateFeature = false
   let duplicateFeaturePath = ''
   let duplicateNewName = ''
-  let showNewScenario = false
   let showRefactorUrl = false
   let showOpenProject = false
   let showRenameFeature = false
@@ -255,9 +259,8 @@
   let replaceCaseSensitive = false
   let postRecordPath = ''
   let postRecordStepCount = 0
-  let postRecordAllHints: gui.ScenarioHintDTO[] = []
-  let postRecordHints: gui.ScenarioHintDTO[] = []
-  let postRecordDismissed = new Set<string>()
+  let editorScenarioHints: gui.ScenarioHintDTO[] = []
+  let editorHintsDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
   let runDialogTitle = 'Запуск сценария'
   let runDialogScenarios: string[] = []
@@ -329,6 +332,7 @@
 
   $: isWelcome = activeTab === WELCOME_KEY
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
+  $: activeTabUnsaved = activeFeatureTab ? tabIsUnsaved(activeFeatureTab) : false
   $: stepCount = editorSteps.length
   $: batchCount = batchSelected.length
   $: showRecordingBar = recording || showRecord || playing
@@ -396,6 +400,12 @@
   async function dismissSplash(startedAt: number) {
     const remaining = MIN_SPLASH_MS - (Date.now() - startedAt)
     if (remaining > 0) await sleep(remaining)
+
+    // Mount IDE behind splash so the first paint happens before fade (no flash).
+    appReady = true
+    await tick()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
     splashFading = true
     await sleep(SPLASH_FADE_MS)
     showSplash = false
@@ -405,10 +415,6 @@
     const startedAt = Date.now()
 
     setSplashStage('Настройка окружения…', 8)
-    await sleep(40)
-
-    setSplashStage('Оформление интерфейса…', 18)
-    await sleep(40)
 
     const layout = loadLayout()
     sidebarVisible = layout.sidebarVisible
@@ -418,7 +424,14 @@
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth || 360
 
-    setSplashStage('Загрузка модулей…', 32)
+    setSplashStage('Загрузка редактора…', 28)
+    try {
+      await preloadMonacoEditor()
+    } catch (err) {
+      console.error('Monaco preload failed', err)
+    }
+
+    setSplashStage('Подключение к приложению…', 48)
 
     try {
       version = await Version()
@@ -426,7 +439,7 @@
       version = 'dev'
     }
 
-    setSplashStage('Создание рабочего окна…', 55)
+    setSplashStage('Загрузка настроек…', 68)
 
     const recents = await loadRecents()
     recentProjects = recents.projects
@@ -444,10 +457,7 @@
       /* dev without wails */
     }
 
-    setSplashStage('Подготовка интерфейса…', 82)
-    await sleep(80)
-
-    setSplashStage('Готово', 100)
+    setSplashStage('Инициализация…', 88)
 
     try {
       OnFileDrop((_x, _y, paths) => {
@@ -538,77 +548,15 @@
     window.addEventListener('resize', onResize)
     unsubscribers.push(() => window.removeEventListener('resize', onResize))
 
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        saveFeatureAs()
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        saveFeature()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
-        e.preventDefault()
-        if (projectPath && !isWelcome) runCurrentScenario(false)
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        if (projectPath) executeRun({ ...lastRun, dryRun: false })
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault()
-        beginRecord()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        e.preventDefault()
-        beginRecord()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-        e.preventDefault()
-        newScenario()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-        e.preventDefault()
-        openFileDialog()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
-        e.preventDefault()
-        openFindReplace()
-      }
-      if (e.key === 'F1' && e.shiftKey) {
-        e.preventDefault()
-        showHotkeys = true
-      } else if (e.key === 'F1') {
-        e.preventDefault()
-        openStepsHelp()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
-        e.preventDefault()
-        openSettings()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault()
-        showCommandPalette = true
-      }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'Space') {
-        e.preventDefault()
-        openSnippetPalette()
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
-        e.preventDefault()
-        bottomPanelOpen = !bottomPanelOpen
-      }
-      if (e.key === 'Escape') {
-        openMenu = null
-        if (showCommandPalette) showCommandPalette = false
-        if (showSnippetPalette) showSnippetPalette = false
-      }
-    }
     const onDocClick = () => {
       openMenu = null
     }
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('keydown', onGlobalKeydown, { capture: true })
     window.addEventListener('click', onDocClick)
-    unsubscribers.push(() => window.removeEventListener('keydown', onKey))
+    unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
+
+    setSplashStage('Готово', 100)
 
     await dismissSplash(startedAt)
     applyDevUiMock()
@@ -624,6 +572,15 @@
   function basename(path: string): string {
     const parts = path.replace(/\\/g, '/').split('/')
     return parts[parts.length - 1] || path
+  }
+
+  function featureTabLabel(path: string): string {
+    if (isUntitled(path)) return untitledLabel(path)
+    return basename(path)
+  }
+
+  function tabIsUnsaved(tab: EditorTab): boolean {
+    return tab.dirty || isUntitled(tab.path)
   }
 
   function applySettingsFromDTO(s: gui.AppSettingsDTO) {
@@ -675,7 +632,7 @@
       { id: 'delete-feature', label: 'Удалить сценарий', group: 'Сценарий', run: () => activeTab && !isWelcome && deleteFeature(activeTab) },
       { id: 'refactor-indents', label: 'Нормализовать отступы', group: 'Рефакторинг', run: refactorNormalizeIndents },
       { id: 'refactor-blanks', label: 'Убрать пустые строки между шагами', group: 'Рефакторинг', run: refactorCollapseBlank },
-      { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: openStepsHelp },
+      { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: () => openStepsHelp() },
       { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: beginRecord },
       { id: 'record', label: 'Запись', group: 'Запись и тест', shortcut: 'Ctrl+R', run: beginRecord },
       { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
@@ -770,42 +727,60 @@
     return `${hint.id}:${hint.stepIndex}`
   }
 
-  function applyPostRecordHintFilter() {
-    postRecordHints = postRecordAllHints.filter((h) => !postRecordDismissed.has(hintDismissKey(h)))
+  const monacoHintActions: HintActionHandlers = {
+    getHints: () => editorScenarioHints,
+    onFix: (hint) => applyEditorHintFix(hint),
+    onDismiss: (hint) => dismissEditorHint(hint),
+  }
+
+  async function refreshEditorScenarioHints() {
+    if (isWelcome) {
+      editorScenarioHints = []
+      return
+    }
+    try {
+      const all = await AnalyzeScenarioHints(editorText)
+      editorScenarioHints = all.filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
+    } catch {
+      editorScenarioHints = []
+    }
+  }
+
+  async function applyEditorHintFix(hint: gui.ScenarioHintDTO) {
+    const result = await ApplyScenarioHintFix({
+      text: editorText,
+      hintId: hint.id,
+      stepIndex: hint.stepIndex,
+    })
+    if (result.count > 0) {
+      editorText = result.text
+      syncActiveTabContent()
+      monaco?.setContent(editorText)
+      appendLog(`Исправлена подсказка: ${hint.title}`)
+      await validateEditor()
+    }
+  }
+
+  function dismissEditorHint(hint: gui.ScenarioHintDTO) {
+    editorHintsDismissed.add(hintDismissKey(hint))
+    void refreshEditorScenarioHints()
   }
 
   async function showPostRecordBanner(path: string) {
     postRecordPath = path
-    postRecordDismissed = new Set()
+    editorHintsDismissed = new Set()
     try {
       const content = await ReadFeature(path)
       postRecordStepCount = (await ParseEditorSteps(content)).length
-      postRecordAllHints = await AnalyzeScenarioHints(content)
-      applyPostRecordHintFilter()
     } catch {
       postRecordStepCount = 0
-      postRecordAllHints = []
-      postRecordHints = []
     }
-  }
-
-  async function refreshPostRecordHints() {
-    if (!postRecordPath) return
-    try {
-      const content = activeTab === postRecordPath ? editorText : await ReadFeature(postRecordPath)
-      postRecordAllHints = await AnalyzeScenarioHints(content)
-      applyPostRecordHintFilter()
-    } catch {
-      /* keep previous */
-    }
+    await refreshEditorScenarioHints()
   }
 
   function dismissPostRecord() {
     postRecordPath = ''
     postRecordStepCount = 0
-    postRecordAllHints = []
-    postRecordHints = []
-    postRecordDismissed = new Set()
   }
 
   async function postRecordValidate() {
@@ -821,39 +796,6 @@
     if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
     await saveFeature()
     dismissPostRecord()
-  }
-
-  async function postRecordFixHint(hint: gui.ScenarioHintDTO) {
-    if (!postRecordPath) return
-    if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
-    const result = await ApplyScenarioHintFix({
-      text: editorText,
-      hintId: hint.id,
-      stepIndex: hint.stepIndex,
-    })
-    if (result.count > 0) {
-      editorText = result.text
-      syncActiveTabContent()
-      await validateEditor()
-      appendLog(`Исправлена подсказка: ${hint.title}`)
-      await refreshPostRecordHints()
-    }
-  }
-
-  function postRecordFixHover() {
-    const hint = postRecordHints.find((h) => h.id === 'menu_hover')
-    if (hint) void postRecordFixHint(hint)
-  }
-
-  function postRecordShowStep(stepNo: number) {
-    gotoEditorLine(stepNo)
-    stepsPanelVisible = true
-    stepsPanelCollapsed = false
-  }
-
-  function dismissPostRecordHint(hint: gui.ScenarioHintDTO) {
-    postRecordDismissed.add(hintDismissKey(hint))
-    applyPostRecordHintFilter()
   }
 
   function openDuplicateDialog(path: string) {
@@ -895,6 +837,11 @@
   }
 
   async function doDeleteFeature(path: string) {
+    if (isUntitled(path)) {
+      finalizeCloseTab(path)
+      appendLog(`Закрыт: ${untitledLabel(path)}`)
+      return
+    }
     try {
       await DeleteFeature(path)
       closeTab(path)
@@ -1229,23 +1176,22 @@
     batchSelected = []
   }
 
-  async function saveDirtyBeforeRun(targets: string[]) {
-    syncActiveTabContent()
-    const paths: string[] = []
-    if (targets.length === 0) {
-      for (const tab of tabs) {
-        if (tab.dirty) paths.push(tab.path)
-      }
-    } else {
-      for (const path of targets) {
-        const tab = tabs.find((t) => t.path === path)
-        if (tab?.dirty) paths.push(path)
-      }
-    }
+  async function materializeRunTargets(paths: string[]): Promise<string[]> {
+    const diskTargets: string[] = []
     for (const path of paths) {
-      if (activeTab !== path) await loadFeature(path)
-      await saveFeature()
+      const tab = tabs.find((t) => t.path === path)
+      if (!tab) {
+        if (!isUntitled(path)) diskTargets.push(path)
+        continue
+      }
+      if (isUntitled(path) || tab.dirty) {
+        const content = path === activeTab ? editorText : tab.content
+        diskTargets.push(await WriteTempFeature(content))
+      } else {
+        diskTargets.push(path)
+      }
     }
+    return diskTargets
   }
 
   async function runBatchSelected(dryRun = false) {
@@ -1263,7 +1209,7 @@
   }
 
   async function runCurrentScenario(dryRun = false) {
-    if (!projectPath || !activeTab || isWelcome) return
+    if (!activeTab || isWelcome) return
     const line = monaco?.getCursorLine() ?? 1
     const scenario = scenarioAtLine(editorText, line)
     const targets = [activeTab]
@@ -1274,6 +1220,75 @@
     }
     appendLog(dryRun ? 'Dry-run текущего файла…' : 'Запуск текущего файла…')
     await executeRun({ ...lastRun, dryRun, scenario: '' }, targets)
+  }
+
+  function runHotkeyAction(id: HotkeyId) {
+    switch (id) {
+      case 'save':
+        void saveFeature()
+        break
+      case 'save-as':
+        void saveFeatureAs()
+        break
+      case 'run':
+        if (!isWelcome && (activeTab || projectPath)) void executeRun({ ...lastRun, dryRun: false })
+        break
+      case 'run-current':
+        if (!isWelcome && activeTab) void runCurrentScenario(false)
+        break
+      case 'browser':
+      case 'record':
+        beginRecord()
+        break
+      case 'new':
+        newScenario()
+        break
+      case 'open':
+        void openFileDialog()
+        break
+      case 'find':
+        openFindReplace()
+        break
+      case 'steps-help':
+        openStepsHelp()
+        break
+      case 'hotkeys':
+        showHotkeys = true
+        break
+      case 'settings':
+        openSettings()
+        break
+      case 'palette':
+        showCommandPalette = true
+        break
+      case 'snippets':
+        openSnippetPalette()
+        break
+      case 'journal':
+        bottomPanelOpen = !bottomPanelOpen
+        if (bottomPanelOpen) bottomTab = 'journal'
+        break
+      case 'escape':
+        openMenu = null
+        if (showCommandPalette) showCommandPalette = false
+        if (showSnippetPalette) showSnippetPalette = false
+        break
+    }
+  }
+
+  function onGlobalKeydown(e: KeyboardEvent) {
+    if (shouldIgnoreAppHotkey(e)) return
+    const id = matchHotkey(e)
+    if (!id) return
+    if (id === 'escape') {
+      const target = e.target
+      if (target instanceof Element && target.closest('.modal-backdrop, .palette-backdrop')) {
+        return
+      }
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    runHotkeyAction(id)
   }
 
   function startResizePreview(e: MouseEvent) {
@@ -1547,16 +1562,16 @@
     syncActiveTabContent()
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
-      activeTab = path
       editorText = existing.content
+      activeTab = path
       await validateEditor()
       return
     }
     try {
       const content = await ReadFeature(path)
       tabs = [...tabs, { path, content, dirty: false }]
-      activeTab = path
       editorText = content
+      activeTab = path
       await rememberFeature(path)
       const recents = await loadRecents()
       recentFeatures = recents.features
@@ -1582,8 +1597,8 @@
       welcomeTabVisible = false
       if (activeTab === WELCOME_KEY) {
         const next = tabs[tabs.length - 1]
-        activeTab = next.path
         editorText = next.content
+        activeTab = next.path
         validateEditor()
       }
       return
@@ -1597,7 +1612,7 @@
       syncActiveTabContent()
     }
     const tab = tabs.find((t) => t.path === path)
-    if (tab?.dirty) {
+    if (tab && tabIsUnsaved(tab)) {
       pendingCloseTab = path
       return
     }
@@ -1609,8 +1624,8 @@
     if (activeTab === path) {
       const next = tabs[tabs.length - 1]
       if (next) {
-        activeTab = next.path
         editorText = next.content
+        activeTab = next.path
         validateEditor()
       } else {
         welcomeTabVisible = true
@@ -1648,7 +1663,7 @@
   }
 
   async function saveFeatureAs() {
-    if (!activeTab || isWelcome || !projectPath) return
+    if (!activeTab || isWelcome) return
     syncActiveTabContent()
     const picked = await PickSaveFile('Сохранить как', basename(activeTab))
     if (!picked) return
@@ -1671,6 +1686,10 @@
 
   async function saveFeature() {
     if (!activeTab || isWelcome) return
+    if (isUntitled(activeTab)) {
+      await saveFeatureAs()
+      return
+    }
     syncActiveTabContent()
     try {
       await SaveFeature(activeTab, editorText)
@@ -1702,6 +1721,7 @@
       stepStatus = `${stepCount} шагов`
       await refreshEditorSteps()
     }
+    await refreshEditorScenarioHints()
   }
 
   function gotoEditorLine(line: number) {
@@ -1786,8 +1806,18 @@
   }
 
   async function executeRun(opts: RunForm, targets: string[] = []) {
-    if (!projectPath) return
-    await saveDirtyBeforeRun(targets)
+    syncActiveTabContent()
+
+    let runTargets = targets
+    if (runTargets.length === 0 && activeTab && !isWelcome) {
+      runTargets = [activeTab]
+    }
+    if (runTargets.length === 0 && !projectPath) {
+      appendLog('Откройте сценарий для запуска')
+      return
+    }
+
+    const diskTargets = runTargets.length ? await materializeRunTargets(runTargets) : []
     lastRun = { ...opts }
     showRun = false
 
@@ -1826,7 +1856,7 @@
       workers: opts.workers || settingsWorkers || 1,
       slowMo: opts.dryRun ? 0 : opts.slowMo || 0,
       baseUrl: opts.dryRun ? '' : (opts.baseUrl || '').trim(),
-      targets,
+      targets: diskTargets,
     })
     playing = false
     if (result.output) appendLog(result.output.trimEnd())
@@ -1944,12 +1974,12 @@
     showVanessaSettings = true
   }
 
-  function openStepsHelp(query = '') {
+  function openStepsHelp(query: unknown = '') {
     if (recordingBlocksManualTools()) {
       appendLog('Поставьте запись на паузу, чтобы открыть справку по шагам')
       return
     }
-    stepsHelpQuery = query
+    stepsHelpQuery = typeof query === 'string' ? query : ''
     showStepsHelp = true
   }
 
@@ -2281,22 +2311,22 @@
   }
 
   function newScenario() {
-    if (!projectPath) {
-      appendLog('Сначала откройте проект')
-      return
-    }
-    showNewScenario = true
+    openUntitledTab(
+      buildFeatureTemplate({
+        title: 'Примеры для новичков',
+        scenario: 'Первая проверка страницы',
+        startUrl: startURL || recordURL || 'https://example.com',
+      }),
+    )
   }
 
-  async function createScenario(path: string, content: string) {
-    try {
-      await SaveFeature(path, content)
-      await refreshProject()
-      await loadFeature(path)
-      appendLog(`Создан: ${path}`)
-    } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
-    }
+  function openUntitledTab(content: string, displayName = 'novyy-scenariy.feature') {
+    welcomeTabVisible = false
+    const path = makeUntitledPath(displayName)
+    tabs = [...tabs, { path, content, dirty: true }]
+    editorText = content
+    activeTab = path
+    void validateEditor()
   }
 
   async function openFileDialog() {
@@ -2305,15 +2335,15 @@
   }
 
   function insertTemplate() {
-    const template = buildFeatureTemplate({
-      title: 'Новый сценарий',
-      scenario: 'Пример',
-      startUrl: startURL || recordURL || 'https://example.com',
-    })
     if (isWelcome) {
       newScenario()
       return
     }
+    const template = buildFeatureTemplate({
+      title: 'Примеры для новичков',
+      scenario: 'Первая проверка страницы',
+      startUrl: startURL || recordURL || 'https://example.com',
+    })
     monaco?.insertAtCursor(template)
   }
 
@@ -2421,13 +2451,23 @@
 
   function projectLabel(): string {
     if (isWelcome) return 'Старт'
-    if (activeTab && activeTab !== WELCOME_KEY) return basename(activeTab)
+    if (activeTab && activeTab !== WELCOME_KEY) return featureTabLabel(activeTab)
     if (projectPath) return basename(projectPath)
     return 'Открыть проект…'
   }
 </script>
 
-<div class="ide" class:panel-open={bottomPanelOpen}>
+{#if showSplash}
+  <SplashScreen
+    {version}
+    message={splashMessage}
+    progress={splashProgress}
+    fading={splashFading}
+  />
+{/if}
+
+{#if appReady}
+<div class="ide" class:panel-open={bottomPanelOpen} class:app-booting={showSplash && !splashFading}>
   <!-- Menu bar (Python: Проект / Сценарий / Запись и тест / Вид / Справка) -->
   <div class="menubar" role="menubar">
     <div class="menu-root" class:open={openMenu === 'project'}>
@@ -2496,13 +2536,13 @@
           <button class="menu-item" on:click={openTestClientDialog} disabled={!projectPath}>TestClient…</button>
           <button class="menu-item" on:click={openHttpAuthDialog}>HTTP Auth…</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false })} disabled={!projectPath}>
+          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false })} disabled={isWelcome && !projectPath}>
             Запустить<span class="menu-shortcut">Ctrl+Enter</span>
           </button>
-          <button class="menu-item" on:click={() => runCurrentScenario(false)} disabled={isWelcome || !projectPath}>
+          <button class="menu-item" on:click={() => runCurrentScenario(false)} disabled={isWelcome || !activeTab}>
             Запустить текущий сценарий<span class="menu-shortcut">Ctrl+Shift+Enter</span>
           </button>
-          <button class="menu-item" on:click={() => runCurrentScenario(true)} disabled={isWelcome || !projectPath}>
+          <button class="menu-item" on:click={() => runCurrentScenario(true)} disabled={isWelcome || !activeTab}>
             Dry-run текущего сценария
           </button>
           <button class="menu-item" on:click={() => runBatchSelected(false)} disabled={!projectPath || !batchSelected.length}>
@@ -2513,15 +2553,15 @@
           </button>
           <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>Перезапустить упавшие</button>
           <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>История запусков…</button>
-          <button class="menu-item" on:click={() => openRunDialog('Запуск сценария', {})} disabled={!projectPath}>Запустить…</button>
-          <button class="menu-item" on:click={() => openRunDialog('Запуск с тегом', {})} disabled={!projectPath}>
+          <button class="menu-item" on:click={() => openRunDialog('Запуск сценария', {})} disabled={isWelcome && !projectPath}>Запустить…</button>
+          <button class="menu-item" on:click={() => openRunDialog('Запуск с тегом', {})} disabled={isWelcome && !projectPath}>
             Запустить сценарии с тегом…
           </button>
-          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: true })} disabled={!projectPath}>Dry-run</button>
+          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: true })} disabled={isWelcome && !projectPath}>Dry-run</button>
           <button
             class="menu-item"
             on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
-            disabled={!projectPath}
+            disabled={isWelcome && !activeTab}
           >
             Playwright…
           </button>
@@ -2600,7 +2640,7 @@
       <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>Справка</button>
       {#if openMenu === 'help'}
         <div class="menu-dropdown" on:click={closeMenu}>
-          <button class="menu-item" on:click={openStepsHelp}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
+          <button class="menu-item" on:click={() => openStepsHelp()}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
           <button class="menu-item" on:click={() => (showHotkeys = true)}>Горячие клавиши<span class="menu-shortcut">Shift+F1</span></button>
           <button class="menu-item" on:click={checkUpdates}>Проверить обновления…</button>
           <button class="menu-item" on:click={showAboutDialog}>О программе</button>
@@ -2725,7 +2765,7 @@
                 class="tool-btn primary primary-run"
                 title="Запустить (Ctrl+Enter)"
                 on:click={() => executeRun({ ...lastRun, dryRun: false })}
-                disabled={!projectPath}
+                disabled={isWelcome && !projectPath}
               >
                 {@html toolbarIcons.play()}<span>Запустить</span>
               </button>
@@ -2733,7 +2773,7 @@
                 class="tool-btn"
                 title="Текущий сценарий (Ctrl+Shift+Enter)"
                 on:click={() => runCurrentScenario(false)}
-                disabled={!projectPath || isWelcome}
+                disabled={isWelcome || !activeTab}
               >
                 {@html toolbarIcons.play()}<span>Сценарий</span>
               </button>
@@ -2781,8 +2821,8 @@
 
           {#if !isWelcome && activeFeatureTab}
             <div class="scenario-chip">
-              <span class="name">{basename(activeTab)}</span>
-              {#if activeFeatureTab.dirty}<span class="badge">*</span>{/if}
+              <span class="name">{featureTabLabel(activeTab)}</span>
+              {#if activeTabUnsaved}<span class="badge">*</span>{/if}
             </div>
           {/if}
 
@@ -2802,7 +2842,8 @@
           welcomeKey={WELCOME_KEY}
           welcomeVisible={welcomeTabVisible}
           {tabs}
-          tabLabel={basename}
+          tabLabel={featureTabLabel}
+          tabUnsaved={tabIsUnsaved}
           onSelect={selectTab}
           onClose={(path) => closeTab(path)}
           onCloseWelcome={closeWelcomeTab}
@@ -2832,20 +2873,23 @@
               <PostRecordBanner
                 path={postRecordPath}
                 stepCount={postRecordStepCount}
-                hints={postRecordHints}
                 onValidate={postRecordValidate}
                 onSave={postRecordSave}
-                onFixHover={postRecordFixHover}
-                onShowStep={postRecordShowStep}
-                onFixHint={postRecordFixHint}
-                onDismissHint={dismissPostRecordHint}
                 onClose={dismissPostRecord}
               />
             {/if}
-            {#if activeFeatureTab?.dirty}
+            {#if activeTabUnsaved}
               <div class="dirty-banner">
-                <span>Текст сценария изменён — сохраните перед запуском</span>
-                <button class="primary" on:click={saveFeature}>Сохранить</button>
+                <span>
+                  {#if isUntitled(activeTab)}
+                    Несохранённый сценарий
+                  {:else}
+                    Несохранённые изменения
+                  {/if}
+                </span>
+                <button class="primary" on:click={saveFeature}>
+                  {isUntitled(activeTab) ? 'Сохранить как…' : 'Сохранить'}
+                </button>
               </div>
             {/if}
             {#if showVanessaMonitor}
@@ -2870,15 +2914,24 @@
               </div>
             {/if}
             <div class="gherkin-hints">
-              <span>{stepCount} шагов в редакторе</span>
+              <span>{stepCount} шагов в редакторе · Ctrl+Space — шаги и слова · Ctrl+. — исправления</span>
               <button on:click={openStepsDialog}>Шаблон</button>
-              <button on:click={openStepsHelp}>Справка</button>
+              <button on:click={() => openStepsHelp()}>Справка</button>
               <button class:active={previewVisible} on:click={togglePreview}>Превью</button>
             </div>
             <div class="editor-row" style="--preview-width: {previewWidth}px">
               <div class="editor-main">
                 <div class="editor-area">
-                  <MonacoEditor bind:this={monaco} bind:value={editorText} on:change={(e) => onEditorChange(e.detail)} />
+                  {#key activeTab}
+                    <MonacoEditor
+                      bind:this={monaco}
+                      bind:value={editorText}
+                      scenarioHints={editorScenarioHints}
+                      hintActions={monacoHintActions}
+                      onHotkey={runHotkeyAction}
+                      on:change={(e) => onEditorChange(e.detail)}
+                    />
+                  {/key}
                 </div>
                 {#if stepsPanelVisible}
                 <div class="splitter-h" role="separator" on:mousedown={startResizeSteps}></div>
@@ -2990,15 +3043,6 @@
   </footer>
 </div>
 
-{#if showSplash}
-  <SplashScreen
-    {version}
-    message={splashMessage}
-    progress={splashProgress}
-    fading={splashFading}
-  />
-{/if}
-
 {#if showRun}
   <RunDialog
     title={runDialogTitle}
@@ -3087,15 +3131,6 @@
   />
 {/if}
 
-{#if showNewScenario}
-  <NewScenarioDialog
-    {projectPath}
-    defaultStartUrl={startURL || recordURL || 'https://example.com'}
-    onCreate={createScenario}
-    onClose={() => (showNewScenario = false)}
-  />
-{/if}
-
 {#if showRefactorUrl}
   <RefactorUrlDialog
     initialUrl={startURL || recordURL || 'https://example.com'}
@@ -3180,7 +3215,6 @@
 
 {#if showImportFeatures}
   <ImportFeaturesDialog
-    {projectPath}
     destDirs={collectProjectDirs()}
     bind:destDir={importDestDir}
     busy={importFeaturesBusy}
@@ -3217,6 +3251,11 @@
       showSettings = false
       showPlugins = true
     }}
+    onOpenVanessa={() => {
+      showSettings = false
+      openVanessaSettingsDialog()
+    }}
+    onInstallLog={appendLog}
   />
 {/if}
 
@@ -3337,7 +3376,6 @@
   <CatalogContextMenu
     x={contextMenu.x}
     y={contextMenu.y}
-    path={contextMenu.path}
     onRun={contextMenuRun}
     onDryRun={contextMenuDryRun}
     onOpen={contextMenuOpen}
@@ -3372,3 +3410,4 @@
   onPicker={pickElement}
   onFocusBrowser={focusBrowserWindow}
 />
+{/if}

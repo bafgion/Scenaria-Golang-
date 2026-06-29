@@ -8,6 +8,8 @@ export function ApplyScenarioHintFix(arg1:gui.ScenarioHintFixRequest):Promise<gu
 
 export function ArtifactExists(arg1:string):Promise<boolean>;
 
+export function BrowserInstallStatus(arg1:string):Promise<gui.BrowserInstallStatusDTO>;
+
 export function BundledExamplesPath():Promise<string>;
 
 export function CancelOTP():Promise<void>;
@@ -15,6 +17,8 @@ export function CancelOTP():Promise<void>;
 export function CancelRecording():Promise<void>;
 
 export function CheckUpdate():Promise<gui.RunResult>;
+
+export function CompletionsForLine(arg1:string,arg2:number):Promise<gui.StepCompletionsDTO>;
 
 export function DeleteFeature(arg1:string):Promise<void>;
 
@@ -35,6 +39,8 @@ export function ImportFeatures(arg1:string,arg2:Array<string>):Promise<Array<str
 export function ImportJSON(arg1:gui.ImportRequest):Promise<gui.RunResult>;
 
 export function InitProject():Promise<string>;
+
+export function InstallBrowserEngine(arg1:string):Promise<gui.RunResult>;
 
 export function InstallPlugin(arg1:string,arg2:string):Promise<void>;
 
@@ -155,3 +161,5 @@ export function Validate(arg1:gui.ValidateRequest):Promise<gui.RunResult>;
 export function ValidateFeature(arg1:string):Promise<Array<gui.ValidationIssue>>;
 
 export function Version():Promise<string>;
+
+export function WriteTempFeature(arg1:string):Promise<string>;

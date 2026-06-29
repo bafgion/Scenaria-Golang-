@@ -257,6 +257,98 @@
 
   let lastClickAt = 0;
   let lastClickKey = '';
+  let lastClickSelector = { selector: '', at: 0 };
+  let lastHoverTrigger = null;
+
+  function isSubmenuContainer(node) {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.matches('ul, ol, nav, [role="menu"], [class*="sub"], [class*="drop"], [class*="mega"], [class*="menu"]')) {
+      return true;
+    }
+    return node.children.length > 2 && !!node.querySelector('a, button');
+  }
+
+  function findMenuHoverTrigger(el) {
+    if (!el || el.nodeType !== 1) return null;
+
+    let item = el.closest('li');
+    while (item) {
+      const trigger = item.querySelector(':scope > a, :scope > button, :scope > [role="button"]');
+      if (trigger) {
+        for (const child of Array.from(item.children)) {
+          if (child === trigger) continue;
+          if (isSubmenuContainer(child) && child.contains(el) && trigger !== el) {
+            const selector = buildSelector(trigger);
+            if (!selector) return null;
+            return {
+              selector,
+              text: (trigger.innerText || trigger.textContent || '').trim().slice(0, 120),
+            };
+          }
+        }
+      }
+      item = item.parentElement ? item.parentElement.closest('li') : null;
+    }
+
+    let node = el.parentElement;
+    for (let depth = 0; node && depth < 8; depth++) {
+      const directTriggers = node.querySelectorAll(':scope > a, :scope > button, :scope > [role="button"]');
+      for (const trigger of directTriggers) {
+        if (trigger === el || trigger.contains(el)) continue;
+        for (const child of node.children) {
+          if (child === trigger) continue;
+          if (isSubmenuContainer(child) && child.contains(el)) {
+            const selector = buildSelector(trigger);
+            if (selector) {
+              return {
+                selector,
+                text: (trigger.innerText || trigger.textContent || '').trim().slice(0, 120),
+              };
+            }
+          }
+        }
+      }
+      node = node.parentElement;
+    }
+
+    const header = el.closest('header, nav');
+    if (header) {
+      const triggers = header.querySelectorAll('a, button');
+      for (const trigger of triggers) {
+        let sibling = trigger.nextElementSibling;
+        while (sibling) {
+          if (isSubmenuContainer(sibling) && sibling.contains(el)) {
+            const selector = buildSelector(trigger);
+            if (selector) {
+              return {
+                selector,
+                text: (trigger.innerText || trigger.textContent || '').trim().slice(0, 120),
+              };
+            }
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function sameNavContext(a, b) {
+    const navA = a && a.closest ? a.closest('header, nav') : null;
+    const navB = b && b.closest ? b.closest('header, nav') : null;
+    return !!navA && navA === navB;
+  }
+
+  function rememberHoverTarget(el) {
+    if (!el || el.nodeType !== 1) return;
+    const trigger = el.closest('a,button,[role="button"]');
+    if (!trigger) return;
+    const selector = buildSelector(trigger);
+    if (!selector) return;
+    const text = (trigger.innerText || trigger.textContent || '').trim().slice(0, 120);
+    lastHoverTrigger = { element: trigger, selector, text, at: Date.now() };
+  }
 
   function resolveClickTarget(event) {
     const x = event.clientX;
@@ -293,7 +385,33 @@
       push('draw-signature', canvas);
       return;
     }
-    push('click', el);
+
+    const clickRoot = clickableAncestor(el) || el;
+    const c = cfg();
+    if (c.navOnly && !isNavTarget(clickRoot)) return;
+    if (c.filterImportant && !isImportantTarget(clickRoot)) return;
+    const detail = collect(el, 'click');
+    if (!detail.selector) return;
+
+    const now = Date.now();
+    if (detail.selector === lastClickSelector.selector && now - lastClickSelector.at < 600) return;
+    lastClickSelector = { selector: detail.selector, at: now };
+
+    let hover = findMenuHoverTrigger(el);
+    if (!hover && lastHoverTrigger && now - lastHoverTrigger.at < 12000) {
+      if (
+        lastHoverTrigger.selector !== detail.selector &&
+        sameNavContext(el, lastHoverTrigger.element) &&
+        !lastHoverTrigger.element.contains(el)
+      ) {
+        hover = { selector: lastHoverTrigger.selector, text: lastHoverTrigger.text };
+      }
+    }
+    if (hover) {
+      detail.hoverselector = hover.selector;
+      detail.hovertext = hover.text || '';
+    }
+    pushDetail('click', detail);
   }
 
   function onDocumentInput(e) {
@@ -392,9 +510,10 @@
   let lastHoverAt = 0;
   let lastHoverKey = '';
   function onDocumentMouseOver(e) {
-    if (!cfg().hoverRecord || cfg().paused) return;
     const el = e.target;
     if (!el || el.nodeType !== 1) return;
+    rememberHoverTarget(el);
+    if (!cfg().hoverRecord || cfg().paused) return;
     const key = (el.id || el.getAttribute('data-testid') || visibleText(el).slice(0, 40)) || '';
     const now = Date.now();
     if (key && key === lastHoverKey && now - lastHoverAt < 600) return;

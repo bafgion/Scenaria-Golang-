@@ -133,7 +133,7 @@ func runLiveBrowserSession(
 			if !ok {
 				continue
 			}
-			*recorded = append(*recorded, step)
+			appendCoalescedStep(recorded, step)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
