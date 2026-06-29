@@ -62,9 +62,12 @@
   }
 
   function onDragOver(e: DragEvent) {
-    if (!isFolder || !e.dataTransfer?.types.includes(DRAG_TYPE)) return
+    if (!isFolder || !e.dataTransfer) return
+    const hasInternal = e.dataTransfer.types.includes(DRAG_TYPE)
+    const hasFiles = e.dataTransfer.types.includes('Files')
+    if (!hasInternal && !hasFiles) return
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
+    e.dataTransfer.dropEffect = hasInternal ? 'move' : 'copy'
     onDropTarget(node.path)
   }
 

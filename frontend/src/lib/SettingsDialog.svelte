@@ -13,6 +13,7 @@
 
   export let onSave: () => void
   export let onCancel: () => void
+  export let onOpenPlugins: (() => void) | null = null
 
   let tab: 'ui' | 'record' | 'plugins' = 'ui'
   let search = ''
@@ -102,8 +103,12 @@
             Записывать наведение
           </label>
         {:else}
-          <p class="hint">Vanessa и другие плагины настраиваются в <code>.scenaria/vanessa.json</code> и через меню «Запись и тест».</p>
-          <p class="hint">Установка ZIP-плагинов — в CLI: <code>scenaria plugins install …</code></p>
+          <p class="hint">Vanessa — в <code>.scenaria/vanessa.json</code> или через «Запись и тест → Настройки Vanessa…».</p>
+          {#if onOpenPlugins}
+            <button type="button" class="plugins-open-btn" on:click={onOpenPlugins}>Управление плагинами…</button>
+          {:else}
+            <p class="hint">Установка ZIP-плагинов — в CLI: <code>scenaria plugins install …</code></p>
+          {/if}
         {/if}
       </div>
     </div>
@@ -234,5 +239,16 @@
     color: var(--color-muted);
     line-height: 1.5;
     margin: 0;
+  }
+
+  .plugins-open-btn {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-primary);
+    border-radius: 3px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
   }
 </style>

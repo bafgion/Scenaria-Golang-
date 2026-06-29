@@ -38,6 +38,24 @@ export namespace gui {
 	        this.checkUpdatesOnStartup = source["checkUpdatesOnStartup"];
 	    }
 	}
+	export class BaselineRecordRequest {
+	    output: string;
+	    featureName: string;
+	    scenarioName: string;
+	    steps: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BaselineRecordRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.output = source["output"];
+	        this.featureName = source["featureName"];
+	        this.scenarioName = source["scenarioName"];
+	        this.steps = source["steps"];
+	    }
+	}
 	export class EditorStepRow {
 	    line: number;
 	    keyword: string;
@@ -270,6 +288,76 @@ export namespace gui {
 	        this.vanessa = source["vanessa"];
 	    }
 	}
+	export class VanessaCaseDTO {
+	    path: string;
+	    name: string;
+	    success: boolean;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new VanessaCaseDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.success = source["success"];
+	        this.message = source["message"];
+	    }
+	}
+	export class VanessaRunSnapshotDTO {
+	    runDir: string;
+	    currentScenario: string;
+	    completedCases: number;
+	    totalPlanned: number;
+	    cases: VanessaCaseDTO[];
+
+	    static createFrom(source: any = {}) {
+	        return new VanessaRunSnapshotDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runDir = source["runDir"];
+	        this.currentScenario = source["currentScenario"];
+	        this.completedCases = source["completedCases"];
+	        this.totalPlanned = source["totalPlanned"];
+	        this.cases = this.convertValues(source["cases"], VanessaCaseDTO);
+	    }
+
+	    convertValues(a: any, classs: any, asMap: boolean = false): any {
+	        if (!a) return a;
+	        if (a.slice) return (a as any[]).map(elem => new classs(elem));
+	        return new classs(a);
+	    }
+	}
+	export class VanessaRunResultDTO {
+	    output: string;
+	    error: string;
+	    success: boolean;
+	    runDir: string;
+	    cases: VanessaCaseDTO[];
+
+	    static createFrom(source: any = {}) {
+	        return new VanessaRunResultDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.output = source["output"];
+	        this.error = source["error"];
+	        this.success = source["success"];
+	        this.runDir = source["runDir"];
+	        this.cases = this.convertValues(source["cases"], VanessaCaseDTO);
+	    }
+
+	    convertValues(a: any, classs: any, asMap: boolean = false): any {
+	        if (!a) return a;
+	        if (a.slice) return (a as any[]).map(elem => new classs(elem));
+	        return new classs(a);
+	    }
+	}
 	export class PluginRunRequest {
 	    name: string;
 	    dryRun: boolean;
@@ -280,6 +368,12 @@ export namespace gui {
 	    installEpf: boolean;
 	    epfUrl: string;
 	    epfDest: string;
+	    platformExe: string;
+	    epfPath: string;
+	    ibConnection: string;
+	    reportAllure: boolean;
+	    vaDir: string;
+	    vaFiles: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PluginRunRequest(source);
@@ -296,6 +390,12 @@ export namespace gui {
 	        this.installEpf = source["installEpf"];
 	        this.epfUrl = source["epfUrl"];
 	        this.epfDest = source["epfDest"];
+	        this.platformExe = source["platformExe"];
+	        this.epfPath = source["epfPath"];
+	        this.ibConnection = source["ibConnection"];
+	        this.reportAllure = source["reportAllure"];
+	        this.vaDir = source["vaDir"];
+	        this.vaFiles = source["vaFiles"];
 	    }
 	}
 	export class ProjectArtifacts {
@@ -304,6 +404,7 @@ export namespace gui {
 	    videosDir: string;
 	    htmlReport: string;
 	    junitReport: string;
+	    summaryJson: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProjectArtifacts(source);
@@ -316,6 +417,7 @@ export namespace gui {
 	        this.videosDir = source["videosDir"];
 	        this.htmlReport = source["htmlReport"];
 	        this.junitReport = source["junitReport"];
+	        this.summaryJson = source["summaryJson"];
 	    }
 	}
 	export class ProjectInfo {
@@ -392,6 +494,8 @@ export namespace gui {
 	    hoverRecord: boolean;
 	    appendTo: string;
 	    testClient: string;
+	    featureName: string;
+	    scenarioName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RecordRequest(source);
@@ -408,6 +512,8 @@ export namespace gui {
 	        this.hoverRecord = source["hoverRecord"];
 	        this.appendTo = source["appendTo"];
 	        this.testClient = source["testClient"];
+	        this.featureName = source["featureName"];
+	        this.scenarioName = source["scenarioName"];
 	    }
 	}
 	export class RefactorResult {
@@ -437,10 +543,12 @@ export namespace gui {
 	    videoDir: string;
 	    htmlPath: string;
 	    junitPath: string;
+	    summaryJson: string;
 	    targets: string[];
 	    browser: string;
 	    workers: number;
 	    slowMo: number;
+	    baseUrl: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -460,10 +568,12 @@ export namespace gui {
 	        this.videoDir = source["videoDir"];
 	        this.htmlPath = source["htmlPath"];
 	        this.junitPath = source["junitPath"];
+	        this.summaryJson = source["summaryJson"];
 	        this.targets = source["targets"];
 	        this.browser = source["browser"];
 	        this.workers = source["workers"];
 	        this.slowMo = source["slowMo"];
+	        this.baseUrl = source["baseUrl"];
 	    }
 	}
 	export class RunResult {
@@ -531,6 +641,22 @@ export namespace gui {
 	        this.category = source["category"];
 	        this.template = source["template"];
 	        this.help = source["help"];
+	    }
+	}
+	export class ValidateRequest {
+	    browser: string;
+	    skipBrowser: boolean;
+	    targets: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ValidateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.browser = source["browser"];
+	        this.skipBrowser = source["skipBrowser"];
+	        this.targets = source["targets"];
 	    }
 	}
 

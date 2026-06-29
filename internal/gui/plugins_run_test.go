@@ -11,6 +11,12 @@ func TestAppendVanessaArgs(t *testing.T) {
 		InstallEPF:        true,
 		EPFURL:            "https://example.com/va.epf",
 		EPFDest:           `C:\va.epf`,
+		PlatformExe:       `C:\1cv8\bin\1cv8.exe`,
+		EPFPath:           `C:\vanessa\vanessa-automation.epf`,
+		IBConnection:      `Srvr="localhost";Ref="base";`,
+		ReportAllure:      true,
+		VaDir:             `features\smoke`,
+		VaFiles:           `a.feature,b.feature`,
 	})
 	want := []string{
 		"run", "--project", "/p",
@@ -21,6 +27,12 @@ func TestAppendVanessaArgs(t *testing.T) {
 		"--epf-install",
 		"--epf-url", "https://example.com/va.epf",
 		"--epf-dest", `C:\va.epf`,
+		"--platform-exe", `C:\1cv8\bin\1cv8.exe`,
+		"--epf", `C:\vanessa\vanessa-automation.epf`,
+		"--ib", `Srvr="localhost";Ref="base";`,
+		"--allure",
+		"--dir", `features\smoke`,
+		"--files", `a.feature,b.feature`,
 	}
 	if len(args) != len(want) {
 		t.Fatalf("got %v", args)

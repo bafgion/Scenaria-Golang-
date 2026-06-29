@@ -5,6 +5,8 @@
   export let artifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
   export let onRerun: () => void = () => {}
   export let onOpenFolder: (path: string) => void = () => {}
+  export let onServeAllure: (path: string) => void = () => {}
+  export let onOpenHtmlReport: (path: string) => void = () => {}
 
   function splitPath(path: string): { feature: string; scenario: string } {
     const idx = path.indexOf('::')
@@ -31,13 +33,18 @@
   <div class="results-toolbar">
     <div class="artifact-btns">
       {#if artifacts.allureDir}
-        <button type="button" on:click={() => onOpenFolder(artifacts.allureDir)}>Allure</button>
+        <button type="button" on:click={() => onServeAllure(artifacts.allureDir)}>Allure serve</button>
+        <button type="button" on:click={() => onOpenFolder(artifacts.allureDir)}>Allure (папка)</button>
       {/if}
       {#if artifacts.htmlReport}
-        <button type="button" on:click={() => onOpenFolder(artifacts.htmlReport)}>HTML-отчёт</button>
+        <button type="button" on:click={() => onOpenHtmlReport(artifacts.htmlReport)}>HTML-отчёт</button>
+        <button type="button" class="secondary" on:click={() => onOpenFolder(artifacts.htmlReport)}>HTML (файл)</button>
       {/if}
       {#if artifacts.junitReport}
         <button type="button" on:click={() => onOpenFolder(artifacts.junitReport)}>JUnit</button>
+      {/if}
+      {#if artifacts.summaryJson}
+        <button type="button" on:click={() => onOpenFolder(artifacts.summaryJson)}>Summary JSON</button>
       {/if}
       {#if artifacts.tracesDir}
         <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>Trace</button>

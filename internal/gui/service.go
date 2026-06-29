@@ -50,12 +50,20 @@ type RunRequest struct {
 	AllureDir  string            `json:"allureDir"`
 	TraceDir   string            `json:"traceDir"`
 	VideoDir   string            `json:"videoDir"`
-	HTMLPath   string            `json:"htmlPath"`
-	JUnitPath  string            `json:"junitPath"`
-	Targets    []string          `json:"targets"`
+	HTMLPath      string            `json:"htmlPath"`
+	JUnitPath     string            `json:"junitPath"`
+	SummaryJSON   string            `json:"summaryJson"`
+	Targets       []string          `json:"targets"`
 	Browser    string            `json:"browser"`
 	Workers    int               `json:"workers"`
 	SlowMo     int               `json:"slowMo"`
+	BaseURL    string            `json:"baseUrl"`
+}
+
+type ValidateRequest struct {
+	Browser     string   `json:"browser"`
+	SkipBrowser bool     `json:"skipBrowser"`
+	Targets     []string `json:"targets"`
 }
 
 type PluginRunRequest struct {
@@ -68,6 +76,12 @@ type PluginRunRequest struct {
 	InstallEPF        bool     `json:"installEpf"`
 	EPFURL            string   `json:"epfUrl"`
 	EPFDest           string   `json:"epfDest"`
+	PlatformExe       string   `json:"platformExe"`
+	EPFPath           string   `json:"epfPath"`
+	IBConnection      string   `json:"ibConnection"`
+	ReportAllure      bool     `json:"reportAllure"`
+	VaDir             string   `json:"vaDir"`
+	VaFiles           string   `json:"vaFiles"`
 }
 
 type RunResult struct {
@@ -296,6 +310,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.JUnitPath != "" {
 		args = append(args, "--junit", req.JUnitPath)
 	}
+	if req.SummaryJSON != "" {
+		args = append(args, "--summary-json", req.SummaryJSON)
+	}
 	if req.Browser != "" && !req.DryRun {
 		args = append(args, "--browser", req.Browser)
 	}
@@ -305,6 +322,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.SlowMo > 0 && !req.DryRun {
 		args = append(args, "--slow-mo", fmt.Sprintf("%d", req.SlowMo))
 	}
+	if req.BaseURL != "" && !req.DryRun {
+		args = append(args, "--base-url", req.BaseURL)
+	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
@@ -312,16 +332,21 @@ func (s *Service) Run(req RunRequest) RunResult {
 	return RunResult{Output: out}
 }
 
-func (s *Service) Validate(browser string, skipBrowser bool) RunResult {
+func (s *Service) Validate(req ValidateRequest) RunResult {
 	path := s.ProjectPath()
 	if path == "" {
 		return RunResult{Error: "open a project folder first"}
 	}
-	args := []string{path}
-	if skipBrowser {
+	args := []string{}
+	if len(req.Targets) > 0 {
+		args = append(args, req.Targets...)
+	} else {
+		args = append(args, path)
+	}
+	if req.SkipBrowser {
 		args = append(args, "--no-browser")
-	} else if browser != "" {
-		args = append(args, "--browser", browser)
+	} else if req.Browser != "" {
+		args = append(args, "--browser", req.Browser)
 	}
 	out, err := captureCLI(func() error { return cli.RunValidate(args) })
 	if err != nil {
@@ -510,4 +535,5 @@ func maxInt(a, b int) int {
 
 func runExport(args []string) error     { return cli.RunExport(args) }
 func runImportJSON(args []string) error { return cli.RunImportJSON(args) }
+func runRecord(args []string) error     { return cli.RunRecord(args) }
 func runVA(args []string) error         { return cli.RunVA(args) }

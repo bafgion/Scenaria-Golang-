@@ -5,6 +5,8 @@
 
   export let onClose: () => void = () => {}
   export let onRunPlugin: (name: string, dryRun: boolean) => void = () => {}
+  export let onAskConfirm: (message: string) => Promise<boolean> = (message) =>
+    Promise.resolve(window.confirm(message))
 
   let entries: gui.PluginEntryDTO[] = []
   let name = 'vanessa'
@@ -47,7 +49,7 @@
   }
 
   async function uninstall(entry: gui.PluginEntryDTO) {
-    if (!confirm(`Удалить плагин «${entry.name}» из манифеста?`)) return
+    if (!(await onAskConfirm(`Удалить плагин «${entry.name}» из манифеста?`))) return
     busy = true
     error = ''
     try {
@@ -119,7 +121,8 @@
           <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>Dry-run</button>
           <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск</button>
         {:else}
-          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>Dry-run…</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск…</button>
         {/if}
       </div>
     {/each}

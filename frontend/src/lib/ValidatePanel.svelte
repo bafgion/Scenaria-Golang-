@@ -3,10 +3,14 @@
 
   export let issues: gui.ValidationIssue[] = []
   export let hint = ''
+  export let cliLog = ''
   export let onGotoLine: (line: number) => void = () => {}
 </script>
 
 <div class="validate-panel">
+  {#if cliLog}
+    <pre class="cli-log">{cliLog}</pre>
+  {/if}
   {#if issues.length === 0}
     <p class="empty">{hint || 'Ошибок в шагах сценария нет'}</p>
   {:else}
@@ -36,6 +40,20 @@
     height: 100%;
     overflow: auto;
     padding: 8px 12px;
+  }
+
+  .cli-log {
+    margin: 0 0 10px;
+    padding: 8px;
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    background: var(--color-input);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    max-height: 200px;
+    overflow: auto;
   }
 
   .empty {

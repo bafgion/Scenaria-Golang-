@@ -13,6 +13,8 @@
   export let onClose: () => void = () => {}
   export let onClientsChange: (names: string[]) => void = () => {}
   export let onLog: (message: string) => void = () => {}
+  export let onAskConfirm: (message: string) => Promise<boolean> = (message) =>
+    Promise.resolve(window.confirm(message))
 
   let editorName = ''
   let jsonText = ''
@@ -81,7 +83,7 @@
 
   async function deleteClient() {
     if (!selectedName || isNew) return
-    if (!window.confirm(`Удалить TestClient «${selectedName}»?`)) return
+    if (!(await onAskConfirm(`Удалить TestClient «${selectedName}»?`))) return
     busy = true
     error = ''
     try {

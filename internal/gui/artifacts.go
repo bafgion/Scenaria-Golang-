@@ -10,8 +10,9 @@ type ProjectArtifacts struct {
 	AllureDir  string `json:"allureDir"`
 	TracesDir  string `json:"tracesDir"`
 	VideosDir  string `json:"videosDir"`
-	HTMLReport string `json:"htmlReport"`
+	HTMLReport  string `json:"htmlReport"`
 	JUnitReport string `json:"junitReport"`
+	SummaryJSON string `json:"summaryJson"`
 }
 
 func (s *Service) ProjectArtifacts() ProjectArtifacts {
@@ -35,6 +36,9 @@ func (s *Service) ProjectArtifacts() ProjectArtifacts {
 	}
 	if s.ArtifactExists(filepath.Join(scenaria, "junit.xml")) {
 		out.JUnitReport = filepath.Join(scenaria, "junit.xml")
+	}
+	if s.ArtifactExists(filepath.Join(scenaria, "summary.json")) {
+		out.SummaryJSON = filepath.Join(scenaria, "summary.json")
 	}
 	return out
 }

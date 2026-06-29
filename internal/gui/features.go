@@ -83,7 +83,7 @@ func (s *Service) DeleteFeature(path string) error {
 	return nil
 }
 
-func (s *Service) DuplicateFeature(path string) (string, error) {
+func (s *Service) DuplicateFeature(path, newName string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", fmt.Errorf("feature path is required")
@@ -93,14 +93,29 @@ func (s *Service) DuplicateFeature(path string) (string, error) {
 		return "", fmt.Errorf("read feature: %w", err)
 	}
 	dir := filepath.Dir(path)
-	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	ext := filepath.Ext(path)
-	target := filepath.Join(dir, base+"-copy"+ext)
-	for i := 2; i < 100; i++ {
-		if _, err := os.Stat(target); os.IsNotExist(err) {
-			break
+	target := ""
+	if name := strings.TrimSpace(newName); name != "" {
+		name = strings.TrimSuffix(name, ext)
+		name = strings.TrimSuffix(name, ".feature")
+		if name == "" {
+			return "", fmt.Errorf("new feature name is required")
 		}
-		target = filepath.Join(dir, fmt.Sprintf("%s-copy-%d%s", base, i, ext))
+		target = filepath.Join(dir, name+ext)
+		if _, err := os.Stat(target); err == nil {
+			return "", fmt.Errorf("file already exists: %s", filepath.Base(target))
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+	} else {
+		base := strings.TrimSuffix(filepath.Base(path), ext)
+		target = filepath.Join(dir, base+"-copy"+ext)
+		for i := 2; i < 100; i++ {
+			if _, err := os.Stat(target); os.IsNotExist(err) {
+				break
+			}
+			target = filepath.Join(dir, fmt.Sprintf("%s-copy-%d%s", base, i, ext))
+		}
 	}
 	if err := os.WriteFile(target, payload, 0o644); err != nil {
 		return "", fmt.Errorf("write duplicate: %w", err)

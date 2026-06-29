@@ -11,9 +11,11 @@ export type RunForm = {
   video: boolean
   html: boolean
   junit: boolean
+  summaryJson: boolean
   workers: number
   slowMo: number
   browser: string
+  baseUrl: string
 }
 
 export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
@@ -30,9 +32,11 @@ export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
     video: false,
     html: false,
     junit: false,
+    summaryJson: false,
     workers: 1,
     slowMo: 0,
     browser: 'chromium',
+    baseUrl: '',
     ...partial,
   }
 }

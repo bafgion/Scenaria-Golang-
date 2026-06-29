@@ -22,6 +22,15 @@ type RecordRequest struct {
 	HoverRecord      bool   `json:"hoverRecord"`
 	AppendTo         string `json:"appendTo"`
 	TestClient       string `json:"testClient"`
+	FeatureName      string `json:"featureName"`
+	ScenarioName     string `json:"scenarioName"`
+}
+
+type BaselineRecordRequest struct {
+	Output       string   `json:"output"`
+	FeatureName  string   `json:"featureName"`
+	ScenarioName string   `json:"scenarioName"`
+	Steps        []string `json:"steps"`
 }
 
 type ExportRequest struct {
@@ -124,10 +133,19 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 		testClient = client
 	}
 
+	featureName := strings.TrimSpace(req.FeatureName)
+	if featureName == "" {
+		featureName = "Записанный сценарий"
+	}
+	scenarioName := strings.TrimSpace(req.ScenarioName)
+	if scenarioName == "" {
+		scenarioName = "Запись"
+	}
+
 	err = recorder.RecordLive(ctx, recorder.LiveOptions{
 		StartURL:        cleanURL,
-		FeatureName:     "Записанный сценарий",
-		ScenarioName:    "Запись",
+		FeatureName:     featureName,
+		ScenarioName:    scenarioName,
 		OutputPath:      output,
 		Headless:        req.Headless,
 		IdleTimeout:     time.Duration(idle) * time.Second,
@@ -149,6 +167,43 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 		return RunResult{Error: fmt.Errorf("record: %w", err).Error()}
 	}
 	return RunResult{Output: fmt.Sprintf("Запись сохранена: %s\n", output)}
+}
+
+func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
+	path := s.ProjectPath()
+	if path == "" {
+		return RunResult{Error: "open a project folder first"}
+	}
+	output := strings.TrimSpace(req.Output)
+	if output == "" {
+		output = filepath.Join(path, "recorded.feature")
+	} else if !filepath.IsAbs(output) {
+		output = filepath.Join(path, output)
+	}
+	featureName := strings.TrimSpace(req.FeatureName)
+	if featureName == "" {
+		featureName = "Записанный сценарий"
+	}
+	scenarioName := strings.TrimSpace(req.ScenarioName)
+	if scenarioName == "" {
+		scenarioName = "Базовый сценарий"
+	}
+	args := []string{
+		"--output", output,
+		"--feature", featureName,
+		"--scenario", scenarioName,
+	}
+	for _, step := range req.Steps {
+		step = strings.TrimSpace(step)
+		if step != "" {
+			args = append(args, "--step", step)
+		}
+	}
+	out, err := captureCLI(func() error { return cliRunRecord(args) })
+	if err != nil {
+		return RunResult{Output: out, Error: err.Error()}
+	}
+	return RunResult{Output: out}
 }
 
 func (s *Service) PauseRecording() {
@@ -218,5 +273,6 @@ func (s *Service) UndoRecordedStep() bool {
 var (
 	cliRunExport     = func(args []string) error { return runExport(args) }
 	cliRunImportJSON = func(args []string) error { return runImportJSON(args) }
+	cliRunRecord     = func(args []string) error { return runRecord(args) }
 	cliRunVA         = func(args []string) error { return runVA(args) }
 )

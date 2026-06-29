@@ -90,7 +90,8 @@ func (s *Service) RunPlugin(req PluginRunRequest) RunResult {
 		}
 		return RunResult{Output: out}
 	case "run":
-		out, runErr := captureCLI(func() error { return cli.RunRun(target.Args) })
+		args := appendRunPluginArgs(append([]string(nil), target.Args...), req)
+		out, runErr := captureCLI(func() error { return cli.RunRun(args) })
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
@@ -138,6 +139,31 @@ func appendVanessaArgs(args []string, req PluginRunRequest) []string {
 	}
 	if dest := strings.TrimSpace(req.EPFDest); dest != "" {
 		args = append(args, "--epf-dest", dest)
+	}
+	if exe := strings.TrimSpace(req.PlatformExe); exe != "" {
+		args = append(args, "--platform-exe", exe)
+	}
+	if epf := strings.TrimSpace(req.EPFPath); epf != "" {
+		args = append(args, "--epf", epf)
+	}
+	if ib := strings.TrimSpace(req.IBConnection); ib != "" {
+		args = append(args, "--ib", ib)
+	}
+	if req.ReportAllure {
+		args = append(args, "--allure")
+	}
+	if dir := strings.TrimSpace(req.VaDir); dir != "" {
+		args = append(args, "--dir", dir)
+	}
+	if files := strings.TrimSpace(req.VaFiles); files != "" {
+		args = append(args, "--files", files)
+	}
+	return args
+}
+
+func appendRunPluginArgs(args []string, req PluginRunRequest) []string {
+	if tag := strings.TrimSpace(req.Tag); tag != "" {
+		args = append(args, "--tag", tag)
 	}
 	return args
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { ListVanessaRunDirs } from '../../wailsjs/go/wailsapp/App'
+  import { ListVanessaRunDirs, ReadVanessaSettingsJSON } from '../../wailsjs/go/wailsapp/App'
 
   export let dryRun = false
   export let preferRerun = false
@@ -11,12 +11,19 @@
   export let installEpf = false
   export let epfUrl = ''
   export let epfDest = ''
+  export let platformExe = ''
+  export let epfPath = ''
+  export let ibConnection = ''
+  export let reportAllure = false
+  export let vaDir = ''
+  export let vaFiles = ''
   export let tags: string[] = []
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
 
   let runDirs: string[] = []
   let loadingDirs = false
+  let showAdvanced = false
 
   function pickTag(value: string) {
     tag = value
@@ -39,6 +46,16 @@
     } finally {
       loadingDirs = false
     }
+    try {
+      const raw = await ReadVanessaSettingsJSON()
+      const cfg = JSON.parse(raw)
+      if (!platformExe && cfg.platform_executable) platformExe = cfg.platform_executable
+      if (!epfPath && cfg.epf_path) epfPath = cfg.epf_path
+      if (!ibConnection && cfg.ib_connection_string) ibConnection = cfg.ib_connection_string
+      if (!reportAllure && cfg.report_allure) reportAllure = Boolean(cfg.report_allure)
+    } catch {
+      /* defaults stay empty */
+    }
   })
 
   function onKey(e: KeyboardEvent) {
@@ -49,7 +66,7 @@
 <svelte:window on:keydown={onKey} />
 
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
-  <div class="modal wide" role="dialog" aria-label="Запуск Vanessa" on:click|stopPropagation>
+  <div class="modal wide tall" role="dialog" aria-label="Запуск Vanessa" on:click|stopPropagation>
     <h3>Vanessa {dryRun ? '(dry-run)' : ''}</h3>
     <label>Тег <input bind:value={tag} placeholder="@smoke" /></label>
     {#if tags.length > 0}
@@ -81,7 +98,20 @@
       <label>URL EPF (необязательно) <input bind:value={epfUrl} placeholder="https://…/vanessa-automation.epf" /></label>
       <label>Путь назначения EPF <input bind:value={epfDest} placeholder="C:\vanessa\vanessa-automation.epf" /></label>
     {/if}
-    <p class="hint">Пути к 1C и EPF по умолчанию — в <code>.scenaria/vanessa.json</code>.</p>
+    <button type="button" class="advanced-toggle" on:click={() => (showAdvanced = !showAdvanced)}>
+      {showAdvanced ? '▼' : '▶'} Параметры 1C и пути
+    </button>
+    {#if showAdvanced}
+      <label>Платформа 1C (--platform-exe) <input bind:value={platformExe} placeholder="C:\Program Files\1cv8\bin\1cv8.exe" /></label>
+      <label>EPF (--epf) <input bind:value={epfPath} placeholder="C:\vanessa\vanessa-automation.epf" /></label>
+      <label>Строка подключения IB (--ib) <input bind:value={ibConnection} placeholder='Srvr="localhost";Ref="base";' /></label>
+      <label class="check-row"><input type="checkbox" bind:checked={reportAllure} /> Allure-отчёт (--allure)</label>
+      <label>Папка сценариев (--dir) <input bind:value={vaDir} placeholder="features\smoke" /></label>
+      <label>Файлы сценариев (--files) <input bind:value={vaFiles} placeholder="a.feature,b.feature" /></label>
+      <p class="hint">Пустые поля берутся из <code>.scenaria/vanessa.json</code>. Без --dir/--files запускается весь проект.</p>
+    {:else}
+      <p class="hint">По умолчанию — настройки из <code>.scenaria/vanessa.json</code>.</p>
+    {/if}
     <div class="modal-actions">
       <button type="button" class="primary" on:click={onConfirm}>{dryRun ? 'Dry-run' : 'Запустить'}</button>
       <button type="button" on:click={onCancel}>Отмена</button>
@@ -116,5 +146,20 @@
     font-size: 11px;
     color: var(--color-muted);
     margin: 0;
+  }
+
+  .advanced-toggle {
+    margin: 8px 0;
+    padding: 4px 0;
+    border: none;
+    background: none;
+    color: var(--color-muted);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .advanced-toggle:hover {
+    color: var(--color-text);
   }
 </style>

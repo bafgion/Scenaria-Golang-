@@ -15,13 +15,28 @@
   import ExportDialog from './lib/ExportDialog.svelte'
   import RunDialog from './lib/RunDialog.svelte'
   import RecordDialog from './lib/RecordDialog.svelte'
+  import PluginRunDialog from './lib/PluginRunDialog.svelte'
   import VanessaRunDialog from './lib/VanessaRunDialog.svelte'
+  import VanessaMonitorPanel from './lib/VanessaMonitorPanel.svelte'
   import TestClientDialog from './lib/TestClientDialog.svelte'
   import ImportJSONDialog from './lib/ImportJSONDialog.svelte'
   import AboutDialog from './lib/AboutDialog.svelte'
   import OtpDialog from './lib/OtpDialog.svelte'
   import StepsInsertDialog from './lib/StepsInsertDialog.svelte'
   import VanessaSettingsDialog from './lib/VanessaSettingsDialog.svelte'
+  import NewScenarioDialog from './lib/NewScenarioDialog.svelte'
+  import RefactorUrlDialog from './lib/RefactorUrlDialog.svelte'
+  import ConfirmDialog from './lib/ConfirmDialog.svelte'
+  import CatalogContextMenu from './lib/CatalogContextMenu.svelte'
+  import OpenProjectDialog from './lib/OpenProjectDialog.svelte'
+  import MoveFeatureDialog from './lib/MoveFeatureDialog.svelte'
+  import ValidateDialog from './lib/ValidateDialog.svelte'
+  import UpdateCheckDialog from './lib/UpdateCheckDialog.svelte'
+  import InitProjectDialog from './lib/InitProjectDialog.svelte'
+  import ImportFeaturesDialog from './lib/ImportFeaturesDialog.svelte'
+  import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
+  import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
+  import { buildFeatureTemplate } from './lib/featureTemplate'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
@@ -55,6 +70,7 @@
     PickOpenFile,
     RunPlugin,
     StartRecord,
+    RecordBaseline,
     PauseRecording,
     ResumeRecording,
     CancelRecording,
@@ -73,6 +89,8 @@
     ParseEditorSteps,
     ArtifactExists,
     OpenFolder,
+    ServeAllure,
+    OpenHTMLReport,
     RefactorUpdateStartURLs,
     RefactorNormalizeIndents,
     RefactorCollapseBlankLines,
@@ -83,8 +101,12 @@
     DeleteFeature,
     DuplicateFeature,
     MoveFeature,
+    RenameFeature,
     ImportFeatures,
     ListPlugins,
+    ListVanessaRunDirs,
+    StartVanessaRun,
+    PollVanessaRun,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -116,11 +138,42 @@
   let showCommandPalette = false
   let showSnippetPalette = false
   let showRecord = false
+  let recordMode: 'live' | 'baseline' = 'live'
+  let baselineBusy = false
+  let showPluginRun = false
+  let pluginRunName = ''
+  let pluginRunDry = false
+  let pluginRunTag = ''
+  let pluginRunScenario = ''
   let showOtp = false
   let showRun = false
   let showTestClient = false
   let showExport = false
   let showImport = false
+  let showImportFeatures = false
+  let importDestDir = ''
+  let importFeaturesBusy = false
+  let showDuplicateFeature = false
+  let duplicateFeaturePath = ''
+  let duplicateNewName = ''
+  let showNewScenario = false
+  let showRefactorUrl = false
+  let showOpenProject = false
+  let showRenameFeature = false
+  let showMoveFeature = false
+  let moveFeaturePath = ''
+  let moveDestDirs: string[] = []
+  let moveDestDir = ''
+  let showValidate = false
+  let validateBrowser = 'chromium'
+  let validateSyntaxOnly = false
+  let validateScope: 'project' | 'current' = 'project'
+  let validateCliLog = ''
+  let showUpdateCheck = false
+  let updateCheckMessage = ''
+  let updateCheckHasUpdate = false
+  let showInitProject = false
+  let renameFeaturePath = ''
   let exportInputPath = ''
   let showSteps = false
   let showStepsHelp = false
@@ -144,6 +197,49 @@
   let vanessaInstallEpf = false
   let vanessaEpfUrl = ''
   let vanessaEpfDest = ''
+  let vanessaPlatformExe = ''
+  let vanessaEpfPath = ''
+  let vanessaIB = ''
+  let vanessaReportAllure = false
+  let vanessaVaDir = ''
+  let vanessaVaFiles = ''
+  let vanessaRunning = false
+  let showVanessaMonitor = false
+  let vanessaSnapshot: gui.VanessaRunSnapshotDTO = new gui.VanessaRunSnapshotDTO()
+  let vanessaWatchDir = ''
+  let vanessaPlannedTotal = 1
+  let vanessaPollTimer: ReturnType<typeof setInterval> | null = null
+  let confirmDialog: {
+    title: string
+    message: string
+    confirmLabel: string
+    danger: boolean
+    resolve: (value: boolean) => void
+  } | null = null
+
+  function askConfirm(opts: {
+    title: string
+    message: string
+    confirmLabel?: string
+    danger?: boolean
+  }): Promise<boolean> {
+    return new Promise((resolve) => {
+      confirmDialog = {
+        title: opts.title,
+        message: opts.message,
+        confirmLabel: opts.confirmLabel || 'OK',
+        danger: opts.danger || false,
+        resolve,
+      }
+    })
+  }
+
+  function closeConfirm(confirmed: boolean) {
+    if (confirmDialog) {
+      confirmDialog.resolve(confirmed)
+      confirmDialog = null
+    }
+  }
   let showHttpAuth = false
   let httpAuthHost = ''
   let showPickerStep = false
@@ -205,6 +301,8 @@
   let recordIdle = 30
   let recordAppendTo = ''
   let recordTestClient = ''
+  let recordFeatureName = 'Записанный сценарий'
+  let recordScenarioName = 'Запись'
   let lastRecordTarget = ''
   let pendingCloseTab: string | null = null
 
@@ -346,7 +444,11 @@
 
     try {
       OnFileDrop((_x, _y, paths) => {
-        if (projectPath && paths?.length) void importDroppedFeatures(projectPath, paths)
+        if (projectPath && paths?.length) {
+          const dest = catalogDropTarget || projectPath
+          catalogDropTarget = ''
+          void importDroppedFeatures(dest, paths)
+        }
       }, false)
       unsubscribers.push(() => OnFileDropOff())
     } catch {
@@ -387,6 +489,40 @@
           }
         }),
       )
+      unsubscribers.push(
+        EventsOn('vanessa-run-started', () => {
+          vanessaRunning = true
+          vanessaWatchDir = ''
+          setStatus('▶ Vanessa', 'busy')
+          appendLog('Запуск Vanessa…')
+          bottomPanelOpen = true
+          bottomTab = 'journal'
+          startVanessaPoll()
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('vanessa-run-finished', async (result: gui.VanessaRunResultDTO) => {
+          stopVanessaPoll()
+          vanessaRunning = false
+          if (result.runDir) {
+            vanessaWatchDir = result.runDir
+            try {
+              vanessaSnapshot = await PollVanessaRun(result.runDir, vanessaPlannedTotal)
+            } catch {
+              /* ignore */
+            }
+          }
+          if (result.output) appendLog(result.output.trimEnd())
+          if (result.error) {
+            appendLog(`Ошибка: ${result.error}`)
+            setStatus('Ошибка Vanessa', 'error')
+          } else {
+            appendLog('Vanessa завершён.')
+            setStatus('Vanessa завершён', result.success ? 'success' : 'error')
+          }
+          await refreshRunResults()
+        }),
+      )
     } catch {
       /* dev without wails runtime */
     }
@@ -396,7 +532,10 @@
     unsubscribers.push(() => window.removeEventListener('resize', onResize))
 
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        saveFeatureAs()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         saveFeature()
       }
@@ -468,6 +607,7 @@
   })
 
   onDestroy(() => {
+    stopVanessaPoll()
     for (const off of unsubscribers) off()
   })
 
@@ -501,25 +641,34 @@
       { id: 'palette', label: 'Палитра команд', group: 'Вид', shortcut: 'Ctrl+Shift+P', run: () => (showCommandPalette = true) },
       { id: 'welcome', label: 'Старт', group: 'Вид', run: () => selectTab(WELCOME_KEY) },
       { id: 'open', label: 'Открыть проект…', group: 'Проект', run: openProjectDialog },
+      { id: 'close-project', label: 'Закрыть проект', group: 'Проект', run: closeProject },
       { id: 'settings', label: 'Настройки…', group: 'Проект', shortcut: 'Ctrl+,', run: openSettings },
-      { id: 'init', label: 'Init проекта', group: 'Проект', run: initProject },
+      { id: 'init', label: 'Init проекта', group: 'Проект', run: openInitProjectDialog },
       { id: 'examples', label: 'Открыть примеры сценариев', group: 'Проект', run: openExamples },
       { id: 'new', label: 'Новый сценарий', group: 'Сценарий', shortcut: 'Ctrl+N', run: newScenario },
       { id: 'open-file', label: 'Открыть файл…', group: 'Сценарий', shortcut: 'Ctrl+O', run: openFileDialog },
       { id: 'save', label: 'Сохранить', group: 'Сценарий', shortcut: 'Ctrl+S', run: saveFeature },
+      { id: 'save-as', label: 'Сохранить как…', group: 'Сценарий', shortcut: 'Ctrl+Shift+S', run: saveFeatureAs },
       { id: 'export', label: 'Экспорт…', group: 'Сценарий', run: openExportDialog },
       { id: 'import', label: 'Импорт JSON…', group: 'Сценарий', run: openImportDialog },
+      { id: 'import-features', label: 'Импорт .feature…', group: 'Сценарий', run: openImportFeaturesDialog },
       { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
       { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
       { id: 'find-replace', label: 'Найти и заменить…', group: 'Сценарий', shortcut: 'Ctrl+H', run: openFindReplace },
       { id: 'project-replace', label: 'Замена по проекту…', group: 'Сценарий', run: () => (showProjectReplace = true) },
-      { id: 'duplicate', label: 'Дублировать сценарий', group: 'Сценарий', run: () => activeTab && !isWelcome && duplicateFeature(activeTab) },
+      { id: 'duplicate', label: 'Дублировать сценарий…', group: 'Сценарий', run: () => activeTab && !isWelcome && openDuplicateDialog(activeTab) },
+      { id: 'rename-feature', label: 'Переименовать сценарий…', group: 'Сценарий', run: () => {
+        if (!activeTab || isWelcome) return
+        renameFeaturePath = activeTab
+        showRenameFeature = true
+      }},
       { id: 'delete-feature', label: 'Удалить сценарий', group: 'Сценарий', run: () => activeTab && !isWelcome && deleteFeature(activeTab) },
       { id: 'refactor-indents', label: 'Нормализовать отступы', group: 'Рефакторинг', run: refactorNormalizeIndents },
       { id: 'refactor-blanks', label: 'Убрать пустые строки между шагами', group: 'Рефакторинг', run: refactorCollapseBlank },
       { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: openStepsHelp },
       { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: beginRecord },
       { id: 'record', label: 'Запись', group: 'Запись и тест', shortcut: 'Ctrl+R', run: beginRecord },
+      { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
       { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
       { id: 'pause', label: 'Пауза', group: 'Запись и тест', run: toggleRecordPause },
       { id: 'run', label: 'Запустить', group: 'Запись и тест', shortcut: 'Ctrl+Enter', run: () => executeRun({ ...lastRun, dryRun: false }) },
@@ -532,19 +681,29 @@
       { id: 'rerun-failed', label: 'Перезапустить упавшие', group: 'Запись и тест', run: rerunFailed },
       { id: 'run-history', label: 'История запусков…', group: 'Запись и тест', run: openRunHistory },
       { id: 'testclient', label: 'TestClient…', group: 'Запись и тест', run: openTestClientDialog },
-      { id: 'validate', label: 'Проверить', group: 'Запись и тест', run: () => validateProject(false) },
-      { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => validateProject(true) },
+      { id: 'validate', label: 'Проверить', group: 'Запись и тест', run: () => openValidateDialog(true) },
+      { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => openValidateDialog(false) },
       ...(hasVanessaPlugin()
         ? [
             { id: 'vanessa-dry', label: 'Vanessa (dry)…', group: 'Запись и тест', run: () => openVanessaDialog(true) },
             { id: 'vanessa', label: 'Vanessa run…', group: 'Запись и тест', run: () => openVanessaDialog(false) },
             { id: 'vanessa-rerun', label: 'Vanessa rerun-failed…', group: 'Запись и тест', run: () => openVanessaDialog(false, true) },
             { id: 'vanessa-settings', label: 'Настройки Vanessa…', group: 'Запись и тест', run: openVanessaSettingsDialog },
+            { id: 'vanessa-monitor', label: 'Монитор Vanessa…', group: 'Запись и тест', run: openVanessaMonitor },
           ]
         : []),
       { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
+      ...installedPlugins.flatMap((plugin) => {
+        if (!plugin.runnable || plugin.vanessa) return []
+        const label = pluginLabel(plugin)
+        return [
+          { id: `plugin-${plugin.name}-dry`, label: `${label} (dry)…`, group: 'Плагины', run: () => openPluginRun(plugin.name, true) },
+          { id: `plugin-${plugin.name}`, label: `Запустить ${label}…`, group: 'Плагины', run: () => openPluginRun(plugin.name, false) },
+        ]
+      }),
       { id: 'journal', label: 'Журнал', group: 'Вид', shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
       { id: 'results', label: 'Результаты', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
+      { id: 'allure-serve', label: 'Allure serve', group: 'Вид', run: () => serveAllureReport(projectArtifacts.allureDir || '') },
       { id: 'validate-panel', label: 'Проверка селекторов', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'validate' } },
       { id: 'error-panel', label: 'Ошибка', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'error' } },
       { id: 'explorer', label: 'Сценарии (explorer)', group: 'Вид', run: () => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) } },
@@ -684,10 +843,20 @@
     applyPostRecordHintFilter()
   }
 
-  async function duplicateFeature(path: string) {
+  function openDuplicateDialog(path: string) {
+    if (!path || isWelcome) return
+    duplicateFeaturePath = path
+    duplicateNewName = `${basename(path).replace(/\.feature$/i, '')}-copy`
+    showDuplicateFeature = true
+  }
+
+  async function confirmDuplicateFeature(newName: string) {
+    showDuplicateFeature = false
+    const path = duplicateFeaturePath
+    duplicateFeaturePath = ''
     if (!path) return
     try {
-      const target = await DuplicateFeature(path)
+      const target = await DuplicateFeature(path, newName)
       await refreshProject()
       await loadFeature(target)
       appendLog(`Создана копия: ${basename(target)}`)
@@ -696,9 +865,23 @@
     }
   }
 
+  async function duplicateFeature(path: string) {
+    openDuplicateDialog(path)
+  }
+
   async function deleteFeature(path: string) {
     if (!path || isWelcome) return
-    if (!confirm(`Удалить ${basename(path)}?`)) return
+    const ok = await askConfirm({
+      title: 'Удалить сценарий',
+      message: `Удалить «${basename(path)}» без возможности восстановления?`,
+      confirmLabel: 'Удалить',
+      danger: true,
+    })
+    if (!ok) return
+    await doDeleteFeature(path)
+  }
+
+  async function doDeleteFeature(path: string) {
     try {
       await DeleteFeature(path)
       closeTab(path)
@@ -750,6 +933,80 @@
     const path = contextMenu.path
     dismissContextMenu()
     deleteFeature(path)
+  }
+
+  function dirname(path: string): string {
+    const norm = path.replace(/\\/g, '/')
+    const i = norm.lastIndexOf('/')
+    return i >= 0 ? norm.slice(0, i) : ''
+  }
+
+  function collectProjectDirs(): string[] {
+    if (!projectPath) return []
+    const dirs = new Set<string>([projectPath.replace(/\\/g, '/')])
+    for (const feature of features) {
+      const dir = dirname(feature.replace(/\\/g, '/'))
+      if (dir) dirs.add(dir)
+    }
+    return [...dirs].sort((a, b) => a.localeCompare(b, 'ru'))
+  }
+
+  function contextMenuMove() {
+    if (!contextMenu || !projectPath) return
+    moveFeaturePath = contextMenu.path
+    moveDestDirs = collectProjectDirs().filter((d) => d !== dirname(moveFeaturePath.replace(/\\/g, '/')))
+    moveDestDir = moveDestDirs[0] || projectPath.replace(/\\/g, '/')
+    dismissContextMenu()
+    showMoveFeature = true
+  }
+
+  async function confirmMoveFeature(destDir: string) {
+    showMoveFeature = false
+    const src = moveFeaturePath
+    moveFeaturePath = ''
+    if (!src || !destDir) return
+    try {
+      const newPath = await MoveFeature(src, destDir)
+      const wasActive = activeTab === src
+      await refreshProject()
+      if (wasActive) await loadFeature(newPath)
+      appendLog(`Перемещён: ${basename(newPath)}`)
+    } catch (e: any) {
+      appendLog(`Ошибка: ${e}`)
+    }
+  }
+
+  function contextMenuReveal() {
+    if (!contextMenu) return
+    const path = contextMenu.path
+    dismissContextMenu()
+    const dir = path.replace(/[/\\][^/\\]+$/, '')
+    if (dir) void OpenFolder(dir)
+  }
+
+  function contextMenuRename() {
+    if (!contextMenu) return
+    renameFeaturePath = contextMenu.path
+    dismissContextMenu()
+    showRenameFeature = true
+  }
+
+  async function renameFeature(path: string, newName: string) {
+    if (!path) return
+    try {
+      const newPath = await RenameFeature(path, newName)
+      const wasActive = activeTab === path
+      if (tabs.some((t) => t.path === path)) {
+        tabs = tabs.map((t) => (t.path === path ? { ...t, path: newPath } : t))
+        if (wasActive) activeTab = newPath
+      }
+      batchSelected = batchSelected.map((p) => (p === path ? newPath : p))
+      await refreshProject()
+      if (wasActive) await loadFeature(newPath)
+      appendLog(`Переименован: ${basename(newPath)}`)
+    } catch (e: any) {
+      appendLog(`Ошибка: ${e}`)
+    }
   }
 
   async function confirmProjectReplace() {
@@ -814,6 +1071,98 @@
     } catch (e: any) {
       appendLog(`Ошибка: ${e}`)
       setStatus(String(e), 'error')
+    }
+  }
+
+  async function closeProject() {
+    if (!projectPath) return
+    const dirty = tabs.filter((t) => t.dirty)
+    if (dirty.length > 0) {
+      const ok = await askConfirm({
+        title: 'Закрыть проект',
+        message: `Есть ${dirty.length} несохранённых файл(ов). Закрыть проект без сохранения?`,
+        confirmLabel: 'Закрыть',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    projectPath = ''
+    features = []
+    tags = []
+    featureTags = {}
+    tabs = []
+    activeTab = WELCOME_KEY
+    welcomeTabVisible = true
+    editorText = ''
+    batchSelected = []
+    batchMode = false
+    editorValidationIssues = []
+    appendLog('Проект закрыт.')
+    syncIdleStatus()
+  }
+
+  function startVanessaPoll() {
+    stopVanessaPoll()
+    vanessaPollTimer = setInterval(async () => {
+      try {
+        let dir = vanessaWatchDir
+        if (!dir) {
+          const dirs = await ListVanessaRunDirs(1)
+          dir = dirs[0] || ''
+          if (dir) vanessaWatchDir = dir
+        }
+        if (dir) {
+          vanessaSnapshot = await PollVanessaRun(dir, vanessaPlannedTotal)
+        }
+      } catch {
+        /* offline poll */
+      }
+    }, 2000)
+  }
+
+  function stopVanessaPoll() {
+    if (vanessaPollTimer) {
+      clearInterval(vanessaPollTimer)
+      vanessaPollTimer = null
+    }
+  }
+
+  async function openVanessaMonitor() {
+    if (!projectPath) return
+    showVanessaMonitor = true
+    vanessaPlannedTotal = Math.max(1, features.length)
+    try {
+      const dirs = await ListVanessaRunDirs(1)
+      if (dirs[0]) {
+        vanessaWatchDir = dirs[0]
+        vanessaSnapshot = await PollVanessaRun(dirs[0], vanessaPlannedTotal)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function buildVanessaPluginRequest(): gui.PluginRunRequest {
+    const exclude = vanessaExcludeTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return {
+      name: 'vanessa',
+      dryRun: vanessaDry,
+      tag: vanessaTag.trim(),
+      excludeTags: exclude,
+      scenario: vanessaScenario.trim(),
+      rerunFailedRunDir: vanessaRerunDir.trim(),
+      installEpf: vanessaInstallEpf,
+      epfUrl: vanessaEpfUrl.trim(),
+      epfDest: vanessaEpfDest.trim(),
+      platformExe: vanessaPlatformExe.trim(),
+      epfPath: vanessaEpfPath.trim(),
+      ibConnection: vanessaIB.trim(),
+      reportAllure: vanessaReportAllure,
+      vaDir: vanessaVaDir.trim(),
+      vaFiles: vanessaVaFiles.trim(),
     }
   }
 
@@ -1023,6 +1372,19 @@
     }
   }
 
+  async function serveAllureReport(path = '') {
+    appendLog('Запуск Allure serve…')
+    const result = await ServeAllure(path)
+    if (result.output) appendLog(result.output.trimEnd())
+    if (result.error) appendLog(`Ошибка: ${result.error}`)
+  }
+
+  async function openHtmlReport(path = '') {
+    const result = await OpenHTMLReport(path)
+    if (result.error) appendLog(`Ошибка: ${result.error}`)
+    else if (result.output) appendLog(`Открыт отчёт: ${result.output.trim()}`)
+  }
+
   async function openArtifactPath(path: string) {
     if (!path) return
     try {
@@ -1063,6 +1425,12 @@
     return plugin.description || plugin.id || plugin.name
   }
 
+  function pluginRunTitle(name: string): string {
+    const entry = installedPlugins.find((p) => p.name === name)
+    if (entry) return pluginLabel(entry)
+    return name
+  }
+
   async function moveFeatureInCatalog(src: string, destDir: string) {
     if (!src || !destDir) return
     try {
@@ -1101,9 +1469,9 @@
       path = ''
     }
     if (!path) {
-      path = prompt('Путь к папке проекта:', projectPath || '') || ''
+      showOpenProject = true
+      return
     }
-    if (!path) return
     await openProjectAt(path)
   }
 
@@ -1216,6 +1584,28 @@
     pendingCloseTab = null
   }
 
+  async function saveFeatureAs() {
+    if (!activeTab || isWelcome || !projectPath) return
+    syncActiveTabContent()
+    const picked = await PickSaveFile('Сохранить как', basename(activeTab))
+    if (!picked) return
+    try {
+      await SaveFeature(picked, editorText)
+      const oldPath = activeTab
+      tabs = tabs.map((t) =>
+        t.path === oldPath ? { path: picked, content: editorText, dirty: false } : t,
+      )
+      activeTab = picked
+      await rememberFeature(picked)
+      await refreshProject()
+      appendLog(`Сохранено как: ${basename(picked)}`)
+      setStatus('Сохранено', 'success')
+    } catch (e: any) {
+      appendLog(`Ошибка сохранения: ${e}`)
+      setStatus('Ошибка сохранения', 'error')
+    }
+  }
+
   async function saveFeature() {
     if (!activeTab || isWelcome) return
     syncActiveTabContent()
@@ -1281,7 +1671,7 @@
 
   function openRunDialog(title: string, defaults: Partial<RunForm>) {
     runDialogTitle = title
-    runForm = { ...lastRun, ...defaults }
+    runForm = { ...lastRun, baseUrl: lastRun.baseUrl || startURL || '', ...defaults }
     showRun = true
   }
 
@@ -1295,25 +1685,21 @@
     vanessaInstallEpf = false
     vanessaEpfUrl = ''
     vanessaEpfDest = ''
+    vanessaPlatformExe = ''
+    vanessaEpfPath = ''
+    vanessaIB = ''
+    vanessaReportAllure = false
+    vanessaVaDir = ''
+    vanessaVaFiles = ''
     showVanessaRun = true
   }
 
   async function confirmVanessaRun() {
     showVanessaRun = false
-    const exclude = vanessaExcludeTags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-    let rerunDir = vanessaRerunDir.trim()
-    await runPlugin('vanessa', vanessaDry, {
-      tag: vanessaTag.trim(),
-      excludeTags: exclude,
-      scenario: vanessaScenario.trim(),
-      rerunFailedRunDir: rerunDir,
-      installEpf: vanessaInstallEpf,
-      epfUrl: vanessaEpfUrl.trim(),
-      epfDest: vanessaEpfDest.trim(),
-    })
+    vanessaPlannedTotal = Math.max(1, features.length)
+    showVanessaMonitor = true
+    vanessaSnapshot = new gui.VanessaRunSnapshotDTO()
+    StartVanessaRun(buildVanessaPluginRequest())
   }
 
   async function executeRun(opts: RunForm, targets: string[] = []) {
@@ -1328,6 +1714,8 @@
     const htmlPath = opts.html ? scenariaSubdir('report.html') : ''
 
     const junitPath = opts.junit ? scenariaSubdir('junit.xml') : ''
+
+    const summaryJsonPath = opts.summaryJson ? scenariaSubdir('summary.json') : ''
 
     playing = !opts.dryRun
     setStatus('▶ Идёт тест', 'busy')
@@ -1348,9 +1736,11 @@
       videoDir,
       htmlPath,
       junitPath,
+      summaryJson: summaryJsonPath,
       browser: opts.dryRun ? '' : opts.browser || settingsBrowser || 'chromium',
       workers: opts.workers || settingsWorkers || 1,
       slowMo: opts.dryRun ? 0 : opts.slowMo || 0,
+      baseUrl: opts.dryRun ? '' : (opts.baseUrl || '').trim(),
       targets,
     })
     playing = false
@@ -1370,7 +1760,7 @@
     if (!result.error && opts.html && htmlPath) {
       try {
         if (await ArtifactExists(htmlPath)) {
-          await OpenFolder(htmlPath)
+          await openHtmlReport(htmlPath)
         }
       } catch {
         /* ignore */
@@ -1387,15 +1777,52 @@
     executeRun(runForm)
   }
 
-  async function validateProject(browser: boolean) {
+  async function validateProject(browser: boolean, browserName = settingsBrowser || 'chromium', targets: string[] = []) {
     if (!projectPath) return
     appendLog(browser ? 'Проверка в браузере…' : 'Проверка…')
     bottomPanelOpen = true
     bottomTab = 'validate'
-    const result = await Validate(settingsBrowser || 'chromium', !browser)
-    if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
-    else appendLog('Проверка завершена.')
+    validateCliLog = ''
+    const result = await Validate({
+      browser: browserName || 'chromium',
+      skipBrowser: !browser,
+      targets,
+    })
+    if (result.output) {
+      validateCliLog = result.output.trimEnd()
+      appendLog(validateCliLog)
+    }
+    if (result.error) {
+      validateCliLog = `${validateCliLog}\n${result.error}`.trim()
+      appendLog(`Ошибка: ${result.error}`)
+    } else {
+      appendLog('Проверка завершена.')
+    }
+    if (!isWelcome && activeTab) await validateEditor()
+  }
+
+  function openValidateDialog(syntaxOnly: boolean) {
+    if (!projectPath) return
+    validateSyntaxOnly = syntaxOnly
+    validateBrowser = settingsBrowser || 'chromium'
+    validateScope = !isWelcome && activeTab ? 'current' : 'project'
+    showValidate = true
+  }
+
+  async function confirmValidate(payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) {
+    showValidate = false
+    const targets = payload.scope === 'current' && activeTab && !isWelcome ? [activeTab] : []
+    await validateProject(!payload.syntaxOnly, payload.browser, targets)
+  }
+
+  function openInitProjectDialog() {
+    if (!projectPath) return
+    showInitProject = true
+  }
+
+  async function confirmInitProject() {
+    showInitProject = false
+    await initProject()
   }
 
   async function initProject() {
@@ -1474,8 +1901,10 @@
 
   async function refactorUpdateUrls() {
     if (isWelcome) return
-    const newUrl = prompt('Новый URL для всех шагов «открыт»:', startURL || recordURL)
-    if (!newUrl?.trim()) return
+    showRefactorUrl = true
+  }
+
+  async function applyRefactorUrl(newUrl: string) {
     const result = await RefactorUpdateStartURLs(editorText, newUrl.trim())
     if (result.count <= 0) {
       appendLog('Шаги «открыт» не найдены')
@@ -1509,6 +1938,23 @@
     showExport = true
   }
 
+  function openImportFeaturesDialog() {
+    if (!projectPath) return
+    importDestDir = projectPath.replace(/\\/g, '/')
+    showImportFeatures = true
+  }
+
+  async function confirmImportFeatures(payload: { destDir: string; paths: string[] }) {
+    if (!projectPath || importFeaturesBusy) return
+    importFeaturesBusy = true
+    showImportFeatures = false
+    try {
+      await importDroppedFeatures(payload.destDir, payload.paths)
+    } finally {
+      importFeaturesBusy = false
+    }
+  }
+
   function openImportDialog() {
     if (!projectPath) return
     showImport = true
@@ -1532,9 +1978,86 @@
       installEpf: opts.installEpf || false,
       epfUrl: opts.epfUrl || '',
       epfDest: opts.epfDest || '',
+      platformExe: opts.platformExe || '',
+      epfPath: opts.epfPath || '',
+      ibConnection: opts.ibConnection || '',
+      reportAllure: opts.reportAllure || false,
+      vaDir: opts.vaDir || '',
+      vaFiles: opts.vaFiles || '',
     })
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(`Ошибка: ${result.error}`)
+  }
+
+  function openPluginRun(name: string, dry = false) {
+    const entry = installedPlugins.find((p) => p.name === name)
+    if (entry?.vanessa || name === 'vanessa') {
+      openVanessaDialog(dry)
+      return
+    }
+    pluginRunName = name
+    pluginRunDry = dry
+    pluginRunTag = ''
+    pluginRunScenario = ''
+    showPluginRun = true
+  }
+
+  async function confirmPluginRun(payload: { tag: string; scenario: string; dryRun: boolean }) {
+    showPluginRun = false
+    await runPlugin(pluginRunName, payload.dryRun, { tag: payload.tag, scenario: payload.scenario })
+  }
+
+  function openBaselineRecordDialog() {
+    if (!projectPath) return
+    recordMode = 'baseline'
+    recordOutput = 'recorded.feature'
+    recordURL = startURL || recordURL || 'https://example.com'
+    if (activeTab && !isWelcome) {
+      recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
+      recordScenarioName = 'Базовый сценарий'
+    } else {
+      recordFeatureName = 'Записанный сценарий'
+      recordScenarioName = 'Базовый сценарий'
+    }
+    showRecord = true
+  }
+
+  async function saveBaselineRecord(payload: {
+    output: string
+    featureName: string
+    scenarioName: string
+    steps: string[]
+  }) {
+    if (!projectPath || baselineBusy) return
+    baselineBusy = true
+    showRecord = false
+    appendLog('Создание feature из шагов…')
+    bottomPanelOpen = true
+    bottomTab = 'journal'
+    try {
+      const result = await RecordBaseline({
+        output: payload.output || 'recorded.feature',
+        featureName: payload.featureName,
+        scenarioName: payload.scenarioName,
+        steps: payload.steps,
+      })
+      if (result.output) appendLog(result.output.trimEnd())
+      if (result.error) {
+        appendLog(`Ошибка: ${result.error}`)
+        setStatus('Ошибка записи', 'error')
+        return
+      }
+      appendLog('Feature сохранён.')
+      setStatus('Feature создан', 'success')
+      await refreshProject()
+      const rel = (payload.output || 'recorded.feature').replace(/\\/g, '/')
+      const featurePath = rel.startsWith('/') || /^[A-Za-z]:\//.test(rel)
+        ? rel
+        : `${projectPath.replace(/\\/g, '/')}/${rel}`
+      await loadFeature(featurePath)
+    } finally {
+      baselineBusy = false
+    }
   }
 
   async function checkUpdatesOnStartup() {
@@ -1544,8 +2067,10 @@
       const out = (result.output || '').trim()
       if (result.error || !out) return
       if (out.includes('Update available')) {
-        appendLog(out)
-        setStatus('Доступно обновление — Справка → Проверить обновления', 'normal')
+        updateCheckMessage = out
+        updateCheckHasUpdate = true
+        showUpdateCheck = true
+        setStatus('Доступно обновление', 'normal')
       }
     } catch {
       /* offline or dev without wails */
@@ -1555,9 +2080,13 @@
   async function checkUpdates() {
     appendLog('Проверка обновлений…')
     const result = await CheckUpdate()
+    const out = (result.output || '').trim()
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(`Ошибка: ${result.error}`)
     else appendLog('Проверка завершена.')
+    updateCheckMessage = out || (result.error ? String(result.error) : 'Проверка завершена.')
+    updateCheckHasUpdate = out.includes('Update available')
+    showUpdateCheck = true
   }
 
   async function openSettings() {
@@ -1593,12 +2122,20 @@
   }
 
   function beginRecord() {
+    recordMode = 'live'
     recordAppendTo = ''
     recordTestClient = runForm.testClient || testClientSelection || ''
     if (projectPath) {
       recordOutput = `${projectPath.replace(/\\/g, '/')}/recorded.feature`
     }
     recordURL = startURL
+    if (activeTab && !isWelcome) {
+      recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
+      recordScenarioName = 'Запись'
+    } else {
+      recordFeatureName = 'Записанный сценарий'
+      recordScenarioName = 'Запись'
+    }
     showRecord = true
   }
 
@@ -1615,6 +2152,8 @@
       hoverRecord,
       appendTo: recordAppendTo,
       testClient: recordTestClient,
+      featureName: recordFeatureName,
+      scenarioName: recordScenarioName,
     })
     recordAppendTo = ''
   }
@@ -1645,15 +2184,20 @@
     showOtp = false
   }
 
-  async function newScenario() {
-    const out = await PickSaveFile('Новый сценарий', 'scenario.feature')
-    if (!out) return
-    const template =
-      '# language: ru\nFeature: Новый сценарий\n\n  Scenario: Пример\n    Допустим открыт "https://example.com"\n'
+  function newScenario() {
+    if (!projectPath) {
+      appendLog('Сначала откройте проект')
+      return
+    }
+    showNewScenario = true
+  }
+
+  async function createScenario(path: string, content: string) {
     try {
-      await SaveFeature(out, template)
+      await SaveFeature(path, content)
       await refreshProject()
-      await loadFeature(out)
+      await loadFeature(path)
+      appendLog(`Создан: ${path}`)
     } catch (e: any) {
       appendLog(`Ошибка: ${e}`)
     }
@@ -1665,8 +2209,11 @@
   }
 
   function insertTemplate() {
-    const template =
-      'Feature: Новый сценарий\n\n  Scenario: Пример\n    Допустим открыт "https://example.com"\n'
+    const template = buildFeatureTemplate({
+      title: 'Новый сценарий',
+      scenario: 'Пример',
+      startUrl: startURL || recordURL || 'https://example.com',
+    })
     if (isWelcome) {
       newScenario()
       return
@@ -1691,6 +2238,8 @@
     }
     recordAppendTo = activeTab
     recordOutput = activeTab
+    recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
+    recordScenarioName = 'Дозапись'
     recordURL = startURL
     showRecord = true
     appendLog(`Дозапись в ${basename(activeTab)}`)
@@ -1791,9 +2340,10 @@
         <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={openExamples}>Открыть примеры сценариев</button>
           <button class="menu-item" on:click={openProjectDialog}>Открыть проект…</button>
+          <button class="menu-item" on:click={closeProject} disabled={!projectPath}>Закрыть проект</button>
           <button class="menu-item" on:click={openSettings}>Настройки…<span class="menu-shortcut">Ctrl+,</span></button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={initProject} disabled={!projectPath}>Init проекта</button>
+          <button class="menu-item" on:click={openInitProjectDialog} disabled={!projectPath}>Init проекта</button>
         </div>
       {/if}
     </div>
@@ -1805,7 +2355,20 @@
           <button class="menu-item" on:click={newScenario}>Новый</button>
           <button class="menu-item" on:click={openFileDialog}>Открыть…</button>
           <button class="menu-item" on:click={saveFeature} disabled={isWelcome}>Сохранить<span class="menu-shortcut">Ctrl+S</span></button>
-          <button class="menu-item" on:click={() => activeTab && !isWelcome && duplicateFeature(activeTab)} disabled={isWelcome}>Дублировать</button>
+          <button class="menu-item" on:click={saveFeatureAs} disabled={isWelcome}>Сохранить как…</button>
+          <button class="menu-item" on:click={() => activeTab && !isWelcome && openDuplicateDialog(activeTab)} disabled={isWelcome}>Дублировать…</button>
+          <button class="menu-item" on:click={openImportFeaturesDialog} disabled={!projectPath}>Импорт .feature…</button>
+          <button
+            class="menu-item"
+            on:click={() => {
+              if (!activeTab || isWelcome) return
+              renameFeaturePath = activeTab
+              showRenameFeature = true
+            }}
+            disabled={isWelcome}
+          >
+            Переименовать…
+          </button>
           <button class="menu-item" on:click={() => activeTab && !isWelcome && deleteFeature(activeTab)} disabled={isWelcome}>Удалить</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openFindReplace} disabled={isWelcome}>Найти и заменить…<span class="menu-shortcut">Ctrl+H</span></button>
@@ -1830,6 +2393,7 @@
         <div class="menu-dropdown" on:click={closeMenu}>
           <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
           <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
+          <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>Запись из шагов…</button>
           <button class="menu-item" on:click={stopRecord} disabled={!recording}>Стоп</button>
           <button class="menu-item" on:click={toggleRecordPause} disabled={!recording}>Пауза</button>
           <div class="menu-sep"></div>
@@ -1849,15 +2413,23 @@
             Запустить сценарии с тегом…
           </button>
           <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: true })} disabled={!projectPath}>Dry-run</button>
+          <button
+            class="menu-item"
+            on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
+            disabled={!projectPath}
+          >
+            Playwright…
+          </button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => validateProject(false)} disabled={!projectPath}>Проверить</button>
-          <button class="menu-item" on:click={() => validateProject(true)} disabled={!projectPath}>Проверить в браузере</button>
+          <button class="menu-item" on:click={() => openValidateDialog(true)} disabled={!projectPath}>Проверить…</button>
+          <button class="menu-item" on:click={() => openValidateDialog(false)} disabled={!projectPath}>Проверить в браузере…</button>
           <div class="menu-sep"></div>
           {#if hasVanessaPlugin()}
             <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
             <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
             <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
             <button class="menu-item" on:click={openVanessaSettingsDialog} disabled={!projectPath}>Настройки Vanessa…</button>
+            <button class="menu-item" on:click={openVanessaMonitor} disabled={!projectPath}>Монитор Vanessa…</button>
           {/if}
         </div>
       {/if}
@@ -1875,8 +2447,10 @@
                 {#if plugin.vanessa}
                   <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
                   <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
                 {:else}
-                  <button class="menu-item" on:click={() => runPlugin(plugin.name, false)} disabled={!projectPath}>Запустить {pluginLabel(plugin)}</button>
+                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, true)} disabled={!projectPath}>{pluginLabel(plugin)} (dry)…</button>
+                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, false)} disabled={!projectPath}>Запустить {pluginLabel(plugin)}…</button>
                 {/if}
               {:else}
                 <button class="menu-item" disabled title="Нет команды запуска в plugin.json">{pluginLabel(plugin)} — установлен</button>
@@ -2066,7 +2640,7 @@
               <button class="tool-btn" on:click={focusBrowser} disabled={!recording && !playing}>
                 {@html toolbarIcons.browserFocus()}<span>Показать браузер</span>
               </button>
-              <button class="tool-btn" on:click={() => validateProject(true)} disabled={!projectPath}>
+              <button class="tool-btn" on:click={() => openValidateDialog(false)} disabled={!projectPath}>
                 {@html toolbarIcons.validate()}<span>Селекторы на странице</span>
               </button>
               <button class="tool-btn" on:click={pickElement} disabled={!recording || !recordPaused} title={recording && !recordPaused ? 'Поставьте запись на паузу' : 'Указать элемент'}>
@@ -2161,6 +2735,13 @@
                 <button class="primary" on:click={saveFeature}>Сохранить</button>
               </div>
             {/if}
+            {#if showVanessaMonitor}
+              <VanessaMonitorPanel
+                snapshot={vanessaSnapshot}
+                running={vanessaRunning}
+                onClose={() => (showVanessaMonitor = false)}
+              />
+            {/if}
             {#if stepStatusError}
               <div class="dirty-banner error">
                 <span>В тексте сценария есть ошибки синтаксиса</span>
@@ -2252,11 +2833,19 @@
       {#if bottomTab === 'journal'}
         {logText || 'Журнал…'}
       {:else if bottomTab === 'results'}
-        <ResultsPanel entries={runResults} artifacts={projectArtifacts} onRerun={rerunFailed} onOpenFolder={openArtifactPath} />
+        <ResultsPanel
+          entries={runResults}
+          artifacts={projectArtifacts}
+          onRerun={rerunFailed}
+          onOpenFolder={openArtifactPath}
+          onServeAllure={serveAllureReport}
+          onOpenHtmlReport={openHtmlReport}
+        />
       {:else if bottomTab === 'validate'}
         <ValidatePanel
           issues={editorValidationIssues}
           hint={validateProjectHint()}
+          cliLog={validateCliLog}
           onGotoLine={gotoEditorLine}
         />
       {:else}
@@ -2319,9 +2908,27 @@
     bind:installEpf={vanessaInstallEpf}
     bind:epfUrl={vanessaEpfUrl}
     bind:epfDest={vanessaEpfDest}
+    bind:platformExe={vanessaPlatformExe}
+    bind:epfPath={vanessaEpfPath}
+    bind:ibConnection={vanessaIB}
+    bind:reportAllure={vanessaReportAllure}
+    bind:vaDir={vanessaVaDir}
+    bind:vaFiles={vanessaVaFiles}
     {tags}
     onConfirm={confirmVanessaRun}
     onCancel={() => (showVanessaRun = false)}
+  />
+{/if}
+
+{#if showPluginRun}
+  <PluginRunDialog
+    pluginName={pluginRunName}
+    pluginTitle={pluginRunTitle(pluginRunName)}
+    bind:tag={pluginRunTag}
+    bind:scenario={pluginRunScenario}
+    bind:dryRun={pluginRunDry}
+    onConfirm={confirmPluginRun}
+    onCancel={() => (showPluginRun = false)}
   />
 {/if}
 
@@ -2333,6 +2940,8 @@
     onClose={() => (showTestClient = false)}
     onClientsChange={(names) => (testClients = names)}
     onLog={appendLog}
+    onAskConfirm={(message) =>
+      askConfirm({ title: 'Подтверждение', message, confirmLabel: 'Удалить', danger: true })}
   />
 {/if}
 
@@ -2361,6 +2970,108 @@
   />
 {/if}
 
+{#if showNewScenario}
+  <NewScenarioDialog
+    {projectPath}
+    defaultStartUrl={startURL || recordURL || 'https://example.com'}
+    onCreate={createScenario}
+    onClose={() => (showNewScenario = false)}
+  />
+{/if}
+
+{#if showRefactorUrl}
+  <RefactorUrlDialog
+    initialUrl={startURL || recordURL || 'https://example.com'}
+    onConfirm={applyRefactorUrl}
+    onClose={() => (showRefactorUrl = false)}
+  />
+{/if}
+
+{#if showOpenProject}
+  <OpenProjectDialog
+    initialPath={projectPath}
+    {recentProjects}
+    onConfirm={openProjectAt}
+    onClose={() => (showOpenProject = false)}
+  />
+{/if}
+
+{#if showRenameFeature}
+  <RenameFeatureDialog
+    currentPath={renameFeaturePath}
+    onConfirm={(name) => renameFeature(renameFeaturePath, name)}
+    onClose={() => {
+      showRenameFeature = false
+      renameFeaturePath = ''
+    }}
+  />
+{/if}
+
+{#if showMoveFeature}
+  <MoveFeatureDialog
+    featurePath={moveFeaturePath}
+    destDirs={moveDestDirs}
+    bind:destDir={moveDestDir}
+    onConfirm={confirmMoveFeature}
+    onCancel={() => {
+      showMoveFeature = false
+      moveFeaturePath = ''
+    }}
+  />
+{/if}
+
+{#if showValidate}
+  <ValidateDialog
+    bind:browser={validateBrowser}
+    bind:syntaxOnly={validateSyntaxOnly}
+    bind:scope={validateScope}
+    canValidateCurrent={!isWelcome && !!activeTab}
+    currentFileName={!isWelcome && activeTab ? basename(activeTab) : ''}
+    onConfirm={confirmValidate}
+    onCancel={() => (showValidate = false)}
+  />
+{/if}
+
+{#if showInitProject}
+  <InitProjectDialog
+    {projectPath}
+    onConfirm={confirmInitProject}
+    onCancel={() => (showInitProject = false)}
+  />
+{/if}
+
+{#if showUpdateCheck}
+  <UpdateCheckDialog
+    currentVersion={version}
+    message={updateCheckMessage}
+    hasUpdate={updateCheckHasUpdate}
+    onClose={() => (showUpdateCheck = false)}
+  />
+{/if}
+
+{#if showDuplicateFeature}
+  <DuplicateFeatureDialog
+    featurePath={duplicateFeaturePath}
+    bind:newName={duplicateNewName}
+    onConfirm={confirmDuplicateFeature}
+    onCancel={() => {
+      showDuplicateFeature = false
+      duplicateFeaturePath = ''
+    }}
+  />
+{/if}
+
+{#if showImportFeatures}
+  <ImportFeaturesDialog
+    {projectPath}
+    destDirs={collectProjectDirs()}
+    bind:destDir={importDestDir}
+    busy={importFeaturesBusy}
+    onImport={confirmImportFeatures}
+    onClose={() => (showImportFeatures = false)}
+  />
+{/if}
+
 {#if showImport}
   <ImportJSONDialog
     {projectPath}
@@ -2385,6 +3096,10 @@
     bind:checkUpdatesOnStartup={settingsCheckUpdatesOnStartup}
     onSave={applySettings}
     onCancel={() => (showSettings = false)}
+    onOpenPlugins={() => {
+      showSettings = false
+      showPlugins = true
+    }}
   />
 {/if}
 
@@ -2398,8 +3113,11 @@
 
 {#if showRecord}
   <RecordDialog
+    bind:mode={recordMode}
     bind:url={recordURL}
     bind:output={recordOutput}
+    bind:featureName={recordFeatureName}
+    bind:scenarioName={recordScenarioName}
     bind:testClient={recordTestClient}
     bind:idleSeconds={recordIdle}
     bind:appendTo={recordAppendTo}
@@ -2410,10 +3128,12 @@
     {testClients}
     {recording}
     {recordPaused}
+    {baselineBusy}
     onHttpAuth={openHttpAuthDialog}
     onStart={startRecord}
     onTogglePause={toggleRecordPause}
     onStop={stopRecord}
+    onSaveBaseline={saveBaselineRecord}
     onClose={() => (showRecord = false)}
   />
 {/if}
@@ -2445,7 +3165,9 @@
       showPlugins = false
       void refreshInstalledPlugins()
     }}
-    onRunPlugin={(name, dry) => runPlugin(name, dry)}
+    onRunPlugin={(name, dry) => openPluginRun(name, dry)}
+    onAskConfirm={(message) =>
+      askConfirm({ title: 'Подтверждение', message, confirmLabel: 'Удалить', danger: true })}
   />
 {/if}
 
@@ -2495,14 +3217,30 @@
 {/if}
 
 {#if contextMenu}
-  <div class="context-menu-backdrop" role="presentation" on:click={dismissContextMenu} on:contextmenu|preventDefault={dismissContextMenu}>
-    <div class="context-menu" style="left: {contextMenu.x}px; top: {contextMenu.y}px" role="menu" on:click|stopPropagation>
-      <button type="button" on:click={contextMenuRun}>Запустить</button>
-      <button type="button" on:click={contextMenuOpen}>Открыть</button>
-      <button type="button" on:click={contextMenuDuplicate}>Дублировать</button>
-      <button type="button" class="danger" on:click={contextMenuDelete}>Удалить</button>
-    </div>
-  </div>
+  <CatalogContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    path={contextMenu.path}
+    onRun={contextMenuRun}
+    onOpen={contextMenuOpen}
+    onDuplicate={contextMenuDuplicate}
+    onRename={contextMenuRename}
+    onMove={contextMenuMove}
+    onReveal={contextMenuReveal}
+    onDelete={contextMenuDelete}
+    onClose={dismissContextMenu}
+  />
+{/if}
+
+{#if confirmDialog}
+  <ConfirmDialog
+    title={confirmDialog.title}
+    message={confirmDialog.message}
+    confirmLabel={confirmDialog.confirmLabel}
+    danger={confirmDialog.danger}
+    onConfirm={() => closeConfirm(true)}
+    onCancel={() => closeConfirm(false)}
+  />
 {/if}
 
 <BrowserOverlay

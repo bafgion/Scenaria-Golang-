@@ -38,8 +38,8 @@ export function DeleteTestClient(arg1) {
   return window['go']['wailsapp']['App']['DeleteTestClient'](arg1);
 }
 
-export function DuplicateFeature(arg1) {
-  return window['go']['wailsapp']['App']['DuplicateFeature'](arg1);
+export function DuplicateFeature(arg1, arg2) {
+  return window['go']['wailsapp']['App']['DuplicateFeature'](arg1, arg2);
 }
 
 export function Export(arg1) {
@@ -114,6 +114,10 @@ export function OpenFolder(arg1) {
   return window['go']['wailsapp']['App']['OpenFolder'](arg1);
 }
 
+export function OpenHTMLReport(arg1) {
+  return window['go']['wailsapp']['App']['OpenHTMLReport'](arg1);
+}
+
 export function OpenProject(arg1) {
   return window['go']['wailsapp']['App']['OpenProject'](arg1);
 }
@@ -146,6 +150,10 @@ export function PickerStepChoices(arg1, arg2) {
   return window['go']['wailsapp']['App']['PickerStepChoices'](arg1, arg2);
 }
 
+export function PollVanessaRun(arg1, arg2) {
+  return window['go']['wailsapp']['App']['PollVanessaRun'](arg1, arg2);
+}
+
 export function PreviewExport(arg1) {
   return window['go']['wailsapp']['App']['PreviewExport'](arg1);
 }
@@ -168,6 +176,10 @@ export function ReadTestClientJSON(arg1) {
 
 export function ReadVanessaSettingsJSON() {
   return window['go']['wailsapp']['App']['ReadVanessaSettingsJSON']();
+}
+
+export function RecordBaseline(arg1) {
+  return window['go']['wailsapp']['App']['RecordBaseline'](arg1);
 }
 
 export function RefactorCollapseBlankLines(arg1) {
@@ -196,6 +208,10 @@ export function RememberRecentProject(arg1) {
 
 export function RemoveHTTPAuth(arg1) {
   return window['go']['wailsapp']['App']['RemoveHTTPAuth'](arg1);
+}
+
+export function RenameFeature(arg1, arg2) {
+  return window['go']['wailsapp']['App']['RenameFeature'](arg1, arg2);
 }
 
 export function ReplaceInProject(arg1) {
@@ -242,6 +258,14 @@ export function SearchSteps(arg1) {
   return window['go']['wailsapp']['App']['SearchSteps'](arg1);
 }
 
+export function ServeAllure(arg1) {
+  return window['go']['wailsapp']['App']['ServeAllure'](arg1);
+}
+
+export function StartVanessaRun(arg1) {
+  return window['go']['wailsapp']['App']['StartVanessaRun'](arg1);
+}
+
 export function StartRecord(arg1) {
   return window['go']['wailsapp']['App']['StartRecord'](arg1);
 }
@@ -262,8 +286,8 @@ export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
 }
 
-export function Validate(arg1, arg2) {
-  return window['go']['wailsapp']['App']['Validate'](arg1, arg2);
+export function Validate(arg1) {
+  return window['go']['wailsapp']['App']['Validate'](arg1);
 }
 
 export function ValidateFeature(arg1) {

@@ -20,7 +20,7 @@ export function DeleteFeature(arg1:string):Promise<void>;
 
 export function DeleteTestClient(arg1:string):Promise<void>;
 
-export function DuplicateFeature(arg1:string):Promise<string>;
+export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
 
@@ -58,6 +58,8 @@ export function MoveFeature(arg1:string,arg2:string):Promise<string>;
 
 export function OpenFolder(arg1:string):Promise<void>;
 
+export function OpenHTMLReport(arg1:string):Promise<gui.RunResult>;
+
 export function OpenProject(arg1:string):Promise<gui.ProjectInfo>;
 
 export function ParseEditorSteps(arg1:string):Promise<Array<gui.EditorStepRow>>;
@@ -74,6 +76,8 @@ export function PickSelector():Promise<gui.PickSelectorResult>;
 
 export function PickerStepChoices(arg1:string,arg2:string):Promise<Array<gui.PickerStepChoice>>;
 
+export function PollVanessaRun(arg1:string,arg2:number):Promise<gui.VanessaRunSnapshotDTO>;
+
 export function PreviewExport(arg1:string):Promise<gui.ExportPreview>;
 
 export function ProjectArtifacts():Promise<gui.ProjectArtifacts>;
@@ -85,6 +89,8 @@ export function ReadFeature(arg1:string):Promise<string>;
 export function ReadTestClientJSON(arg1:string):Promise<string>;
 
 export function ReadVanessaSettingsJSON():Promise<string>;
+
+export function RecordBaseline(arg1:gui.BaselineRecordRequest):Promise<gui.RunResult>;
 
 export function RefactorCollapseBlankLines(arg1:string):Promise<string>;
 
@@ -99,6 +105,8 @@ export function RememberRecentFeature(arg1:string):Promise<void>;
 export function RememberRecentProject(arg1:string):Promise<void>;
 
 export function RemoveHTTPAuth(arg1:string):Promise<void>;
+
+export function RenameFeature(arg1:string,arg2:string):Promise<string>;
 
 export function ReplaceInProject(arg1:gui.ProjectReplaceRequest):Promise<gui.ProjectReplaceResult>;
 
@@ -122,6 +130,10 @@ export function SaveVanessaSettingsJSON(arg1:string):Promise<void>;
 
 export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
+export function ServeAllure(arg1:string):Promise<gui.RunResult>;
+
+export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
+
 export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
 
 export function SubmitOTPCode(arg1:string):Promise<void>;
@@ -132,7 +144,7 @@ export function UndoRecordedStep():Promise<boolean>;
 
 export function UninstallPlugin(arg1:string):Promise<void>;
 
-export function Validate(arg1:string,arg2:boolean):Promise<gui.RunResult>;
+export function Validate(arg1:gui.ValidateRequest):Promise<gui.RunResult>;
 
 export function ValidateFeature(arg1:string):Promise<Array<gui.ValidationIssue>>;
 

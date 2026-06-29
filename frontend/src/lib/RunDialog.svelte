@@ -64,6 +64,9 @@
     <label>Переменные (NAME=VALUE)
       <textarea bind:value={form.vars} placeholder="BASE_URL=https://example.com"></textarea>
     </label>
+    <label>Base URL (переопределение)
+      <input bind:value={form.baseUrl} placeholder="https://example.com" disabled={form.dryRun} />
+    </label>
     <label class="check-row"><input type="checkbox" bind:checked={form.dryRun} /> Dry-run (без браузера)</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.headed} disabled={form.dryRun} /> Headed (видимый браузер)</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.installPW} disabled={form.dryRun} /> Установить Playwright при необходимости</label>
@@ -72,6 +75,7 @@
     <label class="check-row"><input type="checkbox" bind:checked={form.video} disabled={form.dryRun} /> Video</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.html} disabled={form.dryRun} /> HTML-отчёт (.scenaria/report.html)</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.junit} disabled={form.dryRun} /> JUnit (.scenaria/junit.xml)</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.summaryJson} disabled={form.dryRun} /> Summary JSON (.scenaria/summary.json)</label>
     <div class="modal-actions">
       <button type="button" class="primary" on:click={onConfirm}>Запустить</button>
       <button type="button" on:click={onCancel}>Отмена</button>

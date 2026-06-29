@@ -1,0 +1,125 @@
+<script lang="ts">
+  export let browser = 'chromium'
+  export let syntaxOnly = false
+  export let scope: 'project' | 'current' = 'project'
+  export let canValidateCurrent = false
+  export let currentFileName = ''
+  export let onConfirm: (payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) => void = () => {}
+  export let onCancel: () => void = () => {}
+
+  function confirm() {
+    onConfirm({ browser, syntaxOnly, scope })
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') onCancel()
+  }
+</script>
+
+<svelte:window on:keydown={onKey} />
+
+<div class="modal-backdrop" role="presentation" on:click={onCancel}>
+  <div class="modal validate-dialog" role="dialog" aria-label="Проверка сценария" on:click|stopPropagation>
+    <h3>Проверка сценария</h3>
+    <fieldset class="scope">
+      <legend>Область</legend>
+      <label class="check-row">
+        <input type="radio" bind:group={scope} value="project" />
+        Весь проект
+      </label>
+      <label class="check-row" class:disabled={!canValidateCurrent}>
+        <input type="radio" bind:group={scope} value="current" disabled={!canValidateCurrent} />
+        Текущий файл{#if currentFileName} — {currentFileName}{/if}
+      </label>
+    </fieldset>
+    <label class="check-row">
+      <input type="checkbox" bind:checked={syntaxOnly} />
+      Только синтаксис (без браузера)
+    </label>
+    <label>
+      Браузер для проверки селекторов
+      <select bind:value={browser} disabled={syntaxOnly}>
+        <option value="chromium">chromium</option>
+        <option value="firefox">firefox</option>
+        <option value="webkit">webkit</option>
+      </select>
+    </label>
+    <p class="hint">Проверяет шаги DSL и при необходимости селекторы в браузере.</p>
+    <div class="modal-actions">
+      <button type="button" class="primary" on:click={confirm}>Проверить</button>
+      <button type="button" on:click={onCancel}>Отмена</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+  }
+
+  fieldset.scope {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+  }
+
+  legend {
+    font-size: 11px;
+    color: var(--color-muted);
+    padding: 0 4px;
+  }
+
+  label {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: var(--color-muted);
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text);
+    margin-bottom: 6px;
+  }
+
+  .check-row.disabled {
+    opacity: 0.5;
+  }
+
+  select {
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-input);
+    color: var(--color-text);
+    font-size: 12px;
+  }
+
+  .hint {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: var(--color-muted);
+    line-height: 1.4;
+  }
+
+  button {
+    padding: 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-input);
+    color: var(--color-text);
+    font-size: 12px;
+  }
+
+  button.primary {
+    background: var(--color-accent);
+    color: var(--color-on-accent, #fff);
+    border-color: var(--color-accent);
+  }
+</style>

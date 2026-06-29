@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
@@ -94,8 +95,8 @@ func (a *App) Run(req gui.RunRequest) gui.RunResult {
 	return a.svc.Run(req)
 }
 
-func (a *App) Validate(browser string, skipBrowser bool) gui.RunResult {
-	return a.svc.Validate(browser, skipBrowser)
+func (a *App) Validate(req gui.ValidateRequest) gui.RunResult {
+	return a.svc.Validate(req)
 }
 
 func (a *App) ValidateFeature(text string) []gui.ValidationIssue {
@@ -222,12 +223,16 @@ func (a *App) DeleteFeature(path string) error {
 	return a.svc.DeleteFeature(path)
 }
 
-func (a *App) DuplicateFeature(path string) (string, error) {
-	return a.svc.DuplicateFeature(path)
+func (a *App) DuplicateFeature(path, newName string) (string, error) {
+	return a.svc.DuplicateFeature(path, newName)
 }
 
 func (a *App) MoveFeature(src, destDir string) (string, error) {
 	return a.svc.MoveFeature(src, destDir)
+}
+
+func (a *App) RenameFeature(path, newName string) (string, error) {
+	return a.svc.RenameFeature(path, newName)
 }
 
 func (a *App) ImportFeatures(destDir string, paths []string) ([]string, error) {
@@ -262,12 +267,28 @@ func (a *App) RunPlugin(req gui.PluginRunRequest) gui.RunResult {
 	return a.svc.RunPlugin(req)
 }
 
+func (a *App) StartVanessaRun(req gui.PluginRunRequest) {
+	go func() {
+		runtime.EventsEmit(a.ctx, "vanessa-run-started", nil)
+		result := a.svc.RunVanessaPlugin(req)
+		runtime.EventsEmit(a.ctx, "vanessa-run-finished", result)
+	}()
+}
+
+func (a *App) PollVanessaRun(runDir string, totalPlanned int) gui.VanessaRunSnapshotDTO {
+	return a.svc.PollVanessaRun(runDir, totalPlanned)
+}
+
 func (a *App) StartRecord(req gui.RecordRequest) {
 	go func() {
 		runtime.EventsEmit(a.ctx, "record-started", req.Output)
 		result := a.svc.RecordLive(req)
 		runtime.EventsEmit(a.ctx, "record-finished", result)
 	}()
+}
+
+func (a *App) RecordBaseline(req gui.BaselineRecordRequest) gui.RunResult {
+	return a.svc.RecordBaseline(req)
 }
 
 func (a *App) PauseRecording()  { a.svc.PauseRecording() }
@@ -358,4 +379,20 @@ func (a *App) OpenFolder(path string) error {
 	default:
 		return exec.Command("xdg-open", path).Start()
 	}
+}
+
+func (a *App) ServeAllure(dir string) gui.RunResult {
+	return a.svc.ServeAllure(dir)
+}
+
+func (a *App) OpenHTMLReport(path string) gui.RunResult {
+	result := a.svc.OpenHTMLReport(path)
+	if result.Error != "" {
+		return result
+	}
+	url := strings.TrimSpace(result.Output)
+	if url != "" {
+		runtime.BrowserOpenURL(a.ctx, url)
+	}
+	return result
 }
