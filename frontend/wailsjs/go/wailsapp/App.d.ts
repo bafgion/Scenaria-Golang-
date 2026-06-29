@@ -18,6 +18,8 @@ export function CheckUpdate():Promise<gui.RunResult>;
 
 export function DeleteFeature(arg1:string):Promise<void>;
 
+export function DeleteTestClient(arg1:string):Promise<void>;
+
 export function DuplicateFeature(arg1:string):Promise<string>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
@@ -45,6 +47,8 @@ export function ListPlugins():Promise<Array<gui.PluginEntryDTO>>;
 export function ListRunResults(arg1:number):Promise<Array<gui.RunResultEntry>>;
 
 export function ListTestClients():Promise<Array<string>>;
+
+export function ListVanessaRunDirs(arg1:number):Promise<Array<string>>;
 
 export function LoadRecents():Promise<gui.RecentsDTO>;
 
@@ -78,6 +82,8 @@ export function ProjectPath():Promise<string>;
 
 export function ReadFeature(arg1:string):Promise<string>;
 
+export function ReadTestClientJSON(arg1:string):Promise<string>;
+
 export function RefactorCollapseBlankLines(arg1:string):Promise<string>;
 
 export function RefactorNormalizeIndents(arg1:string):Promise<string>;
@@ -107,6 +113,8 @@ export function SaveFeature(arg1:string,arg2:string):Promise<void>;
 export function SaveHTTPAuth(arg1:gui.HTTPAuthRequest):Promise<void>;
 
 export function SaveSettings(arg1:gui.AppSettingsDTO):Promise<void>;
+
+export function SaveTestClientJSON(arg1:string,arg2:string):Promise<void>;
 
 export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 

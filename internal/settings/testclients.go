@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,6 +49,52 @@ func LoadTestClientByName(projectRoot, name string) (*TestClient, error) {
 		return nil, err
 	}
 	return LoadTestClient(path)
+}
+
+func ReadTestClientJSON(projectRoot, name string) (string, error) {
+	path, err := TestClientPath(projectRoot, name)
+	if err != nil {
+		return "", err
+	}
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+func SaveTestClientFromJSON(projectRoot, name, content string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("test client name is required")
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("invalid test client name %q", name)
+	}
+	var client TestClient
+	if err := json.Unmarshal([]byte(content), &client); err != nil {
+		return fmt.Errorf("invalid json: %w", err)
+	}
+	client.Name = name
+	path, err := TestClientPath(projectRoot, name)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(TestClientsDir(projectRoot), 0o755); err != nil {
+		return fmt.Errorf("create test clients dir: %w", err)
+	}
+	return SaveTestClient(path, &client)
+}
+
+func DeleteTestClient(projectRoot, name string) error {
+	path, err := TestClientPath(projectRoot, name)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("delete test client: %w", err)
+	}
+	return nil
 }
 
 func sortStrings(values []string) {

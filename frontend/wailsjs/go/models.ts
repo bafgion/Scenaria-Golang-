@@ -199,6 +199,7 @@ export namespace gui {
 	export class ImportRequest {
 	    jsonPath: string;
 	    outputPath: string;
+	    force: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ImportRequest(source);
@@ -208,6 +209,7 @@ export namespace gui {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.jsonPath = source["jsonPath"];
 	        this.outputPath = source["outputPath"];
+	        this.force = source["force"];
 	    }
 	}
 	export class PickSelectorResult {
@@ -268,6 +270,34 @@ export namespace gui {
 	        this.vanessa = source["vanessa"];
 	    }
 	}
+	export class PluginRunRequest {
+	    name: string;
+	    dryRun: boolean;
+	    tag: string;
+	    excludeTags: string[];
+	    scenario: string;
+	    rerunFailedRunDir: string;
+	    installEpf: boolean;
+	    epfUrl: string;
+	    epfDest: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PluginRunRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.dryRun = source["dryRun"];
+	        this.tag = source["tag"];
+	        this.excludeTags = source["excludeTags"];
+	        this.scenario = source["scenario"];
+	        this.rerunFailedRunDir = source["rerunFailedRunDir"];
+	        this.installEpf = source["installEpf"];
+	        this.epfUrl = source["epfUrl"];
+	        this.epfDest = source["epfDest"];
+	    }
+	}
 	export class ProjectArtifacts {
 	    allureDir: string;
 	    tracesDir: string;
@@ -288,30 +318,11 @@ export namespace gui {
 	        this.junitReport = source["junitReport"];
 	    }
 	}
-	export class PluginRunRequest {
-	    name: string;
-	    dryRun: boolean;
-	    tag: string;
-	    excludeTags: string[];
-	    scenario: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PluginRunRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.dryRun = source["dryRun"];
-	        this.tag = source["tag"];
-	        this.excludeTags = source["excludeTags"];
-	        this.scenario = source["scenario"];
-	    }
-	}
 	export class ProjectInfo {
 	    path: string;
 	    features: string[];
 	    tags: string[];
+	    featureTags: Record<string, Array<string>>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProjectInfo(source);
@@ -322,6 +333,7 @@ export namespace gui {
 	        this.path = source["path"];
 	        this.features = source["features"];
 	        this.tags = source["tags"];
+	        this.featureTags = source["featureTags"];
 	    }
 	}
 	export class ProjectReplaceRequest {

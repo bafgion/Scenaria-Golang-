@@ -127,6 +127,18 @@ func appendVanessaArgs(args []string, req PluginRunRequest) []string {
 	if scenario := strings.TrimSpace(req.Scenario); scenario != "" {
 		args = append(args, "--scenario", scenario)
 	}
+	if dir := strings.TrimSpace(req.RerunFailedRunDir); dir != "" {
+		args = append(args, "--rerun-failed", dir)
+	}
+	if req.InstallEPF {
+		args = append(args, "--epf-install")
+	}
+	if url := strings.TrimSpace(req.EPFURL); url != "" {
+		args = append(args, "--epf-url", url)
+	}
+	if dest := strings.TrimSpace(req.EPFDest); dest != "" {
+		args = append(args, "--epf-dest", dest)
+	}
 	return args
 }
 

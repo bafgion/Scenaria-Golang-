@@ -35,6 +35,7 @@ type ExportRequest struct {
 type ImportRequest struct {
 	JSONPath   string `json:"jsonPath"`
 	OutputPath string `json:"outputPath"`
+	Force      bool   `json:"force"`
 }
 
 func (s *Service) ValidateFeature(text string) []ValidationIssue {
@@ -61,8 +62,12 @@ func (s *Service) Export(req ExportRequest) RunResult {
 }
 
 func (s *Service) ImportJSON(req ImportRequest) RunResult {
+	args := []string{req.JSONPath, "--output", req.OutputPath}
+	if req.Force {
+		args = append(args, "--force")
+	}
 	out, err := captureCLI(func() error {
-		return cliRunImportJSON([]string{req.JSONPath, "--output", req.OutputPath})
+		return cliRunImportJSON(args)
 	})
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}

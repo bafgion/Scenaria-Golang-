@@ -281,6 +281,29 @@ button {
   font-size: 12px;
 }
 
+.explorer-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.explorer-tag-chips .chip {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-input);
+  color: var(--color-muted);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.explorer-tag-chips .chip:hover,
+.explorer-tag-chips .chip.active {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
 .icon-btn {
   width: 26px;
   height: 26px;

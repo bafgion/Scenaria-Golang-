@@ -52,6 +52,10 @@ export function countFeatureFiles(node: CatalogNode | null): number {
   return count
 }
 
+export function normTag(tag: string): string {
+  return tag.replace(/^@/, '').trim().toLowerCase()
+}
+
 export function parseCatalogFilter(filterText: string): { query: string; tag: string } {
   const raw = (filterText || '').trim()
   if (raw.startsWith('@')) {
@@ -65,23 +69,42 @@ export function parseCatalogFilter(filterText: string): { query: string; tag: st
   return { query: raw.toLowerCase(), tag: '' }
 }
 
-function fileMatchesFilter(node: CatalogNode, query: string, tag: string): boolean {
-  if (tag) return false
+function featureHasTag(fileTags: string[] | undefined, tag: string): boolean {
+  if (!tag) return true
+  if (!fileTags?.length) return false
+  const needle = normTag(tag)
+  return fileTags.some((item) => normTag(item) === needle)
+}
+
+function fileMatchesFilter(
+  node: CatalogNode,
+  query: string,
+  tag: string,
+  tagsByPath: Map<string, string[]>,
+): boolean {
+  if (tag) {
+    return featureHasTag(tagsByPath.get(normPath(node.path)), tag)
+  }
   if (!query) return true
   const rel = node.path.replace(/\\/g, '/').toLowerCase()
   return node.name.toLowerCase().includes(query) || rel.includes(query)
 }
 
-function filterTree(node: CatalogNode, query: string, tag: string): CatalogNode | null {
+function filterTree(
+  node: CatalogNode,
+  query: string,
+  tag: string,
+  tagsByPath: Map<string, string[]>,
+): CatalogNode | null {
   if (!query && !tag) return node
 
   if (node.kind === 'file') {
-    return fileMatchesFilter(node, query, tag) ? node : null
+    return fileMatchesFilter(node, query, tag, tagsByPath) ? node : null
   }
 
   const children: CatalogNode[] = []
   for (const child of node.children) {
-    const filtered = filterTree(child, query, tag)
+    const filtered = filterTree(child, query, tag, tagsByPath)
     if (filtered) children.push(filtered)
   }
 
@@ -167,6 +190,7 @@ export function buildCatalogViewState(
   filterText: string,
   runByPath: Map<string, RunStatus>,
   rootExists = true,
+  tagsByPath: Map<string, string[]> = new Map(),
 ): CatalogViewState {
   if (!root) {
     return {
@@ -192,7 +216,7 @@ export function buildCatalogViewState(
   const fullTree = buildCatalogTree(root, featurePaths, runByPath)
   const totalFiles = countFeatureFiles(fullTree)
   const { query, tag } = parseCatalogFilter(filterText)
-  const tree = query || tag ? filterTree(fullTree, query, tag) : fullTree
+  const tree = query || tag ? filterTree(fullTree, query, tag, tagsByPath) : fullTree
   const visibleFiles = countFeatureFiles(tree)
 
   if (totalFiles === 0) {

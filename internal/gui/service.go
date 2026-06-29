@@ -33,9 +33,10 @@ func NewService() *Service {
 }
 
 type ProjectInfo struct {
-	Path     string   `json:"path"`
-	Features []string `json:"features"`
-	Tags     []string `json:"tags"`
+	Path         string              `json:"path"`
+	Features     []string            `json:"features"`
+	Tags         []string            `json:"tags"`
+	FeatureTags  map[string][]string `json:"featureTags"`
 }
 
 type RunRequest struct {
@@ -58,11 +59,15 @@ type RunRequest struct {
 }
 
 type PluginRunRequest struct {
-	Name        string   `json:"name"`
-	DryRun      bool     `json:"dryRun"`
-	Tag         string   `json:"tag"`
-	ExcludeTags []string `json:"excludeTags"`
-	Scenario    string   `json:"scenario"`
+	Name              string   `json:"name"`
+	DryRun            bool     `json:"dryRun"`
+	Tag               string   `json:"tag"`
+	ExcludeTags       []string `json:"excludeTags"`
+	Scenario          string   `json:"scenario"`
+	RerunFailedRunDir string   `json:"rerunFailedRunDir"`
+	InstallEPF        bool     `json:"installEpf"`
+	EPFURL            string   `json:"epfUrl"`
+	EPFDest           string   `json:"epfDest"`
 }
 
 type RunResult struct {
@@ -185,7 +190,23 @@ func (s *Service) projectInfo() (ProjectInfo, error) {
 		return ProjectInfo{}, err
 	}
 	tags := collectProjectTags(store, files)
-	return ProjectInfo{Path: path, Features: files, Tags: tags}, nil
+	featureTags := collectFeatureTags(store, files)
+	return ProjectInfo{Path: path, Features: files, Tags: tags, FeatureTags: featureTags}, nil
+}
+
+func collectFeatureTags(store *scenario.FeatureStore, files []string) map[string][]string {
+	out := make(map[string][]string, len(files))
+	for _, file := range files {
+		feature, err := store.Load(file)
+		if err != nil {
+			continue
+		}
+		tags := gherkin.CollectFeatureTags(feature)
+		if len(tags) > 0 {
+			out[file] = tags
+		}
+	}
+	return out
 }
 
 func collectProjectTags(store *scenario.FeatureStore, files []string) []string {
@@ -336,6 +357,30 @@ func (s *Service) TestClientDetails(name string) (string, error) {
 	}
 	return fmt.Sprintf("name=%s base_url=%s cookies=%d local_storage=%d",
 		client.Name, client.BaseURL, len(client.Cookies), len(client.LocalStorage)), nil
+}
+
+func (s *Service) ReadTestClientJSON(name string) (string, error) {
+	path := s.ProjectPath()
+	if path == "" {
+		return "", fmt.Errorf("open a project folder first")
+	}
+	return settings.ReadTestClientJSON(path, name)
+}
+
+func (s *Service) SaveTestClientJSON(name, content string) error {
+	path := s.ProjectPath()
+	if path == "" {
+		return fmt.Errorf("open a project folder first")
+	}
+	return settings.SaveTestClientFromJSON(path, name, content)
+}
+
+func (s *Service) DeleteTestClient(name string) error {
+	path := s.ProjectPath()
+	if path == "" {
+		return fmt.Errorf("open a project folder first")
+	}
+	return settings.DeleteTestClient(path, name)
 }
 
 func (s *Service) SearchSteps(query string) []StepCatalogEntry {

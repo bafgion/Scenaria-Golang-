@@ -16,6 +16,10 @@
   import RunDialog from './lib/RunDialog.svelte'
   import RecordDialog from './lib/RecordDialog.svelte'
   import VanessaRunDialog from './lib/VanessaRunDialog.svelte'
+  import TestClientDialog from './lib/TestClientDialog.svelte'
+  import ImportJSONDialog from './lib/ImportJSONDialog.svelte'
+  import AboutDialog from './lib/AboutDialog.svelte'
+  import OtpDialog from './lib/OtpDialog.svelte'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
@@ -44,12 +48,10 @@
     ValidateFeature,
     SearchSteps,
     ListTestClients,
-    TestClientDetails,
     InitProject,
     PickProjectFolder,
     PickSaveFile,
     PickOpenFile,
-    ImportJSON,
     RunPlugin,
     StartRecord,
     PauseRecording,
@@ -94,6 +96,7 @@
   let projectPath = ''
   let features: string[] = []
   let tags: string[] = []
+  let featureTags: Record<string, string[]> = {}
   let tabs: EditorTab[] = []
   let activeTab = WELCOME_KEY
   let welcomeTabVisible = true
@@ -116,6 +119,7 @@
   let showRun = false
   let showTestClient = false
   let showExport = false
+  let showImport = false
   let exportInputPath = ''
   let showSteps = false
   let showStepsHelp = false
@@ -133,6 +137,11 @@
   let vanessaTag = ''
   let vanessaExcludeTags = ''
   let vanessaScenario = ''
+  let vanessaPreferRerun = false
+  let vanessaRerunDir = ''
+  let vanessaInstallEpf = false
+  let vanessaEpfUrl = ''
+  let vanessaEpfDest = ''
   let showHttpAuth = false
   let httpAuthHost = ''
   let showPickerStep = false
@@ -198,13 +207,11 @@
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
-  let otpCode = ''
 
   let stepQuery = ''
   let stepResults: { category: string; template: string; help: string }[] = []
 
-  let selectedClient = ''
-  let clientDetails = ''
+  let testClientSelection = ''
 
   let recentProjects: string[] = []
   let recentFeatures: string[] = []
@@ -249,12 +256,21 @@
     return map
   })()
 
+  $: tagsByPath = (() => {
+    const map = new Map<string, string[]>()
+    for (const [path, pathTags] of Object.entries(featureTags)) {
+      map.set(path.replace(/\\/g, '/').toLowerCase(), pathTags)
+    }
+    return map
+  })()
+
   $: catalogViewState = buildCatalogViewState(
     projectPath || null,
     features,
     sidebarSearch,
     runByPath,
     true,
+    tagsByPath,
   )
 
   $: welcomeProjectOpen = !!projectPath
@@ -342,7 +358,6 @@
       unsubscribers.push(
         EventsOn('otp-prompt', (email: string) => {
           otpEmail = email || ''
-          otpCode = ''
           showOtp = true
         }),
       )
@@ -494,7 +509,7 @@
       { id: 'open-file', label: 'Открыть файл…', group: 'Сценарий', shortcut: 'Ctrl+O', run: openFileDialog },
       { id: 'save', label: 'Сохранить', group: 'Сценарий', shortcut: 'Ctrl+S', run: saveFeature },
       { id: 'export', label: 'Экспорт…', group: 'Сценарий', run: openExportDialog },
-      { id: 'import', label: 'Импорт JSON…', group: 'Сценарий', run: importJSON },
+      { id: 'import', label: 'Импорт JSON…', group: 'Сценарий', run: openImportDialog },
       { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
       { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
       { id: 'find-replace', label: 'Найти и заменить…', group: 'Сценарий', shortcut: 'Ctrl+H', run: openFindReplace },
@@ -524,6 +539,7 @@
         ? [
             { id: 'vanessa-dry', label: 'Vanessa (dry)…', group: 'Запись и тест', run: () => openVanessaDialog(true) },
             { id: 'vanessa', label: 'Vanessa run…', group: 'Запись и тест', run: () => openVanessaDialog(false) },
+            { id: 'vanessa-rerun', label: 'Vanessa rerun-failed…', group: 'Запись и тест', run: () => openVanessaDialog(false, true) },
           ]
         : []),
       { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
@@ -786,6 +802,7 @@
       projectPath = info.path
       features = info.features || []
       tags = info.tags || []
+      featureTags = info.featureTags || {}
       testClients = await ListTestClients().catch(() => [])
       await rememberProject(projectPath)
       const recents = await loadRecents()
@@ -1020,6 +1037,7 @@
     const info = await OpenProject(projectPath)
     features = info.features || []
     tags = info.tags || []
+    featureTags = info.featureTags || {}
     testClients = await ListTestClients().catch(() => [])
     await refreshInstalledPlugins()
   }
@@ -1267,11 +1285,16 @@
     showRun = true
   }
 
-  function openVanessaDialog(dry: boolean) {
+  function openVanessaDialog(dry: boolean, preferRerun = false) {
     vanessaDry = dry
     vanessaTag = ''
     vanessaExcludeTags = ''
     vanessaScenario = ''
+    vanessaRerunDir = ''
+    vanessaPreferRerun = preferRerun
+    vanessaInstallEpf = false
+    vanessaEpfUrl = ''
+    vanessaEpfDest = ''
     showVanessaRun = true
   }
 
@@ -1281,10 +1304,15 @@
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean)
+    let rerunDir = vanessaRerunDir.trim()
     await runPlugin('vanessa', vanessaDry, {
       tag: vanessaTag.trim(),
       excludeTags: exclude,
       scenario: vanessaScenario.trim(),
+      rerunFailedRunDir: rerunDir,
+      installEpf: vanessaInstallEpf,
+      epfUrl: vanessaEpfUrl.trim(),
+      epfDest: vanessaEpfDest.trim(),
     })
   }
 
@@ -1379,25 +1407,15 @@
   async function openTestClientDialog() {
     if (!projectPath) return
     testClients = await ListTestClients().catch(() => [])
-    selectedClient = testClients[0] || ''
-    clientDetails = ''
-    if (selectedClient) await loadClientDetails(selectedClient)
+    testClientSelection = runForm.testClient || testClients[0] || ''
     showTestClient = true
   }
 
-  async function loadClientDetails(name: string) {
-    selectedClient = name
-    try {
-      clientDetails = await TestClientDetails(name)
-    } catch (e: any) {
-      clientDetails = String(e)
-    }
-  }
-
-  function useTestClient() {
-    lastRun.testClient = selectedClient
-    runForm.testClient = selectedClient
-    appendLog(`TestClient: ${selectedClient}`)
+  function useTestClient(name: string) {
+    testClientSelection = name
+    lastRun.testClient = name
+    runForm.testClient = name
+    appendLog(`TestClient: ${name}`)
     showTestClient = false
   }
 
@@ -1492,17 +1510,14 @@
     showExport = true
   }
 
-  async function importJSON() {
-    const jsonPath = await PickOpenFile('Импорт JSON')
-    if (!jsonPath) return
-    const out = await PickSaveFile('Сохранить feature', basename(jsonPath).replace('.json', '.feature'))
-    if (!out) return
-    appendLog(`Импорт ${jsonPath}…`)
-    const result = await ImportJSON({ jsonPath, outputPath: out })
-    if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
+  function openImportDialog() {
+    if (!projectPath) return
+    showImport = true
+  }
+
+  async function onImportComplete(featurePath: string) {
     await refreshProject()
-    await loadFeature(out)
+    await loadFeature(featurePath)
   }
 
   async function runPlugin(name: string, dry: boolean, opts: Partial<gui.PluginRunRequest> = {}) {
@@ -1514,6 +1529,10 @@
       tag: opts.tag || '',
       excludeTags: opts.excludeTags || [],
       scenario: opts.scenario || '',
+      rerunFailedRunDir: opts.rerunFailedRunDir || '',
+      installEpf: opts.installEpf || false,
+      epfUrl: opts.epfUrl || '',
+      epfDest: opts.epfDest || '',
     })
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(`Ошибка: ${result.error}`)
@@ -1576,7 +1595,7 @@
 
   function beginRecord() {
     recordAppendTo = ''
-    recordTestClient = runForm.testClient || selectedClient || ''
+    recordTestClient = runForm.testClient || testClientSelection || ''
     if (projectPath) {
       recordOutput = `${projectPath.replace(/\\/g, '/')}/recorded.feature`
     }
@@ -1617,8 +1636,8 @@
     await CancelRecording()
   }
 
-  async function submitOtp() {
-    await SubmitOTPCode(otpCode)
+  async function submitOtp(code: string) {
+    await SubmitOTPCode(code)
     showOtp = false
   }
 
@@ -1794,7 +1813,7 @@
           <button class="menu-item" on:click={() => (showProjectReplace = true)} disabled={!projectPath}>Замена по проекту…</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>Экспорт…</button>
-          <button class="menu-item" on:click={importJSON} disabled={!projectPath}>Импорт JSON…</button>
+          <button class="menu-item" on:click={openImportDialog} disabled={!projectPath}>Импорт JSON…</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openSnippetPalette}>Палитра сниппетов…<span class="menu-shortcut">Ctrl+Shift+Space</span></button>
           <button class="menu-item" on:click={openStepsDialog}>Вставить шаг…</button>
@@ -1838,6 +1857,7 @@
           {#if hasVanessaPlugin()}
             <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
             <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
           {/if}
         </div>
       {/if}
@@ -1945,12 +1965,26 @@
           <div class="explorer-header">
             <p class="zone-title">СЦЕНАРИИ</p>
             <div class="explorer-tools">
-              <input class="explorer-search" bind:value={sidebarSearch} placeholder="Поиск или фильтр" />
+              <input class="explorer-search" bind:value={sidebarSearch} placeholder="Поиск, @тег или tag:smoke" />
               <button class="icon-btn" title="Новый сценарий" on:click={newScenario}>{@html icons.plus}</button>
               <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск" on:click={() => (batchMode = !batchMode)}>
                 Выбор
               </button>
             </div>
+            {#if tags.length > 0}
+              <div class="explorer-tag-chips">
+                {#each tags.slice(0, 12) as tag}
+                  <button
+                    type="button"
+                    class="chip"
+                    class:active={sidebarSearch.trim() === tag || sidebarSearch.trim() === `@${tag.replace(/^@/, '')}`}
+                    on:click={() => (sidebarSearch = tag.startsWith('@') ? tag : `@${tag}`)}
+                  >
+                    {tag.startsWith('@') ? tag : `@${tag}`}
+                  </button>
+                {/each}
+              </div>
+            {/if}
             {#if batchMode || projectPath}
               <p class="batch-selection">Выбрано для запуска: {batchCount}</p>
             {/if}
@@ -2277,9 +2311,14 @@
 {#if showVanessaRun}
   <VanessaRunDialog
     dryRun={vanessaDry}
+    preferRerun={vanessaPreferRerun}
     bind:tag={vanessaTag}
     bind:excludeTags={vanessaExcludeTags}
     bind:scenario={vanessaScenario}
+    bind:rerunFailedRunDir={vanessaRerunDir}
+    bind:installEpf={vanessaInstallEpf}
+    bind:epfUrl={vanessaEpfUrl}
+    bind:epfDest={vanessaEpfDest}
     {tags}
     onConfirm={confirmVanessaRun}
     onCancel={() => (showVanessaRun = false)}
@@ -2287,25 +2326,14 @@
 {/if}
 
 {#if showTestClient}
-  <div class="modal-backdrop">
-    <div class="modal wide">
-      <h3>TestClient</h3>
-      <div class="client-list">
-        {#each testClients as client}
-          <button class="client-item" class:active={client === selectedClient} on:click={() => loadClientDetails(client)}>
-            {client}
-          </button>
-        {:else}
-          <p class="hint" style="padding:8px">Нет файлов в .scenaria/test_clients/</p>
-        {/each}
-      </div>
-      <div class="client-details">{clientDetails || 'Выберите клиент'}</div>
-      <div class="modal-actions">
-        <button class="primary" on:click={useTestClient} disabled={!selectedClient}>Использовать при запуске</button>
-        <button on:click={() => (showTestClient = false)}>Закрыть</button>
-      </div>
-    </div>
-  </div>
+  <TestClientDialog
+    {testClients}
+    bind:selectedName={testClientSelection}
+    onUse={useTestClient}
+    onClose={() => (showTestClient = false)}
+    onClientsChange={(names) => (testClients = names)}
+    onLog={appendLog}
+  />
 {/if}
 
 {#if showStepsHelp}
@@ -2342,6 +2370,15 @@
     featureText={editorText}
     onClose={() => (showExport = false)}
     onLog={appendLog}
+  />
+{/if}
+
+{#if showImport}
+  <ImportJSONDialog
+    {projectPath}
+    onClose={() => (showImport = false)}
+    onLog={appendLog}
+    onImported={onImportComplete}
   />
 {/if}
 
@@ -2394,30 +2431,11 @@
 {/if}
 
 {#if showOtp}
-  <div class="modal-backdrop">
-    <div class="modal">
-      <h3>Код из почты</h3>
-      {#if otpEmail}<p class="hint">{otpEmail}</p>{/if}
-      <input bind:value={otpCode} placeholder="123456" />
-      <div class="modal-actions">
-        <button class="primary" on:click={submitOtp}>OK</button>
-        <button on:click={cancelOtp}>Отмена</button>
-      </div>
-    </div>
-  </div>
+  <OtpDialog email={otpEmail} onSubmit={submitOtp} onCancel={cancelOtp} />
 {/if}
 
 {#if showAbout}
-  <div class="modal-backdrop" role="presentation" on:click={() => (showAbout = false)}>
-    <div class="modal about-modal" role="dialog" aria-label="О программе" on:click|stopPropagation>
-      <h3>Scenaria</h3>
-      <p class="about-version">{version}</p>
-      <p class="hint">Автотесты сайтов · Gherkin · Playwright</p>
-      <div class="modal-actions">
-        <button class="primary" on:click={() => (showAbout = false)}>OK</button>
-      </div>
-    </div>
-  </div>
+  <AboutDialog {version} onClose={() => (showAbout = false)} />
 {/if}
 
 {#if pendingCloseTab}

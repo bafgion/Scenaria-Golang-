@@ -110,6 +110,22 @@ func (a *App) TestClientDetails(name string) (string, error) {
 	return a.svc.TestClientDetails(name)
 }
 
+func (a *App) ReadTestClientJSON(name string) (string, error) {
+	return a.svc.ReadTestClientJSON(name)
+}
+
+func (a *App) SaveTestClientJSON(name, content string) error {
+	return a.svc.SaveTestClientJSON(name, content)
+}
+
+func (a *App) DeleteTestClient(name string) error {
+	return a.svc.DeleteTestClient(name)
+}
+
+func (a *App) ListVanessaRunDirs(limit int) ([]string, error) {
+	return a.svc.ListVanessaRunDirs(limit)
+}
+
 func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }

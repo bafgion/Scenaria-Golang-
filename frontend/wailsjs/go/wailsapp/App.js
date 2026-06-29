@@ -34,6 +34,10 @@ export function DeleteFeature(arg1) {
   return window['go']['wailsapp']['App']['DeleteFeature'](arg1);
 }
 
+export function DeleteTestClient(arg1) {
+  return window['go']['wailsapp']['App']['DeleteTestClient'](arg1);
+}
+
 export function DuplicateFeature(arg1) {
   return window['go']['wailsapp']['App']['DuplicateFeature'](arg1);
 }
@@ -88,6 +92,10 @@ export function ListRunResults(arg1) {
 
 export function ListTestClients() {
   return window['go']['wailsapp']['App']['ListTestClients']();
+}
+
+export function ListVanessaRunDirs(arg1) {
+  return window['go']['wailsapp']['App']['ListVanessaRunDirs'](arg1);
 }
 
 export function LoadRecents() {
@@ -154,6 +162,10 @@ export function ReadFeature(arg1) {
   return window['go']['wailsapp']['App']['ReadFeature'](arg1);
 }
 
+export function ReadTestClientJSON(arg1) {
+  return window['go']['wailsapp']['App']['ReadTestClientJSON'](arg1);
+}
+
 export function RefactorCollapseBlankLines(arg1) {
   return window['go']['wailsapp']['App']['RefactorCollapseBlankLines'](arg1);
 }
@@ -212,6 +224,10 @@ export function SaveHTTPAuth(arg1) {
 
 export function SaveSettings(arg1) {
   return window['go']['wailsapp']['App']['SaveSettings'](arg1);
+}
+
+export function SaveTestClientJSON(arg1, arg2) {
+  return window['go']['wailsapp']['App']['SaveTestClientJSON'](arg1, arg2);
 }
 
 export function SearchSteps(arg1) {
