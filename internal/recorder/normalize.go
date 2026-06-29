@@ -53,9 +53,17 @@ func NormalizeSteps(steps []RecordedStep) []RecordedStep {
 			if len(out) > 0 && out[len(out)-1].Action == "click" && out[len(out)-1].Selector == step.Selector {
 				continue
 			}
+			if len(out) > 0 && (out[len(out)-1].Action == "check" || out[len(out)-1].Action == "uncheck") && out[len(out)-1].Selector == step.Selector {
+				continue
+			}
 			out = append(out, upgradeClickSelector(step))
 			fillBySel = map[string]int{}
 			selectBySel = map[string]int{}
+		case "scroll-to":
+			if len(out) > 0 && out[len(out)-1].Action == "scroll-to" && out[len(out)-1].Selector == step.Selector {
+				continue
+			}
+			out = append(out, step)
 		case "goto":
 			if len(out) > 0 && out[len(out)-1].Action == "goto" && out[len(out)-1].Value == step.Value {
 				continue

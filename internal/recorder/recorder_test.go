@@ -12,6 +12,16 @@ func TestEventsToStepClick(t *testing.T) {
 	}
 }
 
+func TestEventsToStepSelect(t *testing.T) {
+	step, ok := EventsToStep("change", map[string]string{"tag": "SELECT", "id": "lang", "value": "ru"})
+	if !ok {
+		t.Fatal("expected select step")
+	}
+	if step != `выбираю "ru" в "#lang"` {
+		t.Fatalf("unexpected step: %q", step)
+	}
+}
+
 func TestEventsToStepDrawSignature(t *testing.T) {
 	step, ok := EventsToStep("draw-signature", map[string]string{"tag": "CANVAS", "id": "sign"})
 	if !ok {

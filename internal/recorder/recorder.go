@@ -97,30 +97,11 @@ func parseRecordedStep(line string) (gherkin.Step, bool) {
 
 // EventsToStep converts a recorder DOM event into a Gherkin step line.
 func EventsToStep(eventType string, detail map[string]string) (string, bool) {
-	sel := strings.TrimSpace(detail["selector"])
-	if sel == "" {
-		sel = BuildSelectorFromDetail(detail)
-	}
-	switch eventType {
-	case "click":
-		if sel == "" {
-			return "", false
-		}
-		return `нажимаю "` + sel + `"`, true
-	case "input":
-		value := detail["value"]
-		if sel == "" || value == "" {
-			return "", false
-		}
-		return `ввожу "` + value + `" в "` + sel + `"`, true
-	case "draw-signature":
-		if sel == "" {
-			return "", false
-		}
-		return `рисую подпись в "` + sel + `"`, true
-	default:
+	step, ok := EventToRecordedStep(eventType, normalizeDetail(detail))
+	if !ok {
 		return "", false
 	}
+	return RecordedStepToLine(step)
 }
 
 func BuildSelectorFromDetail(detail map[string]string) string {

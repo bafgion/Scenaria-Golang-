@@ -3,13 +3,13 @@ package recorder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/paths"
-	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
@@ -64,103 +64,25 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 	}
 	defer pw.Stop()
 
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(opts.Headless),
-	})
-	if err != nil {
-		return fmt.Errorf("launch browser: %w", err)
-	}
-	defer browser.Close()
-
-	contextOpts := playwright.BrowserNewContextOptions{}
-	if opts.HTTPCredentials != nil {
-		contextOpts.HttpCredentials = opts.HTTPCredentials
-	}
-	bctx, err := browser.NewContext(contextOpts)
-	if err != nil {
-		return fmt.Errorf("create browser context: %w", err)
-	}
-	defer bctx.Close()
-
-	page, err := bctx.NewPage()
-	if err != nil {
-		return fmt.Errorf("create page: %w", err)
-	}
-	if opts.TestClient != nil {
-		if err := player.ApplyTestClient(page, opts.TestClient); err != nil {
-			return fmt.Errorf("apply test client: %w", err)
-		}
-	}
-	if _, err := page.Goto(opts.StartURL); err != nil {
-		return fmt.Errorf("goto start URL: %w", err)
-	}
-	if _, err := page.Evaluate(RecorderScript); err != nil {
-		return fmt.Errorf("inject recorder script: %w", err)
-	}
-	if err := applyRecorderConfig(page, opts); err != nil {
-		return fmt.Errorf("configure recorder: %w", err)
-	}
-
 	recorded := []RecordedStep{{Action: "goto", Value: opts.StartURL}}
-	lastURL := page.URL()
-	lastEventAt := time.Now()
 	session := opts.Session
 	if session == nil {
 		session = NewLiveSession()
 	}
-	session.Bind(page, &recorded)
+	session.InitHeadless(opts.Headless)
+	session.SetRecorderFlags(opts.FilterImportant, opts.NavOnly, opts.HoverRecord)
 	defer session.Clear()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		for session.IsPaused() {
-			_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`, nil)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(100 * time.Millisecond):
-			}
-		}
-		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
-		if time.Since(lastEventAt) >= opts.IdleTimeout {
+		err := runLiveBrowserSession(ctx, pw, opts, session, &recorded, session.Headless())
+		if err == nil {
 			break
 		}
-
-		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
-			recorded = append(recorded, RecordedStep{Action: "goto", Value: currentURL})
-			lastURL = currentURL
-			lastEventAt = time.Now()
+		if errors.Is(err, ErrRelaunchHeadless) {
+			session.ClearRelaunch()
+			continue
 		}
-
-		raw, err := page.Evaluate(`() => {
-			const r = window.__scenariaRecorder;
-			if (!r || !r.events.length) return [];
-			const out = r.events.splice(0, r.events.length);
-			return out;
-		}`)
-		if err != nil {
-			return fmt.Errorf("read recorder events: %w", err)
-		}
-		events, err := decodeEvents(raw)
-		if err != nil {
-			return err
-		}
-		if len(events) > 0 {
-			lastEventAt = time.Now()
-		}
-		for _, event := range events {
-			detail := normalizeDetail(event.Detail)
-			step, ok := EventToRecordedStep(event.Type, detail)
-			if !ok {
-				continue
-			}
-			recorded = append(recorded, step)
-		}
-		time.Sleep(200 * time.Millisecond)
+		return err
 	}
 
 	normalized := NormalizeSteps(recorded)
@@ -201,13 +123,17 @@ func normalizeDetail(detail map[string]string) map[string]string {
 	return out
 }
 
-func applyRecorderConfig(page playwright.Page, opts LiveOptions) error {
+func applyRecorderConfig(page playwright.Page, opts LiveOptions, session *LiveSession) error {
+	filter, nav, hover := opts.FilterImportant, opts.NavOnly, opts.HoverRecord
+	if session != nil {
+		filter, nav, hover = session.RecorderFlags()
+	}
 	script := fmt.Sprintf(`() => {
 		if (!window.__scenariaRecorder) return;
 		window.__scenariaRecorder.filterImportant = %v;
 		window.__scenariaRecorder.navOnly = %v;
 		window.__scenariaRecorder.hoverRecord = %v;
-	}`, opts.FilterImportant, opts.NavOnly, opts.HoverRecord)
+	}`, filter, nav, hover)
 	_, err := page.Evaluate(script)
 	return err
 }

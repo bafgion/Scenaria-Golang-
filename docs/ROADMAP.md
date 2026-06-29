@@ -6,8 +6,8 @@
 
 | # | Направление | Статус |
 |---|-------------|--------|
-| P0 | Wails IDE | ~96% |
-| P0 | Recorder | ~90% |
+| P0 | Wails IDE | ~98% |
+| P0 | Recorder | ~98% |
 | P1 | Allure | done |
 | P1 | Portable release | done |
 

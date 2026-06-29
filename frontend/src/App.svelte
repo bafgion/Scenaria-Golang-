@@ -1229,9 +1229,37 @@
     batchSelected = []
   }
 
+  async function saveDirtyBeforeRun(targets: string[]) {
+    syncActiveTabContent()
+    const paths: string[] = []
+    if (targets.length === 0) {
+      for (const tab of tabs) {
+        if (tab.dirty) paths.push(tab.path)
+      }
+    } else {
+      for (const path of targets) {
+        const tab = tabs.find((t) => t.path === path)
+        if (tab?.dirty) paths.push(path)
+      }
+    }
+    for (const path of paths) {
+      if (activeTab !== path) await loadFeature(path)
+      await saveFeature()
+    }
+  }
+
   async function runBatchSelected(dryRun = false) {
     if (!batchSelected.length) return
-    await executeRun({ ...lastRun, dryRun }, batchSelected)
+    let opts: RunForm = { ...lastRun, dryRun }
+    if (
+      batchSelected.length === 1 &&
+      batchSelected[0] === activeTab &&
+      !isWelcome
+    ) {
+      const scenario = scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1)
+      if (scenario) opts = { ...opts, scenario }
+    }
+    await executeRun(opts, batchSelected)
   }
 
   async function runCurrentScenario(dryRun = false) {
@@ -1759,6 +1787,7 @@
 
   async function executeRun(opts: RunForm, targets: string[] = []) {
     if (!projectPath) return
+    await saveDirtyBeforeRun(targets)
     lastRun = { ...opts }
     showRun = false
 
@@ -2174,7 +2203,7 @@
   async function syncRecordingOptions() {
     if (!recording) return
     try {
-      await UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord)
+      await UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, settingsHeadless)
       await persistSettings()
     } catch {
       /* session may be closing */
@@ -2836,7 +2865,7 @@
                 <span class="rec-label">Запись:</span>
                 <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => { if (filterRecording) navOnlyRecording = false; void syncRecordingOptions() }} /> Только важные</label>
                 <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => { if (navOnlyRecording) filterRecording = false; void syncRecordingOptions() }} /> Только ссылки</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={settingsHeadless} /> Без окна браузера</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={settingsHeadless} on:change={() => void syncRecordingOptions()} /> Без окна браузера</label>
                 <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} on:change={() => void syncRecordingOptions()} /> Записывать наведение</label>
               </div>
             {/if}

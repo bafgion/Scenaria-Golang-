@@ -2,23 +2,87 @@ package recorder
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
+var ErrRelaunchHeadless = errors.New("recorder: relaunch browser for headless change")
+
 // LiveSession controls an in-progress live recording (pause/resume/focus/undo).
 type LiveSession struct {
-	paused atomic.Bool
-	mu     sync.Mutex
-	page   playwright.Page
-	steps  *[]RecordedStep
+	paused   atomic.Bool
+	headless atomic.Bool
+	relaunch atomic.Bool
+	recMu    sync.RWMutex
+	filterImportant bool
+	navOnly         bool
+	hoverRecord     bool
+	resumeURL       string
+	mu       sync.Mutex
+	page     playwright.Page
+	steps    *[]RecordedStep
 }
 
 func NewLiveSession() *LiveSession {
 	return &LiveSession{}
+}
+
+func (s *LiveSession) InitHeadless(headless bool) {
+	s.headless.Store(headless)
+}
+
+func (s *LiveSession) SetRecorderFlags(filterImportant, navOnly, hoverRecord bool) {
+	s.recMu.Lock()
+	s.filterImportant = filterImportant
+	s.navOnly = navOnly
+	s.hoverRecord = hoverRecord
+	s.recMu.Unlock()
+}
+
+func (s *LiveSession) SetResumeURL(url string) {
+	s.recMu.Lock()
+	s.resumeURL = strings.TrimSpace(url)
+	s.recMu.Unlock()
+}
+
+func (s *LiveSession) ResumeURL(fallback string) string {
+	s.recMu.RLock()
+	defer s.recMu.RUnlock()
+	if s.resumeURL != "" {
+		return s.resumeURL
+	}
+	return fallback
+}
+
+func (s *LiveSession) RecorderFlags() (bool, bool, bool) {
+	s.recMu.RLock()
+	defer s.recMu.RUnlock()
+	return s.filterImportant, s.navOnly, s.hoverRecord
+}
+
+func (s *LiveSession) Headless() bool {
+	return s.headless.Load()
+}
+
+func (s *LiveSession) RequestHeadless(headless bool) {
+	if s.headless.Load() == headless {
+		return
+	}
+	s.headless.Store(headless)
+	s.relaunch.Store(true)
+}
+
+func (s *LiveSession) RelaunchPending() bool {
+	return s.relaunch.Load()
+}
+
+func (s *LiveSession) ClearRelaunch() {
+	s.relaunch.Store(false)
 }
 
 func (s *LiveSession) Pause()  { s.paused.Store(true) }
@@ -52,11 +116,12 @@ func (s *LiveSession) FocusBrowser() error {
 }
 
 func (s *LiveSession) ApplyRecorderConfig(filterImportant, navOnly, hoverRecord bool) error {
+	s.SetRecorderFlags(filterImportant, navOnly, hoverRecord)
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
 	if page == nil {
-		return fmt.Errorf("браузер не открыт")
+		return nil
 	}
 	script := fmt.Sprintf(`() => {
 		if (!window.__scenariaRecorder) return;

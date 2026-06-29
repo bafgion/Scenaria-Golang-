@@ -71,6 +71,7 @@ var stepPatterns = []struct {
 	{regexp.MustCompile(`(?i)^проверяю url "` + quoted + `"$`), "assert-url", one("assert-url")},
 	{regexp.MustCompile(`(?i)^(?:url содержит|адрес содержит) "` + quoted + `"$`), "assert-url-contains", one("assert-url-contains")},
 	{regexp.MustCompile(`(?i)^скроллю к "` + quoted + `"$`), "scroll-to", one("scroll-to")},
+	{regexp.MustCompile(`(?i)^перетаскиваю "` + quoted + `" в "` + quoted + `"$`), "drag-drop", two("drag-drop")},
 	{regexp.MustCompile(`(?i)^обновляю страницу$`), "reload", none("reload")},
 	{regexp.MustCompile(`(?i)^возвращаюсь назад$`), "go-back", none("go-back")},
 	{regexp.MustCompile(`(?i)^закрываю браузер$`), "close-browser", none("close-browser")},

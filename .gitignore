@@ -12,3 +12,6 @@ frontend/build/
 coverage
 coverage.out
 *.coverprofile
+ui-check-*.png
+ui-compare-*.png
+ui-wails-*.png

@@ -306,8 +306,8 @@ func (a *App) FocusBrowser() error {
 	return a.svc.FocusBrowser()
 }
 
-func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord bool) error {
-	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord)
+func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless bool) error {
+	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless)
 }
 
 func (a *App) UndoRecordedStep() bool {

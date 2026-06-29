@@ -32,6 +32,10 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 		}
 		return RecordedStep{Action: "draw-signature", Selector: sel}, true
 	case "input", "fill", "change":
+		inputType := strings.ToLower(detail["inputtype"])
+		if inputType == "file" || inputType == "checkbox" || inputType == "radio" {
+			return RecordedStep{}, false
+		}
 		sel := strings.TrimSpace(detail["selector"])
 		if sel == "" {
 			sel = BuildSelectorFromDetail(detail)
@@ -66,6 +70,63 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 			return RecordedStep{}, false
 		}
 		return RecordedStep{Action: "goto", Value: url}, true
+	case "upload":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		fileName := strings.TrimSpace(detail["value"])
+		if sel == "" || fileName == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "upload", Selector: sel, Value: fileName}, true
+	case "check", "uncheck":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		if sel == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: eventType, Selector: sel}, true
+	case "press":
+		key := strings.TrimSpace(detail["value"])
+		if key == "" {
+			key = strings.TrimSpace(detail["key"])
+		}
+		if key == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "press", Value: key}, true
+	case "press-in":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		key := strings.TrimSpace(detail["value"])
+		if key == "" {
+			key = strings.TrimSpace(detail["key"])
+		}
+		if sel == "" || key == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "press-in", Selector: sel, Value: key}, true
+	case "scroll-to":
+		sel := strings.TrimSpace(detail["selector"])
+		if sel == "" {
+			sel = BuildSelectorFromDetail(detail)
+		}
+		if sel == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "scroll-to", Selector: sel}, true
+	case "drag-drop":
+		src := strings.TrimSpace(detail["selector"])
+		dst := strings.TrimSpace(detail["target"])
+		if src == "" || dst == "" {
+			return RecordedStep{}, false
+		}
+		return RecordedStep{Action: "drag-drop", Selector: src, Value: dst}, true
 	default:
 		return RecordedStep{}, false
 	}
@@ -82,6 +143,9 @@ func RecordedStepsToLines(steps []RecordedStep) []string {
 }
 
 func RecordedStepToLine(step RecordedStep) (string, bool) {
+	if line, ok := recordedStepLine(step); ok {
+		return line, true
+	}
 	switch step.Action {
 	case "goto":
 		if step.Value == "" {

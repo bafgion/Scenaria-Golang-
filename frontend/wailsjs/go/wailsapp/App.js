@@ -294,8 +294,8 @@ export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
 }
 
-export function UpdateRecordingOptions(arg1, arg2, arg3) {
-  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3);
+export function UpdateRecordingOptions(arg1, arg2, arg3, arg4) {
+  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4);
 }
 
 export function Validate(arg1) {

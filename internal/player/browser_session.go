@@ -300,6 +300,11 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			return fmt.Errorf("scroll failed: %w", err)
 		}
 		return nil
+	case "drag-drop":
+		if err := page.Locator(action.Value1).DragTo(page.Locator(action.Value2)); err != nil {
+			return fmt.Errorf("drag failed: %w", err)
+		}
+		return nil
 	case "wait-visible":
 		if err := page.Locator(action.Value1).WaitFor(playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateVisible,

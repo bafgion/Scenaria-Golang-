@@ -20,13 +20,19 @@ scenaria record --live --url https://example.com --output recorded.feature --idl
 
 **Запись…** → URL, файл, idle → **Начать**. Во время записи: **Pause** / **Resume** / **Стоп**.
 
-Pause синхронизируется с `window.__scenariaRecorder.paused` в injected JS.
+Панель записи: фильтр, только ссылки, наведение, **headless** — применяются к открытому браузеру (headless перезапускает окно с сохранением URL).
 
 ## Что записывается
 
 - Переходы (`goto`) при смене URL
 - Клики (с `elementFromPoint`, debounce 400 ms)
-- Ввод в поля (`input` / `change`)
+- Ввод в поля (`input`) и `<select>` → `выбираю`
+- Checkbox / radio → `отмечаю` / `снимаю отметку с`
+- Загрузка файлов → `загружаю файл "…" в "…"`
+- Клавиши → `нажимаю клавишу "…"` / `… в "поле"`
+- Скролл (элемент в центре viewport) → `скроллю к "…"`
+- Drag-and-drop → `перетаскиваю "…" в "…"`
+- Наведение (опция) → `навожу "…"`
 - Подпись на canvas (`draw-signature`)
 
 Селекторы строятся в `internal/selector/recorder_script.js` (testid, id, label, has-text, canvas).
@@ -39,7 +45,7 @@ Pause синхронизируется с `window.__scenariaRecorder.paused` в 
 
 ## Нормализация
 
-`internal/recorder/normalize.go` объединяет подряд идущие fill, убирает дубли goto.
+`internal/recorder/normalize.go` объединяет подряд идущие fill/select, убирает дубли goto/click/scroll.
 
 ## Тесты
 

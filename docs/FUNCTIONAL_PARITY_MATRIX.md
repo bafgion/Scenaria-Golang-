@@ -2,7 +2,7 @@
 
 Status: **Go is the primary product** (CLI + Wails IDE). Python Scenaria is **deprecated** — interoperability via `.feature` / `.scenaria` files and **export to Python** only.
 
-| Wails IDE | Monaco, run/record/Vanessa/export/OTP/Allure | `frontend/`, `internal/gui` | ~96% |
+| Wails IDE | Monaco, run/record/Vanessa/export/OTP/Allure | `frontend/`, `internal/gui` | ~98% |
 
 | Area | Legacy (Python/Qt) | Go target | Status |
 |---|---|---|---|
@@ -20,7 +20,7 @@ Status: **Go is the primary product** (CLI + Wails IDE). Python Scenaria is **de
 
 ## Remaining (Go-only roadmap)
 
-- Minor IDE/recorder UX polish
+- Optional: push release tag and publish portable zip artifact
 
 ## Done (v0.15)
 
@@ -28,6 +28,7 @@ Status: **Go is the primary product** (CLI + Wails IDE). Python Scenaria is **de
 - Portable zip: README, launchers, version from `internal/version`
 - Run/Vanessa/Plugin dialogs: project scenario catalog + chips
 - Legacy Fyne `ui/desktop` removed from repo
+- Auto-save dirty features before run; batch run respects cursor scenario
 
 ## Intentional differences
 

@@ -17,6 +17,7 @@
   {"text": "проверяю url \"https://example.com/dashboard\"", "kind": "assert-url", "v1": "https://example.com/dashboard"},
   {"text": "url содержит \"dashboard\"", "kind": "assert-url-contains", "v1": "dashboard"},
   {"text": "скроллю к \"#footer\"", "kind": "scroll-to", "v1": "#footer"},
+  {"text": "перетаскиваю \"#item\" в \"#list\"", "kind": "drag-drop", "v1": "#item", "v2": "#list"},
   {"text": "жду появления \"#ready\"", "kind": "wait-visible", "v1": "#ready"},
   {"text": "жду исчезновения \"#loader\"", "kind": "wait-hidden", "v1": "#loader"},
   {"text": "жду 500 мс", "kind": "wait", "v1": "500ms"},

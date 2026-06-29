@@ -176,7 +176,7 @@
     const isField = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
     const target = type === 'click' ? (clickableAncestor(el) || el) : el;
     if (!target) return {};
-    return {
+    const detail = {
       tag: (target.tagName || '').toUpperCase(),
       id: target.id || '',
       name: target.getAttribute('name') || '',
@@ -189,12 +189,20 @@
       contexttext: type === 'click' ? clickContextCaption(target) : '',
       placeholder: target.getAttribute('placeholder') || '',
       arialabel: (target.getAttribute('aria-label') || '').trim(),
-      role: target.getAttribute('role') || ''
+      role: target.getAttribute('role') || '',
+      checked: target.checked ? 'true' : 'false',
     };
+    return detail;
   }
 
   window.__scenariaRecorder = { events: [], paused: false, filterImportant: false, navOnly: false, hoverRecord: false };
   const cfg = () => window.__scenariaRecorder || {};
+
+  function pushDetail(type, detail) {
+    if (!detail || cfg().paused) return;
+    if (cfg().navOnly && !['goto', 'scroll-to'].includes(type)) return;
+    window.__scenariaRecorder.events.push({ type, detail, ts: Date.now() });
+  }
 
   function isNavTarget(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -223,8 +231,29 @@
     } else if (c.filterImportant && type === 'click' && !isImportantTarget(clickableAncestor(el) || el)) {
       return;
     }
-    window.__scenariaRecorder.events.push({ type, detail: collect(el, type), ts: Date.now() });
+    pushDetail(type, collect(el, type));
   };
+
+  const RECORD_KEYS = new Set([
+    'Enter', 'Tab', 'Escape', 'Backspace', 'Delete',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+    'Home', 'End', 'PageUp', 'PageDown',
+  ]);
+
+  function pushKey(key, el) {
+    if (!key || cfg().paused || cfg().navOnly) return;
+    const field = el && el.closest
+      ? el.closest('input, textarea, [contenteditable="true"]')
+      : null;
+    const isTextField = field && ['INPUT', 'TEXTAREA'].includes(field.tagName);
+    if (isTextField) {
+      const detail = collect(field, 'press-in');
+      detail.value = key;
+      pushDetail('press-in', detail);
+      return;
+    }
+    pushDetail('press', { value: key, key });
+  }
 
   let lastClickAt = 0;
   let lastClickKey = '';
@@ -256,6 +285,9 @@
   function onDocumentClick(e) {
     const el = resolveClickTarget(e);
     if (!el || shouldSkipDuplicateClick(el)) return;
+    const tag = (el.tagName || '').toUpperCase();
+    const inputType = (el.type || '').toLowerCase();
+    if (tag === 'INPUT' && ['checkbox', 'radio', 'file'].includes(inputType)) return;
     const canvas = findCanvas(el);
     if (canvas && isSignatureCanvas(canvas)) {
       push('draw-signature', canvas);
@@ -266,12 +298,95 @@
 
   function onDocumentInput(e) {
     if (cfg().navOnly) return;
-    push('input', e.target);
+    const el = e.target;
+    if (!el || el.nodeType !== 1) return;
+    if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'file') return;
+    push('input', el);
   }
 
   function onDocumentChange(e) {
     if (cfg().navOnly) return;
-    push('change', e.target);
+    const el = e.target;
+    if (!el || el.nodeType !== 1) return;
+    if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'file') {
+      const files = el.files;
+      if (!files || !files.length) return;
+      const detail = collect(el, 'upload');
+      detail.value = files[0].name;
+      pushDetail('upload', detail);
+      return;
+    }
+    if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'checkbox') {
+      push(el.checked ? 'check' : 'uncheck', el);
+      return;
+    }
+    if (el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'radio') {
+      if (el.checked) push('check', el);
+      return;
+    }
+    push('change', el);
+  }
+
+  function onDocumentKeyDown(e) {
+    if (cfg().paused || cfg().navOnly) return;
+    if (e.repeat) return;
+    const key = e.key;
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      if (key.length === 1) {
+        const parts = [];
+        if (e.ctrlKey || e.metaKey) parts.push('Control');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+        parts.push(key.toUpperCase());
+        pushKey(parts.join('+'), e.target);
+      }
+      return;
+    }
+    if (RECORD_KEYS.has(key)) {
+      pushKey(key, e.target);
+    }
+  }
+
+  let scrollTimer = null;
+  let lastScrollKey = '';
+  function elementAtViewportCenter(doc) {
+    const cx = Math.floor((doc.documentElement.clientWidth || window.innerWidth) / 2);
+    const cy = Math.floor((doc.documentElement.clientHeight || window.innerHeight) / 2);
+    const el = doc.elementFromPoint(cx, cy);
+    return el && el.nodeType === 1 ? el : null;
+  }
+
+  function onScroll(e) {
+    if (cfg().paused || cfg().navOnly) return;
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      const root = e.target;
+      const doc = root && root.ownerDocument ? root.ownerDocument : document;
+      const el = elementAtViewportCenter(doc);
+      if (!el) return;
+      const detail = collect(el, 'scroll-to');
+      if (!detail.selector) return;
+      if (detail.selector === lastScrollKey) return;
+      lastScrollKey = detail.selector;
+      pushDetail('scroll-to', detail);
+    }, 400);
+  }
+
+  let dragSource = null;
+  function onDragStart(e) {
+    if (cfg().paused) return;
+    dragSource = e.target;
+  }
+
+  function onDrop(e) {
+    if (cfg().paused || !dragSource) return;
+    const target = e.target;
+    if (!target || target.nodeType !== 1) return;
+    const srcSel = buildSelector(dragSource);
+    const dstSel = buildSelector(target);
+    dragSource = null;
+    if (!srcSel || !dstSel || srcSel === dstSel) return;
+    pushDetail('drag-drop', { selector: srcSel, target: dstSel });
   }
 
   let lastHoverAt = 0;
@@ -297,6 +412,13 @@
     root.addEventListener('input', onDocumentInput, true);
     root.addEventListener('change', onDocumentChange, true);
     root.addEventListener('mouseover', onDocumentMouseOver, true);
+    root.addEventListener('keydown', onDocumentKeyDown, true);
+    root.addEventListener('scroll', onScroll, true);
+    root.addEventListener('dragstart', onDragStart, true);
+    root.addEventListener('drop', onDrop, true);
+    if (root === document) {
+      window.addEventListener('scroll', onScroll, true);
+    }
   }
 
   function scanNode(node) {
