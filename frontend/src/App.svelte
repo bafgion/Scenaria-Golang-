@@ -11,6 +11,7 @@
   import FindReplaceDialog from './lib/FindReplaceDialog.svelte'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
+  import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
   import UnsavedCloseDialog from './lib/UnsavedCloseDialog.svelte'
@@ -69,6 +70,8 @@
     RefactorCollapseBlankLines,
     RefactorReplaceInText,
     ReplaceInProject,
+    AnalyzeScenarioHints,
+    ApplyScenarioHintFix,
     DeleteFeature,
     DuplicateFeature,
     MoveFeature,
@@ -139,6 +142,10 @@
   let replaceText = ''
   let replaceCaseSensitive = false
   let postRecordPath = ''
+  let postRecordStepCount = 0
+  let postRecordAllHints: gui.ScenarioHintDTO[] = []
+  let postRecordHints: gui.ScenarioHintDTO[] = []
+  let postRecordDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
   let runDialogTitle = 'Запуск сценария'
 
@@ -372,7 +379,7 @@
           lastRecordTarget = ''
           if (result.output) appendLog(result.output)
           if (result.error) appendLog(`Ошибка записи: ${result.error}`)
-          else if (reloadPath) postRecordPath = reloadPath
+          else if (reloadPath) await showPostRecordBanner(reloadPath)
           syncIdleStatus()
           await refreshProject()
           if (!result.error && reloadPath) {
@@ -571,6 +578,96 @@
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth
     appendLog('Макет окон сброшен')
+  }
+
+  function hintDismissKey(hint: gui.ScenarioHintDTO): string {
+    return `${hint.id}:${hint.stepIndex}`
+  }
+
+  function applyPostRecordHintFilter() {
+    postRecordHints = postRecordAllHints.filter((h) => !postRecordDismissed.has(hintDismissKey(h)))
+  }
+
+  async function showPostRecordBanner(path: string) {
+    postRecordPath = path
+    postRecordDismissed = new Set()
+    try {
+      const content = await ReadFeature(path)
+      postRecordStepCount = (await ParseEditorSteps(content)).length
+      postRecordAllHints = await AnalyzeScenarioHints(content)
+      applyPostRecordHintFilter()
+    } catch {
+      postRecordStepCount = 0
+      postRecordAllHints = []
+      postRecordHints = []
+    }
+  }
+
+  async function refreshPostRecordHints() {
+    if (!postRecordPath) return
+    try {
+      const content = activeTab === postRecordPath ? editorText : await ReadFeature(postRecordPath)
+      postRecordAllHints = await AnalyzeScenarioHints(content)
+      applyPostRecordHintFilter()
+    } catch {
+      /* keep previous */
+    }
+  }
+
+  function dismissPostRecord() {
+    postRecordPath = ''
+    postRecordStepCount = 0
+    postRecordAllHints = []
+    postRecordHints = []
+    postRecordDismissed = new Set()
+  }
+
+  async function postRecordValidate() {
+    if (!postRecordPath) return
+    if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
+    await validateProject(false)
+    bottomPanelOpen = true
+    bottomTab = 'validate'
+  }
+
+  async function postRecordSave() {
+    if (!postRecordPath) return
+    if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
+    await saveFeature()
+    dismissPostRecord()
+  }
+
+  async function postRecordFixHint(hint: gui.ScenarioHintDTO) {
+    if (!postRecordPath) return
+    if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
+    const result = await ApplyScenarioHintFix({
+      text: editorText,
+      hintId: hint.id,
+      stepIndex: hint.stepIndex,
+    })
+    if (result.count > 0) {
+      editorText = result.text
+      syncActiveTabContent()
+      await validateEditor()
+      appendLog(`Исправлена подсказка: ${hint.title}`)
+      await refreshPostRecordHints()
+    }
+  }
+
+  function postRecordFixHover() {
+    const hint = postRecordHints.find((h) => h.id === 'menu_hover')
+    if (hint) void postRecordFixHint(hint)
+  }
+
+  function postRecordShowStep(stepNo: number) {
+    gotoEditorLine(stepNo)
+    stepsPanelVisible = true
+    stepsPanelCollapsed = false
+  }
+
+  function dismissPostRecordHint(hint: gui.ScenarioHintDTO) {
+    postRecordDismissed.add(hintDismissKey(hint))
+    applyPostRecordHintFilter()
   }
 
   async function duplicateFeature(path: string) {
@@ -1958,11 +2055,18 @@
             />
           {:else}
             {#if postRecordPath}
-              <div class="dirty-banner post-record">
-                <span>Запись сохранена: {basename(postRecordPath)}</span>
-                <button class="primary" on:click={async () => { await loadFeature(postRecordPath); postRecordPath = '' }}>Открыть</button>
-                <button on:click={() => (postRecordPath = '')}>Скрыть</button>
-              </div>
+              <PostRecordBanner
+                path={postRecordPath}
+                stepCount={postRecordStepCount}
+                hints={postRecordHints}
+                onValidate={postRecordValidate}
+                onSave={postRecordSave}
+                onFixHover={postRecordFixHover}
+                onShowStep={postRecordShowStep}
+                onFixHint={postRecordFixHint}
+                onDismissHint={dismissPostRecordHint}
+                onClose={dismissPostRecord}
+              />
             {/if}
             {#if activeFeatureTab?.dirty}
               <div class="dirty-banner">

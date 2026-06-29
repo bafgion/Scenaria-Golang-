@@ -170,6 +170,14 @@ func (a *App) RefactorReplaceInText(text, find, replace string, caseSensitive bo
 	return a.svc.RefactorReplaceInText(text, find, replace, caseSensitive)
 }
 
+func (a *App) AnalyzeScenarioHints(text string) []gui.ScenarioHintDTO {
+	return gui.AnalyzeScenarioHints(text)
+}
+
+func (a *App) ApplyScenarioHintFix(req gui.ScenarioHintFixRequest) gui.RefactorResult {
+	return gui.ApplyScenarioHintFix(req)
+}
+
 func (a *App) ReplaceInProject(req gui.ProjectReplaceRequest) (gui.ProjectReplaceResult, error) {
 	return a.svc.ReplaceInProject(req)
 }

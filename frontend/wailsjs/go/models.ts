@@ -276,6 +276,42 @@ export namespace gui {
 	        this.testClient = source["testClient"];
 	    }
 	}
+	export class ScenarioHintDTO {
+	    id: string;
+	    title: string;
+	    stepIndex: number;
+	    severity: string;
+	    autoFixable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScenarioHintDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.stepIndex = source["stepIndex"];
+	        this.severity = source["severity"];
+	        this.autoFixable = source["autoFixable"];
+	    }
+	}
+	export class ScenarioHintFixRequest {
+	    text: string;
+	    hintId: string;
+	    stepIndex: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScenarioHintFixRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.text = source["text"];
+	        this.hintId = source["hintId"];
+	        this.stepIndex = source["stepIndex"];
+	    }
+	}
 	export class RefactorResult {
 	    text: string;
 	    count: number;
