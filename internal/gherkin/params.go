@@ -68,7 +68,7 @@ func expandScenarioFromParamRows(feature *Feature, scenario Scenario, tags []str
 	for rowIndex, values := range rows {
 		steps := mergeBackgroundSteps(feature.Background, expandSteps(scenario.Steps, values))
 		title := scenario.Title
-		if sample := firstValuesSample(values); sample != "" {
+		if sample := firstValuesSampleOrdered(values, placeholderKeysFromSteps(scenario.Steps)); sample != "" {
 			title = scenario.Title + " — " + sample
 		}
 		out = append(out, RunnableScenario{
@@ -81,11 +81,3 @@ func expandScenarioFromParamRows(feature *Feature, scenario Scenario, tags []str
 	return out
 }
 
-func firstValuesSample(values map[string]string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
-}

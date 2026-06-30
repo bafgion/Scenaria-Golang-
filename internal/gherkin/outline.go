@@ -1,6 +1,11 @@
 package gherkin
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+var placeholderKeyRE = regexp.MustCompile(`<([^>]+)>`)
 
 type RunnableScenario struct {
 	Title        string
@@ -116,10 +121,40 @@ func exampleRowValues(header []string, row []string) map[string]string {
 }
 
 func firstRowSample(header []string, row []string) string {
-	values := exampleRowValues(header, row)
-	for _, key := range header {
+	return firstValuesSampleOrdered(exampleRowValues(header, row), header)
+}
+
+func placeholderKeysFromSteps(steps []Step) []string {
+	seen := make(map[string]bool)
+	var keys []string
+	var walk func([]Step)
+	walk = func(ss []Step) {
+		for _, step := range ss {
+			for _, match := range placeholderKeyRE.FindAllStringSubmatch(step.Text, -1) {
+				key := match[1]
+				if !seen[key] {
+					seen[key] = true
+					keys = append(keys, key)
+				}
+			}
+			if len(step.Children) > 0 {
+				walk(step.Children)
+			}
+		}
+	}
+	walk(steps)
+	return keys
+}
+
+func firstValuesSampleOrdered(values map[string]string, keys []string) string {
+	for _, key := range keys {
 		if value := strings.TrimSpace(values[key]); value != "" {
 			return value
+		}
+	}
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""
