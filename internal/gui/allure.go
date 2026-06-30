@@ -76,7 +76,7 @@ func (s *Service) OpenHTMLReport(path string) RunResult {
 	if err != nil {
 		return RunResult{Error: err.Error()}
 	}
-	return RunResult{Output: fileURL(abs)}
+	return RunResult{Output: abs}
 }
 
 func fileURL(path string) string {

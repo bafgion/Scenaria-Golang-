@@ -62,12 +62,12 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	}
 
 	if e.options.AutoInstall {
-		if err := playwright.Install(); err != nil {
+		if err := paths.EnsurePlaywrightEngine(e.options.BrowserName); err != nil {
 			return ScenarioResult{}, fmt.Errorf("playwright install failed: %w", err)
 		}
+	} else {
+		paths.ConfigurePlaywrightBrowsersForEngine(e.options.BrowserName)
 	}
-
-	paths.ConfigurePlaywrightBrowsers()
 
 	pw, err := playwright.Run()
 	if err != nil {

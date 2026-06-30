@@ -15,19 +15,29 @@ import (
 )
 
 type LiveOptions struct {
-	StartURL         string
-	FeatureName      string
-	ScenarioName     string
-	OutputPath       string
-	Headless         bool
-	IdleTimeout      time.Duration
-	Session          *LiveSession
-	AppendTo         string
-	FilterImportant  bool
-	NavOnly          bool
-	HoverRecord      bool
-	TestClient       *settings.TestClient
-	HTTPCredentials  *playwright.HttpCredentials
+	StartURL        string
+	FeatureName     string
+	ScenarioName    string
+	OutputPath      string
+	Headless        bool
+	IdleTimeout     time.Duration
+	Session         *LiveSession
+	AppendTo        string
+	FilterImportant   bool
+	NavOnly           bool
+	HoverRecord       bool
+	ScrollBeforeClick bool
+	HoverRecordMinMs  int
+	TestClient      *settings.TestClient
+	HTTPCredentials *playwright.HttpCredentials
+	BrowseOnly      bool
+	Callbacks       LiveCallbacks
+}
+
+type LiveCallbacks struct {
+	OnCaptureStart  func()
+	OnPickerRequest func()
+	OnBrowserLost   func()
 }
 
 type recorderEvent struct {
@@ -38,13 +48,10 @@ type recorderEvent struct {
 
 // RecordLive opens a browser, injects RecorderScript and writes captured steps to a feature file.
 func RecordLive(ctx context.Context, opts LiveOptions) error {
-	if strings.TrimSpace(opts.StartURL) == "" {
-		return fmt.Errorf("start URL is required")
-	}
 	if strings.TrimSpace(opts.OutputPath) == "" {
 		return fmt.Errorf("output path is required")
 	}
-	if opts.IdleTimeout <= 0 {
+	if !opts.BrowseOnly && opts.IdleTimeout <= 0 {
 		opts.IdleTimeout = 30 * time.Second
 	}
 	if strings.TrimSpace(opts.FeatureName) == "" {
@@ -54,47 +61,81 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		opts.ScenarioName = "Запись"
 	}
 
-	if err := playwright.Install(); err != nil {
-		return fmt.Errorf("install playwright: %w", err)
+	if err := paths.EnsurePlaywrightEngine("chromium"); err != nil {
+		return fmt.Errorf("playwright browsers: %w", err)
 	}
-	paths.ConfigurePlaywrightBrowsers()
 	pw, err := playwright.Run()
 	if err != nil {
 		return fmt.Errorf("start playwright: %w", err)
 	}
 	defer pw.Stop()
 
-	recorded := []RecordedStep{{Action: "goto", Value: opts.StartURL}}
+	recorded := []RecordedStep{}
+	if !opts.BrowseOnly {
+		if start := strings.TrimSpace(opts.StartURL); start != "" {
+			recorded = append(recorded, RecordedStep{Action: "goto", Value: start})
+		}
+	}
 	session := opts.Session
 	if session == nil {
 		session = NewLiveSession()
 	}
 	session.InitHeadless(opts.Headless)
-	session.SetRecorderFlags(opts.FilterImportant, opts.NavOnly, opts.HoverRecord)
+	session.SetRecorderOptions(opts.FilterImportant, opts.NavOnly, opts.HoverRecord, opts.ScrollBeforeClick, opts.HoverRecordMinMs)
+	if opts.BrowseOnly {
+		session.InitBrowseMode()
+	} else {
+		session.InitRecordMode()
+	}
 	defer session.Clear()
 
+	var runErr error
 	for {
-		err := runLiveBrowserSession(ctx, pw, opts, session, &recorded, session.Headless())
-		if err == nil {
+		runErr = runLiveBrowserSession(ctx, pw, opts, session, &recorded, session.Headless())
+		if runErr == nil {
 			break
 		}
-		if errors.Is(err, ErrRelaunchHeadless) {
+		if errors.Is(runErr, ErrRelaunchHeadless) {
 			session.ClearRelaunch()
 			continue
 		}
-		return err
+		if errors.Is(runErr, context.Canceled) {
+			break
+		}
+		return runErr
+	}
+
+	if opts.BrowseOnly && !session.CaptureEverEnabled() {
+		return context.Canceled
+	}
+	return persistLiveRecording(opts, session, recorded, runErr)
+}
+
+func persistLiveRecording(opts LiveOptions, session *LiveSession, recorded []RecordedStep, runErr error) error {
+	if !session.CaptureEverEnabled() {
+		return context.Canceled
 	}
 
 	normalized := NormalizeSteps(recorded)
 	steps := RecordedStepsToLines(normalized)
-	if strings.TrimSpace(opts.AppendTo) != "" {
-		return AppendStepsToFeature(opts.AppendTo, steps)
+	if len(steps) == 0 {
+		if errors.Is(runErr, context.Canceled) {
+			return context.Canceled
+		}
+		return nil
 	}
-	return WriteFeature(opts.OutputPath, Options{
+	if strings.TrimSpace(opts.AppendTo) != "" {
+		if err := AppendStepsToFeature(opts.AppendTo, steps); err != nil {
+			return err
+		}
+	} else if err := WriteFeature(opts.OutputPath, Options{
 		FeatureName:  opts.FeatureName,
 		ScenarioName: opts.ScenarioName,
 		Steps:        steps,
-	})
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func decodeEvents(raw any) ([]recorderEvent, error) {
@@ -124,18 +165,17 @@ func normalizeDetail(detail map[string]string) map[string]string {
 }
 
 func applyRecorderConfig(page playwright.Page, opts LiveOptions, session *LiveSession) error {
-	filter, nav, hover := opts.FilterImportant, opts.NavOnly, opts.HoverRecord
-	if session != nil {
-		filter, nav, hover = session.RecorderFlags()
+	cfg := PageRecorderConfig{
+		FilterImportant:   opts.FilterImportant,
+		NavOnly:           opts.NavOnly,
+		HoverRecord:       opts.HoverRecord,
+		ScrollBeforeClick: opts.ScrollBeforeClick,
+		HoverRecordMinMs:  opts.HoverRecordMinMs,
 	}
-	script := fmt.Sprintf(`() => {
-		if (!window.__scenariaRecorder) return;
-		window.__scenariaRecorder.filterImportant = %v;
-		window.__scenariaRecorder.navOnly = %v;
-		window.__scenariaRecorder.hoverRecord = %v;
-	}`, filter, nav, hover)
-	_, err := page.Evaluate(script)
-	return err
+	if session != nil {
+		cfg = session.RecorderPageConfig()
+	}
+	return ApplyPageRecorderConfig(page, cfg)
 }
 
 // StepsFromFeature extracts plain step texts from a feature (for validation helpers).

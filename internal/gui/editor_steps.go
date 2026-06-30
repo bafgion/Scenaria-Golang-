@@ -13,6 +13,7 @@ type EditorStepRow struct {
 	Line    int    `json:"line"`
 	Keyword string `json:"keyword"`
 	Text    string `json:"text"`
+	Kind    string `json:"kind"`
 	Action  string `json:"action"`
 	Element string `json:"element"`
 	Value   string `json:"value"`
@@ -46,6 +47,7 @@ func ParseEditorSteps(text string) []EditorStepRow {
 			out = append(out, row)
 			continue
 		}
+		row.Kind = action.Kind
 		row.Action = actionDisplayName(action.Kind)
 		row.Element, row.Value = actionFields(action)
 		out = append(out, row)

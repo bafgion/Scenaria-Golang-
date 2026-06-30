@@ -15,6 +15,8 @@ func TestDryRunnerExecute(t *testing.T) {
 			{
 				FeaturePath: "a.feature",
 				Name:        "S1",
+				StartStep:   -1,
+				EndStep:     -1,
 				Steps: []gherkin.Step{
 					{Keyword: "Допустим", Text: "шаг"},
 					{Keyword: "Когда", Text: "делаю 1"},
@@ -36,6 +38,26 @@ func TestDryRunnerExecute(t *testing.T) {
 	}
 }
 
+func TestSummarizePlanPartialStepRange(t *testing.T) {
+	plan := ExecutionPlan{
+		Cases: []RunCase{{
+			FeaturePath: "a.feature",
+			Name:        "S1",
+			StartStep:   1,
+			EndStep:     -1,
+			Steps: []gherkin.Step{
+				{Line: 1, Text: "шаг 1"},
+				{Line: 2, Text: "шаг 2"},
+				{Line: 3, Text: "шаг 3"},
+			},
+		}},
+	}
+	_, _, steps, _ := SummarizePlan(plan)
+	if steps != 2 {
+		t.Fatalf("expected 2 steps in partial range, got %d", steps)
+	}
+}
+
 func TestBrowserRunnerNotImplemented(t *testing.T) {
 	runner := BrowserRunner{Executor: StubBrowserExecutor{}}
 	plan := ExecutionPlan{
@@ -43,6 +65,8 @@ func TestBrowserRunnerNotImplemented(t *testing.T) {
 			{
 				FeaturePath: "a.feature",
 				Name:        "S1",
+				StartStep:   -1,
+				EndStep:     -1,
 				Steps:       []gherkin.Step{{Keyword: "Когда", Text: "x"}},
 			},
 		},
@@ -59,8 +83,8 @@ func TestBrowserRunnerWithExecutor(t *testing.T) {
 	}
 	plan := ExecutionPlan{
 		Cases: []RunCase{
-			{FeaturePath: "a.feature", Name: "S1", Steps: []gherkin.Step{{Keyword: "Когда", Text: "x"}}},
-			{FeaturePath: "a.feature", Name: "S2", Steps: []gherkin.Step{{Keyword: "Тогда", Text: "y"}}},
+			{FeaturePath: "a.feature", Name: "S1", StartStep: -1, EndStep: -1, Steps: []gherkin.Step{{Keyword: "Когда", Text: "x"}}},
+			{FeaturePath: "a.feature", Name: "S2", StartStep: -1, EndStep: -1, Steps: []gherkin.Step{{Keyword: "Тогда", Text: "y"}}},
 		},
 	}
 

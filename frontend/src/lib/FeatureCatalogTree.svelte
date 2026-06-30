@@ -14,6 +14,7 @@
   export let onToggleBatch: (path: string) => void = () => {}
   export let onCollapseChange: (key: string, collapsed: boolean) => void = () => {}
   export let onFileContextMenu: (event: MouseEvent, path: string) => void = () => {}
+  export let onFolderContextMenu: (event: MouseEvent, node: CatalogNode) => void = () => {}
   export let onMoveFeature: (src: string, destDir: string) => void = () => {}
   export let onDropTarget: (path: string) => void = () => {}
 </script>
@@ -32,6 +33,7 @@
     {onToggleBatch}
     {onCollapseChange}
     {onFileContextMenu}
+    {onFolderContextMenu}
     {onMoveFeature}
     {onDropTarget}
   />

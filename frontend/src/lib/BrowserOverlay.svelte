@@ -54,6 +54,16 @@
     overlay.setPointerCapture(e.pointerId)
   }
 
+  function releaseDrag(e?: PointerEvent) {
+    dragging = false
+    if (!overlay) return
+    try {
+      if (e) overlay.releasePointerCapture(e.pointerId)
+    } catch {
+      /* ignore */
+    }
+  }
+
   function onPointerMove(e: PointerEvent) {
     if (!dragging) return
     pos = {
@@ -63,12 +73,15 @@
   }
 
   function onPointerUp(e: PointerEvent) {
+    releaseDrag(e)
+  }
+
+  function onPointerCancel(e: PointerEvent) {
+    releaseDrag(e)
+  }
+
+  function onLostPointerCapture() {
     dragging = false
-    try {
-      overlay.releasePointerCapture(e.pointerId)
-    } catch {
-      /* ignore */
-    }
   }
 </script>
 
@@ -80,6 +93,8 @@
     on:pointerdown={onPointerDown}
     on:pointermove={onPointerMove}
     on:pointerup={onPointerUp}
+    on:pointercancel={onPointerCancel}
+    on:lostpointercapture={onLostPointerCapture}
   >
     <p class="title" class:recording class:playing={playing && !recording}>{title}</p>
     <div class="actions">

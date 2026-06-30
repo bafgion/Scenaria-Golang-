@@ -197,6 +197,18 @@ func BrowserInstallStatus(engine string) (bool, string) {
 	return false, fmt.Sprintf("%s не установлен (каталоги: %s)", label, searched)
 }
 
+// EnsurePlaywrightEngine configures browser paths and installs the engine only when missing.
+// Already-installed browsers are not re-downloaded on every recorder/run session.
+func EnsurePlaywrightEngine(engine string) error {
+	engine = NormalizeBrowserEngine(engine)
+	ConfigurePlaywrightBrowsersForEngine(engine)
+	if installed, _ := BrowserInstallStatus(engine); installed {
+		return nil
+	}
+	_, err := InstallBrowserEngine(engine, nil)
+	return err
+}
+
 func InstallBrowserEngine(engine string, onLine func(string)) (string, error) {
 	engine = NormalizeBrowserEngine(engine)
 	label := BrowserEngineLabels[engine]

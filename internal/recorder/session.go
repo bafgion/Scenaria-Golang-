@@ -8,6 +8,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/selector"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -15,13 +18,18 @@ var ErrRelaunchHeadless = errors.New("recorder: relaunch browser for headless ch
 
 // LiveSession controls an in-progress live recording (pause/resume/focus/undo).
 type LiveSession struct {
-	paused   atomic.Bool
-	headless atomic.Bool
-	relaunch atomic.Bool
-	recMu    sync.RWMutex
+	paused          atomic.Bool
+	headless        atomic.Bool
+	relaunch        atomic.Bool
+	captureEnabled   atomic.Bool
+	captureEver      atomic.Bool
+	recorderInjected atomic.Bool
+	recMu            sync.RWMutex
 	filterImportant bool
 	navOnly         bool
 	hoverRecord     bool
+	scrollBeforeClick bool
+	hoverRecordMinMs  int
 	resumeURL       string
 	mu       sync.Mutex
 	page     playwright.Page
@@ -37,11 +45,34 @@ func (s *LiveSession) InitHeadless(headless bool) {
 }
 
 func (s *LiveSession) SetRecorderFlags(filterImportant, navOnly, hoverRecord bool) {
+	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0)
+}
+
+func (s *LiveSession) SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int) {
 	s.recMu.Lock()
 	s.filterImportant = filterImportant
 	s.navOnly = navOnly
 	s.hoverRecord = hoverRecord
+	s.scrollBeforeClick = scrollBeforeClick
+	s.hoverRecordMinMs = hoverRecordMinMs
 	s.recMu.Unlock()
+}
+
+func (s *LiveSession) RecorderPageConfig() PageRecorderConfig {
+	s.recMu.RLock()
+	defer s.recMu.RUnlock()
+	return PageRecorderConfig{
+		FilterImportant:   s.filterImportant,
+		NavOnly:           s.navOnly,
+		HoverRecord:       s.hoverRecord,
+		ScrollBeforeClick: s.scrollBeforeClick,
+		HoverRecordMinMs:  s.hoverRecordMinMs,
+	}
+}
+
+func (s *LiveSession) RecorderFlags() (filterImportant, navOnly, hoverRecord bool) {
+	cfg := s.RecorderPageConfig()
+	return cfg.FilterImportant, cfg.NavOnly, cfg.HoverRecord
 }
 
 func (s *LiveSession) SetResumeURL(url string) {
@@ -57,12 +88,6 @@ func (s *LiveSession) ResumeURL(fallback string) string {
 		return s.resumeURL
 	}
 	return fallback
-}
-
-func (s *LiveSession) RecorderFlags() (bool, bool, bool) {
-	s.recMu.RLock()
-	defer s.recMu.RUnlock()
-	return s.filterImportant, s.navOnly, s.hoverRecord
 }
 
 func (s *LiveSession) Headless() bool {
@@ -91,6 +116,85 @@ func (s *LiveSession) IsPaused() bool {
 	return s.paused.Load()
 }
 
+func (s *LiveSession) CaptureEnabled() bool {
+	return s.captureEnabled.Load()
+}
+
+func (s *LiveSession) CaptureEverEnabled() bool {
+	return s.captureEver.Load()
+}
+
+// InitBrowseMode opens the browser without capturing interactions until BeginCapture.
+func (s *LiveSession) InitBrowseMode() {
+	s.captureEnabled.Store(false)
+	s.captureEver.Store(false)
+	s.paused.Store(false)
+	s.recorderInjected.Store(false)
+}
+
+func (s *LiveSession) InitRecordMode() {
+	s.captureEnabled.Store(true)
+	s.captureEver.Store(true)
+	s.paused.Store(false)
+	s.recorderInjected.Store(false)
+}
+
+// BeginCapture enables step capture and injects the recorder script on first use.
+func (s *LiveSession) BeginCapture() error {
+	s.mu.Lock()
+	page := s.page
+	steps := s.steps
+	s.mu.Unlock()
+	if page != nil && !s.recorderInjected.Load() {
+		if err := page.Context().AddInitScript(playwright.Script{
+			Content: playwright.String(selector.RecorderListenersJS),
+		}); err != nil {
+			return fmt.Errorf("register recorder init script: %w", err)
+		}
+		if _, err := page.Evaluate(selector.HeuristicsJS); err != nil {
+			return fmt.Errorf("inject heuristics: %w", err)
+		}
+		if _, err := page.Evaluate(selector.RecorderListenersJS); err != nil {
+			return fmt.Errorf("inject recorder script: %w", err)
+		}
+		if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
+			_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+		}
+		if err := ApplyPageRecorderConfig(page, s.RecorderPageConfig()); err != nil {
+			return fmt.Errorf("configure recorder: %w", err)
+		}
+		s.recorderInjected.Store(true)
+	}
+	s.captureEver.Store(true)
+	s.captureEnabled.Store(true)
+	s.paused.Store(false)
+	if page != nil && steps != nil && len(*steps) == 0 {
+		if u := strings.TrimSpace(page.URL()); u != "" && u != "about:blank" {
+			*steps = append(*steps, RecordedStep{Action: "goto", Value: u})
+		}
+	}
+	return nil
+}
+
+func (s *LiveSession) RecordedStepCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.steps == nil {
+		return 0
+	}
+	return len(*s.steps)
+}
+
+func (s *LiveSession) BrowserAlive() bool {
+	s.mu.Lock()
+	page := s.page
+	s.mu.Unlock()
+	if page == nil {
+		return false
+	}
+	return !page.IsClosed()
+}
+
 func (s *LiveSession) Bind(page playwright.Page, steps *[]RecordedStep) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -103,6 +207,7 @@ func (s *LiveSession) Clear() {
 	defer s.mu.Unlock()
 	s.page = nil
 	s.steps = nil
+	s.recorderInjected.Store(false)
 }
 
 func (s *LiveSession) FocusBrowser() error {
@@ -116,21 +221,15 @@ func (s *LiveSession) FocusBrowser() error {
 }
 
 func (s *LiveSession) ApplyRecorderConfig(filterImportant, navOnly, hoverRecord bool) error {
-	s.SetRecorderFlags(filterImportant, navOnly, hoverRecord)
+	return s.ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0)
+}
+
+func (s *LiveSession) ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int) error {
+	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick, hoverRecordMinMs)
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
-	if page == nil {
-		return nil
-	}
-	script := fmt.Sprintf(`() => {
-		if (!window.__scenariaRecorder) return;
-		window.__scenariaRecorder.filterImportant = %v;
-		window.__scenariaRecorder.navOnly = %v;
-		window.__scenariaRecorder.hoverRecord = %v;
-	}`, filterImportant, navOnly, hoverRecord)
-	_, err := page.Evaluate(script)
-	return err
+	return ApplyPageRecorderConfig(page, s.RecorderPageConfig())
 }
 
 func (s *LiveSession) UndoLastStep() bool {
@@ -149,6 +248,16 @@ func (s *LiveSession) UndoLastStep() bool {
 	return true
 }
 
+func (s *LiveSession) ExportTestClient(name string) (*settings.TestClient, error) {
+	s.mu.Lock()
+	page := s.page
+	s.mu.Unlock()
+	if page == nil {
+		return nil, fmt.Errorf("браузер не открыт")
+	}
+	return player.CaptureTestClientFromPage(page, name)
+}
+
 func (s *LiveSession) PickSelector(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	page := s.page
@@ -156,7 +265,7 @@ func (s *LiveSession) PickSelector(ctx context.Context) (string, error) {
 	if page == nil {
 		return "", fmt.Errorf("браузер не открыт")
 	}
-	if !s.IsPaused() {
+	if s.CaptureEnabled() && !s.IsPaused() {
 		return "", fmt.Errorf("поставьте запись на паузу")
 	}
 	return PickSelectorOnPage(ctx, page)

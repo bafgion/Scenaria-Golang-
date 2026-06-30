@@ -4,6 +4,7 @@ export namespace gui {
 	    browser: string;
 	    headless: boolean;
 	    parallelWorkers: number;
+	    slowMo: number;
 	    maxLoopIterations: number;
 	    filterRecording: boolean;
 	    navOnlyRecording: boolean;
@@ -14,7 +15,15 @@ export namespace gui {
 	    sidebarWidth: number;
 	    recentProjects: string[];
 	    recentFeatures: string[];
+	    sessionProject: string;
+	    openTabs: string[];
+	    activeTab: string;
+	    scrollBeforeClick: boolean;
+	    hoverRecordMinMs: number;
+	    selectorClickStrategies: string[];
+	    selectorInputStrategies: string[];
 	    checkUpdatesOnStartup: boolean;
+	    editor: settings.EditorSettings;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettingsDTO(source);
@@ -25,6 +34,7 @@ export namespace gui {
 	        this.browser = source["browser"];
 	        this.headless = source["headless"];
 	        this.parallelWorkers = source["parallelWorkers"];
+	        this.slowMo = source["slowMo"];
 	        this.maxLoopIterations = source["maxLoopIterations"];
 	        this.filterRecording = source["filterRecording"];
 	        this.navOnlyRecording = source["navOnlyRecording"];
@@ -35,8 +45,34 @@ export namespace gui {
 	        this.sidebarWidth = source["sidebarWidth"];
 	        this.recentProjects = source["recentProjects"];
 	        this.recentFeatures = source["recentFeatures"];
+	        this.sessionProject = source["sessionProject"];
+	        this.openTabs = source["openTabs"];
+	        this.activeTab = source["activeTab"];
+	        this.scrollBeforeClick = source["scrollBeforeClick"];
+	        this.hoverRecordMinMs = source["hoverRecordMinMs"];
+	        this.selectorClickStrategies = source["selectorClickStrategies"];
+	        this.selectorInputStrategies = source["selectorInputStrategies"];
 	        this.checkUpdatesOnStartup = source["checkUpdatesOnStartup"];
+	        this.editor = this.convertValues(source["editor"], settings.EditorSettings);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class BaselineRecordRequest {
 	    output: string;
@@ -74,10 +110,29 @@ export namespace gui {
 	        this.detail = source["detail"];
 	    }
 	}
+	export class BrowserSessionDTO {
+	    browserOpen: boolean;
+	    recording: boolean;
+	    paused: boolean;
+	    stepCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BrowserSessionDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.browserOpen = source["browserOpen"];
+	        this.recording = source["recording"];
+	        this.paused = source["paused"];
+	        this.stepCount = source["stepCount"];
+	    }
+	}
 	export class EditorStepRow {
 	    line: number;
 	    keyword: string;
 	    text: string;
+	    kind: string;
 	    action: string;
 	    element: string;
 	    value: string;
@@ -92,6 +147,7 @@ export namespace gui {
 	        this.line = source["line"];
 	        this.keyword = source["keyword"];
 	        this.text = source["text"];
+	        this.kind = source["kind"];
 	        this.action = source["action"];
 	        this.element = source["element"];
 	        this.value = source["value"];
@@ -123,6 +179,9 @@ export namespace gui {
 	export class ValidationIssue {
 	    line: number;
 	    message: string;
+	    selector?: string;
+	    status?: string;
+	    stepText?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ValidationIssue(source);
@@ -132,6 +191,9 @@ export namespace gui {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.line = source["line"];
 	        this.message = source["message"];
+	        this.selector = source["selector"];
+	        this.status = source["status"];
+	        this.stepText = source["stepText"];
 	    }
 	}
 	export class ExportPreview {
@@ -248,6 +310,38 @@ export namespace gui {
 	        this.jsonPath = source["jsonPath"];
 	        this.outputPath = source["outputPath"];
 	        this.force = source["force"];
+	    }
+	}
+	export class OpenBrowserRequest {
+	    url: string;
+	    headless: boolean;
+	    testClient: string;
+	    output: string;
+	    idleSeconds: number;
+	    filterRecording: boolean;
+	    navOnlyRecording: boolean;
+	    hoverRecord: boolean;
+	    appendTo: string;
+	    featureName: string;
+	    scenarioName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpenBrowserRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.headless = source["headless"];
+	        this.testClient = source["testClient"];
+	        this.output = source["output"];
+	        this.idleSeconds = source["idleSeconds"];
+	        this.filterRecording = source["filterRecording"];
+	        this.navOnlyRecording = source["navOnlyRecording"];
+	        this.hoverRecord = source["hoverRecord"];
+	        this.appendTo = source["appendTo"];
+	        this.featureName = source["featureName"];
+	        this.scenarioName = source["scenarioName"];
 	    }
 	}
 	export class PickSelectorResult {
@@ -446,6 +540,7 @@ export namespace gui {
 	    testClient: string;
 	    featureName: string;
 	    scenarioName: string;
+	    browseOnly: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RecordRequest(source);
@@ -464,6 +559,7 @@ export namespace gui {
 	        this.testClient = source["testClient"];
 	        this.featureName = source["featureName"];
 	        this.scenarioName = source["scenarioName"];
+	        this.browseOnly = source["browseOnly"];
 	    }
 	}
 	export class RefactorResult {
@@ -478,6 +574,24 @@ export namespace gui {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.text = source["text"];
 	        this.count = source["count"];
+	    }
+	}
+	export class RunFromLineDTO {
+	    scenario: string;
+	    startStep: number;
+	    endStep: number;
+	    partial: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunFromLineDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scenario = source["scenario"];
+	        this.startStep = source["startStep"];
+	        this.endStep = source["endStep"];
+	        this.partial = source["partial"];
 	    }
 	}
 	export class RunRequest {
@@ -500,6 +614,8 @@ export namespace gui {
 	    workers: number;
 	    slowMo: number;
 	    baseUrl: string;
+	    startStep: number;
+	    endStep: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -526,6 +642,8 @@ export namespace gui {
 	        this.workers = source["workers"];
 	        this.slowMo = source["slowMo"];
 	        this.baseUrl = source["baseUrl"];
+	        this.startStep = source["startStep"];
+	        this.endStep = source["endStep"];
 	    }
 	}
 	export class RunResult {
@@ -655,6 +773,30 @@ export namespace gui {
 		    return a;
 		}
 	}
+	export class UpdateInfoDTO {
+	    currentVersion: string;
+	    latestVersion: string;
+	    updateAvailable: boolean;
+	    htmlUrl: string;
+	    downloadUrl: string;
+	    downloadName: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfoDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.updateAvailable = source["updateAvailable"];
+	        this.htmlUrl = source["htmlUrl"];
+	        this.downloadUrl = source["downloadUrl"];
+	        this.downloadName = source["downloadName"];
+	        this.message = source["message"];
+	    }
+	}
 	export class ValidateRequest {
 	    browser: string;
 	    skipBrowser: boolean;
@@ -689,6 +831,44 @@ export namespace gui {
 	        this.success = source["success"];
 	        this.message = source["message"];
 	    }
+	}
+	export class VanessaRunResultDTO {
+	    output: string;
+	    error: string;
+	    success: boolean;
+	    runDir: string;
+	    cases: VanessaCaseDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new VanessaRunResultDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.output = source["output"];
+	        this.error = source["error"];
+	        this.success = source["success"];
+	        this.runDir = source["runDir"];
+	        this.cases = this.convertValues(source["cases"], VanessaCaseDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class VanessaRunSnapshotDTO {
 	    runDir: string;
@@ -727,6 +907,71 @@ export namespace gui {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace settings {
+	
+	export class EditorSettings {
+	    fontSize?: number;
+	    fontFamily?: string;
+	    wordWrap?: string;
+	    minimap?: boolean;
+	    lineNumbers?: string;
+	    tabSize?: number;
+	    insertSpaces?: boolean;
+	    renderWhitespace?: string;
+	    folding?: boolean;
+	    stickyScroll?: boolean;
+	    autoClosingQuotes?: string;
+	    formatOnSave?: boolean;
+	    stepHoverEnabled?: boolean;
+	    validateOnType?: boolean;
+	    theme?: string;
+	    breadcrumbsEnabled?: boolean;
+	    symbolOutlineEnabled?: boolean;
+	    stepsPanelView?: string;
+	    codeLensEnabled?: boolean;
+	    inlayHintsEnabled?: boolean;
+	    scenarioHintsEnabled?: boolean;
+	    scenarioHintsAfterRecord?: boolean;
+	    scenarioHintsShowWarnings?: boolean;
+	    scenarioHintsShowInfo?: boolean;
+	    scenarioHintsAutoFixOnSave?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fontSize = source["fontSize"];
+	        this.fontFamily = source["fontFamily"];
+	        this.wordWrap = source["wordWrap"];
+	        this.minimap = source["minimap"];
+	        this.lineNumbers = source["lineNumbers"];
+	        this.tabSize = source["tabSize"];
+	        this.insertSpaces = source["insertSpaces"];
+	        this.renderWhitespace = source["renderWhitespace"];
+	        this.folding = source["folding"];
+	        this.stickyScroll = source["stickyScroll"];
+	        this.autoClosingQuotes = source["autoClosingQuotes"];
+	        this.formatOnSave = source["formatOnSave"];
+	        this.stepHoverEnabled = source["stepHoverEnabled"];
+	        this.validateOnType = source["validateOnType"];
+	        this.theme = source["theme"];
+	        this.breadcrumbsEnabled = source["breadcrumbsEnabled"];
+	        this.symbolOutlineEnabled = source["symbolOutlineEnabled"];
+	        this.stepsPanelView = source["stepsPanelView"];
+	        this.codeLensEnabled = source["codeLensEnabled"];
+	        this.inlayHintsEnabled = source["inlayHintsEnabled"];
+	        this.scenarioHintsEnabled = source["scenarioHintsEnabled"];
+	        this.scenarioHintsAfterRecord = source["scenarioHintsAfterRecord"];
+	        this.scenarioHintsShowWarnings = source["scenarioHintsShowWarnings"];
+	        this.scenarioHintsShowInfo = source["scenarioHintsShowInfo"];
+	        this.scenarioHintsAutoFixOnSave = source["scenarioHintsAutoFixOnSave"];
+	    }
 	}
 
 }

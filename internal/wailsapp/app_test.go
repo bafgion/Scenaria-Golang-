@@ -38,6 +38,23 @@ func TestSearchStepsRejectsNonStringQuery(t *testing.T) {
 	}
 }
 
+func TestFormatFeatureBinding(t *testing.T) {
+	app := NewApp()
+	text := "  Когда нажимаю \"a\"\n\n  Тогда вижу \"b\"\n"
+	got := app.FormatFeature(text)
+	if got != "\tКогда нажимаю \"a\"\n\tТогда вижу \"b\"\n" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestDescribeEditorLineBinding(t *testing.T) {
+	app := NewApp()
+	entry := app.DescribeEditorLine(`	Когда нажимаю "#login"`)
+	if entry.Label != "нажимаю" {
+		t.Fatalf("got %+v", entry)
+	}
+}
+
 func TestRefactorReplaceDelegates(t *testing.T) {
 	app := NewApp()
 	got := app.svc.RefactorReplaceInText("hello", "hello", "bye", false)

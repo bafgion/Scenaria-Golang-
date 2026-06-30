@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,22 @@ type RecordRequest struct {
 	HoverRecord      bool   `json:"hoverRecord"`
 	AppendTo         string `json:"appendTo"`
 	TestClient       string `json:"testClient"`
+	FeatureName      string `json:"featureName"`
+	ScenarioName     string `json:"scenarioName"`
+	BrowseOnly       bool   `json:"browseOnly"`
+}
+
+// OpenBrowserRequest opens a Playwright browser without recording until capture is started explicitly.
+type OpenBrowserRequest struct {
+	URL              string `json:"url"`
+	Headless         bool   `json:"headless"`
+	TestClient       string `json:"testClient"`
+	Output           string `json:"output"`
+	IdleSeconds      int    `json:"idleSeconds"`
+	FilterRecording  bool   `json:"filterRecording"`
+	NavOnlyRecording bool   `json:"navOnlyRecording"`
+	HoverRecord      bool   `json:"hoverRecord"`
+	AppendTo         string `json:"appendTo"`
 	FeatureName      string `json:"featureName"`
 	ScenarioName     string `json:"scenarioName"`
 }
@@ -84,14 +101,30 @@ func (s *Service) ImportJSON(req ImportRequest) RunResult {
 	return RunResult{Output: out}
 }
 
-func (s *Service) RecordLive(req RecordRequest) RunResult {
+func (s *Service) OpenBrowser(req OpenBrowserRequest, emit func(string, any)) RunResult {
+	return s.RecordLive(RecordRequest{
+		URL:              req.URL,
+		Output:           req.Output,
+		IdleSeconds:      req.IdleSeconds,
+		Headless:         req.Headless,
+		FilterRecording:  req.FilterRecording,
+		NavOnlyRecording: req.NavOnlyRecording,
+		HoverRecord:      req.HoverRecord,
+		AppendTo:         req.AppendTo,
+		TestClient:       req.TestClient,
+		FeatureName:      req.FeatureName,
+		ScenarioName:     req.ScenarioName,
+		BrowseOnly:       true,
+	}, emit)
+}
+
+func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResult {
 	path := s.ProjectPath()
 	if path == "" {
 		return RunResult{Error: "open a project folder first"}
 	}
-	url := strings.TrimSpace(req.URL)
-	if url == "" {
-		return RunResult{Error: "start URL is required"}
+		if strings.TrimSpace(req.URL) != "" && !strings.HasPrefix(strings.TrimSpace(req.URL), "http") {
+		return RunResult{Error: "укажите корректный URL (https://…) или оставьте поле пустым"}
 	}
 	output := strings.TrimSpace(req.Output)
 	if output == "" {
@@ -108,9 +141,12 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 	if err != nil {
 		return RunResult{Error: err.Error()}
 	}
-	cleanURL := httpauth.ApplyURLCredentials(url, appCfg)
-	if err := s.saveAppSettings(appCfg); err != nil {
-		return RunResult{Error: err.Error()}
+	cleanURL := strings.TrimSpace(req.URL)
+	if cleanURL != "" {
+		cleanURL = httpauth.ApplyURLCredentials(cleanURL, appCfg)
+		if err := s.saveAppSettings(appCfg); err != nil {
+			return RunResult{Error: err.Error()}
+		}
 	}
 	httpCreds := httpauth.PlaywrightHTTPCredentials(cleanURL, appCfg)
 
@@ -120,9 +156,20 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 	}
 	session := recorder.NewLiveSession()
 	s.liveSession = session
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(idle+30)*time.Second)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if req.BrowseOnly {
+		ctx, cancel = context.WithCancel(context.Background())
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(idle+30)*time.Second)
+	}
 	s.recordCancel = cancel
 	s.mu.Unlock()
+
+	idleTimeout := time.Duration(idle) * time.Second
+	if req.BrowseOnly {
+		idleTimeout = 0
+	}
 
 	var testClient *settings.TestClient
 	if name := strings.TrimSpace(req.TestClient); name != "" {
@@ -143,19 +190,39 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 	}
 
 	err = recorder.RecordLive(ctx, recorder.LiveOptions{
-		StartURL:        cleanURL,
-		FeatureName:     featureName,
-		ScenarioName:    scenarioName,
-		OutputPath:      output,
-		Headless:        req.Headless,
-		IdleTimeout:     time.Duration(idle) * time.Second,
-		Session:         session,
-		AppendTo:        strings.TrimSpace(req.AppendTo),
-		FilterImportant: req.FilterRecording,
-		NavOnly:         req.NavOnlyRecording,
-		HoverRecord:     req.HoverRecord,
-		TestClient:      testClient,
+		StartURL:          cleanURL,
+		FeatureName:       featureName,
+		ScenarioName:      scenarioName,
+		OutputPath:        output,
+		Headless:          req.Headless,
+		IdleTimeout:       idleTimeout,
+		Session:           session,
+		AppendTo:          strings.TrimSpace(req.AppendTo),
+		FilterImportant:   req.FilterRecording,
+		NavOnly:           req.NavOnlyRecording,
+		HoverRecord:       req.HoverRecord,
+		ScrollBeforeClick: appCfg.ScrollBeforeClick,
+		HoverRecordMinMs:  appCfg.HoverRecordMinMs,
+		TestClient:        testClient,
 		HTTPCredentials: httpCreds,
+		BrowseOnly:      req.BrowseOnly,
+		Callbacks: recorder.LiveCallbacks{
+			OnCaptureStart: func() {
+				if emit != nil {
+					emit("record-started", output)
+				}
+			},
+			OnPickerRequest: func() {
+				if emit != nil {
+					emit("toolbar-picker", nil)
+				}
+			},
+			OnBrowserLost: func() {
+				if emit != nil {
+					emit("browser-lost", nil)
+				}
+			},
+		},
 	})
 
 	s.mu.Lock()
@@ -164,9 +231,25 @@ func (s *Service) RecordLive(req RecordRequest) RunResult {
 	s.mu.Unlock()
 
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return RunResult{Output: "Браузер закрыт."}
+		}
 		return RunResult{Error: fmt.Errorf("record: %w", err).Error()}
 	}
 	return RunResult{Output: fmt.Sprintf("Запись сохранена: %s\n", output)}
+}
+
+func (s *Service) BeginRecordingCapture() error {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session == nil {
+		return fmt.Errorf("браузер не открыт")
+	}
+	if session.CaptureEnabled() {
+		return nil
+	}
+	return session.BeginCapture()
 }
 
 func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
@@ -204,6 +287,28 @@ func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
 		return RunResult{Output: out, Error: err.Error()}
 	}
 	return RunResult{Output: out}
+}
+
+type BrowserSessionDTO struct {
+	BrowserOpen bool `json:"browserOpen"`
+	Recording   bool `json:"recording"`
+	Paused      bool `json:"paused"`
+	StepCount   int  `json:"stepCount"`
+}
+
+func (s *Service) PollBrowserSession() BrowserSessionDTO {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session == nil || !session.BrowserAlive() {
+		return BrowserSessionDTO{}
+	}
+	return BrowserSessionDTO{
+		BrowserOpen: true,
+		Recording:   session.CaptureEnabled(),
+		Paused:      session.IsPaused(),
+		StepCount:   session.RecordedStepCount(),
+	}
 }
 
 func (s *Service) PauseRecording() {
@@ -259,14 +364,14 @@ func (s *Service) FocusBrowser() error {
 	return session.FocusBrowser()
 }
 
-func (s *Service) UpdateRecordingOptions(filter, navOnly, hover, headless bool) error {
+func (s *Service) UpdateRecordingOptions(filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int) error {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
 	if session == nil {
 		return fmt.Errorf("запись не активна")
 	}
-	_ = session.ApplyRecorderConfig(filter, navOnly, hover)
+	_ = session.ApplyRecorderOptions(filter, navOnly, hover, scrollBefore, hoverMinMs)
 	session.RequestHeadless(headless)
 	return nil
 }

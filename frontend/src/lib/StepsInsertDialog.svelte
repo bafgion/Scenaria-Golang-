@@ -2,14 +2,13 @@
   import { onMount } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
-
-  export type StepEntry = { category: string; template: string; help: string }
+  import type { StepCatalogEntry } from './stepTypes'
 
   export let onInsert: (template: string) => void = () => {}
   export let onClose: () => void = () => {}
 
   let query = ''
-  let entries: StepEntry[] = []
+  let entries: StepCatalogEntry[] = []
   let loading = true
 
   onMount(async () => {

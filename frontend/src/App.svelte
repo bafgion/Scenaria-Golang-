@@ -5,10 +5,10 @@
   import CatalogEmptyState from './lib/CatalogEmptyState.svelte'
   import FeatureCatalogTree from './lib/FeatureCatalogTree.svelte'
   import EditorTabBar from './lib/EditorTabBar.svelte'
-  import { buildCatalogViewState } from './lib/catalogTree'
+  import { buildCatalogViewState, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
   import SettingsDialog from './lib/SettingsDialog.svelte'
-  import CommandPalette, { type PaletteCommand } from './lib/CommandPalette.svelte'
-  import FindReplaceDialog from './lib/FindReplaceDialog.svelte'
+  import CommandPalette from './lib/CommandPalette.svelte'
+  import type { PaletteCommand } from './lib/paletteTypes'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
   import PluginsDialog from './lib/PluginsDialog.svelte'
@@ -27,6 +27,8 @@
   import RefactorUrlDialog from './lib/RefactorUrlDialog.svelte'
   import ConfirmDialog from './lib/ConfirmDialog.svelte'
   import CatalogContextMenu from './lib/CatalogContextMenu.svelte'
+  import FolderContextMenu from './lib/FolderContextMenu.svelte'
+  import StepsContextMenu from './lib/StepsContextMenu.svelte'
   import OpenProjectDialog from './lib/OpenProjectDialog.svelte'
   import MoveFeatureDialog from './lib/MoveFeatureDialog.svelte'
   import ValidateDialog from './lib/ValidateDialog.svelte'
@@ -52,11 +54,23 @@
   import ResultsPanel from './lib/ResultsPanel.svelte'
   import ValidatePanel from './lib/ValidatePanel.svelte'
   import FeaturePreview from './lib/FeaturePreview.svelte'
+  import FeatureOutline from './lib/FeatureOutline.svelte'
   import SnippetPalette from './lib/SnippetPalette.svelte'
   import BrowserOverlay from './lib/BrowserOverlay.svelte'
   import SplashScreen from './lib/SplashScreen.svelte'
+  import { beginSplashWindow, openMainWindow, setSplashDocumentState } from './lib/splashWindow'
   import { preloadMonacoEditor } from './lib/appBootstrap'
-  import { loadRecents, rememberProject, rememberFeature } from './lib/recents'
+  import { setStepHoverEnabled } from './lib/gherkinStepHover'
+  import { filterScenarioHints, applyAutoFixableScenarioHints } from './lib/scenarioHints'
+  import {
+    DEFAULT_EDITOR_SETTINGS,
+    editorSettingsFromDTO,
+    editorSettingsToDTO,
+    type EditorSettings,
+  } from './lib/editorOptions'
+  import { resolveRecordStartURL } from './lib/recordStartUrl'
+  import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
+  import { callWailsWithTimeout } from './lib/wailsTimeout'
   import { icons, toolbarIcons } from './lib/icons'
   import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
   import {
@@ -75,11 +89,14 @@
     PickOpenFile,
     RunPlugin,
     StartRecord,
+    OpenBrowser,
+    BeginRecordingCapture,
     RecordBaseline,
     PauseRecording,
     ResumeRecording,
     CancelRecording,
     FocusBrowser,
+    PollBrowserSession,
     UndoRecordedStep,
     UpdateRecordingOptions,
     PickSelector,
@@ -88,7 +105,10 @@
     SaveSettings,
     SubmitOTPCode,
     CancelOTP,
-    CheckUpdate,
+    CheckUpdateInfo,
+    DownloadUpdate,
+    OpenExternalURL,
+    ValidateBrowser,
     ListRunResults,
     BundledExamplesPath,
     ProjectArtifacts,
@@ -100,10 +120,16 @@
     RefactorUpdateStartURLs,
     RefactorNormalizeIndents,
     RefactorCollapseBlankLines,
+    FormatFeature,
     RefactorReplaceInText,
     ReplaceInProject,
     AnalyzeScenarioHints,
     ApplyScenarioHintFix,
+    ResolveRunFromLine,
+    ResolveRunToLine,
+    SaveFeatureDraft,
+    LoadFeatureDraft,
+    ClearFeatureDraft,
     DeleteFeature,
     DuplicateFeature,
     MoveFeature,
@@ -119,7 +145,7 @@
 
   const WELCOME_KEY = '__welcome__'
 
-  type EditorTab = { path: string; content: string; dirty: boolean }
+  type EditorTab = { path: string; content: string; dirty: boolean; draft?: string }
   type EditorStepRow = gui.EditorStepRow
 
   let version = ''
@@ -138,12 +164,12 @@
   let testClients: string[] = []
   let monaco: MonacoEditor | undefined
 
-  let showSplash = true
   let appReady = false
   let splashMessage = 'Запуск…'
   let splashProgress = 0
   let splashFading = false
   let showSettings = false
+  let settingsDialogBaseline: gui.AppSettingsDTO | null = null
   let showCommandPalette = false
   let showSnippetPalette = false
   let showRecord = false
@@ -180,6 +206,8 @@
   let showUpdateCheck = false
   let updateCheckMessage = ''
   let updateCheckHasUpdate = false
+  let updateCheckInfo: gui.UpdateInfoDTO | null = null
+  let updateDownloading = false
   let showInitProject = false
   let renameFeaturePath = ''
   let exportInputPath = ''
@@ -190,7 +218,6 @@
   let showAbout = false
   let showPlugins = false
   let installedPlugins: gui.PluginEntryDTO[] = []
-  let showFindReplace = false
   let showProjectReplace = false
   let showHotkeys = false
   let showRunHistory = false
@@ -217,6 +244,7 @@
   let vanessaWatchDir = ''
   let vanessaPlannedTotal = 1
   let vanessaPollTimer: ReturnType<typeof setInterval> | null = null
+  let browserWatchTimer: ReturnType<typeof setInterval> | null = null
   let confirmDialog: {
     title: string
     message: string
@@ -262,14 +290,20 @@
   let editorScenarioHints: gui.ScenarioHintDTO[] = []
   let editorHintsDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
+  let folderMenu: { x: number; y: number; dir: string; paths: string[] } | null = null
   let runDialogTitle = 'Запуск сценария'
   let runDialogScenarios: string[] = []
   let vanessaDialogScenarios: string[] = []
   let pluginRunScenarios: string[] = []
 
   let recording = false
+  let browserOpen = false
   let recordPaused = false
   let playing = false
+  let playingLabel = ''
+  let stepsMenu: { x: number; y: number; line: number; step: gui.EditorStepRow } | null = null
+  let sessionPersistTimer: ReturnType<typeof setTimeout> | null = null
+  let draftAutosaveTimer: ReturnType<typeof setInterval> | null = null
 
   let sidebarVisible = true
   let sidebarWidth = 260
@@ -302,11 +336,19 @@
   let settingsBrowser = 'chromium'
   let settingsHeadless = false
   let settingsWorkers = 1
+  let settingsSlowMo = 0
+  let settingsScrollBeforeClick = false
+  let settingsHoverRecordMinMs = 600
   let settingsLoops = 100
   let settingsCheckUpdatesOnStartup = true
+  let settingsSelectorClickStrategies: string[] = ['testid', 'id', 'aria', 'contextual', 'text']
+  let settingsSelectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
+  let editorCursorLine = 1
+  let stepsPanelTab: 'outline' | 'steps' = DEFAULT_EDITOR_SETTINGS.stepsPanelView
 
-  let recordURL = 'https://site.com'
-  let startURL = 'https://site.com'
+  let recordURL = ''
+  let startURL = ''
   let recordOutput = 'recorded.feature'
   let recordIdle = 30
   let recordAppendTo = ''
@@ -319,6 +361,7 @@
   let otpEmail = ''
 
   let testClientSelection = ''
+  let testClientSuggestName = ''
 
   let recentProjects: string[] = []
   let recentFeatures: string[] = []
@@ -326,6 +369,7 @@
   let lastErrorEntry: gui.RunResultEntry | null = null
   let editorSteps: EditorStepRow[] = []
   let editorValidationIssues: gui.ValidationIssue[] = []
+  let validatePanelIssues: gui.ValidationIssue[] = []
   let projectArtifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
 
   const unsubscribers: (() => void)[] = []
@@ -333,17 +377,21 @@
   $: isWelcome = activeTab === WELCOME_KEY
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
   $: activeTabUnsaved = activeFeatureTab ? tabIsUnsaved(activeFeatureTab) : false
+  $: if (editorSettings.stepsPanelView) {
+    stepsPanelTab = editorSettings.stepsPanelView
+  }
   $: stepCount = editorSteps.length
   $: batchCount = batchSelected.length
-  $: showRecordingBar = recording || showRecord || playing
-  $: showBrowserOverlay = recording || playing
+  $: showRecordingBar = recording && !showRecord
+  $: showPlayingBar = playing
+  $: showBrowserOverlay = false
   $: paletteCommands = buildPaletteCommands()
 
   let resizingBottom = false
   let resizingSteps = false
   let resizingSidebar = false
   let resizingPreview = false
-  let actionBarEl: HTMLDivElement | undefined
+  let actionBarEl: HTMLElement | undefined
   let toolbarIconOnly = true
 
   $: activeFeaturePath = activeTab !== WELCOME_KEY ? activeTab : ''
@@ -382,7 +430,7 @@
   )
 
   $: welcomeProjectOpen = !!projectPath
-  $: welcomeRecorded = recording || editorSteps.length > 0 || tabs.length > 0
+  $: welcomeRecorded = recording || browserOpen || editorSteps.length > 0 || tabs.length > 0
   let welcomePlayedSuccess = false
 
   const MIN_SPLASH_MS = 1400
@@ -401,18 +449,33 @@
     const remaining = MIN_SPLASH_MS - (Date.now() - startedAt)
     if (remaining > 0) await sleep(remaining)
 
-    // Mount IDE behind splash so the first paint happens before fade (no flash).
-    appReady = true
-    await tick()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-
     splashFading = true
     await sleep(SPLASH_FADE_MS)
-    showSplash = false
+    setSplashDocumentState(false)
+    await openMainWindow()
+    appReady = true
   }
 
   onMount(async () => {
     const startedAt = Date.now()
+    let splashFinished = false
+    const finishStartup = async () => {
+      if (splashFinished) return
+      splashFinished = true
+      setSplashStage('Готово', 100)
+      await dismissSplash(startedAt)
+      applyDevUiMock()
+      syncIdleStatus()
+      void checkUpdatesOnStartup()
+    }
+    const startupGuard = window.setTimeout(() => {
+      console.error('Startup guard: forcing splash dismiss')
+      void finishStartup()
+    }, 12_000)
+
+    try {
+    setSplashDocumentState(true)
+    await beginSplashWindow()
 
     setSplashStage('Настройка окружения…', 8)
 
@@ -425,6 +488,7 @@
     previewWidth = layout.previewWidth || 360
 
     setSplashStage('Загрузка редактора…', 28)
+    setStepHoverEnabled(() => editorSettings.stepHover)
     try {
       await preloadMonacoEditor()
     } catch (err) {
@@ -441,21 +505,24 @@
 
     setSplashStage('Загрузка настроек…', 68)
 
-    const recents = await loadRecents()
+    const [recents, settings] = await Promise.all([
+      loadRecents(),
+      callWailsWithTimeout('LoadSettings', LoadSettings(), 4000),
+    ])
     recentProjects = recents.projects
     recentFeatures = recents.features
-
-    try {
-      const s = await LoadSettings()
-      applySettingsFromDTO(s)
-      stepsPanelCollapsed = !s.stepsPanelVisible
-      stepsPanelHeight = s.stepsPanelHeight || 160
-      if (s.sidebarWidth >= 120) sidebarWidth = s.sidebarWidth
-      if (s.recentProjects?.length) recentProjects = s.recentProjects
-      if (s.recentFeatures?.length) recentFeatures = s.recentFeatures
-    } catch {
-      /* dev without wails */
+    if (settings) {
+      applySettingsFromDTO(settings)
+      setStepHoverEnabled(() => editorSettings.stepHover)
+      stepsPanelCollapsed = resolveStepsPanelCollapsed()
+      stepsPanelHeight = settings.stepsPanelHeight || 160
+      if (settings.sidebarWidth >= 120) sidebarWidth = settings.sidebarWidth
+      if (settings.recentProjects?.length) recentProjects = settings.recentProjects
+      if (settings.recentFeatures?.length) recentFeatures = settings.recentFeatures
+      await restoreWorkspaceSession(settings)
     }
+
+    draftAutosaveTimer = setInterval(() => void autosaveDirtyDrafts(), 30_000)
 
     setSplashStage('Инициализация…', 88)
 
@@ -480,30 +547,45 @@
         }),
       )
       unsubscribers.push(
+        EventsOn('browser-opened', () => {
+          applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
+          showRecord = false
+          setStatus('Браузер открыт', 'busy')
+          appendLog('Браузер открыт. Запись шагов — только по кнопке «Запись» (в браузере или Ctrl+R).')
+          startBrowserWatch()
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('browser-closed', (result: gui.RunResult) => {
+          stopBrowserWatch()
+          handleRecordSessionEnd(result, 'browse')
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('browser-lost', () => {
+          if (browserOpen || recording) {
+            handleBrowserLost()
+          }
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('toolbar-picker', () => {
+          void pickElement()
+        }),
+      )
+      unsubscribers.push(
         EventsOn('record-started', () => {
-          recording = true
-          recordPaused = false
+          applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
+          showRecord = false
           setStatus('● Идёт запись', 'busy')
           appendLog('Запись начата…')
-          bottomPanelOpen = true
-          bottomTab = 'journal'
+          startBrowserWatch()
         }),
       )
       unsubscribers.push(
         EventsOn('record-finished', async (result: gui.RunResult) => {
-          recording = false
-          recordPaused = false
-          showRecord = false
-          const reloadPath = lastRecordTarget
-          lastRecordTarget = ''
-          if (result.output) appendLog(result.output)
-          if (result.error) appendLog(`Ошибка записи: ${result.error}`)
-          else if (reloadPath) await showPostRecordBanner(reloadPath)
-          syncIdleStatus()
-          await refreshProject()
-          if (!result.error && reloadPath) {
-            await loadFeature(reloadPath)
-          }
+          stopBrowserWatch()
+          handleRecordSessionEnd(result, 'record')
         }),
       )
       unsubscribers.push(
@@ -512,8 +594,6 @@
           vanessaWatchDir = ''
           setStatus('▶ Vanessa', 'busy')
           appendLog('Запуск Vanessa…')
-          bottomPanelOpen = true
-          bottomTab = 'journal'
           startVanessaPoll()
         }),
       )
@@ -555,19 +635,115 @@
     window.addEventListener('click', onDocClick)
     unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
-
-    setSplashStage('Готово', 100)
-
-    await dismissSplash(startedAt)
-    applyDevUiMock()
-    syncIdleStatus()
-    void checkUpdatesOnStartup()
+    } catch (err) {
+      console.error('Startup failed', err)
+    } finally {
+      window.clearTimeout(startupGuard)
+      await finishStartup()
+    }
   })
 
   onDestroy(() => {
     stopVanessaPoll()
+    stopBrowserWatch()
+    if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
+    if (draftAutosaveTimer) clearInterval(draftAutosaveTimer)
     for (const off of unsubscribers) off()
   })
+
+  function sessionTabPaths(): string[] {
+    return tabs.map((t) => t.path).filter((p) => p && !isUntitled(p))
+  }
+
+  function schedulePersistSession() {
+    if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
+    sessionPersistTimer = setTimeout(() => void persistSettings(), 500)
+  }
+
+  async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
+    const proj = (s.sessionProject || '').trim()
+    if (!proj) return
+    try {
+      await openProjectAt(proj)
+      const tabPaths = (s.openTabs || []).filter((p) => p && !isUntitled(p))
+      for (const p of tabPaths) {
+        try {
+          await loadFeature(p)
+        } catch {
+          /* skip missing files */
+        }
+      }
+      if (s.activeTab && tabPaths.includes(s.activeTab)) {
+        await loadFeature(s.activeTab)
+        welcomeTabVisible = false
+      } else if (tabPaths.length > 0) {
+        welcomeTabVisible = false
+      }
+    } catch {
+      /* ignore broken session */
+    }
+  }
+
+  async function autosaveDirtyDrafts() {
+    if (!projectPath) return
+    syncActiveTabContent()
+    for (const tab of tabs) {
+      if (!tab.dirty || isUntitled(tab.path)) continue
+      const text = tab.path === activeTab ? editorText : (tab.draft ?? tab.content)
+      try {
+        await SaveFeatureDraft(tab.path, text)
+      } catch {
+        /* offline */
+      }
+    }
+  }
+
+  function partialRunLogSuffix(startStep: number, endStep: number): string {
+    if (startStep >= 0 && endStep >= 0) return ` (шаги ${startStep + 1}–${endStep + 1})`
+    if (startStep >= 0) return ` (с шага ${startStep + 1})`
+    if (endStep >= 0) return ` (до шага ${endStep + 1})`
+    return ''
+  }
+
+  function openStepsContextMenu(e: MouseEvent, step: gui.EditorStepRow) {
+    if (!step.line) return
+    e.preventDefault()
+    stepsMenu = { x: e.clientX, y: e.clientY, line: step.line, step }
+  }
+
+  function closeStepsMenu() {
+    stepsMenu = null
+  }
+
+  function stepsMenuRunFrom(dryRun: boolean) {
+    const menu = stepsMenu
+    if (!menu) return
+    const line = menu.line
+    closeStepsMenu()
+    void runScenarioAtLine(line, dryRun, '', true)
+  }
+
+  function stepsMenuRunTo(dryRun: boolean) {
+    const menu = stepsMenu
+    if (!menu) return
+    const line = menu.line
+    closeStepsMenu()
+    void runScenarioToLine(line, dryRun)
+  }
+
+  function stepsMenuGoto() {
+    const menu = stepsMenu
+    if (!menu) return
+    gotoEditorLine(menu.line)
+    closeStepsMenu()
+  }
+
+  function stepsMenuHelp() {
+    const menu = stepsMenu
+    if (!menu) return
+    openStepHelpFromPanel(menu.step)
+    closeStepsMenu()
+  }
 
   function basename(path: string): string {
     const parts = path.replace(/\\/g, '/').split('/')
@@ -587,6 +763,9 @@
     settingsBrowser = s.browser || 'chromium'
     settingsHeadless = s.headless
     settingsWorkers = s.parallelWorkers || 1
+    settingsSlowMo = s.slowMo ?? 0
+    settingsScrollBeforeClick = s.scrollBeforeClick ?? false
+    settingsHoverRecordMinMs = s.hoverRecordMinMs || 600
     settingsLoops = s.maxLoopIterations || 100
     filterRecording = s.filterRecording
     navOnlyRecording = s.navOnlyRecording
@@ -595,11 +774,26 @@
     stepsPanelVisible = s.stepsPanelVisible !== false
     stepsPanelHeight = s.stepsPanelHeight || 160
     settingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup !== false
+    settingsSelectorClickStrategies = s.selectorClickStrategies?.length
+      ? [...s.selectorClickStrategies]
+      : ['testid', 'id', 'aria', 'contextual', 'text']
+    settingsSelectorInputStrategies = s.selectorInputStrategies?.length
+      ? [...s.selectorInputStrategies]
+      : ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+    editorSettings = editorSettingsFromDTO(s.editor)
+    stepsPanelTab = editorSettings.stepsPanelView
+    stepsPanelCollapsed = resolveStepsPanelCollapsed()
     lastRun = {
       ...lastRun,
       workers: s.parallelWorkers || 1,
+      slowMo: s.slowMo ?? 0,
       browser: s.browser || 'chromium',
     }
+  }
+
+  function resolveStepsPanelCollapsed(): boolean {
+    if (!stepsPanelVisible) return true
+    return editorSettings.symbolOutline && editorSettings.stepsPanelView === 'outline'
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
@@ -622,6 +816,8 @@
       { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
       { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
       { id: 'find-replace', label: 'Найти и заменить…', group: 'Сценарий', shortcut: 'Ctrl+H', run: openFindReplace },
+      { id: 'format', label: 'Форматировать сценарий', group: 'Сценарий', shortcut: 'Shift+Alt+F', run: () => void monaco?.formatDocument() },
+      { id: 'goto-symbol', label: 'Перейти к символу…', group: 'Сценарий', shortcut: 'Ctrl+Shift+O', run: () => monaco?.openSymbolOutline() },
       { id: 'project-replace', label: 'Замена по проекту…', group: 'Сценарий', run: () => (showProjectReplace = true) },
       { id: 'duplicate', label: 'Дублировать сценарий…', group: 'Сценарий', run: () => activeTab && !isWelcome && openDuplicateDialog(activeTab) },
       { id: 'rename-feature', label: 'Переименовать сценарий…', group: 'Сценарий', run: () => {
@@ -633,7 +829,7 @@
       { id: 'refactor-indents', label: 'Нормализовать отступы', group: 'Рефакторинг', run: refactorNormalizeIndents },
       { id: 'refactor-blanks', label: 'Убрать пустые строки между шагами', group: 'Рефакторинг', run: refactorCollapseBlank },
       { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: () => openStepsHelp() },
-      { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: beginRecord },
+      { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: () => void openBrowser() },
       { id: 'record', label: 'Запись', group: 'Запись и тест', shortcut: 'Ctrl+R', run: beginRecord },
       { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
       { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
@@ -651,6 +847,7 @@
       { id: 'rerun-failed', label: 'Перезапустить упавшие', group: 'Запись и тест', run: rerunFailed },
       { id: 'run-history', label: 'История запусков…', group: 'Запись и тест', run: openRunHistory },
       { id: 'testclient', label: 'TestClient…', group: 'Запись и тест', run: openTestClientDialog },
+      { id: 'capture-session', label: 'Сохранить сессию браузера…', group: 'Запись и тест', run: openTestClientDialogForCapture },
       { id: 'validate', label: 'Проверить', group: 'Запись и тест', run: () => openValidateDialog(true) },
       { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => openValidateDialog(false) },
       ...(hasVanessaPlugin()
@@ -696,7 +893,7 @@
 
   function toggleStepsPanel() {
     stepsPanelVisible = !stepsPanelVisible
-    stepsPanelCollapsed = !stepsPanelVisible
+    stepsPanelCollapsed = resolveStepsPanelCollapsed()
     persistSettings()
   }
 
@@ -709,7 +906,7 @@
       appendLog('Откройте сценарий для поиска')
       return
     }
-    showFindReplace = true
+    monaco?.openFindReplace()
   }
 
   function resetWindowLayout() {
@@ -733,17 +930,46 @@
     onDismiss: (hint) => dismissEditorHint(hint),
   }
 
+  const monacoRunLensActions = {
+    isEnabled: () => editorSettings.codeLens && !!activeTab && !isWelcome,
+    onRun: (payload: { scenario: string; line: number; dryRun: boolean; partial: boolean }) =>
+      runScenarioAtLine(payload.line, payload.dryRun, payload.scenario, payload.partial),
+  }
+
+  const monacoInlayHintsHandlers = {
+    isEnabled: () => editorSettings.inlayHints && !!activeTab && !isWelcome,
+    getSteps: () => editorSteps,
+  }
+
   async function refreshEditorScenarioHints() {
-    if (isWelcome) {
+    if (isWelcome || !editorSettings.scenarioHints) {
       editorScenarioHints = []
       return
     }
     try {
       const all = await AnalyzeScenarioHints(editorText)
-      editorScenarioHints = all.filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
+      editorScenarioHints = all
+        .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
+        .filter((h) => filterScenarioHints([h], editorSettings).length > 0)
     } catch {
       editorScenarioHints = []
     }
+  }
+
+  async function runScenarioHintsAutoFix(text: string): Promise<string> {
+    if (!editorSettings.scenarioHints || !editorSettings.scenarioHintsAutoFixOnSave) {
+      return text
+    }
+    const all = await AnalyzeScenarioHints(text)
+    const fixable = filterScenarioHints(all, editorSettings).filter((h) => h.autoFixable)
+    return applyAutoFixableScenarioHints(text, fixable, async (hint, currentText) => {
+      const result = await ApplyScenarioHintFix({
+        text: currentText,
+        hintId: hint.id,
+        stepIndex: hint.stepIndex,
+      })
+      return result.count > 0 ? result.text : null
+    })
   }
 
   async function applyEditorHintFix(hint: gui.ScenarioHintDTO) {
@@ -775,7 +1001,11 @@
     } catch {
       postRecordStepCount = 0
     }
-    await refreshEditorScenarioHints()
+    if (editorSettings.scenarioHints && editorSettings.scenarioHintsAfterRecord) {
+      await refreshEditorScenarioHints()
+    } else {
+      editorScenarioHints = []
+    }
   }
 
   function dismissPostRecord() {
@@ -787,7 +1017,6 @@
     if (!postRecordPath) return
     if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
     await validateProject(false)
-    bottomPanelOpen = true
     bottomTab = 'validate'
   }
 
@@ -861,6 +1090,72 @@
   function onFileContextMenu(e: MouseEvent, path: string) {
     e.preventDefault()
     contextMenu = { x: e.clientX, y: e.clientY, path }
+    folderMenu = null
+  }
+
+  function onFolderContextMenu(e: MouseEvent, node: CatalogNode) {
+    e.preventDefault()
+    const paths = collectFeaturePathsUnder(node)
+    if (!paths.length) return
+    folderMenu = { x: e.clientX, y: e.clientY, dir: node.path, paths }
+    contextMenu = null
+  }
+
+  function dismissFolderMenu() {
+    folderMenu = null
+  }
+
+  function folderRelativePath(dirPath: string): string {
+    if (!projectPath) return ''
+    const root = projectPath.replace(/\\/g, '/').replace(/\/$/, '')
+    const dir = dirPath.replace(/\\/g, '/')
+    if (dir.toLowerCase() === root.toLowerCase()) return ''
+    if (dir.toLowerCase().startsWith(root.toLowerCase() + '/')) {
+      return dir.slice(root.length + 1)
+    }
+    return dir
+  }
+
+  function folderMenuRun(dryRun = false) {
+    if (!folderMenu) return
+    const paths = folderMenu.paths
+    dismissFolderMenu()
+    void executeRun({ ...lastRun, dryRun }, paths)
+  }
+
+  function folderMenuSelectBatch() {
+    if (!folderMenu) return
+    batchMode = true
+    batchSelected = [...folderMenu.paths]
+    dismissFolderMenu()
+    appendLog(`Выбрано ${batchSelected.length} сценариев в папке`)
+  }
+
+  function openVanessaForFolder(dirPath: string, dry: boolean) {
+    vanessaDry = dry
+    vanessaTag = ''
+    vanessaExcludeTags = ''
+    vanessaScenario = ''
+    vanessaDialogScenarios = dialogScenarioNames()
+    vanessaRerunDir = ''
+    vanessaPreferRerun = false
+    vanessaInstallEpf = false
+    vanessaEpfUrl = ''
+    vanessaEpfDest = ''
+    vanessaPlatformExe = ''
+    vanessaEpfPath = ''
+    vanessaIB = ''
+    vanessaReportAllure = false
+    vanessaVaDir = folderRelativePath(dirPath)
+    vanessaVaFiles = ''
+    showVanessaRun = true
+  }
+
+  function folderMenuVanessa(dry: boolean) {
+    if (!folderMenu) return
+    const dir = folderMenu.dir
+    dismissFolderMenu()
+    openVanessaForFolder(dir, dry)
   }
 
   function dismissContextMenu() {
@@ -1035,6 +1330,7 @@
       syncIdleStatus()
       await refreshRunResults()
       await refreshArtifacts()
+      schedulePersistSession()
     } catch (e: any) {
       appendLog(`Ошибка: ${e}`)
       setStatus(String(e), 'error')
@@ -1066,6 +1362,7 @@
     editorValidationIssues = []
     appendLog('Проект закрыт.')
     syncIdleStatus()
+    schedulePersistSession()
   }
 
   function startVanessaPoll() {
@@ -1185,7 +1482,7 @@
         continue
       }
       if (isUntitled(path) || tab.dirty) {
-        const content = path === activeTab ? editorText : tab.content
+        const content = path === activeTab ? editorText : (tab.draft ?? tab.content)
         diskTargets.push(await WriteTempFeature(content))
       } else {
         diskTargets.push(path)
@@ -1208,18 +1505,57 @@
     await executeRun(opts, batchSelected)
   }
 
-  async function runCurrentScenario(dryRun = false) {
+  async function runScenarioAtLine(line: number, dryRun = false, scenarioOverride = '', partial = false) {
     if (!activeTab || isWelcome) return
-    const line = monaco?.getCursorLine() ?? 1
-    const scenario = scenarioAtLine(editorText, line)
-    const targets = [activeTab]
-    if (scenario) {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}»…`)
-      await executeRun({ ...lastRun, dryRun, scenario }, targets)
-      return
+    let scenario = scenarioOverride || scenarioAtLine(editorText, line)
+    let startStep = -1
+    let endStep = -1
+    if (partial) {
+      const resolved = await ResolveRunFromLine(editorText, line)
+      if (resolved.scenario) scenario = resolved.scenario
+      if (resolved.partial && resolved.startStep >= 0) {
+        startStep = resolved.startStep
+        endStep = resolved.endStep >= 0 ? resolved.endStep : -1
+      }
     }
-    appendLog(dryRun ? 'Dry-run текущего файла…' : 'Запуск текущего файла…')
-    await executeRun({ ...lastRun, dryRun, scenario: '' }, targets)
+    monaco?.gotoLine(line)
+    const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
+    const range = partialRunLogSuffix(startStep, endStep)
+    if (partial && startStep >= 0) {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} с шага ${startStep + 1} сценария «${scenario}»${range}…`)
+    } else if (scenario) {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}» (строка ${line})${range}…`)
+    } else {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} файла (строка ${line})${range}…`)
+    }
+    await executeRun(runOpts, [activeTab])
+  }
+
+  async function runScenarioToLine(line: number, dryRun = false) {
+    if (!activeTab || isWelcome) return
+    const resolved = await ResolveRunToLine(editorText, line)
+    let scenario = resolved.scenario || scenarioAtLine(editorText, line)
+    let startStep = -1
+    let endStep = -1
+    if (resolved.partial && resolved.endStep >= 0) {
+      endStep = resolved.endStep
+    }
+    monaco?.gotoLine(line)
+    const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
+    const range = partialRunLogSuffix(startStep, endStep)
+    if (endStep >= 0 && scenario) {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} до шага ${endStep + 1} сценария «${scenario}»${range}…`)
+    } else if (scenario) {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}» (строка ${line})…`)
+    } else {
+      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} файла (строка ${line})…`)
+    }
+    await executeRun(runOpts, [activeTab])
+  }
+
+  async function runCurrentScenario(dryRun = false) {
+    const line = monaco?.getCursorLine() ?? 1
+    await runScenarioAtLine(line, dryRun)
   }
 
   function runHotkeyAction(id: HotkeyId) {
@@ -1237,6 +1573,8 @@
         if (!isWelcome && activeTab) void runCurrentScenario(false)
         break
       case 'browser':
+        void openBrowser()
+        break
       case 'record':
         beginRecord()
         break
@@ -1366,8 +1704,6 @@
 
   function appendLog(line: string) {
     logText += line + (line.endsWith('\n') ? '' : '\n')
-    bottomPanelOpen = true
-    bottomTab = 'journal'
   }
 
   function setStatus(msg: string, tone: typeof statusTone = 'normal') {
@@ -1433,6 +1769,11 @@
     openMenu = null
   }
 
+  function runMenuAction(action: () => void) {
+    closeMenu()
+    action()
+  }
+
   async function refreshArtifacts() {
     try {
       projectArtifacts = await ProjectArtifacts()
@@ -1447,6 +1788,7 @@
     } catch {
       editorSteps = []
     }
+    monaco?.refreshInlayHints()
   }
 
   async function serveAllureReport(path = '') {
@@ -1458,15 +1800,18 @@
 
   async function openHtmlReport(path = '') {
     const result = await OpenHTMLReport(path)
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
-    else if (result.output) appendLog(`Открыт отчёт: ${result.output.trim()}`)
+    if (result.error) {
+      appendLog(`Ошибка открытия отчёта: ${result.error}`)
+      return
+    }
+    if (result.output) appendLog(`Открыт отчёт: ${result.output.trim()}`)
   }
 
   async function openArtifactPath(path: string) {
     if (!path) return
     try {
       await OpenFolder(path)
-    } catch (e: any) {
+    } catch (e: unknown) {
       appendLog(`Не удалось открыть: ${e}`)
     }
   }
@@ -1554,28 +1899,60 @@
   }
 
   function syncActiveTabContent() {
-    if (isWelcome) return
-    tabs = tabs.map((t) => (t.path === activeTab ? { ...t, content: editorText, dirty: true } : t))
+    if (isWelcome || !activeTab) return
+    tabs = tabs.map((t) => {
+      if (t.path !== activeTab) return t
+      const dirty = editorText !== t.content
+      if (!dirty) {
+        if (!t.dirty && t.draft === undefined) return t
+        return { ...t, dirty: false, draft: undefined }
+      }
+      return { ...t, draft: editorText, dirty: true }
+    })
+  }
+
+  function markActiveTabSaved(text: string) {
+    if (isWelcome || !activeTab) return
+    tabs = tabs.map((t) =>
+      t.path === activeTab ? { ...t, content: text, dirty: false, draft: undefined } : t,
+    )
   }
 
   async function loadFeature(path: string) {
-    syncActiveTabContent()
+    if (activeTab && !isWelcome && activeTab !== path) {
+      syncActiveTabContent()
+    }
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
-      editorText = existing.content
       activeTab = path
-      await validateEditor()
+      const text = existing.dirty ? (existing.draft ?? existing.content) : existing.content
+      await applyEditorText(text, { saved: !existing.dirty })
+      stepsPanelCollapsed = resolveStepsPanelCollapsed()
+      schedulePersistSession()
       return
     }
     try {
-      const content = await ReadFeature(path)
-      tabs = [...tabs, { path, content, dirty: false }]
-      editorText = content
+      const diskContent = await ReadFeature(path)
+      let content = diskContent
+      let dirty = false
+      try {
+        const draft = await LoadFeatureDraft(path)
+        if (draft && draft.trim() !== diskContent.trim()) {
+          content = draft
+          dirty = true
+          appendLog(`Восстановлен черновик: ${basename(path)}`)
+        }
+      } catch {
+        /* no draft */
+      }
+      tabs = [...tabs, { path, content, dirty }]
       activeTab = path
       await rememberFeature(path)
       const recents = await loadRecents()
       recentFeatures = recents.features
-      await validateEditor()
+      await applyEditorText(content, { saved: !dirty })
+      stepsPanelCollapsed = resolveStepsPanelCollapsed()
+      schedulePersistSession()
     } catch (e: any) {
       appendLog(`Ошибка открытия: ${e}`)
     }
@@ -1597,9 +1974,8 @@
       welcomeTabVisible = false
       if (activeTab === WELCOME_KEY) {
         const next = tabs[tabs.length - 1]
-        editorText = next.content
         activeTab = next.path
-        validateEditor()
+        void applyEditorText(next.content)
       }
       return
     }
@@ -1624,17 +2000,17 @@
     if (activeTab === path) {
       const next = tabs[tabs.length - 1]
       if (next) {
-        editorText = next.content
         activeTab = next.path
-        validateEditor()
+        void applyEditorText(next.content)
       } else {
         welcomeTabVisible = true
         activeTab = WELCOME_KEY
-        editorText = ''
+        void applyEditorText('')
         stepStatus = '0 шагов'
         stepStatusError = false
       }
     }
+    schedulePersistSession()
   }
 
   async function saveAndCloseTab() {
@@ -1664,14 +2040,13 @@
 
   async function saveFeatureAs() {
     if (!activeTab || isWelcome) return
-    syncActiveTabContent()
     const picked = await PickSaveFile('Сохранить как', basename(activeTab))
     if (!picked) return
     try {
       await SaveFeature(picked, editorText)
       const oldPath = activeTab
       tabs = tabs.map((t) =>
-        t.path === oldPath ? { path: picked, content: editorText, dirty: false } : t,
+        t.path === oldPath ? { path: picked, content: editorText, dirty: false, draft: undefined } : t,
       )
       activeTab = picked
       await rememberFeature(picked)
@@ -1690,10 +2065,29 @@
       await saveFeatureAs()
       return
     }
-    syncActiveTabContent()
     try {
-      await SaveFeature(activeTab, editorText)
-      tabs = tabs.map((t) => (t.path === activeTab ? { ...t, content: editorText, dirty: false } : t))
+      let text = editorText
+      if (editorSettings.formatOnSave) {
+        text = await FormatFeature(text)
+        if (text !== editorText) {
+          editorText = text
+          monaco?.setContent(text)
+        }
+      }
+      const autoFixed = await runScenarioHintsAutoFix(text)
+      if (autoFixed !== text) {
+        text = autoFixed
+        editorText = text
+        monaco?.setContent(text)
+        appendLog('Применены авто-исправления подсказок сценария')
+      }
+      await SaveFeature(activeTab, text)
+      markActiveTabSaved(text)
+      try {
+        await ClearFeatureDraft(activeTab)
+      } catch {
+        /* ignore */
+      }
       appendLog(`Сохранено: ${basename(activeTab)}`)
       setStatus('Сохранено', 'success')
     } catch (e: any) {
@@ -1702,12 +2096,33 @@
     }
   }
 
+  let validateGeneration = 0
+  let validateDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleValidateEditor(delayMs = 300) {
+    if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
+    if (delayMs <= 0) {
+      validateDebounceTimer = null
+      void validateEditor()
+      return
+    }
+    validateDebounceTimer = setTimeout(() => {
+      validateDebounceTimer = null
+      void validateEditor()
+    }, delayMs)
+  }
+
   async function validateEditor() {
+    const generation = ++validateGeneration
+    const tabAtStart = activeTab
+    const textAtStart = editorText
     try {
-      const issues = await ValidateFeature(editorText)
+      const issues = await ValidateFeature(textAtStart)
+      if (generation !== validateGeneration || tabAtStart !== activeTab) return
       editorValidationIssues = issues || []
       monaco?.setMarkers(editorValidationIssues)
       await refreshEditorSteps()
+      if (generation !== validateGeneration || tabAtStart !== activeTab) return
       if (editorValidationIssues.length > 0) {
         stepStatus = `${stepCount} шагов · ошибок ${editorValidationIssues.length}`
         stepStatusError = true
@@ -1717,11 +2132,17 @@
         stepStatusError = false
       }
     } catch {
+      if (generation !== validateGeneration || tabAtStart !== activeTab) return
       editorValidationIssues = []
       stepStatus = `${stepCount} шагов`
       await refreshEditorSteps()
     }
-    await refreshEditorScenarioHints()
+    if (generation !== validateGeneration || tabAtStart !== activeTab) return
+    if (editorSettings.scenarioHints) {
+      await refreshEditorScenarioHints()
+    } else {
+      editorScenarioHints = []
+    }
   }
 
   function gotoEditorLine(line: number) {
@@ -1729,15 +2150,21 @@
   }
 
   function validateProjectHint(): string {
-    if (editorValidationIssues.length > 0) return ''
+    if (validatePanelIssues.length > 0 || editorValidationIssues.length > 0) return ''
     if (isWelcome) return 'Откройте сценарий для проверки шагов'
     return 'Ошибок в шагах сценария нет. Проверка селекторов в браузере — меню «Запись и тест».'
+  }
+
+  function validatePanelDisplayIssues(): gui.ValidationIssue[] {
+    return validatePanelIssues.length > 0 ? validatePanelIssues : editorValidationIssues
   }
 
   async function onEditorChange(text: string) {
     editorText = text
     syncActiveTabContent()
-    await validateEditor()
+    if (editorSettings.validateOnType) {
+      scheduleValidateEditor()
+    }
   }
 
   function parseVars(text: string): Record<string, string> {
@@ -1820,6 +2247,15 @@
     const diskTargets = runTargets.length ? await materializeRunTargets(runTargets) : []
     lastRun = { ...opts }
     showRun = false
+    bottomPanelOpen = true
+    bottomTab = 'journal'
+
+    playingLabel =
+      runTargets.length > 1
+        ? `${runTargets.length} сценариев`
+        : runTargets.length === 1
+          ? featureTabLabel(runTargets[0])
+          : opts.scenario || opts.tag || 'тест'
 
     const allureDir = opts.allure ? scenariaSubdir('allure-results') : ''
     const traceDir = !opts.dryRun && opts.trace ? scenariaSubdir('traces') : ''
@@ -1833,9 +2269,14 @@
 
     playing = !opts.dryRun
     setStatus('▶ Идёт тест', 'busy')
-    appendLog(targets.length ? `Запуск ${targets.length} сценариев…` : opts.dryRun ? 'Dry-run…' : 'Запуск Playwright…')
-    bottomPanelOpen = true
-    bottomTab = 'journal'
+    const range = partialRunLogSuffix(opts.startStep ?? -1, opts.endStep ?? -1)
+    if (targets.length) {
+      appendLog(`Запуск ${targets.length} сценариев${range}…`)
+    } else if (opts.dryRun) {
+      appendLog(`Dry-run${range}…`)
+    } else {
+      appendLog(`Запуск Playwright${range}…`)
+    }
 
     const result = await Run({
       tag: opts.tag,
@@ -1854,11 +2295,14 @@
       summaryJson: summaryJsonPath,
       browser: opts.dryRun ? '' : opts.browser || settingsBrowser || 'chromium',
       workers: opts.workers || settingsWorkers || 1,
-      slowMo: opts.dryRun ? 0 : opts.slowMo || 0,
+      slowMo: opts.dryRun ? 0 : (opts.slowMo > 0 ? opts.slowMo : settingsSlowMo),
       baseUrl: opts.dryRun ? '' : (opts.baseUrl || '').trim(),
+      startStep: opts.startStep ?? -1,
+      endStep: opts.endStep ?? -1,
       targets: diskTargets,
     })
     playing = false
+    playingLabel = ''
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
       appendLog(`Ошибка: ${result.error}`)
@@ -1868,7 +2312,7 @@
       appendLog('Завершено.')
       setStatus('Тест завершён', 'success')
       welcomePlayedSuccess = true
-      bottomTab = 'results'
+      bottomTab = opts.dryRun ? 'journal' : 'results'
     }
     await refreshRunResults()
     await refreshArtifacts()
@@ -1896,22 +2340,49 @@
     if (!projectPath) return
     appendLog(browser ? 'Проверка в браузере…' : 'Проверка…')
     bottomPanelOpen = true
-    bottomTab = 'validate'
+    bottomTab = browser ? 'validate' : 'journal'
     validateCliLog = ''
-    const result = await Validate({
-      browser: browserName || 'chromium',
-      skipBrowser: !browser,
-      targets,
-    })
-    if (result.output) {
-      validateCliLog = result.output.trimEnd()
-      appendLog(validateCliLog)
-    }
-    if (result.error) {
-      validateCliLog = `${validateCliLog}\n${result.error}`.trim()
-      appendLog(`Ошибка: ${result.error}`)
+    validatePanelIssues = []
+
+    if (browser) {
+      try {
+        const issues = await ValidateBrowser(
+          gui.ValidateRequest.createFrom({
+            browser: browserName || 'chromium',
+            skipBrowser: false,
+            targets,
+          }),
+        )
+        validatePanelIssues = issues || []
+        const missing = validatePanelIssues.filter((i) => i.status === 'missing' || !i.status).length
+        const warnings = validatePanelIssues.filter((i) => i.status === 'warning').length
+        const found = validatePanelIssues.filter((i) => i.status === 'found').length
+        appendLog(`Проверка в браузере: найдено ${found}, предупреждений ${warnings}, ошибок ${missing}.`)
+        setStatus(missing > 0 ? 'Ошибки проверки в браузере' : 'Проверка в браузере завершена', missing > 0 ? 'error' : 'success')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        validateCliLog = msg
+        appendLog(`Ошибка: ${msg}`)
+        setStatus('Ошибка проверки', 'error')
+      }
     } else {
-      appendLog('Проверка завершена.')
+      const result = await Validate({
+        browser: browserName || 'chromium',
+        skipBrowser: true,
+        targets,
+      })
+      if (result.output) {
+        validateCliLog = result.output.trimEnd()
+        appendLog(validateCliLog)
+      }
+      if (result.error) {
+        validateCliLog = `${validateCliLog}\n${result.error}`.trim()
+        appendLog(`Ошибка: ${result.error}`)
+        setStatus('Ошибка проверки', 'error')
+      } else {
+        appendLog('Проверка завершена.')
+        setStatus('Проверка завершена', 'success')
+      }
     }
     if (!isWelcome && activeTab) await validateEditor()
   }
@@ -1948,8 +2419,22 @@
 
   async function openTestClientDialog() {
     if (!projectPath) return
+    testClientSuggestName = ''
     testClients = await ListTestClients().catch(() => [])
     testClientSelection = runForm.testClient || testClients[0] || ''
+    showTestClient = true
+  }
+
+  async function openTestClientDialogForCapture() {
+    if (!projectPath) return
+    if (!browserOpen && !recording) {
+      appendLog('Откройте браузер (Ctrl+B), войдите на сайт, затем сохраните сессию.')
+      return
+    }
+    testClients = await ListTestClients().catch(() => [])
+    const base = (runForm.testClient || testClientSelection || 'session').trim() || 'session'
+    testClientSuggestName = base
+    testClientSelection = testClients.includes(base) ? base : ''
     showTestClient = true
   }
 
@@ -2008,9 +2493,14 @@
     showSnippetPalette = true
   }
 
-  async function applyEditorText(text: string) {
+  async function applyEditorText(text: string, options?: { saved?: boolean }) {
     editorText = text
-    syncActiveTabContent()
+    monaco?.setContent(text)
+    if (options?.saved) {
+      markActiveTabSaved(text)
+    } else {
+      syncActiveTabContent()
+    }
     await validateEditor()
   }
 
@@ -2148,8 +2638,6 @@
     baselineBusy = true
     showRecord = false
     appendLog('Создание feature из шагов…')
-    bottomPanelOpen = true
-    bottomTab = 'journal'
     try {
       const result = await RecordBaseline({
         output: payload.output || 'recorded.feature',
@@ -2179,12 +2667,11 @@
   async function checkUpdatesOnStartup() {
     if (!settingsCheckUpdatesOnStartup) return
     try {
-      const result = await CheckUpdate()
-      const out = (result.output || '').trim()
-      if (result.error || !out) return
-      if (out.includes('Update available')) {
-        updateCheckMessage = out
-        updateCheckHasUpdate = true
+      const info = await CheckUpdateInfo()
+      updateCheckInfo = info
+      updateCheckMessage = info.message || ''
+      updateCheckHasUpdate = !!info.updateAvailable
+      if (info.updateAvailable) {
         showUpdateCheck = true
         setStatus('Доступно обновление', 'normal')
       }
@@ -2195,28 +2682,74 @@
 
   async function checkUpdates() {
     appendLog('Проверка обновлений…')
-    const result = await CheckUpdate()
-    const out = (result.output || '').trim()
-    if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
-    else appendLog('Проверка завершена.')
-    updateCheckMessage = out || (result.error ? String(result.error) : 'Проверка завершена.')
-    updateCheckHasUpdate = out.includes('Update available')
-    showUpdateCheck = true
+    try {
+      const info = await CheckUpdateInfo()
+      updateCheckInfo = info
+      updateCheckMessage = info.message || ''
+      updateCheckHasUpdate = !!info.updateAvailable
+      appendLog(updateCheckMessage)
+      if (info.updateAvailable) {
+        appendLog(`Релиз: ${info.htmlUrl || '—'}`)
+        if (info.downloadName) appendLog(`Файл: ${info.downloadName}`)
+      }
+      appendLog('Проверка завершена.')
+      showUpdateCheck = true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      updateCheckMessage = msg
+      updateCheckHasUpdate = false
+      appendLog(`Ошибка: ${msg}`)
+      showUpdateCheck = true
+    }
+  }
+
+  async function openUpdateRelease() {
+    const url = updateCheckInfo?.htmlUrl
+    if (!url) return
+    try {
+      await OpenExternalURL(url)
+    } catch (err) {
+      appendLog(`Не удалось открыть ссылку: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  async function downloadUpdate() {
+    if (updateDownloading) return
+    updateDownloading = true
+    appendLog('Скачивание обновления…')
+    try {
+      const path = await DownloadUpdate()
+      appendLog(`Скачано: ${path}`)
+      updateCheckMessage = `${updateCheckMessage}\n\nФайл сохранён:\n${path}`.trim()
+      const folder = path.replace(/[\\/][^\\/]+$/, '')
+      if (folder) await OpenFolder(folder)
+    } catch (err) {
+      appendLog(`Ошибка скачивания: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      updateDownloading = false
+    }
   }
 
   async function openSettings() {
     const s = await LoadSettings()
     applySettingsFromDTO(s)
+    settingsDialogBaseline = s
     showSettings = true
   }
 
   async function persistSettings() {
-    await SaveSettings({
+    await SaveSettings(
+      gui.AppSettingsDTO.createFrom({
       browser: settingsBrowser,
       headless: settingsHeadless,
       parallelWorkers: settingsWorkers,
+      slowMo: settingsSlowMo,
       maxLoopIterations: settingsLoops,
+      scrollBeforeClick: settingsScrollBeforeClick,
+      hoverRecordMinMs: settingsHoverRecordMinMs,
+      sessionProject: projectPath,
+      openTabs: sessionTabPaths(),
+      activeTab: activeTab !== WELCOME_KEY && !isUntitled(activeTab) ? activeTab : '',
       filterRecording,
       navOnlyRecording,
       hoverRecord,
@@ -2227,13 +2760,24 @@
       recentProjects,
       recentFeatures,
       checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
-    })
+      selectorClickStrategies: settingsSelectorClickStrategies,
+      selectorInputStrategies: settingsSelectorInputStrategies,
+      editor: editorSettingsToDTO(editorSettings),
+    }),
+    )
   }
 
   async function syncRecordingOptions() {
     if (!recording) return
     try {
-      await UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, settingsHeadless)
+      await UpdateRecordingOptions(
+        filterRecording,
+        navOnlyRecording,
+        hoverRecord,
+        settingsHeadless,
+        settingsScrollBeforeClick,
+        settingsHoverRecordMinMs,
+      )
       await persistSettings()
     } catch {
       /* session may be closing */
@@ -2241,20 +2785,56 @@
   }
 
   async function applySettings() {
-    stepsPanelCollapsed = !stepsPanelVisible
+    editorSettings = { ...editorSettings }
+    stepsPanelCollapsed = resolveStepsPanelCollapsed()
+    stepsPanelTab = editorSettings.stepsPanelView
+    setStepHoverEnabled(() => editorSettings.stepHover)
+    lastRun = {
+      ...lastRun,
+      workers: settingsWorkers,
+      slowMo: settingsSlowMo,
+      browser: settingsBrowser,
+    }
+    if (recording) await syncRecordingOptions()
     await persistSettings()
+    monaco?.applyEditorSettings(editorSettings)
+    if (editorSettings.scenarioHints) {
+      await refreshEditorScenarioHints()
+    } else {
+      editorScenarioHints = []
+    }
+    if (editorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
+    settingsDialogBaseline = null
     showSettings = false
     appendLog('Настройки сохранены.')
   }
 
-  function beginRecord() {
+  function cancelSettings() {
+    if (settingsDialogBaseline) {
+      applySettingsFromDTO(settingsDialogBaseline)
+      monaco?.applyEditorSettings(editorSettings)
+    }
+    settingsDialogBaseline = null
+    showSettings = false
+  }
+
+  function recordStartURL(): string {
+    return resolveRecordStartURL({
+      editorText: !isWelcome ? editorText : '',
+      startURL,
+      recordURL,
+      lastRunBaseUrl: lastRun.baseUrl,
+    })
+  }
+
+  function prepareRecordDialogDefaults() {
     recordMode = 'live'
     recordAppendTo = ''
     recordTestClient = runForm.testClient || testClientSelection || ''
     if (projectPath) {
       recordOutput = `${projectPath.replace(/\\/g, '/')}/recorded.feature`
     }
-    recordURL = startURL
+    recordURL = recordStartURL()
     if (activeTab && !isWelcome) {
       recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
       recordScenarioName = 'Запись'
@@ -2262,17 +2842,35 @@
       recordFeatureName = 'Записанный сценарий'
       recordScenarioName = 'Запись'
     }
+  }
+
+  function beginRecord() {
+    prepareRecordDialogDefaults()
     showRecord = true
   }
 
-  async function startRecord() {
-    await persistSettings()
-    lastRecordTarget = recordAppendTo || recordOutput
-    await StartRecord({
+  async function openBrowser() {
+    if (!projectPath) {
+      appendLog('Сначала откройте проект')
+      return
+    }
+    if (browserOpen || recording) {
+      await focusBrowser()
+      return
+    }
+    prepareRecordDialogDefaults()
+    recordURL = recordStartURL()
+    showRecord = false
+    if (recordURL) {
+      appendLog(`Открываю браузер: ${recordURL}`)
+    } else {
+      appendLog('Открываю браузер (пустая страница — перейдите вручную или начните запись)')
+    }
+    await OpenBrowser({
       url: recordURL,
       output: recordOutput,
       idleSeconds: recordIdle,
-      headless: settingsHeadless,
+      headless: false,
       filterRecording,
       navOnlyRecording,
       hoverRecord,
@@ -2282,6 +2880,56 @@
       scenarioName: recordScenarioName,
     })
     recordAppendTo = ''
+  }
+
+  async function startRecord(opts?: { headed?: boolean }) {
+    await persistSettings()
+    lastRecordTarget = recordAppendTo || recordOutput
+    if (browserOpen && !recording) {
+      try {
+        await BeginRecordingCapture()
+        applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
+        showRecord = false
+        setStatus('● Идёт запись', 'busy')
+        startBrowserWatch()
+      } catch (e: unknown) {
+        appendLog(`Запись: ${e}`)
+      }
+      return
+    }
+    await StartRecord({
+      url: recordURL,
+      output: recordOutput,
+      idleSeconds: recordIdle,
+      headless: opts?.headed ?? settingsHeadless,
+      filterRecording,
+      navOnlyRecording,
+      hoverRecord,
+      appendTo: recordAppendTo,
+      testClient: recordTestClient,
+      featureName: recordFeatureName,
+      scenarioName: recordScenarioName,
+      browseOnly: false,
+    })
+    recordAppendTo = ''
+  }
+
+  async function handleRecordSessionEnd(result: gui.RunResult, kind: 'record' | 'browse') {
+    recording = false
+    browserOpen = false
+    recordPaused = false
+    showRecord = false
+    const reloadPath = lastRecordTarget
+    lastRecordTarget = ''
+    if (result.output) appendLog(result.output)
+    if (result.error) appendLog(`Ошибка записи: ${result.error}`)
+    else if (kind === 'record' && reloadPath) await showPostRecordBanner(reloadPath)
+    statusTone = 'normal'
+    syncIdleStatus()
+    await refreshProject()
+    if (!result.error && kind === 'record' && reloadPath) {
+      await loadFeature(reloadPath)
+    }
   }
 
   async function toggleRecordPause() {
@@ -2294,6 +2942,62 @@
       recordPaused = true
       setStatus('⏸ Пауза', 'busy')
     }
+    void syncBrowserStateFromBackend()
+  }
+
+  function applyBrowserSessionState(s: { browserOpen: boolean; recording: boolean; paused: boolean }) {
+    browserOpen = s.browserOpen
+    recording = s.recording
+    recordPaused = s.paused
+  }
+
+  function handleBrowserLost() {
+    if (!browserOpen && !recording) return
+    applyBrowserSessionState({ browserOpen: false, recording: false, paused: false })
+    statusTone = 'normal'
+    syncIdleStatus()
+  }
+
+  function startBrowserWatch() {
+    stopBrowserWatch()
+    browserWatchTimer = setInterval(() => {
+      void syncBrowserStateFromBackend()
+    }, 400)
+  }
+
+  function stopBrowserWatch() {
+    if (browserWatchTimer) {
+      clearInterval(browserWatchTimer)
+      browserWatchTimer = null
+    }
+  }
+
+  async function syncBrowserStateFromBackend() {
+    try {
+      const s = await PollBrowserSession()
+      if ((browserOpen || recording) && !s.browserOpen) {
+        handleBrowserLost()
+        return
+      }
+      if (!s.browserOpen) return
+      const prevRecording = recording
+      applyBrowserSessionState({
+        browserOpen: true,
+        recording: s.recording,
+        paused: s.paused,
+      })
+      if (s.recording && !prevRecording) {
+        setStatus('● Идёт запись', 'busy')
+      } else if (s.recording && s.paused) {
+        setStatus('⏸ Пауза', 'busy')
+      } else if (s.recording) {
+        setStatus('● Идёт запись', 'busy')
+      } else if (browserOpen) {
+        setStatus('Браузер открыт', 'busy')
+      }
+    } catch {
+      /* dev without wails */
+    }
   }
 
   async function stopRecord() {
@@ -2301,8 +3005,12 @@
   }
 
   async function submitOtp(code: string) {
-    await SubmitOTPCode(code)
-    showOtp = false
+    const accepted = await SubmitOTPCode(code)
+    if (accepted) {
+      showOtp = false
+      return
+    }
+    appendLog('Нет активного запроса OTP — код не отправлен')
   }
 
   async function cancelOtp() {
@@ -2399,11 +3107,11 @@
   }
 
   async function pickElement() {
-    if (!recording) {
-      appendLog('Указать элемент: начните запись')
+    if (!recording && !browserOpen) {
+      appendLog('Указать элемент: откройте браузер')
       return
     }
-    if (!recordPaused) {
+    if (recording && !recordPaused) {
       appendLog('Указать элемент: поставьте запись на паузу')
       setStatus('Поставьте запись на паузу', 'busy')
       return
@@ -2457,23 +3165,22 @@
   }
 </script>
 
-{#if showSplash}
+{#if !appReady}
   <SplashScreen
     {version}
     message={splashMessage}
     progress={splashProgress}
     fading={splashFading}
+    standalone
   />
-{/if}
-
-{#if appReady}
-<div class="ide" class:panel-open={bottomPanelOpen} class:app-booting={showSplash && !splashFading}>
+{:else}
+<div class="ide" class:panel-open={bottomPanelOpen}>
   <!-- Menu bar (Python: Проект / Сценарий / Запись и тест / Вид / Справка) -->
   <div class="menubar" role="menubar">
     <div class="menu-root" class:open={openMenu === 'project'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('project', e)}>Проект</button>
       {#if openMenu === 'project'}
-        <div class="menu-dropdown" on:click={closeMenu}>
+        <div class="menu-dropdown">
           <button class="menu-item" on:click={openExamples}>Открыть примеры сценариев</button>
           <button class="menu-item" on:click={openProjectDialog}>Открыть проект…</button>
           <button class="menu-item" on:click={closeProject} disabled={!projectPath}>Закрыть проект</button>
@@ -2487,7 +3194,7 @@
     <div class="menu-root" class:open={openMenu === 'scenario'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('scenario', e)}>Сценарий</button>
       {#if openMenu === 'scenario'}
-        <div class="menu-dropdown" on:click={closeMenu}>
+        <div class="menu-dropdown">
           <button class="menu-item" on:click={newScenario}>Новый</button>
           <button class="menu-item" on:click={openFileDialog}>Открыть…</button>
           <button class="menu-item" on:click={saveFeature} disabled={isWelcome}>Сохранить<span class="menu-shortcut">Ctrl+S</span></button>
@@ -2526,14 +3233,17 @@
     <div class="menu-root" class:open={openMenu === 'run'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('run', e)}>Запись и тест</button>
       {#if openMenu === 'run'}
-        <div class="menu-dropdown" on:click={closeMenu}>
-          <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
-          <button class="menu-item" on:click={beginRecord} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
+        <div class="menu-dropdown">
+          <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
+          <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
           <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>Запись из шагов…</button>
-          <button class="menu-item" on:click={stopRecord} disabled={!recording}>Стоп</button>
+          <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen}>Стоп</button>
           <button class="menu-item" on:click={toggleRecordPause} disabled={!recording}>Пауза</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openTestClientDialog} disabled={!projectPath}>TestClient…</button>
+          <button class="menu-item" on:click={openTestClientDialogForCapture} disabled={!projectPath || (!browserOpen && !recording)}>
+            Сохранить сессию браузера…
+          </button>
           <button class="menu-item" on:click={openHttpAuthDialog}>HTTP Auth…</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false })} disabled={isWelcome && !projectPath}>
@@ -2583,7 +3293,7 @@
     <div class="menu-root" class:open={openMenu === 'plugins'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>Плагины</button>
       {#if openMenu === 'plugins'}
-        <div class="menu-dropdown" on:click={closeMenu}>
+        <div class="menu-dropdown">
           <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>Управление плагинами…</button>
           {#if installedPlugins.length > 0}
             <div class="menu-sep"></div>
@@ -2612,7 +3322,7 @@
     <div class="menu-root" class:open={openMenu === 'view'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('view', e)}>Вид</button>
       {#if openMenu === 'view'}
-        <div class="menu-dropdown" on:click={closeMenu}>
+        <div class="menu-dropdown">
           <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>Старт</button>
           <button class="menu-item" on:click={() => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) }}>Сценарии</button>
           <button class="menu-item" on:click={() => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) }}>Скрыть сценарии</button>
@@ -2639,7 +3349,7 @@
     <div class="menu-root" class:open={openMenu === 'help'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>Справка</button>
       {#if openMenu === 'help'}
-        <div class="menu-dropdown" on:click={closeMenu}>
+        <div class="menu-dropdown">
           <button class="menu-item" on:click={() => openStepsHelp()}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
           <button class="menu-item" on:click={() => (showHotkeys = true)}>Горячие клавиши<span class="menu-shortcut">Shift+F1</span></button>
           <button class="menu-item" on:click={checkUpdates}>Проверить обновления…</button>
@@ -2731,6 +3441,7 @@
                 }}
                 onCollapseChange={onCatalogCollapse}
                 onFileContextMenu={onFileContextMenu}
+                onFolderContextMenu={onFolderContextMenu}
                 onMoveFeature={moveFeatureInCatalog}
                 onDropTarget={(path) => (catalogDropTarget = path)}
               />
@@ -2746,7 +3457,7 @@
         <div class="action-bar" class:compact={toolbarCompact} use:observeActionBar>
           <div class="quick-toolbar">
             <div class="toolbar-row primary">
-              <button class="tool-btn primary" title="Браузер (Ctrl+B)" on:click={beginRecord} disabled={!projectPath}>
+              <button class="tool-btn primary" title="Браузер (Ctrl+B)" on:click={() => void openBrowser()} disabled={!projectPath}>
                 {@html toolbarIcons.browser()}<span>Браузер</span>
               </button>
               <button
@@ -2758,14 +3469,15 @@
               >
                 {@html toolbarIcons.record()}<span>Запись</span>
               </button>
-              <button class="tool-btn primary" on:click={stopRecord} disabled={!recording} title="Остановить запись, тест или браузер">
+              <button class="tool-btn primary" on:click={stopRecord} disabled={!recording && !browserOpen && !playing} title="Остановить запись, тест или браузер">
                 {@html toolbarIcons.stop()}<span>Стоп</span>
               </button>
               <button
                 class="tool-btn primary primary-run"
+                class:run-active={playing}
                 title="Запустить (Ctrl+Enter)"
                 on:click={() => executeRun({ ...lastRun, dryRun: false })}
-                disabled={isWelcome && !projectPath}
+                disabled={(isWelcome && !projectPath) || playing}
               >
                 {@html toolbarIcons.play()}<span>Запустить</span>
               </button>
@@ -2790,13 +3502,13 @@
                 {@html toolbarIcons.pause()}<span>Пауза</span>
               </button>
               <span class="toolbar-sep" aria-hidden="true"></span>
-              <button class="tool-btn" on:click={focusBrowser} disabled={!recording && !playing}>
+              <button class="tool-btn" on:click={focusBrowser} disabled={!recording && !browserOpen && !playing}>
                 {@html toolbarIcons.browserFocus()}<span>Показать браузер</span>
               </button>
               <button class="tool-btn" on:click={() => openValidateDialog(false)} disabled={!projectPath}>
                 {@html toolbarIcons.validate()}<span>Селекторы на странице</span>
               </button>
-              <button class="tool-btn" on:click={pickElement} disabled={!recording || !recordPaused} title={recording && !recordPaused ? 'Поставьте запись на паузу' : 'Указать элемент'}>
+              <button class="tool-btn" on:click={pickElement} disabled={(!recording && !browserOpen) || (recording && !recordPaused)} title={recording && !recordPaused ? 'Поставьте запись на паузу' : 'Указать элемент'}>
                 {@html toolbarIcons.picker()}<span>Указать элемент</span>
               </button>
               <button class="tool-btn" on:click={quickRecord} disabled={!projectPath || recording}>
@@ -2868,7 +3580,8 @@
               onOpenRecentFeature={(path) => loadFeature(path)}
               onChecklistStep={onWelcomeChecklistStep}
             />
-          {:else}
+          {/if}
+          <div class="feature-workspace" class:hidden={isWelcome}>
             {#if postRecordPath}
               <PostRecordBanner
                 path={postRecordPath}
@@ -2904,6 +3617,16 @@
                 <span>В тексте сценария есть ошибки синтаксиса</span>
               </div>
             {/if}
+            {#if showPlayingBar}
+              <div class="playing-bar" role="status" aria-live="polite">
+                <span class="play-label">▶ Выполняется:</span>
+                <span class="play-target">{playingLabel}</span>
+                {#if settingsSlowMo > 0 || lastRun.slowMo > 0}
+                  <span class="play-slowmo">slow-mo {(lastRun.slowMo > 0 ? lastRun.slowMo : settingsSlowMo)} мс</span>
+                {/if}
+                <span class="play-progress" aria-hidden="true"></span>
+              </div>
+            {/if}
             {#if showRecordingBar}
               <div class="recording-bar">
                 <span class="rec-label">Запись:</span>
@@ -2914,24 +3637,26 @@
               </div>
             {/if}
             <div class="gherkin-hints">
-              <span>{stepCount} шагов в редакторе · Ctrl+Space — шаги и слова · Ctrl+. — исправления</span>
+              <span>{stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления</span>
               <button on:click={openStepsDialog}>Шаблон</button>
               <button on:click={() => openStepsHelp()}>Справка</button>
               <button class:active={previewVisible} on:click={togglePreview}>Превью</button>
             </div>
             <div class="editor-row" style="--preview-width: {previewWidth}px">
               <div class="editor-main">
-                <div class="editor-area">
-                  {#key activeTab}
+                <div class="editor-area" class:playing-active={playing}>
                     <MonacoEditor
                       bind:this={monaco}
                       bind:value={editorText}
+                      bind:editorSettings
                       scenarioHints={editorScenarioHints}
                       hintActions={monacoHintActions}
+                      runLensActions={monacoRunLensActions}
+                      inlayHintsHandlers={monacoInlayHintsHandlers}
                       onHotkey={runHotkeyAction}
                       on:change={(e) => onEditorChange(e.detail)}
+                      on:cursorline={(e) => (editorCursorLine = e.detail)}
                     />
-                  {/key}
                 </div>
                 {#if stepsPanelVisible}
                 <div class="splitter-h" role="separator" on:mousedown={startResizeSteps}></div>
@@ -2940,10 +3665,42 @@
                     <button on:click={() => (stepsPanelCollapsed = !stepsPanelCollapsed)}>
                       {#if stepsPanelCollapsed}{@html icons.chevronRight}{:else}{@html icons.chevronDown}{/if}
                     </button>
-                    <span>Шаги ({stepCount})</span>
-                    {#if stepStatusError}<span style="color:var(--color-error);margin-left:auto">ошибки</span>{/if}
+                    {#if editorSettings.symbolOutline}
+                      <div class="steps-panel-tabs" role="tablist" aria-label="Вид панели шагов">
+                        <button
+                          type="button"
+                          role="tab"
+                          class:active={stepsPanelTab === 'outline'}
+                          aria-selected={stepsPanelTab === 'outline'}
+                          on:click={() => (stepsPanelTab = 'outline')}
+                        >
+                          Структура
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          class:active={stepsPanelTab === 'steps'}
+                          aria-selected={stepsPanelTab === 'steps'}
+                          on:click={() => (stepsPanelTab = 'steps')}
+                        >
+                          Шаги ({stepCount})
+                        </button>
+                      </div>
+                    {:else}
+                      <span>Шаги ({stepCount})</span>
+                    {/if}
+                    {#if stepStatusError}<span class="steps-header-error">ошибки</span>{/if}
                   </div>
                   {#if !stepsPanelCollapsed}
+                    {#if editorSettings.symbolOutline && stepsPanelTab === 'outline'}
+                      <div class="steps-outline-wrap">
+                        <FeatureOutline
+                          text={editorText}
+                          currentLine={editorCursorLine}
+                          onGoto={gotoEditorLine}
+                        />
+                      </div>
+                    {:else}
                     <div class="steps-table-wrap">
                       <table class="steps-table">
                         <thead>
@@ -2956,7 +3713,8 @@
                               class:clickable={!!step.line}
                               on:click={() => step.line && gotoEditorLine(step.line)}
                               on:dblclick={() => openStepHelpFromPanel(step)}
-                              title={step.text ? 'Двойной клик — справка по шагу' : ''}
+                              on:contextmenu|preventDefault={(e) => openStepsContextMenu(e, step)}
+                              title={step.text ? 'ПКМ или двойной клик — действия со шагом' : ''}
                             >
                               <td>{i + 1}</td>
                               <td>{step.action}{step.error ? ' ⚠' : ''}</td>
@@ -2967,6 +3725,7 @@
                         </tbody>
                       </table>
                     </div>
+                    {/if}
                   {/if}
                 </div>
                 {/if}
@@ -2975,11 +3734,16 @@
                 <div class="splitter-v" role="separator" on:mousedown={startResizePreview}></div>
                 <div class="feature-preview-pane" style="width: {previewWidth}px">
                   <div class="preview-header">Превью Gherkin</div>
-                  <FeaturePreview text={editorText} />
+                  <FeaturePreview
+                    text={editorText}
+                    theme={editorSettings.theme}
+                    fontSize={editorSettings.fontSize}
+                    fontFamily={editorSettings.fontFamily}
+                  />
                 </div>
               {/if}
             </div>
-          {/if}
+          </div>
         </div>
       </section>
     </div>
@@ -3009,9 +3773,10 @@
         />
       {:else if bottomTab === 'validate'}
         <ValidatePanel
-          issues={editorValidationIssues}
+          issues={validatePanelDisplayIssues()}
           hint={validateProjectHint()}
           cliLog={validateCliLog}
+          activeLine={editorCursorLine}
           onGotoLine={gotoEditorLine}
         />
       {:else}
@@ -3028,8 +3793,8 @@
     </div>
     <div class="status-right">
       <div class="status-segment browser-segment">
-        <span class="led" class:recording={recording} class:on={recording || playing}></span>
-        Браузер · {recording || playing ? 'открыт' : 'закрыт'}
+        <span class="led" class:recording={recording} class:playing={playing} class:on={recording || browserOpen || playing}></span>
+        Браузер · {recording ? 'запись' : playing ? 'тест' : browserOpen ? 'открыт' : 'закрыт'}
       </div>
       <div class="status-segment muted">Runner · Playwright</div>
       <div class="status-segment" class:warning={stepStatusError}>{stepStatus}</div>
@@ -3097,8 +3862,13 @@
   <TestClientDialog
     {testClients}
     bind:selectedName={testClientSelection}
+    browserOpen={browserOpen || recording}
+    suggestName={testClientSuggestName}
     onUse={useTestClient}
-    onClose={() => (showTestClient = false)}
+    onClose={() => {
+      showTestClient = false
+      testClientSuggestName = ''
+    }}
     onClientsChange={(names) => (testClients = names)}
     onLog={appendLog}
     onAskConfirm={(message) =>
@@ -3195,9 +3965,13 @@
 {#if showUpdateCheck}
   <UpdateCheckDialog
     currentVersion={version}
+    info={updateCheckInfo}
     message={updateCheckMessage}
     hasUpdate={updateCheckHasUpdate}
+    downloading={updateDownloading}
     onClose={() => (showUpdateCheck = false)}
+    onOpenRelease={openUpdateRelease}
+    onDownload={downloadUpdate}
   />
 {/if}
 
@@ -3237,16 +4011,22 @@
     bind:browser={settingsBrowser}
     bind:headless={settingsHeadless}
     bind:workers={settingsWorkers}
+    bind:slowMo={settingsSlowMo}
     bind:loops={settingsLoops}
     bind:filterRecording
     bind:navOnlyRecording
     bind:hoverRecord
+    bind:scrollBeforeClick={settingsScrollBeforeClick}
+    bind:hoverRecordMinMs={settingsHoverRecordMinMs}
     bind:toolbarCompact
     bind:stepsPanelVisible
     bind:stepsPanelHeight
     bind:checkUpdatesOnStartup={settingsCheckUpdatesOnStartup}
+    bind:selectorClickStrategies={settingsSelectorClickStrategies}
+    bind:selectorInputStrategies={settingsSelectorInputStrategies}
+    bind:editorSettings
     onSave={applySettings}
-    onCancel={() => (showSettings = false)}
+    onCancel={cancelSettings}
     onOpenPlugins={() => {
       showSettings = false
       showPlugins = true
@@ -3336,18 +4116,6 @@
   />
 {/if}
 
-{#if showFindReplace}
-  <FindReplaceDialog
-    bind:findText
-    bind:replaceText
-    bind:caseSensitive={replaceCaseSensitive}
-    onFindNext={() => monaco?.findNext(findText, replaceCaseSensitive) ?? false}
-    onReplace={() => monaco?.replaceNext(findText, replaceText, replaceCaseSensitive) ?? false}
-    onReplaceAll={() => monaco?.replaceAll(findText, replaceText, replaceCaseSensitive) ?? 0}
-    onClose={() => (showFindReplace = false)}
-  />
-{/if}
-
 {#if showProjectReplace}
   <ProjectReplaceDialog
     bind:findText
@@ -3372,6 +4140,20 @@
   />
 {/if}
 
+{#if folderMenu}
+  <FolderContextMenu
+    x={folderMenu.x}
+    y={folderMenu.y}
+    featureCount={folderMenu.paths.length}
+    onRun={() => folderMenuRun(false)}
+    onDryRun={() => folderMenuRun(true)}
+    onVanessa={() => folderMenuVanessa(false)}
+    onVanessaDry={() => folderMenuVanessa(true)}
+    onSelectBatch={folderMenuSelectBatch}
+    onClose={dismissFolderMenu}
+  />
+{/if}
+
 {#if contextMenu}
   <CatalogContextMenu
     x={contextMenu.x}
@@ -3385,6 +4167,20 @@
     onReveal={contextMenuReveal}
     onDelete={contextMenuDelete}
     onClose={dismissContextMenu}
+  />
+{/if}
+
+{#if stepsMenu}
+  <StepsContextMenu
+    x={stepsMenu.x}
+    y={stepsMenu.y}
+    onRunFrom={() => stepsMenuRunFrom(false)}
+    onRunTo={() => stepsMenuRunTo(false)}
+    onDryRunFrom={() => stepsMenuRunFrom(true)}
+    onDryRunTo={() => stepsMenuRunTo(true)}
+    onGoto={stepsMenuGoto}
+    onHelp={stepsMenuHelp}
+    onClose={closeStepsMenu}
   />
 {/if}
 

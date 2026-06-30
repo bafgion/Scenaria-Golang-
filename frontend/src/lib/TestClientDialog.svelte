@@ -5,10 +5,13 @@
     SaveTestClientJSON,
     DeleteTestClient,
     ListTestClients,
+    CaptureBrowserSession,
   } from '../../wailsjs/go/wailsapp/App'
 
   export let testClients: string[] = []
   export let selectedName = ''
+  export let browserOpen = false
+  export let suggestName = ''
   export let onUse: (name: string) => void = () => {}
   export let onClose: () => void = () => {}
   export let onClientsChange: (names: string[]) => void = () => {}
@@ -36,6 +39,7 @@
 
   $: canSave = Boolean(editorName.trim()) && Boolean(jsonText.trim()) && !busy
   $: canUse = Boolean(selectedName) && !isNew
+  $: canCapture = Boolean(editorName.trim()) && browserOpen && !busy
 
   async function selectClient(name: string) {
     isNew = false
@@ -81,6 +85,27 @@
     }
   }
 
+  async function captureFromBrowser() {
+    const name = editorName.trim()
+    if (!name || !browserOpen) return
+    busy = true
+    error = ''
+    try {
+      const summary = await CaptureBrowserSession(name)
+      testClients = await ListTestClients()
+      onClientsChange(testClients)
+      isNew = false
+      selectedName = name
+      jsonText = await ReadTestClientJSON(name)
+      onLog(summary)
+      onUse(name)
+    } catch (e: any) {
+      error = String(e)
+    } finally {
+      busy = false
+    }
+  }
+
   async function deleteClient() {
     if (!selectedName || isNew) return
     if (!(await onAskConfirm(`Удалить TestClient «${selectedName}»?`))) return
@@ -111,7 +136,12 @@
 
   onMount(async () => {
     if (selectedName) await selectClient(selectedName)
-    else if (testClients.length === 0) startNew()
+    else if (suggestName.trim()) {
+      const name = suggestName.trim()
+      isNew = true
+      editorName = name
+      jsonText = blankTemplate(name)
+    } else if (testClients.length === 0) startNew()
   })
 </script>
 
@@ -122,6 +152,9 @@
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal wide tall test-client-dialog" role="dialog" aria-modal="true" aria-label="TestClient" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>TestClient</h3>
+    <p class="hint capture-hint">
+      Профиль с cookies и localStorage для повторного запуска с той же сессией. Откройте браузер, войдите на сайт, затем нажмите «Захватить из браузера».
+    </p>
     <div class="test-client-body">
       <div class="client-list">
         {#each testClients as client}
@@ -153,6 +186,9 @@
       </div>
     </div>
     <div class="modal-actions">
+      <button type="button" class="primary" on:click={captureFromBrowser} disabled={!canCapture} title={browserOpen ? '' : 'Сначала откройте браузер (Ctrl+B)'}>
+        Захватить из браузера
+      </button>
       <button type="button" class="primary" on:click={saveClient} disabled={!canSave}>Сохранить</button>
       <button type="button" on:click={deleteClient} disabled={!selectedName || isNew || busy}>Удалить</button>
       <button type="button" class="primary" on:click={() => onUse(selectedName)} disabled={!canUse}>Использовать при запуске</button>
@@ -206,5 +242,12 @@
     color: var(--color-error, #c62828);
     font-size: 12px;
     margin: 0;
+  }
+
+  .capture-hint {
+    margin: 0 0 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--color-muted);
   }
 </style>

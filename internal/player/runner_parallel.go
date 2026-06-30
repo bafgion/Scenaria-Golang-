@@ -79,5 +79,7 @@ func scenarioInputFromCase(runCase RunCase) ScenarioInput {
 		TestClient:   runCase.TestClient,
 		Variables:    runCase.Variables,
 		ProjectRoot:  runCase.ProjectRoot,
+		StartStep:    runCase.StartStep,
+		EndStep:      runCase.EndStep,
 	}
 }

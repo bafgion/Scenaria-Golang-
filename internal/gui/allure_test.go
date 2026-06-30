@@ -56,7 +56,10 @@ func TestOpenHTMLReport_Found(t *testing.T) {
 	if result.Error != "" {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
-	if result.Output == "" || result.Output[:7] != "file://" {
-		t.Fatalf("expected file url, got %q", result.Output)
+	if result.Output == "" {
+		t.Fatal("expected report path")
+	}
+	if filepath.Base(result.Output) != "report.html" {
+		t.Fatalf("expected report path, got %q", result.Output)
 	}
 }

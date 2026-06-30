@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActions'
+import { findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActionsHelpers'
 import type { gui } from '../../wailsjs/go/models'
 
 const hint: gui.ScenarioHintDTO = {

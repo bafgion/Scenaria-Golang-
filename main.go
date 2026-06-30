@@ -22,10 +22,11 @@ func main() {
 		Height: 800,
 		MinWidth:  960,
 		MinHeight: 640,
+		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 24, G: 26, B: 32, A: 1},
+		BackgroundColour: &options.RGBA{R: 20, G: 22, B: 24, A: 1},
 		OnStartup:        app.Startup,
 		Bind: []interface{}{
 			app,

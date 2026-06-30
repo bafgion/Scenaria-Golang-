@@ -3,16 +3,34 @@
   import { preloadMonacoEditor } from './appBootstrap'
   import {
     registerHintCodeActions,
-    setHintMarkers,
     type HintActionHandlers,
   } from './gherkinHintActions'
+  import { applyEditorMarkers } from './gherkinEditorMarkers'
+  import {
+    registerGherkinCodeLens,
+    refreshGherkinCodeLens,
+    type RunCodeLensHandlers,
+  } from './gherkinCodeLens'
+  import {
+    registerGherkinInlayHints,
+    refreshGherkinInlayHints,
+    type InlayHintsHandlers,
+  } from './gherkinInlayHintsProvider'
+  import {
+    DEFAULT_EDITOR_SETTINGS,
+    toMonacoOptions,
+    type EditorSettings,
+  } from './editorOptions'
   import type { gui } from '../../wailsjs/go/models'
   import type { HotkeyId } from './hotkeys'
   import type { editor as MonacoEditor } from 'monaco-editor'
 
   export let value = ''
+  export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
   export let onHotkey: ((id: HotkeyId) => void) | null = null
   export let hintActions: HintActionHandlers | null = null
+  export let runLensActions: RunCodeLensHandlers | null = null
+  export let inlayHintsHandlers: InlayHintsHandlers | null = null
   export let scenarioHints: gui.ScenarioHintDTO[] = []
 
   type MarkerIssue = { line: number; message: string }
@@ -21,8 +39,60 @@
   let editor: MonacoEditor.IStandaloneCodeEditor | null = null
   let monacoApi: typeof import('monaco-editor') | null = null
   let applyingExternal = false
+  let validationMarkerIssues: MarkerIssue[] = []
 
-  const dispatch = createEventDispatcher<{ change: string }>()
+  const dispatch = createEventDispatcher<{ change: string; cursorline: number }>()
+
+  function buildEditorOptions(monaco: typeof import('monaco-editor')) {
+    return {
+      ...toMonacoOptions(editorSettings, monaco),
+      value,
+      language: 'scenaria-feature',
+      theme: editorSettings.theme,
+      automaticLayout: true,
+      scrollBeyondLastLine: false,
+      padding: { top: 8 },
+      wordBasedSuggestions: 'currentDocument',
+      wordBasedSuggestionsOnlySameLanguage: true,
+      quickSuggestions: { other: true, comments: false, strings: true },
+    } satisfies MonacoEditor.IStandaloneEditorConstructionOptions
+  }
+
+  function syncEditorSettings(settings: EditorSettings) {
+    if (!editor || !monacoApi) return
+    const theme = settings.theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
+    monacoApi.editor.setTheme(theme)
+    editor.updateOptions(toMonacoOptions(settings, monacoApi))
+    refreshGherkinCodeLens(editor)
+    refreshGherkinInlayHints(editor)
+  }
+
+  export function applyEditorSettings(settings: EditorSettings) {
+    editorSettings = { ...settings }
+    syncEditorSettings(editorSettings)
+  }
+
+  export function openSymbolOutline() {
+    editor?.trigger('keyboard', 'editor.action.quickOutline', {})
+    editor?.focus()
+  }
+
+  export function openFindReplace() {
+    editor?.trigger('keyboard', 'editor.action.startFindReplaceAction', {})
+    editor?.focus()
+  }
+
+  export function openFind() {
+    editor?.trigger('keyboard', 'actions.find', {})
+    editor?.focus()
+  }
+
+  export async function formatDocument() {
+    if (!editor) return false
+    await editor.getAction('editor.action.formatDocument')?.run()
+    editor.focus()
+    return true
+  }
 
   onMount(async () => {
     const monaco = await preloadMonacoEditor()
@@ -30,27 +100,14 @@
     if (hintActions) {
       registerHintCodeActions(monaco, hintActions)
     }
+    if (runLensActions) {
+      registerGherkinCodeLens(monaco, runLensActions)
+    }
+    if (inlayHintsHandlers) {
+      registerGherkinInlayHints(monaco, inlayHintsHandlers)
+    }
 
-    editor = monaco.editor.create(container, {
-      value,
-      language: 'scenaria-feature',
-      theme: 'scenaria-dark',
-      automaticLayout: true,
-      fontSize: 13,
-      fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace',
-      minimap: { enabled: true, scale: 1 },
-      scrollBeyondLastLine: false,
-      wordWrap: 'on',
-      lineNumbers: 'on',
-      renderWhitespace: 'selection',
-      padding: { top: 8 },
-      tabSize: 4,
-      insertSpaces: false,
-      wordBasedSuggestions: 'currentDocument',
-      wordBasedSuggestionsOnlySameLanguage: true,
-      quickSuggestions: { other: true, comments: false, strings: true },
-      lightbulb: { enabled: 'on' as const },
-    })
+    editor = monaco.editor.create(container, buildEditorOptions(monaco))
 
     editor.onDidChangeModelContent(() => {
       if (!editor || applyingExternal) {
@@ -60,6 +117,10 @@
       dispatch('change', value)
     })
 
+    editor.onDidChangeCursorPosition((event) => {
+      dispatch('cursorline', event.position.lineNumber)
+    })
+
     const KeyMod = monaco.KeyMod
     const KeyCode = monaco.KeyCode
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.Space, () => {
@@ -67,6 +128,15 @@
     })
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.Period, () => {
       editor?.trigger('keyboard', 'editor.action.quickFix', {})
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyH, () => {
+      openFindReplace()
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyF, () => {
+      openFind()
+    })
+    editor.addCommand(KeyMod.Shift | KeyMod.Alt | KeyCode.KeyF, () => {
+      void formatDocument()
     })
 
     applyScenarioHintMarkers()
@@ -81,7 +151,6 @@
         [KeyMod.CtrlCmd | KeyCode.KeyR, 'record'],
         [KeyMod.CtrlCmd | KeyCode.KeyN, 'new'],
         [KeyMod.CtrlCmd | KeyCode.KeyO, 'open'],
-        [KeyMod.CtrlCmd | KeyCode.KeyH, 'find'],
         [KeyMod.CtrlCmd | KeyCode.Comma, 'settings'],
         [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyP, 'palette'],
         [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Space, 'snippets'],
@@ -92,6 +161,28 @@
       }
     }
   })
+
+  $: if (editor && monacoApi) {
+    syncEditorSettings(editorSettings)
+  }
+
+  $: if (monacoApi && hintActions) {
+    registerHintCodeActions(monacoApi, hintActions)
+  }
+
+  $: if (monacoApi && runLensActions) {
+    registerGherkinCodeLens(monacoApi, runLensActions)
+    refreshGherkinCodeLens(editor)
+  }
+
+  $: if (monacoApi && inlayHintsHandlers) {
+    registerGherkinInlayHints(monacoApi, inlayHintsHandlers)
+    refreshGherkinInlayHints(editor)
+  }
+
+  export function refreshInlayHints() {
+    refreshGherkinInlayHints(editor)
+  }
 
   onDestroy(() => {
     editor?.dispose()
@@ -140,30 +231,21 @@
   }
 
   export function setMarkers(issues: MarkerIssue[]) {
+    validationMarkerIssues = issues
+    syncEditorMarkers()
+  }
+
+  function syncEditorMarkers() {
     const model = editor?.getModel()
     if (!model || !monacoApi) return
-    monacoApi.editor.setModelMarkers(
-      model,
-      'scenaria',
-      issues.map((issue) => ({
-        startLineNumber: issue.line,
-        endLineNumber: issue.line,
-        startColumn: 1,
-        endColumn: model.getLineMaxColumn(issue.line),
-        message: issue.message,
-        severity: monacoApi!.MarkerSeverity.Error,
-      })),
-    )
-    applyScenarioHintMarkers()
+    applyEditorMarkers(monacoApi, model, validationMarkerIssues, scenarioHints)
   }
 
   function applyScenarioHintMarkers() {
-    const model = editor?.getModel()
-    if (!model || !monacoApi) return
-    setHintMarkers(monacoApi, model, scenarioHints)
+    syncEditorMarkers()
   }
 
-  $: scenarioHints, editor, monacoApi, applyScenarioHintMarkers()
+  $: scenarioHints, validationMarkerIssues, editor, monacoApi, syncEditorMarkers()
 
   export function gotoLine(line: number) {
     if (!editor || line < 1) return
@@ -174,71 +256,6 @@
 
   export function getCursorLine(): number {
     return editor?.getPosition()?.lineNumber ?? 1
-  }
-
-  let findCache = { query: '', caseSensitive: false, matches: [] as MonacoEditor.IRange[], index: -1 }
-
-  function resetFindCache() {
-    findCache = { query: '', caseSensitive: false, matches: [], index: -1 }
-  }
-
-  function collectMatches(query: string, caseSensitive: boolean) {
-    const model = editor?.getModel()
-    if (!model || !query) return []
-    return model.findMatches(query, true, false, caseSensitive, null, true).map((m) => m.range)
-  }
-
-  export function findNext(query: string, caseSensitive = false): boolean {
-    if (!editor || !query) return false
-    if (findCache.query !== query || findCache.caseSensitive !== caseSensitive) {
-      findCache.matches = collectMatches(query, caseSensitive)
-      findCache.query = query
-      findCache.caseSensitive = caseSensitive
-      findCache.index = -1
-    }
-    if (findCache.matches.length === 0) return false
-    findCache.index = (findCache.index + 1) % findCache.matches.length
-    const range = findCache.matches[findCache.index]
-    editor.setSelection(range)
-    editor.revealRangeInCenter(range)
-    editor.focus()
-    return true
-  }
-
-  export function replaceNext(query: string, replace: string, caseSensitive = false): boolean {
-    if (!editor || !query) return false
-    const model = editor.getModel()
-    const selection = editor.getSelection()
-    if (model && selection && !selection.isEmpty()) {
-      const selected = model.getValueInRange(selection)
-      const same = caseSensitive ? selected === query : selected.toLowerCase() === query.toLowerCase()
-      if (same) {
-        editor.executeEdits('replace', [{ range: selection, text: replace, forceMoveMarkers: true }])
-        resetFindCache()
-        return true
-      }
-    }
-    if (!findNext(query, caseSensitive)) return false
-    const nextSel = editor.getSelection()
-    if (!nextSel) return false
-    editor.executeEdits('replace', [{ range: nextSel, text: replace, forceMoveMarkers: true }])
-    resetFindCache()
-    return true
-  }
-
-  export function replaceAll(query: string, replace: string, caseSensitive = false): number {
-    if (!editor || !query) return 0
-    const model = editor.getModel()
-    if (!model) return 0
-    const matches = collectMatches(query, caseSensitive)
-    if (matches.length === 0) return 0
-    editor.pushUndoStop()
-    for (let i = matches.length - 1; i >= 0; i--) {
-      editor.executeEdits('replace-all', [{ range: matches[i], text: replace, forceMoveMarkers: true }])
-    }
-    editor.pushUndoStop()
-    resetFindCache()
-    return matches.length
   }
 </script>
 

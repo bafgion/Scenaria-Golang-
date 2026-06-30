@@ -1,8 +1,11 @@
 import loader from '@monaco-editor/loader'
 import * as monaco from 'monaco-editor'
-import { CompletionsForLine } from '../../wailsjs/go/wailsapp/App'
+import { CompletionsForLine, DescribeEditorLine, FormatFeature } from '../../wailsjs/go/wailsapp/App'
 import { registerFeatureLanguage } from './featureLanguage'
 import { registerGherkinCompletions } from './gherkinCompletions'
+import { registerGherkinStepHover } from './gherkinStepHover'
+import { registerGherkinFormatProvider } from './gherkinFormat'
+import { registerGherkinDocumentSymbols } from './gherkinDocumentSymbols'
 
 loader.config({ monaco })
 
@@ -14,6 +17,12 @@ export function preloadMonacoEditor(): Promise<typeof monaco> {
     monacoReady = loader.init().then((api) => {
       registerFeatureLanguage(api)
       registerGherkinCompletions(api, CompletionsForLine)
+      registerGherkinStepHover(api, async (line) => {
+        const entry = await DescribeEditorLine(line)
+        return entry?.label || entry?.template || entry?.action ? entry : null
+      })
+      registerGherkinFormatProvider(api, async (text) => FormatFeature(text))
+      registerGherkinDocumentSymbols(api)
       return api
     })
   }

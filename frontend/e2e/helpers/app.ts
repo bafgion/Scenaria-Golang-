@@ -9,7 +9,7 @@ export const E2E_PROJECT = 'C:/e2e/project'
 export async function bootApp(page: Page, search = '') {
   await page.addInitScript({ path: mockPath })
   await page.goto(`/${search}`)
-  await expect(page.locator('.splash-overlay')).toBeHidden({ timeout: 20_000 })
+  await expect(page.locator('.ide')).toBeVisible({ timeout: 20_000 })
 }
 
 export async function createNewScenario(page: Page) {

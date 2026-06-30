@@ -54,3 +54,17 @@ func TestHighlightTestClient(t *testing.T) {
 		t.Fatalf("expected TestClient highlight, got %#v", spans)
 	}
 }
+
+func TestHighlightBlockKeyword(t *testing.T) {
+	spans := Highlight("\tЕсли вижу \"a\"")
+	found := false
+	for _, span := range spans {
+		if strings.Contains(span.Text, "Если") && span.Kind == KindBlockKeyword {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected block keyword highlight, got %#v", spans)
+	}
+}

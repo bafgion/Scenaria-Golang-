@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { RunForm } from './runTypes'
-  import NumberInput from './NumberInput.svelte'
 
   export let title = 'Запуск сценария'
   export let form: RunForm
@@ -71,14 +70,12 @@
       </label>
     </div>
     <div class="row-2">
-      <div>
-        <label for="run-workers">Параллельные воркеры</label>
-        <NumberInput inputId="run-workers" bind:value={form.workers} min={1} max={16} disabled={form.dryRun} width="100%" />
-      </div>
-      <div>
-        <label for="run-slowmo">Slow-mo (мс)</label>
-        <NumberInput inputId="run-slowmo" bind:value={form.slowMo} min={0} step={50} disabled={form.dryRun} width="100%" />
-      </div>
+      <label>Параллельные воркеры
+        <input id="run-workers" type="number" bind:value={form.workers} min={1} max={16} disabled={form.dryRun} />
+      </label>
+      <label>Slow-mo (мс)
+        <input id="run-slowmo" type="number" bind:value={form.slowMo} min={0} step={50} disabled={form.dryRun} />
+      </label>
     </div>
     <label>Переменные (NAME=VALUE)
       <textarea bind:value={form.vars} placeholder="BASE_URL=https://example.com"></textarea>

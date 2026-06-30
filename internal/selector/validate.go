@@ -23,7 +23,7 @@ type Validator struct {
 
 func (v Validator) ValidateFeature(path string, feature *gherkin.Feature) ([]ValidationIssue, error) {
 	issues := make([]ValidationIssue, 0)
-	for _, runnable := range gherkin.ExpandFeature(feature) {
+	for _, runnable := range gherkin.ExpandFeatureAtPath(feature, path) {
 		for _, step := range gherkin.FlattenSteps(runnable.Steps) {
 			if step.Block != "" {
 				continue

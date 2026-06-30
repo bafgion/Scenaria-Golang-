@@ -8,6 +8,7 @@ import (
 
 var stepKeywords = []string{
 	"Допустим",
+	"Дано",
 	"Когда",
 	"Тогда",
 	"И",

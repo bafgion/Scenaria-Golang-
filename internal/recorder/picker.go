@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/selector"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -64,6 +65,13 @@ func PickSelectorOnPage(ctx context.Context, page playwright.Page) (string, erro
 		return "", fmt.Errorf("picker bindings: %w", err)
 	}
 	drainPickerResults()
+
+	if _, err := page.Evaluate(selector.HeuristicsJS); err != nil {
+		return "", fmt.Errorf("inject heuristics: %w", err)
+	}
+	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
+		_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+	}
 
 	if _, err := page.Evaluate(selector.PickerInstallScript); err != nil {
 		uninstallPicker(page)

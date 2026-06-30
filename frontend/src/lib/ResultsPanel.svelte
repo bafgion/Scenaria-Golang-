@@ -38,7 +38,6 @@
       {/if}
       {#if artifacts.htmlReport}
         <button type="button" on:click={() => onOpenHtmlReport(artifacts.htmlReport)}>HTML-отчёт</button>
-        <button type="button" class="secondary" on:click={() => onOpenFolder(artifacts.htmlReport)}>HTML (файл)</button>
       {/if}
       {#if artifacts.junitReport}
         <button type="button" on:click={() => onOpenFolder(artifacts.junitReport)}>JUnit</button>

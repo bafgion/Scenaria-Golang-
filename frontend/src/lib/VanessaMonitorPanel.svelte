@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { gui } from '../../wailsjs/go/models'
+  import { gui } from '../../wailsjs/go/models'
 
   export let snapshot: gui.VanessaRunSnapshotDTO = new gui.VanessaRunSnapshotDTO()
   export let running = false

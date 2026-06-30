@@ -36,6 +36,8 @@ type runOptions struct {
 	testClient        string
 	slowMo            float64
 	workers           int
+	startStep         int
+	endStep           int
 }
 
 func RunRun(args []string) error {
@@ -89,6 +91,16 @@ func RunRun(args []string) error {
 	}
 
 	plan := player.BuildExecutionPlanWithTestClient(featureInputs, opts.tag, opts.scenario, opts.variables, opts.testClient)
+	if opts.startStep >= 0 || opts.endStep >= 0 {
+		for i := range plan.Cases {
+			if opts.startStep >= 0 {
+				plan.Cases[i].StartStep = opts.startStep
+			}
+			if opts.endStep >= 0 {
+				plan.Cases[i].EndStep = opts.endStep
+			}
+		}
+	}
 	if len(plan.Cases) == 0 {
 		if opts.scenario != "" {
 			return fmt.Errorf("no scenarios found with name %q in %v", opts.scenario, opts.targets)
@@ -149,6 +161,9 @@ func RunRun(args []string) error {
 	}
 
 	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
+	if opts.startStep >= 0 || opts.endStep >= 0 {
+		fmt.Printf("Partial run: %s\n", formatPartialStepRange(opts.startStep, opts.endStep))
+	}
 	if opts.dryRun {
 		fmt.Println("Dry-run mode enabled: browser execution skipped")
 		return nil
@@ -161,8 +176,10 @@ func parseRunOptions(args []string) (runOptions, error) {
 		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>]")
 	}
 	opts := runOptions{
-		engine:  "",
-		browser: "chromium",
+		engine:    "",
+		browser:   "chromium",
+		startStep: -1,
+		endStep:   -1,
 	}
 	if cfg, err := settings.LoadDefaultAppSettings(); err == nil && cfg != nil {
 		if cfg.Browser != "" {
@@ -295,6 +312,26 @@ func parseRunOptions(args []string) (runOptions, error) {
 				return runOptions{}, fmt.Errorf("--workers expects integer >= 1, got %q", args[i])
 			}
 			opts.workers = workers
+		case "--start-step":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--start-step requires a 0-based step index")
+			}
+			i++
+			var start int
+			if _, err := fmt.Sscanf(args[i], "%d", &start); err != nil || start < 0 {
+				return runOptions{}, fmt.Errorf("--start-step expects non-negative integer, got %q", args[i])
+			}
+			opts.startStep = start
+		case "--end-step":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--end-step requires a 0-based step index")
+			}
+			i++
+			var end int
+			if _, err := fmt.Sscanf(args[i], "%d", &end); err != nil || end < 0 {
+				return runOptions{}, fmt.Errorf("--end-step expects non-negative integer, got %q", args[i])
+			}
+			opts.endStep = end
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
@@ -360,4 +397,17 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 	default:
 		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)
 	}
+}
+
+func formatPartialStepRange(start, end int) string {
+	if start >= 0 && end >= 0 {
+		return fmt.Sprintf("steps %d–%d (1-based)", start+1, end+1)
+	}
+	if start >= 0 {
+		return fmt.Sprintf("from step %d", start+1)
+	}
+	if end >= 0 {
+		return fmt.Sprintf("through step %d", end+1)
+	}
+	return ""
 }

@@ -15,6 +15,8 @@ type RunCase struct {
 	TestClient  *settings.TestClient
 	Variables   map[string]string
 	ProjectRoot string
+	StartStep   int // 0-based leaf index; -1 = from first step
+	EndStep     int // 0-based leaf index; -1 = through last step
 }
 
 type ExecutionPlan struct {
@@ -49,7 +51,7 @@ func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables
 				testClient = client
 			}
 		}
-		for _, runnable := range gherkin.ExpandFeature(input.Feature) {
+		for _, runnable := range gherkin.ExpandFeatureAtPath(input.Feature, input.Path) {
 			if tag != "" && !gherkin.TagsInclude(runnable.Tags, tag) {
 				continue
 			}
@@ -63,6 +65,8 @@ func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables
 				TestClient:  testClient,
 				Variables:   variables,
 				ProjectRoot: projectRoot,
+				StartStep:   -1,
+				EndStep:     -1,
 			})
 		}
 	}
@@ -74,7 +78,15 @@ func SummarizePlan(plan ExecutionPlan) (files int, scenarios int, steps int, res
 	results = make([]ScenarioResult, 0, len(plan.Cases))
 	for _, runCase := range plan.Cases {
 		seenFiles[runCase.FeaturePath] = struct{}{}
-		steps += gherkin.CountLeafSteps(runCase.Steps)
+		caseSteps := runCase.Steps
+		if runCase.StartStep != -1 || runCase.EndStep != -1 {
+			start := runCase.StartStep
+			if start < 0 {
+				start = 0
+			}
+			caseSteps = gherkin.ApplyStepRange(caseSteps, start, runCase.EndStep)
+		}
+		steps += gherkin.CountLeafSteps(caseSteps)
 		results = append(results, ScenarioResult{
 			FeaturePath: runCase.FeaturePath,
 			Scenario:    runCase.Name,

@@ -9,8 +9,11 @@ import (
 )
 
 type ValidationIssue struct {
-	Line    int    `json:"line"`
-	Message string `json:"message"`
+	Line     int    `json:"line"`
+	Message  string `json:"message"`
+	Selector string `json:"selector,omitempty"`
+	Status   string `json:"status,omitempty"`
+	StepText string `json:"stepText,omitempty"`
 }
 
 func ValidateFeatureContent(text string) []ValidationIssue {

@@ -17,6 +17,23 @@
     checkUpdatesOnStartup: false,
     recentProjects: [E2E_PROJECT],
     recentFeatures: [],
+    editor: {
+      fontSize: 13,
+      fontFamily: '"Cascadia Code", Consolas, monospace',
+      wordWrap: 'on',
+      minimap: true,
+      lineNumbers: 'on',
+      tabSize: 4,
+      insertSpaces: false,
+      renderWhitespace: 'selection',
+      folding: false,
+      stickyScroll: false,
+      autoClosingQuotes: 'languageDefined',
+      formatOnSave: false,
+      theme: 'scenaria-dark',
+      stepHoverEnabled: true,
+      validateOnType: true,
+    },
   }
 
   const sampleSteps = [
@@ -86,6 +103,11 @@
     },
     InstallBrowserEngine: async () => ({ output: 'Готово: mock', error: '' }),
     SearchSteps: async () => sampleSteps,
+    DescribeEditorLine: async (line) => {
+      const text = String(line || '')
+      if (text.includes('нажимаю')) return sampleSteps[0]
+      return { label: '', action: '', category: '', description: '', template: '', example: '', parameters: [], help: '' }
+    },
     CompletionsForLine: async (line, column) => {
       const items = sampleSteps.map((s) => ({
         label: s.label,
@@ -127,7 +149,7 @@
     SaveFeature: asyncOk,
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
     Run: async (opts) => ({ output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }),
-    Validate: asyncOk,
+    Validate: async () => ({ output: 'Проверка завершена.', error: '' }),
     ListTestClients: async () => [],
     ListPlugins: async () => [],
     ListRunResults: async () => [],
@@ -143,7 +165,19 @@
       return [{ text: 'открыт "https://example.com"' }]
     },
     InitProject: async () => 'init ok',
-    CheckUpdate: async () => ({ available: false, version: '', url: '' }),
+    CheckUpdate: async () => ({ output: 'Установлена актуальная версия', error: '' }),
+    CheckUpdateInfo: async () => ({
+      currentVersion: '0.0.0-e2e',
+      latestVersion: '0.0.0-e2e',
+      updateAvailable: false,
+      htmlUrl: '',
+      downloadUrl: '',
+      downloadName: '',
+      message: 'Установлена актуальная версия',
+    }),
+    DownloadUpdate: async () => '',
+    OpenExternalURL: asyncOk,
+    ValidateBrowser: async () => [],
     ArtifactExists: async () => false,
     BundledExamplesPath: async () => '',
     ListScenarioTitles: async () => ['тест'],
@@ -188,7 +222,7 @@
     UpdateRecordingOptions: noop,
     PickSelector: asyncEmpty,
     PickerStepChoices: async () => [],
-    SubmitOTPCode: noop,
+    SubmitOTPCode: async () => true,
     CancelOTP: noop,
     OpenFolder: noop,
     ServeAllure: asyncOk,
@@ -196,6 +230,7 @@
     RefactorUpdateStartURLs: async (_paths, _url) => ({ changed: 0, output: '' }),
     RefactorNormalizeIndents: async (text) => text,
     RefactorCollapseBlankLines: async (text) => text,
+    FormatFeature: async (text) => text.replace(/\n\s*\n(\s*(?:Когда|Тогда|Допустим|И|Но))/g, '\n$1'),
     ListVanessaRunDirs: async () => [],
     StartVanessaRun: noop,
     PollVanessaRun: async () => ({ done: true, passed: 0, failed: 0, total: 0 }),
@@ -205,6 +240,7 @@
     IsRecordingPaused: async () => false,
     HTTPAuthForHost: async () => null,
     DeleteTestClient: asyncOk,
+    CaptureBrowserSession: async (name) => `captured ${name}`,
   }
 
   const registerHandler = (event, cb) => {

@@ -8,6 +8,10 @@ export function ApplyScenarioHintFix(arg1:gui.ScenarioHintFixRequest):Promise<gu
 
 export function ArtifactExists(arg1:string):Promise<boolean>;
 
+export function BeginRecordingCapture():Promise<void>;
+
+export function BeginSplashWindowChrome():Promise<void>;
+
 export function BrowserInstallStatus(arg1:string):Promise<gui.BrowserInstallStatusDTO>;
 
 export function BundledExamplesPath():Promise<string>;
@@ -16,7 +20,13 @@ export function CancelOTP():Promise<void>;
 
 export function CancelRecording():Promise<void>;
 
+export function CaptureBrowserSession(arg1:string):Promise<string>;
+
 export function CheckUpdate():Promise<gui.RunResult>;
+
+export function CheckUpdateInfo():Promise<gui.UpdateInfoDTO>;
+
+export function ClearFeatureDraft(arg1:string):Promise<void>;
 
 export function CompletionsForLine(arg1:string,arg2:number):Promise<gui.StepCompletionsDTO>;
 
@@ -24,11 +34,17 @@ export function DeleteFeature(arg1:string):Promise<void>;
 
 export function DeleteTestClient(arg1:string):Promise<void>;
 
+export function DescribeEditorLine(arg1:string):Promise<gui.StepCatalogEntry>;
+
+export function DownloadUpdate():Promise<string>;
+
 export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
 
 export function FocusBrowser():Promise<void>;
+
+export function FormatFeature(arg1:string):Promise<string>;
 
 export function HTTPAuthForHost(arg1:string):Promise<gui.HTTPAuthCredentials>;
 
@@ -58,15 +74,23 @@ export function ListTestClients():Promise<Array<string>>;
 
 export function ListVanessaRunDirs(arg1:number):Promise<Array<string>>;
 
+export function LoadFeatureDraft(arg1:string):Promise<string>;
+
 export function LoadRecents():Promise<gui.RecentsDTO>;
 
 export function LoadSettings():Promise<gui.AppSettingsDTO>;
 
 export function MoveFeature(arg1:string,arg2:string):Promise<string>;
 
+export function OpenBrowser(arg1:gui.OpenBrowserRequest):Promise<void>;
+
+export function OpenExternalURL(arg1:string):Promise<void>;
+
 export function OpenFolder(arg1:string):Promise<void>;
 
 export function OpenHTMLReport(arg1:string):Promise<gui.RunResult>;
+
+export function OpenMainWindowChrome():Promise<void>;
 
 export function OpenProject(arg1:string):Promise<gui.ProjectInfo>;
 
@@ -85,6 +109,8 @@ export function PickSaveFile(arg1:string,arg2:string):Promise<string>;
 export function PickSelector():Promise<gui.PickSelectorResult>;
 
 export function PickerStepChoices(arg1:string,arg2:string):Promise<Array<gui.PickerStepChoice>>;
+
+export function PollBrowserSession():Promise<gui.BrowserSessionDTO>;
 
 export function PollVanessaRun(arg1:string,arg2:number):Promise<gui.VanessaRunSnapshotDTO>;
 
@@ -120,6 +146,10 @@ export function RenameFeature(arg1:string,arg2:string):Promise<string>;
 
 export function ReplaceInProject(arg1:gui.ProjectReplaceRequest):Promise<gui.ProjectReplaceResult>;
 
+export function ResolveRunFromLine(arg1:string,arg2:number):Promise<gui.RunFromLineDTO>;
+
+export function ResolveRunToLine(arg1:string,arg2:number):Promise<gui.RunFromLineDTO>;
+
 export function ResumeRecording():Promise<void>;
 
 export function Run(arg1:gui.RunRequest):Promise<gui.RunResult>;
@@ -129,6 +159,8 @@ export function RunPlugin(arg1:gui.PluginRunRequest):Promise<gui.RunResult>;
 export function RunVanessa(arg1:boolean):Promise<gui.RunResult>;
 
 export function SaveFeature(arg1:string,arg2:string):Promise<void>;
+
+export function SaveFeatureDraft(arg1:string,arg2:string):Promise<void>;
 
 export function SaveHTTPAuth(arg1:gui.HTTPAuthRequest):Promise<void>;
 
@@ -146,7 +178,7 @@ export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
 
 export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
 
-export function SubmitOTPCode(arg1:string):Promise<void>;
+export function SubmitOTPCode(arg1:string):Promise<boolean>;
 
 export function TestClientDetails(arg1:string):Promise<string>;
 
@@ -154,9 +186,11 @@ export function UndoRecordedStep():Promise<boolean>;
 
 export function UninstallPlugin(arg1:string):Promise<void>;
 
-export function UpdateRecordingOptions(arg1:boolean,arg2:boolean,arg3:boolean,arg4:boolean):Promise<void>;
+export function UpdateRecordingOptions(arg1:boolean,arg2:boolean,arg3:boolean,arg4:boolean,arg5:boolean,arg6:number):Promise<void>;
 
 export function Validate(arg1:gui.ValidateRequest):Promise<gui.RunResult>;
+
+export function ValidateBrowser(arg1:gui.ValidateRequest):Promise<Array<gui.ValidationIssue>>;
 
 export function ValidateFeature(arg1:string):Promise<Array<gui.ValidationIssue>>;
 

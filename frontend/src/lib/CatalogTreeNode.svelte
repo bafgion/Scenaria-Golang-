@@ -18,6 +18,7 @@
   export let onToggleBatch: (path: string) => void = () => {}
   export let onCollapseChange: (key: string, collapsed: boolean) => void = () => {}
   export let onFileContextMenu: (event: MouseEvent, path: string) => void = () => {}
+  export let onFolderContextMenu: (event: MouseEvent, node: CatalogNode) => void = () => {}
   export let onMoveFeature: (src: string, destDir: string) => void = () => {}
   export let onDropTarget: (path: string) => void = () => {}
 
@@ -109,7 +110,10 @@
     draggable={node.kind === 'file'}
     on:click={onRowClick}
     on:dblclick={onRowDblClick}
-    on:contextmenu={(e) => node.kind === 'file' && onFileContextMenu(e, node.path)}
+    on:contextmenu={(e) => {
+      if (node.kind === 'file') onFileContextMenu(e, node.path)
+      else onFolderContextMenu(e, node)
+    }}
     on:dragstart={onDragStart}
     on:dragend={onDragEnd}
     on:dragover={onDragOver}
@@ -146,6 +150,7 @@
         {onToggleBatch}
         {onCollapseChange}
         {onFileContextMenu}
+        {onFolderContextMenu}
         {onMoveFeature}
         {onDropTarget}
       />

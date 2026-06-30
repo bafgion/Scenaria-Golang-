@@ -2,8 +2,7 @@
   import { onMount } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
-
-  export type SnippetEntry = { category: string; template: string; help: string }
+  import type { SnippetEntry } from './stepTypes'
 
   export let onClose: () => void
   export let onInsert: (template: string) => void

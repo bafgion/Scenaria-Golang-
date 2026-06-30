@@ -1,8 +1,14 @@
 <script lang="ts">
+  import type { gui } from '../../wailsjs/go/models'
+
   export let currentVersion = ''
+  export let info: gui.UpdateInfoDTO | null = null
   export let message = ''
   export let hasUpdate = false
+  export let downloading = false
   export let onClose: () => void = () => {}
+  export let onOpenRelease: () => void = () => {}
+  export let onDownload: () => void = () => {}
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose()
@@ -16,9 +22,9 @@
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal update-dialog" role="dialog" aria-modal="true" aria-label="Обновления" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Обновления Scenaria</h3>
-    <p class="version">Текущая версия: {currentVersion || '—'}</p>
+    <p class="version">Текущая версия: {info?.currentVersion || currentVersion || '—'}</p>
     {#if hasUpdate}
-      <p class="update-available">Доступна новая версия</p>
+      <p class="update-available">Доступна версия {info?.latestVersion || 'новее'}</p>
     {:else}
       <p class="up-to-date">Установлена актуальная версия</p>
     {/if}
@@ -26,7 +32,15 @@
       <pre class="details">{message.trim()}</pre>
     {/if}
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={onClose}>OK</button>
+      {#if hasUpdate && info?.htmlUrl}
+        <button type="button" on:click={onOpenRelease}>Страница релиза</button>
+      {/if}
+      {#if hasUpdate && info?.downloadUrl}
+        <button type="button" class="primary" disabled={downloading} on:click={onDownload}>
+          {downloading ? 'Скачивание…' : 'Скачать обновление'}
+        </button>
+      {/if}
+      <button type="button" on:click={onClose}>Закрыть</button>
     </div>
   </div>
 </div>
@@ -66,6 +80,13 @@
     border-radius: 3px;
     max-height: 160px;
     overflow: auto;
+  }
+
+  .modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
   }
 
   button {

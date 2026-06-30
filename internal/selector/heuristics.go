@@ -7,11 +7,29 @@ import (
 	"strings"
 )
 
-//go:embed recorder_script.js
-var recorderScriptJS string
+//go:embed heuristics_script.js
+var heuristicsScriptJS string
 
-// RecorderHeuristicsJS is injected into the browser during live recording.
-var RecorderHeuristicsJS = recorderScriptJS
+//go:embed recorder_script.js
+var recorderListenersJS string
+
+//go:embed browser_toolbar.js
+var browserToolbarJS string
+
+// HeuristicsJS exposes selector helpers for picker and recorder (no event listeners).
+var HeuristicsJS = heuristicsScriptJS
+
+// RecorderListenersJS attaches DOM listeners; requires HeuristicsJS on the page first.
+var RecorderListenersJS = recorderListenersJS
+
+// RecorderScript installs heuristics + recorder listeners on the current document.
+var RecorderScript = heuristicsScriptJS + "\n" + recorderListenersJS
+
+// RecorderHeuristicsJS is the full in-browser recorder bundle (legacy name).
+var RecorderHeuristicsJS = RecorderScript
+
+// BrowserToolbarJS is injected as a fixed panel inside the Playwright browser window.
+var BrowserToolbarJS = browserToolbarJS
 
 var cssEscapeRE = regexp.MustCompile(`([!"#$%&'()*+,./:;<=>?@[\\\]^` + "`" + `{|}~])`)
 

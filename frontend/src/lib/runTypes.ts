@@ -17,6 +17,8 @@ export type RunForm = {
   slowMo: number
   browser: string
   baseUrl: string
+  startStep: number
+  endStep: number
 }
 
 export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
@@ -39,6 +41,8 @@ export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
     slowMo: 0,
     browser: 'chromium',
     baseUrl: '',
+    startStep: -1,
+    endStep: -1,
     ...partial,
   }
 }

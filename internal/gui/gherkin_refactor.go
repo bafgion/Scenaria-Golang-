@@ -148,6 +148,11 @@ func CollapseBlankLinesBetweenSteps(text string) string {
 	return joinLines(result, text)
 }
 
+// FormatFeature normalizes step indents and removes blank lines between consecutive steps.
+func FormatFeature(text string) string {
+	return CollapseBlankLinesBetweenSteps(NormalizeStepIndents(text))
+}
+
 func isRefactorStepBlockLine(stripped, raw string) bool {
 	if stripped == "" || strings.HasPrefix(stripped, "#") {
 		return false

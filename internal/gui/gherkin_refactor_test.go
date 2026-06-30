@@ -21,6 +21,15 @@ func TestCollapseBlankLinesBetweenSteps(t *testing.T) {
 	}
 }
 
+func TestFormatFeature(t *testing.T) {
+	text := "  Когда нажимаю \"a\"\n\n  Тогда вижу \"b\"\n"
+	got := FormatFeature(text)
+	want := "\tКогда нажимаю \"a\"\n\tТогда вижу \"b\"\n"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
 func TestReplaceInText(t *testing.T) {
 	got := ReplaceInText("hello Hello", "hello", "bye", false)
 	if got.Count != 2 {

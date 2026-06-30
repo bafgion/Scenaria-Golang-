@@ -1,89 +1,67 @@
 <script lang="ts">
-  import { HighlightFeature } from '../../wailsjs/go/wailsapp/App'
-  import { gui } from '../../wailsjs/go/models'
+  import { onDestroy, onMount } from 'svelte'
+  import { preloadMonacoEditor } from './appBootstrap'
+  import type { EditorSettings } from './editorOptions'
+  import type { editor as MonacoEditor } from 'monaco-editor'
 
   export let text = ''
+  export let theme: EditorSettings['theme'] = 'scenaria-dark'
+  export let fontSize = 13
+  export let fontFamily = '"Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace'
 
-  let spans: gui.HighlightSpan[] = []
-  let timer: ReturnType<typeof setTimeout> | undefined
+  let container: HTMLDivElement
+  let editor: MonacoEditor.IStandaloneCodeEditor | null = null
+  let monacoApi: typeof import('monaco-editor') | null = null
 
-  $: scheduleHighlight(text)
-
-  function scheduleHighlight(value: string) {
-    clearTimeout(timer)
-    timer = setTimeout(() => refreshHighlight(value), 120)
-  }
-
-  async function refreshHighlight(value: string) {
-    try {
-      spans = await HighlightFeature(value)
-    } catch {
-      spans = [{ text: value, kind: 'text' }]
+  function syncPreview() {
+    if (!editor || !monacoApi) return
+    const themeName = theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
+    monacoApi.editor.setTheme(themeName)
+    editor.updateOptions({ fontSize, fontFamily, wordWrap: 'on' })
+    if (editor.getValue() !== text) {
+      editor.setValue(text)
     }
   }
+
+  onMount(async () => {
+    monacoApi = await preloadMonacoEditor()
+    const themeName = theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
+    editor = monacoApi.editor.create(container, {
+      value: text,
+      language: 'scenaria-feature',
+      theme: themeName,
+      readOnly: true,
+      domReadOnly: true,
+      fontSize,
+      fontFamily,
+      minimap: { enabled: false },
+      lineNumbers: 'off',
+      folding: false,
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      automaticLayout: true,
+      renderValidationDecorations: 'off',
+      contextmenu: false,
+      scrollbar: { vertical: 'auto', horizontal: 'hidden' },
+      padding: { top: 8 },
+    })
+  })
+
+  $: text, theme, fontSize, fontFamily, syncPreview()
+
+  onDestroy(() => {
+    editor?.dispose()
+    editor = null
+  })
 </script>
 
-<div class="feature-preview">
-  <pre class="preview-code"><code>{#each spans as span}<span class={span.kind}>{span.text}</span>{/each}</code></pre>
-</div>
+<div class="feature-preview" bind:this={container}></div>
 
 <style>
   .feature-preview {
     height: 100%;
-    overflow: auto;
-    background: #12141a;
+    min-height: 0;
+    width: 100%;
     border-left: 1px solid var(--color-border);
-  }
-
-  .preview-code {
-    margin: 0;
-    padding: 8px 12px;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .comment {
-    color: #6a737d;
-    font-style: italic;
-  }
-
-  .tag {
-    color: #79c0ff;
-  }
-
-  .gherkin {
-    color: #d2a8ff;
-    font-weight: 600;
-  }
-
-  .step {
-    color: #ff7b72;
-    font-weight: 600;
-  }
-
-  .block {
-    color: #ffa657;
-    font-weight: 600;
-  }
-
-  .string {
-    color: #a5d6ff;
-  }
-
-  .testclient {
-    color: #ffa657;
-    font-weight: 600;
-  }
-
-  .error {
-    color: var(--color-error);
-    text-decoration: underline wavy var(--color-error);
-  }
-
-  .text {
-    color: var(--color-text);
   }
 </style>

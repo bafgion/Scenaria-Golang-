@@ -11,4 +11,6 @@ type ScenarioInput struct {
 	TestClient   *settings.TestClient
 	Variables    map[string]string
 	ProjectRoot  string
+	StartStep    int
+	EndStep      int
 }

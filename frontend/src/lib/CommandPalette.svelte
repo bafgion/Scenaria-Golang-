@@ -1,11 +1,5 @@
 <script lang="ts">
-  export type PaletteCommand = {
-    id: string
-    label: string
-    group: string
-    shortcut?: string
-    run: () => void
-  }
+  import type { PaletteCommand } from './paletteTypes'
 
   export let commands: PaletteCommand[] = []
   export let onClose: () => void

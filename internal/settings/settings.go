@@ -15,6 +15,7 @@ type AppSettings struct {
 	RecordingFilterMode bool   `json:"recording_filter_mode"`
 	NavOnlyRecording    bool   `json:"nav_only_recording"`
 	ParallelWorkers     int    `json:"parallel_workers"`
+	SlowMo              int    `json:"slow_mo"`
 	MaxLoopIterations   int    `json:"max_loop_iterations"`
 	ToolbarCompact      bool   `json:"toolbar_compact"`
 	StepsPanelVisible   bool     `json:"steps_panel_visible"`
@@ -22,8 +23,16 @@ type AppSettings struct {
 	SidebarWidth        int      `json:"sidebar_width"`
 	RecentProjects      []string `json:"recent_projects"`
 	RecentFeatures      []string `json:"recent_features"`
+	SessionProject      string   `json:"session_project,omitempty"`
+	OpenTabs            []string `json:"open_tabs,omitempty"`
+	ActiveTab           string   `json:"active_tab,omitempty"`
+	ScrollBeforeClick   bool     `json:"scroll_before_click"`
+	HoverRecordMinMs    int      `json:"hover_record_min_ms"`
+	SelectorClickStrategies []string `json:"selector_click_strategies,omitempty"`
+	SelectorInputStrategies []string `json:"selector_input_strategies,omitempty"`
 	CheckUpdatesOnStartup *bool  `json:"check_updates_on_startup,omitempty"`
 	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
+	Editor              EditorSettings             `json:"editor,omitempty"`
 }
 
 type HTTPAuthEntry struct {

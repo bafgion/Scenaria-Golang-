@@ -3,6 +3,7 @@ import {
   RememberRecentProject,
   RememberRecentFeature,
 } from '../../wailsjs/go/wailsapp/App'
+import { callWailsWithTimeout, wailsReady } from './wailsTimeout'
 
 const KEY = 'scenaria.recents'
 const MAX = 6
@@ -36,28 +37,20 @@ function saveLocal(recents: Recents) {
   }
 }
 
-function wailsReady(): boolean {
-  return typeof window !== 'undefined' && !!(window as unknown as { go?: unknown }).go
-}
-
 export async function loadRecents(): Promise<Recents> {
   if (!wailsReady()) {
     return loadLocal()
   }
-  try {
-    const data = await Promise.race([
-      LoadRecents(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-    ])
-    const recents: Recents = {
-      projects: (data.projects || []).slice(0, MAX),
-      features: (data.features || []).slice(0, MAX),
-    }
-    saveLocal(recents)
-    return recents
-  } catch {
+  const data = await callWailsWithTimeout('LoadRecents', LoadRecents(), 3000)
+  if (!data) {
     return loadLocal()
   }
+  const recents: Recents = {
+    projects: (data.projects || []).slice(0, MAX),
+    features: (data.features || []).slice(0, MAX),
+  }
+  saveLocal(recents)
+  return recents
 }
 
 export async function rememberProject(path: string) {

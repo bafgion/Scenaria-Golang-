@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PaletteCommand } from './CommandPalette.svelte'
+  import type { PaletteCommand } from './paletteTypes'
 
   export let commands: PaletteCommand[] = []
   export let onClose: () => void = () => {}

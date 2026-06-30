@@ -59,13 +59,11 @@ test('hotkeys dialog opens with Shift+F1', async ({ page }) => {
   await expect(dialog.getByText('Палитра команд')).toBeVisible()
 })
 
-test('find and replace dialog opens with Ctrl+H', async ({ page }) => {
+test('monaco find widget opens with Ctrl+H', async ({ page }) => {
   await bootApp(page)
   await createNewScenario(page)
   await page.keyboard.press('Control+KeyH')
-  const dialog = page.getByRole('dialog', { name: 'Найти и заменить' })
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('Найти', { exact: true })).toBeVisible()
+  await expect(page.locator('.monaco-editor .find-widget.visible')).toBeVisible()
 })
 
 test('unsaved close dialog appears when closing dirty tab', async ({ page }) => {

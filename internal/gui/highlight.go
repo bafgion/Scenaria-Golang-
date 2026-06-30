@@ -35,6 +35,10 @@ func (s *Service) RefactorCollapseBlankLines(text string) string {
 	return CollapseBlankLinesBetweenSteps(text)
 }
 
+func (s *Service) RefactorFormatFeature(text string) string {
+	return FormatFeature(text)
+}
+
 func (s *Service) RefactorReplaceInText(text, find, replace string, caseSensitive bool) RefactorResult {
 	return ReplaceInText(text, find, replace, caseSensitive)
 }

@@ -14,6 +14,14 @@ export function ArtifactExists(arg1) {
   return window['go']['wailsapp']['App']['ArtifactExists'](arg1);
 }
 
+export function BeginRecordingCapture() {
+  return window['go']['wailsapp']['App']['BeginRecordingCapture']();
+}
+
+export function BeginSplashWindowChrome() {
+  return window['go']['wailsapp']['App']['BeginSplashWindowChrome']();
+}
+
 export function BrowserInstallStatus(arg1) {
   return window['go']['wailsapp']['App']['BrowserInstallStatus'](arg1);
 }
@@ -30,8 +38,20 @@ export function CancelRecording() {
   return window['go']['wailsapp']['App']['CancelRecording']();
 }
 
+export function CaptureBrowserSession(arg1) {
+  return window['go']['wailsapp']['App']['CaptureBrowserSession'](arg1);
+}
+
 export function CheckUpdate() {
   return window['go']['wailsapp']['App']['CheckUpdate']();
+}
+
+export function CheckUpdateInfo() {
+  return window['go']['wailsapp']['App']['CheckUpdateInfo']();
+}
+
+export function ClearFeatureDraft(arg1) {
+  return window['go']['wailsapp']['App']['ClearFeatureDraft'](arg1);
 }
 
 export function CompletionsForLine(arg1, arg2) {
@@ -46,6 +66,14 @@ export function DeleteTestClient(arg1) {
   return window['go']['wailsapp']['App']['DeleteTestClient'](arg1);
 }
 
+export function DescribeEditorLine(arg1) {
+  return window['go']['wailsapp']['App']['DescribeEditorLine'](arg1);
+}
+
+export function DownloadUpdate() {
+  return window['go']['wailsapp']['App']['DownloadUpdate']();
+}
+
 export function DuplicateFeature(arg1, arg2) {
   return window['go']['wailsapp']['App']['DuplicateFeature'](arg1, arg2);
 }
@@ -56,6 +84,10 @@ export function Export(arg1) {
 
 export function FocusBrowser() {
   return window['go']['wailsapp']['App']['FocusBrowser']();
+}
+
+export function FormatFeature(arg1) {
+  return window['go']['wailsapp']['App']['FormatFeature'](arg1);
 }
 
 export function HTTPAuthForHost(arg1) {
@@ -114,6 +146,10 @@ export function ListVanessaRunDirs(arg1) {
   return window['go']['wailsapp']['App']['ListVanessaRunDirs'](arg1);
 }
 
+export function LoadFeatureDraft(arg1) {
+  return window['go']['wailsapp']['App']['LoadFeatureDraft'](arg1);
+}
+
 export function LoadRecents() {
   return window['go']['wailsapp']['App']['LoadRecents']();
 }
@@ -126,12 +162,24 @@ export function MoveFeature(arg1, arg2) {
   return window['go']['wailsapp']['App']['MoveFeature'](arg1, arg2);
 }
 
+export function OpenBrowser(arg1) {
+  return window['go']['wailsapp']['App']['OpenBrowser'](arg1);
+}
+
+export function OpenExternalURL(arg1) {
+  return window['go']['wailsapp']['App']['OpenExternalURL'](arg1);
+}
+
 export function OpenFolder(arg1) {
   return window['go']['wailsapp']['App']['OpenFolder'](arg1);
 }
 
 export function OpenHTMLReport(arg1) {
   return window['go']['wailsapp']['App']['OpenHTMLReport'](arg1);
+}
+
+export function OpenMainWindowChrome() {
+  return window['go']['wailsapp']['App']['OpenMainWindowChrome']();
 }
 
 export function OpenProject(arg1) {
@@ -168,6 +216,10 @@ export function PickSelector() {
 
 export function PickerStepChoices(arg1, arg2) {
   return window['go']['wailsapp']['App']['PickerStepChoices'](arg1, arg2);
+}
+
+export function PollBrowserSession() {
+  return window['go']['wailsapp']['App']['PollBrowserSession']();
 }
 
 export function PollVanessaRun(arg1, arg2) {
@@ -238,6 +290,14 @@ export function ReplaceInProject(arg1) {
   return window['go']['wailsapp']['App']['ReplaceInProject'](arg1);
 }
 
+export function ResolveRunFromLine(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ResolveRunFromLine'](arg1, arg2);
+}
+
+export function ResolveRunToLine(arg1, arg2) {
+  return window['go']['wailsapp']['App']['ResolveRunToLine'](arg1, arg2);
+}
+
 export function ResumeRecording() {
   return window['go']['wailsapp']['App']['ResumeRecording']();
 }
@@ -256,6 +316,10 @@ export function RunVanessa(arg1) {
 
 export function SaveFeature(arg1, arg2) {
   return window['go']['wailsapp']['App']['SaveFeature'](arg1, arg2);
+}
+
+export function SaveFeatureDraft(arg1, arg2) {
+  return window['go']['wailsapp']['App']['SaveFeatureDraft'](arg1, arg2);
 }
 
 export function SaveHTTPAuth(arg1) {
@@ -306,12 +370,16 @@ export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
 }
 
-export function UpdateRecordingOptions(arg1, arg2, arg3, arg4) {
-  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4);
+export function UpdateRecordingOptions(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function Validate(arg1) {
   return window['go']['wailsapp']['App']['Validate'](arg1);
+}
+
+export function ValidateBrowser(arg1) {
+  return window['go']['wailsapp']['App']['ValidateBrowser'](arg1);
 }
 
 export function ValidateFeature(arg1) {

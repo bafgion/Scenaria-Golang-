@@ -4,7 +4,21 @@
   export let issues: gui.ValidationIssue[] = []
   export let hint = ''
   export let cliLog = ''
+  export let activeLine = 0
   export let onGotoLine: (line: number) => void = () => {}
+
+  function statusLabel(status: string | undefined): string {
+    switch (status) {
+      case 'found':
+        return 'найден'
+      case 'missing':
+        return 'нет'
+      case 'warning':
+        return 'внимание'
+      default:
+        return status || '—'
+    }
+  }
 </script>
 
 <div class="validate-panel">
@@ -18,15 +32,19 @@
       <thead>
         <tr>
           <th>Строка</th>
+          <th>Статус</th>
+          <th>Селектор</th>
           <th>Сообщение</th>
         </tr>
       </thead>
       <tbody>
         {#each issues as issue}
-          <tr>
+          <tr class:active={activeLine === issue.line} class:found={issue.status === 'found'} class:warning={issue.status === 'warning'}>
             <td>
               <button type="button" class="line-btn" on:click={() => onGotoLine(issue.line)}>{issue.line}</button>
             </td>
+            <td><span class="status-badge" class:found={issue.status === 'found'} class:warning={issue.status === 'warning'} class:missing={issue.status === 'missing' || !issue.status}>{statusLabel(issue.status)}</span></td>
+            <td class="selector">{issue.selector || '—'}</td>
             <td class="msg">{issue.message}</td>
           </tr>
         {/each}
@@ -84,6 +102,19 @@
     vertical-align: top;
   }
 
+  .validate-table tr.active td {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  }
+
+  .validate-table tr.found td.msg,
+  .validate-table tr.found .selector {
+    color: var(--color-success, #4ec9b0);
+  }
+
+  .validate-table tr.warning td.msg {
+    color: var(--color-warning, #dcdcaa);
+  }
+
   .line-btn {
     padding: 0 6px;
     min-width: 28px;
@@ -95,9 +126,38 @@
     cursor: pointer;
   }
 
+  .selector {
+    font-family: var(--font-mono);
+    word-break: break-word;
+    color: var(--color-muted);
+    max-width: 220px;
+  }
+
   .msg {
     color: var(--color-error);
     font-family: var(--font-mono);
     word-break: break-word;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-muted);
+  }
+
+  .status-badge.found {
+    color: var(--color-success, #4ec9b0);
+  }
+
+  .status-badge.warning {
+    color: var(--color-warning, #dcdcaa);
+  }
+
+  .status-badge.missing {
+    color: var(--color-error);
   }
 </style>

@@ -6,16 +6,24 @@ import (
 )
 
 func TestRecorderScriptGolden(t *testing.T) {
-	script := RecorderHeuristicsJS
+	heuristics := HeuristicsJS
 	for _, needle := range []string{
 		"function buildInputSelector",
 		"function buildClickSelector",
+		"__scenariaHeuristics",
+	} {
+		if !strings.Contains(heuristics, needle) {
+			t.Fatalf("heuristics script missing %q", needle)
+		}
+	}
+	recorder := RecorderScript
+	for _, needle := range []string{
 		"MutationObserver",
 		"elementFromPoint",
 		"__scenariaRecorder",
 		"shadowRoot",
 	} {
-		if !strings.Contains(script, needle) {
+		if !strings.Contains(recorder, needle) {
 			t.Fatalf("recorder script missing %q", needle)
 		}
 	}

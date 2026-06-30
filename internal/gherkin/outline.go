@@ -10,17 +10,25 @@ type RunnableScenario struct {
 }
 
 func ExpandFeature(feature *Feature) []RunnableScenario {
+	return ExpandFeatureAtPath(feature, "")
+}
+
+func ExpandFeatureAtPath(feature *Feature, featurePath string) []RunnableScenario {
 	if feature == nil {
 		return nil
 	}
 	out := make([]RunnableScenario, 0)
 	for _, scenario := range feature.Scenarios {
-		out = append(out, ExpandScenario(feature, scenario)...)
+		out = append(out, ExpandScenarioAtPath(feature, scenario, featurePath)...)
 	}
 	return out
 }
 
 func ExpandScenario(feature *Feature, scenario Scenario) []RunnableScenario {
+	return ExpandScenarioAtPath(feature, scenario, "")
+}
+
+func ExpandScenarioAtPath(feature *Feature, scenario Scenario, featurePath string) []RunnableScenario {
 	tags := MergeTags(feature.Tags, scenario.Tags)
 	if !scenario.IsOutline {
 		return []RunnableScenario{{
@@ -49,6 +57,11 @@ func ExpandScenario(feature *Feature, scenario Scenario) []RunnableScenario {
 				Steps:        steps,
 				ExampleIndex: rowIndex + 1,
 			})
+		}
+	}
+	if len(out) == 0 && scenario.IsOutline && strings.TrimSpace(featurePath) != "" {
+		if rows, err := LoadScenarioParams(featurePath, scenario.Title); err == nil && len(rows) > 0 {
+			out = expandScenarioFromParamRows(feature, scenario, tags, rows)
 		}
 	}
 	return out

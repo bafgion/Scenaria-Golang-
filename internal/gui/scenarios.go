@@ -24,7 +24,7 @@ func collectScenarioTitles(store *scenario.FeatureStore, files []string) []strin
 		if err != nil {
 			continue
 		}
-		for _, runnable := range gherkin.ExpandFeature(feature) {
+		for _, runnable := range gherkin.ExpandFeatureAtPath(feature, file) {
 			title := strings.TrimSpace(runnable.Title)
 			if title == "" {
 				continue

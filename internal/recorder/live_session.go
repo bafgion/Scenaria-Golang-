@@ -3,9 +3,13 @@ package recorder
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/browserconfig"
 	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/selector"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -17,23 +21,21 @@ func runLiveBrowserSession(
 	recorded *[]RecordedStep,
 	headless bool,
 ) error {
-	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(headless),
-	})
+	browser, err := pw.Chromium.Launch(browserconfig.LaunchOptions("chromium", headless, 0))
 	if err != nil {
 		return fmt.Errorf("launch browser: %w", err)
 	}
 	defer browser.Close()
 
-	contextOpts := playwright.BrowserNewContextOptions{}
-	if opts.HTTPCredentials != nil {
-		contextOpts.HttpCredentials = opts.HTTPCredentials
-	}
+	contextOpts := browserconfig.NewContextOptions(headless, opts.HTTPCredentials)
 	bctx, err := browser.NewContext(contextOpts)
 	if err != nil {
 		return fmt.Errorf("create browser context: %w", err)
 	}
 	defer bctx.Close()
+	if err := registerBrowserInitScripts(bctx, !opts.BrowseOnly); err != nil {
+		return fmt.Errorf("register browser init scripts: %w", err)
+	}
 
 	page, err := bctx.NewPage()
 	if err != nil {
@@ -54,14 +56,24 @@ func runLiveBrowserSession(
 			}
 		}
 	}
-	if _, err := page.Goto(startURL); err != nil {
-		return fmt.Errorf("goto start URL: %w", err)
+	if strings.TrimSpace(startURL) != "" {
+		if _, err := page.Goto(startURL); err != nil {
+			return fmt.Errorf("goto start URL: %w", err)
+		}
 	}
-	if _, err := page.Evaluate(RecorderScript); err != nil {
-		return fmt.Errorf("inject recorder script: %w", err)
+	if !opts.BrowseOnly {
+		if err := injectRecorderOnPage(page); err != nil {
+			return fmt.Errorf("inject recorder script: %w", err)
+		}
+		session.recorderInjected.Store(true)
 	}
-	if err := applyRecorderConfig(page, opts, session); err != nil {
-		return fmt.Errorf("configure recorder: %w", err)
+	if _, err := page.Evaluate(selector.BrowserToolbarJS); err != nil {
+		return fmt.Errorf("inject browser toolbar: %w", err)
+	}
+	if !opts.BrowseOnly {
+		if err := applyRecorderConfig(page, opts, session); err != nil {
+			return fmt.Errorf("configure recorder: %w", err)
+		}
 	}
 
 	session.Bind(page, recorded)
@@ -71,6 +83,14 @@ func runLiveBrowserSession(
 		session.mu.Unlock()
 	}()
 
+	pageClosed := make(chan struct{}, 1)
+	page.OnClose(func(playwright.Page) {
+		select {
+		case pageClosed <- struct{}{}:
+		default:
+		}
+	})
+
 	lastURL := page.URL()
 	lastEventAt := time.Now()
 
@@ -78,7 +98,42 @@ func runLiveBrowserSession(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-pageClosed:
+			if opts.Callbacks.OnBrowserLost != nil {
+				opts.Callbacks.OnBrowserLost()
+			}
+			return context.Canceled
 		default:
+		}
+		if !session.BrowserAlive() {
+			if opts.Callbacks.OnBrowserLost != nil {
+				opts.Callbacks.OnBrowserLost()
+			}
+			return context.Canceled
+		}
+		syncBrowserToolbar(page, session, opts.BrowseOnly)
+		if action := takeToolbarAction(page); action != "" {
+			switch action {
+			case "stop":
+				return context.Canceled
+			case "pause":
+				session.Pause()
+			case "resume":
+				session.Resume()
+			case "record":
+				if !session.CaptureEnabled() {
+					if err := session.BeginCapture(); err != nil {
+						return err
+					}
+					if opts.Callbacks.OnCaptureStart != nil {
+						opts.Callbacks.OnCaptureStart()
+					}
+				}
+			case "picker":
+				if opts.Callbacks.OnPickerRequest != nil {
+					opts.Callbacks.OnPickerRequest()
+				}
+			}
 		}
 		if session.RelaunchPending() {
 			if u := page.URL(); u != "" {
@@ -101,8 +156,13 @@ func runLiveBrowserSession(
 			}
 		}
 		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
-		if time.Since(lastEventAt) >= opts.IdleTimeout {
+		if opts.IdleTimeout > 0 && session.CaptureEnabled() && time.Since(lastEventAt) >= opts.IdleTimeout {
 			return nil
+		}
+
+		if !session.CaptureEnabled() {
+			time.Sleep(200 * time.Millisecond)
+			continue
 		}
 
 		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
@@ -137,4 +197,61 @@ func runLiveBrowserSession(
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+func syncBrowserToolbar(page playwright.Page, session *LiveSession, browseOnly bool) {
+	recording := session.CaptureEnabled()
+	paused := session.IsPaused()
+	browserOnly := browseOnly && !recording
+	script := fmt.Sprintf(`() => {
+		if (!window.__scenariaToolbar) return;
+		window.__scenariaToolbar.setState({
+			recording: %v,
+			paused: %v,
+			browserOnly: %v,
+			stepCount: %d,
+		});
+	}`, recording, paused, browserOnly, session.RecordedStepCount())
+	_, _ = page.Evaluate(script)
+}
+
+func takeToolbarAction(page playwright.Page) string {
+	raw, err := page.Evaluate(`() => window.__scenariaToolbar?.takeAction?.() || null`)
+	if err != nil || raw == nil {
+		return ""
+	}
+	if action, ok := raw.(string); ok {
+		return action
+	}
+	return ""
+}
+
+func registerBrowserInitScripts(bctx playwright.BrowserContext, includeRecorder bool) error {
+	scripts := []string{selector.HeuristicsJS, selector.BrowserToolbarJS}
+	if includeRecorder {
+		scripts = append(scripts, selector.RecorderListenersJS)
+	}
+	for _, script := range scripts {
+		if err := bctx.AddInitScript(playwright.Script{Content: playwright.String(script)}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func injectSelectorOrderFromSettings(page playwright.Page) {
+	appCfg, err := settings.LoadDefaultAppSettings()
+	if err != nil || appCfg == nil {
+		return
+	}
+	_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+}
+
+func injectRecorderOnPage(page playwright.Page) error {
+	if _, err := page.Evaluate(selector.HeuristicsJS); err != nil {
+		return err
+	}
+	injectSelectorOrderFromSettings(page)
+	_, err := page.Evaluate(selector.RecorderListenersJS)
+	return err
 }

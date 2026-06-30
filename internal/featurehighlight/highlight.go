@@ -29,8 +29,8 @@ type Span struct {
 
 var (
 	gherkinLineRe = regexp.MustCompile(`(?i)^(функциональность|функционал|функция|feature|сценарий|scenario|структура сценария|scenario outline|примеры|examples|контекст|background)\s*:`)
-	blockLineRe   = regexp.MustCompile(`(?i)^(если|повторяю|пока|для каждого|иначе|конец если|конец)\b`)
-	stepKeywordRe = regexp.MustCompile(`^\s*(Допустим|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+`)
+	blockLineRe   = regexp.MustCompile(`(?i)^(если|повторяю|пока|для каждого|иначе|конец если|конец)(?:\s|$)`)
+	stepKeywordRe = regexp.MustCompile(`(?i)^\s*(Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+`)
 	tagRe         = regexp.MustCompile(`@\w+`)
 	stringRe      = regexp.MustCompile(`"([^"\\]|\\.)*"`)
 )

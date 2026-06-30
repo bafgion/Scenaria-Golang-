@@ -16,7 +16,7 @@ func TestParseEditorSteps(t *testing.T) {
 	if rows[0].Action != "Открыть" || rows[0].Value != "https://example.com" {
 		t.Fatalf("goto step: %+v", rows[0])
 	}
-	if rows[1].Action != "Нажать" || rows[1].Element != "Войти" {
+	if rows[1].Action != "Нажать" || rows[1].Element != "Войти" || rows[1].Kind != "click" {
 		t.Fatalf("click step: %+v", rows[1])
 	}
 	if rows[2].Action != "Проверить" || rows[2].Value != "OK" || rows[2].Element != "#status" {

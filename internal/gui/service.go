@@ -15,6 +15,7 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
+	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/stepcatalog"
 	"github.com/bafgion/scenaria-golang/internal/version"
@@ -55,10 +56,12 @@ type RunRequest struct {
 	JUnitPath     string            `json:"junitPath"`
 	SummaryJSON   string            `json:"summaryJson"`
 	Targets       []string          `json:"targets"`
-	Browser    string            `json:"browser"`
-	Workers    int               `json:"workers"`
-	SlowMo     int               `json:"slowMo"`
-	BaseURL    string            `json:"baseUrl"`
+	Browser       string            `json:"browser"`
+	Workers       int               `json:"workers"`
+	SlowMo        int               `json:"slowMo"`
+	BaseURL       string            `json:"baseUrl"`
+	StartStep     int               `json:"startStep"`
+	EndStep       int               `json:"endStep"`
 }
 
 type ValidateRequest struct {
@@ -117,6 +120,7 @@ type AppSettingsDTO struct {
 	Browser           string `json:"browser"`
 	Headless          bool   `json:"headless"`
 	ParallelWorkers   int    `json:"parallelWorkers"`
+	SlowMo            int    `json:"slowMo"`
 	MaxLoopIterations int    `json:"maxLoopIterations"`
 	FilterRecording   bool   `json:"filterRecording"`
 	NavOnlyRecording  bool   `json:"navOnlyRecording"`
@@ -127,7 +131,15 @@ type AppSettingsDTO struct {
 	SidebarWidth      int      `json:"sidebarWidth"`
 	RecentProjects    []string `json:"recentProjects"`
 	RecentFeatures    []string `json:"recentFeatures"`
+	SessionProject    string   `json:"sessionProject"`
+	OpenTabs          []string `json:"openTabs"`
+	ActiveTab         string   `json:"activeTab"`
+	ScrollBeforeClick bool     `json:"scrollBeforeClick"`
+	HoverRecordMinMs        int      `json:"hoverRecordMinMs"`
+	SelectorClickStrategies []string `json:"selectorClickStrategies"`
+	SelectorInputStrategies []string `json:"selectorInputStrategies"`
 	CheckUpdatesOnStartup bool `json:"checkUpdatesOnStartup"`
+	Editor            settings.EditorSettings `json:"editor"`
 }
 
 type RunResultEntry struct {
@@ -359,6 +371,12 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.BaseURL != "" && !req.DryRun {
 		args = append(args, "--base-url", req.BaseURL)
 	}
+	if req.StartStep >= 0 {
+		args = append(args, "--start-step", fmt.Sprintf("%d", req.StartStep))
+	}
+	if req.EndStep >= 0 {
+		args = append(args, "--end-step", fmt.Sprintf("%d", req.EndStep))
+	}
 	out, err := captureCLI(func() error { return cli.RunRun(args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
@@ -493,6 +511,7 @@ func defaultAppSettingsDTO() AppSettingsDTO {
 		StepsPanelVisible: true,
 		StepsPanelHeight:  160,
 		CheckUpdatesOnStartup: true,
+		Editor:            settings.DefaultEditorSettings(),
 	}
 }
 
@@ -505,6 +524,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		Browser:           cfg.Browser,
 		Headless:          cfg.Headless,
 		ParallelWorkers:   maxInt(1, cfg.ParallelWorkers),
+		SlowMo:            maxInt(0, cfg.SlowMo),
 		MaxLoopIterations: maxInt(1, cfg.MaxLoopIterations),
 		FilterRecording:   cfg.RecordingFilterMode,
 		NavOnlyRecording:    cfg.NavOnlyRecording,
@@ -515,7 +535,15 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		SidebarWidth:        clampSidebarWidth(cfg.SidebarWidth),
 		RecentProjects:      trimRecents(cfg.RecentProjects),
 		RecentFeatures:      trimRecents(cfg.RecentFeatures),
+		SessionProject:      strings.TrimSpace(cfg.SessionProject),
+		OpenTabs:            trimRecents(cfg.OpenTabs),
+		ActiveTab:           strings.TrimSpace(cfg.ActiveTab),
+		ScrollBeforeClick:   cfg.ScrollBeforeClick,
+		HoverRecordMinMs:        maxInt(0, cfg.HoverRecordMinMs),
+		SelectorClickStrategies:   selector.NormalizeClickStrategies(cfg.SelectorClickStrategies),
+		SelectorInputStrategies: selector.NormalizeInputStrategies(cfg.SelectorInputStrategies),
 		CheckUpdatesOnStartup: settings.CheckUpdatesOnStartupEnabled(cfg),
+		Editor:              settings.NormalizeEditorSettings(cfg.Editor),
 	}
 }
 
@@ -533,6 +561,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 		Browser:             dto.Browser,
 		Headless:            dto.Headless,
 		ParallelWorkers:     maxInt(1, dto.ParallelWorkers),
+		SlowMo:              maxInt(0, dto.SlowMo),
 		MaxLoopIterations:   maxInt(1, dto.MaxLoopIterations),
 		RecordingFilterMode: dto.FilterRecording,
 		NavOnlyRecording:      dto.NavOnlyRecording,
@@ -543,9 +572,17 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 		SidebarWidth:          clampSidebarWidth(dto.SidebarWidth),
 		RecentProjects:        trimRecents(dto.RecentProjects),
 		RecentFeatures:        trimRecents(dto.RecentFeatures),
+		SessionProject:          strings.TrimSpace(dto.SessionProject),
+		OpenTabs:                trimRecents(dto.OpenTabs),
+		ActiveTab:               strings.TrimSpace(dto.ActiveTab),
+		ScrollBeforeClick:       dto.ScrollBeforeClick,
+		HoverRecordMinMs:        normalizeHoverRecordMinMs(dto.HoverRecordMinMs),
+		SelectorClickStrategies: selector.NormalizeClickStrategies(dto.SelectorClickStrategies),
+		SelectorInputStrategies: selector.NormalizeInputStrategies(dto.SelectorInputStrategies),
 	}
 	checkUpdates := dto.CheckUpdatesOnStartup
 	cfg.CheckUpdatesOnStartup = &checkUpdates
+	cfg.Editor = settings.NormalizeEditorSettings(dto.Editor)
 	if existing != nil {
 		cfg.HTTPAuth = existing.HTTPAuth
 		if len(cfg.RecentProjects) == 0 {
@@ -587,6 +624,13 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func normalizeHoverRecordMinMs(ms int) int {
+	if ms <= 0 {
+		return 600
+	}
+	return ms
 }
 
 func runExport(args []string) error     { return cli.RunExport(args) }

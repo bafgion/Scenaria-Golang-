@@ -3,13 +3,11 @@ package wailsapp
 import (
 	"context"
 	"fmt"
-	"os/exec"
-	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
+	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -51,12 +49,14 @@ func (a *App) promptEmailCode(email string) (string, error) {
 	}
 }
 
-func (a *App) SubmitOTPCode(code string) {
+func (a *App) SubmitOTPCode(code string) bool {
 	a.otpMu.Lock()
 	defer a.otpMu.Unlock()
 	if a.otpCode != nil {
 		a.otpCode <- code
+		return true
 	}
+	return false
 }
 
 func (a *App) CancelOTP() {
@@ -127,6 +127,10 @@ func (a *App) DeleteTestClient(name string) error {
 	return a.svc.DeleteTestClient(name)
 }
 
+func (a *App) CaptureBrowserSession(name string) (string, error) {
+	return a.svc.CaptureBrowserSession(name)
+}
+
 func (a *App) ListVanessaRunDirs(limit int) ([]string, error) {
 	return a.svc.ListVanessaRunDirs(limit)
 }
@@ -147,12 +151,36 @@ func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }
 
+func (a *App) DescribeEditorLine(line string) gui.StepCatalogEntry {
+	entry, ok := gui.DescribeEditorLine(line)
+	if !ok {
+		return gui.StepCatalogEntry{}
+	}
+	return entry
+}
+
 func (a *App) CompletionsForLine(line string, column int) gui.StepCompletionsDTO {
 	return a.svc.CompletionsForLine(line, column)
 }
 
 func (a *App) CheckUpdate() gui.RunResult {
 	return a.svc.CheckUpdate()
+}
+
+func (a *App) CheckUpdateInfo() (gui.UpdateInfoDTO, error) {
+	return a.svc.CheckUpdateInfo()
+}
+
+func (a *App) DownloadUpdate() (string, error) {
+	return a.svc.DownloadUpdate()
+}
+
+func (a *App) OpenExternalURL(url string) error {
+	return a.svc.OpenExternalURL(url)
+}
+
+func (a *App) ValidateBrowser(req gui.ValidateRequest) ([]gui.ValidationIssue, error) {
+	return a.svc.ValidateBrowser(req)
 }
 
 func (a *App) BrowserInstallStatus(engine string) gui.BrowserInstallStatusDTO {
@@ -211,6 +239,10 @@ func (a *App) RefactorCollapseBlankLines(text string) string {
 	return a.svc.RefactorCollapseBlankLines(text)
 }
 
+func (a *App) FormatFeature(text string) string {
+	return a.svc.RefactorFormatFeature(text)
+}
+
 func (a *App) RefactorReplaceInText(text, find, replace string, caseSensitive bool) gui.RefactorResult {
 	return a.svc.RefactorReplaceInText(text, find, replace, caseSensitive)
 }
@@ -221,6 +253,34 @@ func (a *App) AnalyzeScenarioHints(text string) []gui.ScenarioHintDTO {
 
 func (a *App) ApplyScenarioHintFix(req gui.ScenarioHintFixRequest) gui.RefactorResult {
 	return gui.ApplyScenarioHintFix(req)
+}
+
+func (a *App) ResolveRunFromLine(text string, line int) gui.RunFromLineDTO {
+	result, err := gui.ResolveRunFromLine(text, line)
+	if err != nil {
+		return gui.RunFromLineDTO{StartStep: -1, EndStep: -1}
+	}
+	return result
+}
+
+func (a *App) ResolveRunToLine(text string, line int) gui.RunFromLineDTO {
+	result, err := gui.ResolveRunToLine(text, line)
+	if err != nil {
+		return gui.RunFromLineDTO{StartStep: -1, EndStep: -1}
+	}
+	return result
+}
+
+func (a *App) SaveFeatureDraft(featurePath, content string) error {
+	return a.svc.SaveFeatureDraft(featurePath, content)
+}
+
+func (a *App) LoadFeatureDraft(featurePath string) (string, error) {
+	return a.svc.LoadFeatureDraft(featurePath)
+}
+
+func (a *App) ClearFeatureDraft(featurePath string) error {
+	return a.svc.ClearFeatureDraft(featurePath)
 }
 
 func (a *App) ListPlugins() ([]gui.PluginEntryDTO, error) {
@@ -299,12 +359,39 @@ func (a *App) PollVanessaRun(runDir string, totalPlanned int) gui.VanessaRunSnap
 	return a.svc.PollVanessaRun(runDir, totalPlanned)
 }
 
+func (a *App) PollBrowserSession() gui.BrowserSessionDTO {
+	return a.svc.PollBrowserSession()
+}
+
+func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
+	go func() {
+		emit := func(name string, payload any) {
+			runtime.EventsEmit(a.ctx, name, payload)
+		}
+		emit("browser-opened", nil)
+		result := a.svc.OpenBrowser(req, emit)
+		emit("browser-closed", result)
+	}()
+}
+
 func (a *App) StartRecord(req gui.RecordRequest) {
 	go func() {
-		runtime.EventsEmit(a.ctx, "record-started", req.Output)
-		result := a.svc.RecordLive(req)
-		runtime.EventsEmit(a.ctx, "record-finished", result)
+		emit := func(name string, payload any) {
+			runtime.EventsEmit(a.ctx, name, payload)
+		}
+		req.BrowseOnly = false
+		emit("record-started", req.Output)
+		result := a.svc.RecordLive(req, emit)
+		emit("record-finished", result)
 	}()
+}
+
+func (a *App) BeginRecordingCapture() error {
+	if err := a.svc.BeginRecordingCapture(); err != nil {
+		return err
+	}
+	runtime.EventsEmit(a.ctx, "record-started", "")
+	return nil
 }
 
 func (a *App) RecordBaseline(req gui.BaselineRecordRequest) gui.RunResult {
@@ -322,8 +409,8 @@ func (a *App) FocusBrowser() error {
 	return a.svc.FocusBrowser()
 }
 
-func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless bool) error {
-	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless)
+func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick bool, hoverRecordMinMs int) error {
+	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick, hoverRecordMinMs)
 }
 
 func (a *App) UndoRecordedStep() bool {
@@ -403,18 +490,7 @@ func (a *App) PickOpenFiles(title string) ([]string, error) {
 }
 
 func (a *App) OpenFolder(path string) error {
-	path = filepath.Clean(path)
-	if path == "" {
-		return fmt.Errorf("path is required")
-	}
-	switch goruntime.GOOS {
-	case "windows":
-		return exec.Command("explorer", path).Start()
-	case "darwin":
-		return exec.Command("open", path).Start()
-	default:
-		return exec.Command("xdg-open", path).Start()
-	}
+	return paths.OpenWithDefaultApp(path)
 }
 
 func (a *App) ServeAllure(dir string) gui.RunResult {
@@ -426,9 +502,22 @@ func (a *App) OpenHTMLReport(path string) gui.RunResult {
 	if result.Error != "" {
 		return result
 	}
-	url := strings.TrimSpace(result.Output)
-	if url != "" {
-		runtime.BrowserOpenURL(a.ctx, url)
+	absPath := strings.TrimSpace(result.Output)
+	if absPath == "" {
+		return gui.RunResult{Error: "report path is empty"}
 	}
-	return result
+	if err := paths.OpenWithDefaultApp(absPath); err != nil {
+		return gui.RunResult{Error: fmt.Sprintf("open report: %v", err)}
+	}
+	return gui.RunResult{Output: absPath}
+}
+
+// BeginSplashWindowChrome removes native title bar and system buttons during splash (Windows).
+func (a *App) BeginSplashWindowChrome() {
+	applySplashChrome()
+}
+
+// OpenMainWindowChrome restores the normal window frame after splash (Windows).
+func (a *App) OpenMainWindowChrome() {
+	applyMainChrome()
 }

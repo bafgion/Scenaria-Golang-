@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/browserconfig"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -47,10 +48,7 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 	if err != nil {
 		return nil, err
 	}
-	ctxOpts := playwright.BrowserNewContextOptions{}
-	if options.HTTPCredentials != nil {
-		ctxOpts.HttpCredentials = options.HTTPCredentials
-	}
+	ctxOpts := browserconfig.NewContextOptions(options.Headless, options.HTTPCredentials)
 	if strings.TrimSpace(options.VideoDir) != "" {
 		if err := os.MkdirAll(options.VideoDir, 0o755); err != nil {
 			_ = browser.Close()
@@ -123,17 +121,8 @@ func (s *browserSession) openPages() []playwright.Page {
 }
 
 func launchBrowser(pw *playwright.Playwright, options PlaywrightExecutorOptions) (playwright.Browser, error) {
-	name := strings.ToLower(strings.TrimSpace(options.BrowserName))
-	if name == "" {
-		name = "chromium"
-	}
-
-	launchOpts := playwright.BrowserTypeLaunchOptions{
-		Headless: playwright.Bool(options.Headless),
-	}
-	if options.SlowMo > 0 {
-		launchOpts.SlowMo = playwright.Float(options.SlowMo)
-	}
+	name := browserconfig.NormalizeEngine(options.BrowserName)
+	launchOpts := browserconfig.LaunchOptions(name, options.Headless, options.SlowMo)
 
 	switch name {
 	case "chromium":
@@ -143,7 +132,7 @@ func launchBrowser(pw *playwright.Playwright, options PlaywrightExecutorOptions)
 	case "webkit":
 		return pw.WebKit.Launch(launchOpts)
 	default:
-		return nil, fmt.Errorf("unsupported browser %q (supported: chromium, firefox, webkit)", name)
+		return nil, fmt.Errorf("unsupported browser %q (supported: chromium, firefox, webkit)", options.BrowserName)
 	}
 }
 

@@ -3,9 +3,9 @@
 
   export let activeKey = ''
   export let welcomeKey = '__welcome__'
-  export let tabs: { path: string; dirty: boolean }[] = []
+  export let tabs: { path: string; content: string; dirty: boolean }[] = []
   export let tabLabel: (path: string) => string = (p) => p
-  export let tabUnsaved: (tab: { path: string; dirty: boolean }) => boolean = (t) => t.dirty
+  export let tabUnsaved: (tab: { path: string; content: string; dirty: boolean }) => boolean = (t) => t.dirty
 
   export let onSelect: (key: string) => void = () => {}
   export let onClose: (path: string) => void = () => {}
@@ -84,6 +84,8 @@
     flex-shrink: 0;
     min-width: 0;
     overflow: hidden;
+    position: relative;
+    z-index: 2100;
   }
 
   .editor-tab {

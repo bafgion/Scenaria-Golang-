@@ -28,7 +28,7 @@ export function registerFeatureLanguage(monaco: typeof Monaco) {
           'keyword.gherkin',
         ],
         [new RegExp(`^\\s*(${STEP_KEYWORDS})\\s+`), 'keyword.step'],
-        [new RegExp(`^\\s*(${BLOCK_KEYWORDS})\\b`), 'keyword.block'],
+        [new RegExp(`^\\s*(${BLOCK_KEYWORDS})(?:\\s|$)`), 'keyword.block'],
         [/TestClient/, 'type.testclient'],
         [/^\s*\|.*\|\s*$/, 'string.table'],
         [/"(?:[^"\\]|\\.)*"/, 'string'],
@@ -62,6 +62,34 @@ export function registerFeatureLanguage(monaco: typeof Monaco) {
       'editorCursor.foreground': '#cccccc',
       'editorWidget.background': '#252526',
       'editorWidget.border': '#454545',
+    },
+  })
+
+  monaco.editor.defineTheme('scenaria-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6a737d', fontStyle: 'italic' },
+      { token: 'tag', foreground: '0550ae' },
+      { token: 'keyword.gherkin', foreground: '0550ae', fontStyle: 'bold' },
+      { token: 'keyword.step', foreground: '8250df', fontStyle: 'bold' },
+      { token: 'keyword.block', foreground: '953800', fontStyle: 'bold' },
+      { token: 'string', foreground: '0a3069' },
+      { token: 'string.table', foreground: '0550ae' },
+      { token: 'type.testclient', foreground: '116329', fontStyle: 'bold' },
+    ],
+    colors: {
+      'editor.background': '#ffffff',
+      'editor.foreground': '#24292f',
+      'editor.lineHighlightBackground': '#f6f8fa',
+      'editorGutter.background': '#f6f8fa',
+      'editorLineNumber.foreground': '#8c959f',
+      'editorLineNumber.activeForeground': '#24292f',
+      'editor.selectionBackground': '#b6e3ff',
+      'editor.inactiveSelectionBackground': '#d0d7de',
+      'editorCursor.foreground': '#24292f',
+      'editorWidget.background': '#ffffff',
+      'editorWidget.border': '#d0d7de',
     },
   })
 }

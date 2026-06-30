@@ -5,9 +5,10 @@
   export let message = 'Запуск…'
   export let progress = 0
   export let fading = false
+  export let standalone = false
 </script>
 
-<div class="splash-overlay" class:fading aria-live="polite" aria-busy={!fading}>
+<div class="splash-overlay" class:fading class:standalone aria-live="polite" aria-busy={!fading}>
   <div class="splash-panel">
     <div class="splash-accent" aria-hidden="true"></div>
 
@@ -51,6 +52,33 @@
   .splash-overlay.fading {
     opacity: 0;
     pointer-events: none;
+  }
+
+  .splash-overlay.standalone {
+    background: linear-gradient(180deg, #2b2f33 0%, #1f2124 42%, #141618 100%);
+  }
+
+  .splash-overlay.standalone .splash-panel {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    max-width: none;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .splash-overlay.standalone .splash-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 28px 32px 24px;
+  }
+
+  .splash-overlay.standalone .splash-tagline {
+    margin-top: auto;
   }
 
   .splash-panel {

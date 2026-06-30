@@ -1,6 +1,5 @@
 <script lang="ts">
   import StepsInsertDialog from './StepsInsertDialog.svelte'
-  import NumberInput from './NumberInput.svelte'
 
   export let mode: 'live' | 'baseline' = 'live'
   export let url = ''
@@ -138,8 +137,9 @@
             {/each}
           </select>
         </label>
-        <label for="record-idle">Idle (сек)</label>
-        <NumberInput inputId="record-idle" bind:value={idleSeconds} min={5} disabled={recording} width="72px" />
+        <label>Idle (сек)
+          <input id="record-idle" type="number" bind:value={idleSeconds} min={5} disabled={recording} />
+        </label>
         <label class="check-row"><input type="checkbox" bind:checked={headless} disabled={recording} /> Headless</label>
         <label class="check-row">
           <input type="checkbox" bind:checked={filterRecording} disabled={recording} on:change={() => filterRecording && (navOnlyRecording = false)} />

@@ -2,19 +2,9 @@
   import { onMount, tick } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
+  import type { StepHelpEntry } from './stepTypes'
 
-  export type StepEntry = {
-    label: string
-    action: string
-    category: string
-    description: string
-    template: string
-    example: string
-    parameters: string[]
-    help: string
-  }
-
-  function entryText(entry: StepEntry): string {
+  function entryText(entry: StepHelpEntry): string {
     return [
       entry.label,
       entry.action,
@@ -27,18 +17,18 @@
     ].join(' ')
   }
 
-  function displayLabel(entry: StepEntry): string {
+  function displayLabel(entry: StepHelpEntry): string {
     if (entry.label) {
       return entry.action ? `${entry.label} (${entry.action})` : entry.label
     }
     return entry.template
   }
 
-  function detailDescription(entry: StepEntry): string {
+  function detailDescription(entry: StepHelpEntry): string {
     return entry.description || entry.help || ''
   }
 
-  function detailExample(entry: StepEntry): string {
+  function detailExample(entry: StepHelpEntry): string {
     return entry.example || entry.template || ''
   }
 
@@ -47,7 +37,7 @@
   export let initialQuery = ''
 
   let query = ''
-  let entries: StepEntry[] = []
+  let entries: StepHelpEntry[] = []
   let selected = 0
   let loading = true
   let searchInput: HTMLInputElement
@@ -114,9 +104,28 @@
       bind:this={searchInput}
       class="search"
       bind:value={query}
-      placeholder="Поиск по шаблону, категории или описанию…"
+      placeholder="Поиск по шаблону, категории или описанию… (params — наборы параметров)"
       on:input={onQueryInput}
     />
+    <details class="params-help" open={!query.trim() || query.toLowerCase().includes('param')}>
+      <summary>Наборы параметров (.params.json)</summary>
+      <p>
+        Для сценариев-шаблонов без таблицы «Примеры» положите рядом с <code>имя.feature</code> файл
+        <code>имя.params.json</code>:
+      </p>
+      <pre class="params-example">{`{
+  "scenarios": {
+    "Название сценария": [
+      { "url": "/catalog", "title": "Items" },
+      { "url": "/offers", "title": "Offers" }
+    ]
+  }
+}`}</pre>
+      <p class="params-note">
+        Ключи совпадают с плейсхолдерами в шагах (<code>&lt;url&gt;</code>). Если в feature уже есть таблица
+        «Примеры», используется она. При запуске runner разворачивает каждую строку в отдельный прогон.
+      </p>
+    </details>
     <div class="body">
       <ul class="list">
         {#if loading}
@@ -196,6 +205,37 @@
     background: var(--color-input);
     color: var(--color-text);
     box-sizing: border-box;
+  }
+
+  .params-help {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-divider);
+    border-radius: 3px;
+    background: rgba(0, 122, 204, 0.06);
+    font-size: 11px;
+    color: var(--color-muted);
+  }
+
+  .params-help summary {
+    cursor: pointer;
+    color: var(--color-text);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+
+  .params-example {
+    margin: 6px 0;
+    padding: 8px;
+    background: var(--color-input);
+    border-radius: 3px;
+    font-size: 10px;
+    overflow: auto;
+  }
+
+  .params-note {
+    margin: 0;
+    line-height: 1.45;
   }
 
   .body {

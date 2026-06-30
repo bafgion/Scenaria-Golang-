@@ -1,5 +1,12 @@
 import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
+import {
+  completionFilterText,
+  completionSortKey,
+  shouldPreselectCompletion,
+  snippetizeInsert,
+  usesSnippetTabStops,
+} from './gherkinCompletionSnippets'
 
 export type CompletionFetcher = (line: string, column: number) => Promise<gui.StepCompletionsDTO>
 
@@ -22,7 +29,7 @@ export function formatInsertText(line: string, snippet: gui.StepCompletionSnippe
 
 export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletions: CompletionFetcher) {
   monaco.languages.registerCompletionItemProvider('scenaria-feature', {
-    triggerCharacters: [' ', '"', '.'],
+    triggerCharacters: [' ', '"', "'", '.', '@'],
     provideCompletionItems: async (model, position) => {
       const line = model.getLineContent(position.lineNumber)
       const column = position.column - 1
@@ -44,16 +51,27 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
         startColumn: startCol,
         endColumn: endCol,
       }
+      const typedPrefix = line.slice(result.start, result.end)
 
-      const suggestions = result.items.map((item) => ({
-        label: item.label,
-        kind: monaco.languages.CompletionItemKind.Snippet,
-        insertText: formatInsertText(line, item),
-        detail: item.description,
-        documentation: { value: `\`\`\`\n${item.insert}\n\`\`\`` },
-        range,
-        sortText: `0_${item.label.toLowerCase()}`,
-      }))
+      const suggestions = result.items.map((item, index) => {
+        const formatted = formatInsertText(line, item)
+        const insertText = snippetizeInsert(formatted)
+        const snippet = usesSnippetTabStops(insertText)
+        return {
+          label: item.label,
+          kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText,
+          insertTextRules: snippet
+            ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+            : undefined,
+          filterText: completionFilterText(item),
+          detail: item.description,
+          documentation: { value: `\`\`\`\n${item.insert}\n\`\`\`` },
+          range,
+          sortText: completionSortKey(item.label, typedPrefix),
+          preselect: shouldPreselectCompletion(item.label, typedPrefix, index),
+        }
+      })
 
       return { suggestions }
     },
