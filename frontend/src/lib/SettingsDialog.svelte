@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { BrowserInstallStatus, InstallBrowserEngine, ListPlugins } from '../../wailsjs/go/wailsapp/App'
   import type { gui } from '../../wailsjs/go/models'
+  import { BRAND_NAME } from './brand'
   import SettingCard from './SettingCard.svelte'
   import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from './editorOptions'
 
@@ -161,7 +162,7 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="app-dialog" role="dialog" aria-modal="true" aria-label="Настройки — Scenaria" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="app-dialog" role="dialog" aria-modal="true" aria-label="Настройки — {BRAND_NAME}" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <header class="dialog-search-bar">
       <input bind:value={search} placeholder="Поиск настроек" on:input={onSearch} />
     </header>
@@ -285,7 +286,7 @@
           <section class="setting-section">
             <h4 class="setting-section-title">Приоритет стратегий</h4>
             <p class="setting-section-desc">
-              При записи и подборе селектора Scenaria перебирает стратегии сверху вниз. Более стабильные — выше.
+              При записи и подборе селектора {BRAND_NAME} перебирает стратегии сверху вниз. Более стабильные — выше.
             </p>
             <h5 class="strategy-group-title">Клики и кнопки</h5>
             <ul class="selector-list editable">
@@ -483,7 +484,7 @@
 
           <section class="setting-section">
             <h4 class="setting-section-title">Обновления</h4>
-            <SettingCard title="Проверять при запуске" description="Искать новую версию Scenaria при старте IDE.">
+            <SettingCard title="Проверять при запуске" description="Искать новую версию {BRAND_NAME} при старте IDE.">
               <input type="checkbox" bind:checked={checkUpdatesOnStartup} />
             </SettingCard>
           </section>

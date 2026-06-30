@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bafgion/scenaria-golang/internal/brand"
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/update"
 	"github.com/bafgion/scenaria-golang/internal/version"
@@ -53,7 +54,7 @@ func (s *Service) DownloadUpdate() (string, error) {
 	}
 	name := info.DownloadName
 	if name == "" {
-		name = "Scenaria-Update.zip"
+		name = brand.UpdateZip
 	}
 	destDir, err := os.UserHomeDir()
 	if err != nil {

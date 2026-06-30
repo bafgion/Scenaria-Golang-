@@ -4,13 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/bafgion/scenaria-golang/internal/brand"
 )
 
 func AppDataDir() string {
 	if runtime.GOOS == "windows" {
 		base := os.Getenv("APPDATA")
 		if base != "" {
-			return filepath.Join(base, "Scenaria")
+			return filepath.Join(base, brand.AppDataDir)
 		}
 	}
 	home, err := os.UserHomeDir()

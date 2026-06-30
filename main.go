@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 
+	"github.com/bafgion/scenaria-golang/internal/brand"
 	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/wailsapp"
 	"github.com/wailsapp/wails/v2"
@@ -17,7 +18,7 @@ func main() {
 	logx.Init()
 	app := wailsapp.NewApp()
 	err := wails.Run(&options.App{
-		Title:  "Scenaria",
+		Title:  brand.Name,
 		Width:  560,
 		Height: 500,
 		MinWidth:  960,

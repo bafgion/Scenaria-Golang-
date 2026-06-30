@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/brand"
 )
 
 type ReleaseAsset struct {
@@ -57,7 +59,7 @@ func Check(currentVersion string) (*Info, error) {
 }
 
 func fetchReleasePayload(client *http.Client) (*releasePayload, error) {
-	url := "https://api.github.com/repos/bafgion/Scenaria-Golang-/releases/latest"
+	url := "https://api.github.com/repos/" + brand.DefaultGitHubRepo + "/releases/latest"
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
@@ -95,6 +97,7 @@ func updateAssetPreferences(goos string) []func(string) bool {
 	switch goos {
 	case "windows":
 		return []func(string) bool{
+			func(name string) bool { return strings.EqualFold(name, brand.SetupExe) },
 			func(name string) bool { return strings.HasSuffix(name, ".msi") },
 			func(name string) bool { return strings.Contains(name, "setup") && strings.HasSuffix(name, ".exe") },
 			func(name string) bool { return strings.Contains(name, "installer") },

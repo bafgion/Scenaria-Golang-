@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { gui } from '../../wailsjs/go/models'
+  import { BRAND_NAME } from './brand'
 
   export let currentVersion = ''
   export let info: gui.UpdateInfoDTO | null = null
@@ -21,7 +22,7 @@
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal update-dialog" role="dialog" aria-modal="true" aria-label="Обновления" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Обновления Scenaria</h3>
+    <h3>Обновления {BRAND_NAME}</h3>
     <p class="version">Текущая версия: {info?.currentVersion || currentVersion || '—'}</p>
     {#if hasUpdate}
       <p class="update-available">Доступна версия {info?.latestVersion || 'новее'}</p>

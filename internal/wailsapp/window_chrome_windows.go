@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/bafgion/scenaria-golang/internal/brand"
 	"golang.org/x/sys/windows"
 )
 
@@ -114,7 +115,7 @@ func findAppWindow() windows.Handle {
 			return hwnd
 		}
 	}
-	title, err := windows.UTF16PtrFromString("Scenaria")
+	title, err := windows.UTF16PtrFromString(brand.Name)
 	if err == nil {
 		if hwnd := findWindow(nil, title); hwnd != 0 {
 			return hwnd

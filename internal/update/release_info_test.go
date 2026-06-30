@@ -19,6 +19,24 @@ func TestPickUpdateAsset(t *testing.T) {
 func TestPickUpdateAssetPrefersInstallerOnWindows(t *testing.T) {
 	assets := []ReleaseAsset{
 		{Name: "Scenaria-Portable.zip", BrowserDownloadURL: "https://example.com/portable.zip"},
+		{Name: "Scenaria-Setup.exe", BrowserDownloadURL: "https://example.com/setup.exe"},
+		{Name: "Scenaria-Setup.msi", BrowserDownloadURL: "https://example.com/setup.msi"},
+	}
+	var got *ReleaseAsset
+	for _, pref := range updateAssetPreferences("windows") {
+		if asset := matchAsset(assets, pref); asset != nil {
+			got = asset
+			break
+		}
+	}
+	if got == nil || got.Name != "Scenaria-Setup.exe" {
+		t.Fatalf("unexpected asset: %+v", got)
+	}
+}
+
+func TestPickUpdateAssetPrefersMSIWhenNoSetupExe(t *testing.T) {
+	assets := []ReleaseAsset{
+		{Name: "Scenaria-Portable.zip", BrowserDownloadURL: "https://example.com/portable.zip"},
 		{Name: "Scenaria-Setup.msi", BrowserDownloadURL: "https://example.com/setup.msi"},
 	}
 	got := matchAsset(assets, func(name string) bool { return strings.HasSuffix(name, ".msi") })

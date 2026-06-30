@@ -87,8 +87,10 @@ go run ./cmd/scenaria record --live --url https://example.com --output recorded.
 # Vanessa Automation (1C)
 go run ./cmd/scenaria va run --project . --dry-run
 
-# portable Windows build (bundles Chromium + Wails IDE)
-make build-portable
+# portable / installer Windows build (bundles Chromium + Wails IDE)
+make build-portable    # dist/Scenaria-Portable.zip
+make build-installer   # dist/Scenaria-Setup.exe (Inno Setup, adds scenaria to PATH)
+make build-release     # both artifacts + dist/latest.json
 # dist/Scenaria/: scenaria.exe, scenaria-gui.exe, browsers/, Start-GUI.bat
 ```
 

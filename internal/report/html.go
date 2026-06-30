@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/brand"
 	"github.com/bafgion/scenaria-golang/internal/player"
 )
 
@@ -13,7 +14,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Scenaria Report</title>
+  <title>{{.BrandName}} Report</title>
   <style>
     body { font-family: Segoe UI, sans-serif; margin: 24px; color: #111; }
     h1 { margin-bottom: 8px; }
@@ -27,7 +28,7 @@ const htmlTemplate = `<!DOCTYPE html>
   </style>
 </head>
 <body>
-  <h1>Scenaria Run Report</h1>
+  <h1>{{.BrandName}} Run Report</h1>
   <div class="meta">Generated at {{.GeneratedAt}} · Mode: {{.Mode}} · Files: {{.Files}} · Scenarios: {{.Scenarios}} · Steps: {{.Steps}}</div>
   <table>
     <thead><tr><th>Feature</th><th>Scenario</th><th>Status</th><th>Message</th></tr></thead>
@@ -46,6 +47,7 @@ const htmlTemplate = `<!DOCTYPE html>
 </html>`
 
 type htmlReportData struct {
+	BrandName   string
 	GeneratedAt string
 	Mode        string
 	Files       int
@@ -56,6 +58,7 @@ type htmlReportData struct {
 
 func WriteHTML(path string, result player.ExecutionResult) error {
 	data := htmlReportData{
+		BrandName:   brand.Name,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Mode:        result.Mode,
 		Files:       result.Files,

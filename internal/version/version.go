@@ -1,8 +1,10 @@
 package version
 
+import "github.com/bafgion/scenaria-golang/internal/brand"
+
 const (
-	AppName = "Scenaria"
-	Version = "0.15.0"
+	AppName = brand.Name
+	Version = "0.16.0"
 	Module  = "github.com/bafgion/scenaria-golang"
 )
 

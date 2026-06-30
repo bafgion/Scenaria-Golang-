@@ -1,5 +1,6 @@
 <script lang="ts">
   import brandMark from '../assets/branding/app-icon-mark.png'
+  import { BRAND_TAGLINE, BRAND_TITLE } from './brand'
 
   export let version = 'dev'
   export let message = 'Запуск…'
@@ -18,7 +19,7 @@
         <img class="logo-mark" src={brandMark} alt="" width="72" height="72" />
       </div>
 
-      <h1 class="splash-title">SCENARIA</h1>
+      <h1 class="splash-title">{BRAND_TITLE}</h1>
       <p class="splash-version">VERSION {version}</p>
 
       <div class="splash-progress-block">
@@ -31,7 +32,7 @@
         </div>
       </div>
 
-      <p class="splash-tagline">Автотесты сайтов · Gherkin · Playwright</p>
+      <p class="splash-tagline">{BRAND_TAGLINE}</p>
     </div>
   </div>
 </div>

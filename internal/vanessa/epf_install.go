@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/brand"
+	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
 const vanessaGitHubRepo = "Pr-Mex/vanessa-automation"
@@ -17,7 +20,7 @@ const vanessaGitHubRepo = "Pr-Mex/vanessa-automation"
 func DownloadEPF(destination string, downloadURL string) (string, error) {
 	if strings.TrimSpace(destination) == "" {
 		home, _ := os.UserConfigDir()
-		destination = filepath.Join(home, "Scenaria", "vanessa", "vanessa-automation.epf")
+		destination = filepath.Join(home, brand.AppDataDir, "vanessa", "vanessa-automation.epf")
 	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return "", err
@@ -58,7 +61,7 @@ func resolveLatestSingleZipURL() (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "Scenaria-Go")
+	req.Header.Set("User-Agent", brand.UserAgent(version.Version))
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

@@ -1,4 +1,4 @@
-.PHONY: test chaos run install-cli gui gui-wails build build-windows build-portable
+.PHONY: test chaos run install-cli gui gui-wails build build-windows build-portable build-installer build-release
 
 test:
 	go test ./...
@@ -28,3 +28,9 @@ build-windows:
 
 build-portable:
 	powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
+
+build-installer:
+	powershell -ExecutionPolicy Bypass -File scripts/build-installer.ps1
+
+build-release:
+	powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1

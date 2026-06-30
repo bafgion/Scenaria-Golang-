@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { brandOverlayTitle } from './brand'
   import { icons } from './icons'
 
   export let visible = false
@@ -31,7 +32,7 @@
       : '● Идёт запись'
     : playing
       ? '▶ Идёт тест'
-      : 'Scenaria — перетащите панель'
+      : brandOverlayTitle()
 
   onMount(() => {
     const place = () => {

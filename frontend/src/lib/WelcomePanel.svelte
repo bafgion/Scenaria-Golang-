@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { BRAND_NAME } from './brand'
 
   export let startURL = 'https://site.com'
   export let recentProjects: string[] = []
@@ -72,7 +73,7 @@
   <div class="welcome-scroll" bind:this={scrollEl}>
     <div class="welcome-scroll-body" bind:this={bodyEl}>
       <div class="welcome-card" bind:this={cardEl}>
-        <h1>Scenaria</h1>
+        <h1>{BRAND_NAME}</h1>
 
         {#if !checklistDismissed}
           <div class="checklist">
