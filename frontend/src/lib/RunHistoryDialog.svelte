@@ -116,27 +116,6 @@
   .search {
     flex: 1;
     min-width: 180px;
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-  }
-
-  select {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-  }
-
-  .toolbar button {
-    padding: 6px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
   }
 
   .table-wrap {

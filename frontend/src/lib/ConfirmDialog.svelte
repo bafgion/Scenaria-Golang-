@@ -37,9 +37,4 @@
     font-size: 13px;
     color: var(--color-text);
   }
-
-  button.danger {
-    background: var(--color-error, #c62828);
-    border-color: var(--color-error, #c62828);
-  }
 </style>

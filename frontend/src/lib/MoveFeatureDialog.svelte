@@ -61,45 +61,9 @@
     font-weight: 600;
   }
 
-  label {
-    display: grid;
-    gap: 4px;
-    margin-bottom: 10px;
-    font-size: 11px;
-    color: var(--color-muted);
-  }
-
-  select {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
   .hint {
     margin: 0 0 12px;
     font-size: 11px;
     color: var(--color-muted);
-  }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
-  }
-
-  button:disabled {
-    opacity: 0.5;
   }
 </style>

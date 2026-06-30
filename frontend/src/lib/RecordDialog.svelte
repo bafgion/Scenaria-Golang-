@@ -178,9 +178,9 @@
             <li>
               <span class="step-text">{step}</span>
               <span class="step-actions">
-                <button type="button" title="Выше" disabled={baselineBusy || index === 0} on:click={() => moveStep(index, -1)}>↑</button>
-                <button type="button" title="Ниже" disabled={baselineBusy || index === steps.length - 1} on:click={() => moveStep(index, 1)}>↓</button>
-                <button type="button" title="Удалить" disabled={baselineBusy} on:click={() => removeStep(index)}>×</button>
+                <button type="button" class="btn-compact" title="Выше" disabled={baselineBusy || index === 0} on:click={() => moveStep(index, -1)}>↑</button>
+                <button type="button" class="btn-compact" title="Ниже" disabled={baselineBusy || index === steps.length - 1} on:click={() => moveStep(index, 1)}>↓</button>
+                <button type="button" class="btn-compact" title="Удалить" disabled={baselineBusy} on:click={() => removeStep(index)}>×</button>
               </span>
             </li>
           {/each}
@@ -248,16 +248,6 @@
     color: var(--color-muted);
   }
 
-  input,
-  select {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
   .check-row {
     display: flex;
     align-items: center;
@@ -308,11 +298,6 @@
     flex-shrink: 0;
   }
 
-  .step-actions button {
-    padding: 2px 6px;
-    font-size: 11px;
-  }
-
   .add-step {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -331,30 +316,15 @@
   .preview {
     margin: 0;
     padding: 8px;
-    font-family: Consolas, 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.45;
     white-space: pre-wrap;
     max-height: 120px;
     overflow: auto;
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: 4px;
     background: var(--color-input);
     color: var(--color-text);
-  }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
   }
 </style>

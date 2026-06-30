@@ -24,6 +24,7 @@
   import type { gui } from '../../wailsjs/go/models'
   import type { HotkeyId } from './hotkeys'
   import type { editor as MonacoEditor } from 'monaco-editor'
+  import { MonacoTabModelStore } from './monacoTabModels'
 
   export let value = ''
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
@@ -40,13 +41,35 @@
   let monacoApi: typeof import('monaco-editor') | null = null
   let applyingExternal = false
   let validationMarkerIssues: MarkerIssue[] = []
+  let activeTabPath: string | null = null
+  let welcomeModel: MonacoEditor.ITextModel | null = null
+  const tabModels = new MonacoTabModelStore()
 
   const dispatch = createEventDispatcher<{ change: string; cursorline: number }>()
+
+  function ensureWelcomeModel(text: string): MonacoEditor.ITextModel {
+    if (!monacoApi) throw new Error('monaco not ready')
+    if (welcomeModel && !welcomeModel.isDisposed()) {
+      if (welcomeModel.getValue() !== text) welcomeModel.setValue(text)
+      return welcomeModel
+    }
+    welcomeModel = monacoApi.editor.createModel(text, 'scenaria-feature')
+    return welcomeModel
+  }
+
+  function attachModel(model: MonacoEditor.ITextModel) {
+    if (!editor) return
+    applyingExternal = true
+    editor.setModel(model)
+    value = model.getValue()
+    queueMicrotask(() => {
+      applyingExternal = false
+    })
+  }
 
   function buildEditorOptions(monaco: typeof import('monaco-editor')) {
     return {
       ...toMonacoOptions(editorSettings, monaco),
-      value,
       language: 'scenaria-feature',
       theme: editorSettings.theme,
       automaticLayout: true,
@@ -107,7 +130,10 @@
       registerGherkinInlayHints(monaco, inlayHintsHandlers)
     }
 
-    editor = monaco.editor.create(container, buildEditorOptions(monaco))
+    editor = monaco.editor.create(container, {
+      ...buildEditorOptions(monaco),
+      model: ensureWelcomeModel(value),
+    })
 
     editor.onDidChangeModelContent(() => {
       if (!editor || applyingExternal) {
@@ -185,9 +211,48 @@
   }
 
   onDestroy(() => {
+    if (monacoApi) {
+      tabModels.releaseAll(monacoApi)
+    }
+    if (welcomeModel && !welcomeModel.isDisposed()) {
+      welcomeModel.dispose()
+    }
+    welcomeModel = null
     editor?.dispose()
     editor = null
   })
+
+  /** Переключить активную вкладку: отдельная модель Monaco на файл. */
+  export function activateTab(path: string | null, text: string) {
+    activeTabPath = path
+    if (!editor || !monacoApi) {
+      value = text
+      return
+    }
+    if (!path) {
+      attachModel(ensureWelcomeModel(text))
+      syncEditorMarkers()
+      return
+    }
+    const model = tabModels.getOrCreate(monacoApi, path, text)
+    attachModel(model)
+    syncEditorMarkers()
+  }
+
+  /** Закрыть вкладку — освободить модель и память Monaco. */
+  export function releaseTab(path: string) {
+    if (!monacoApi || !path) return
+    tabModels.release(monacoApi, path)
+    if (activeTabPath === path) {
+      activeTabPath = null
+    }
+  }
+
+  /** Синхронизировать модели с набором открытых путей (после выгрузки тел вкладок). */
+  export function retainTabs(paths: string[]) {
+    if (!monacoApi) return
+    tabModels.releaseExcept(monacoApi, paths)
+  }
 
   export function setContent(text: string) {
     if (!editor) {
@@ -198,16 +263,19 @@
     const model = editor.getModel()
     if (model) {
       editor.pushUndoStop()
-      model.setValue(text)
+      if (model.getValue() !== text) {
+        model.setValue(text)
+      }
       editor.setPosition({ lineNumber: 1, column: 1 })
       editor.pushUndoStop()
     }
+    value = text
     queueMicrotask(() => {
       applyingExternal = false
     })
   }
 
-  $: if (editor && !applyingExternal && editor.getValue() !== value) {
+  $: if (editor && !applyingExternal && activeTabPath === null && editor.getValue() !== value) {
     setContent(value)
   }
 

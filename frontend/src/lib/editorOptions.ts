@@ -165,5 +165,10 @@ export function toMonacoOptions(
     breadcrumbs: { enabled: settings.breadcrumbs },
     codeLens: settings.codeLens,
     inlayHints: { enabled: settings.inlayHints ? 'on' : 'off' },
+    unicodeHighlight: {
+      ambiguousCharacters: false,
+      invisibleCharacters: false,
+      nonBasicASCII: false,
+    },
   } as MonacoEditor.IStandaloneEditorConstructionOptions
 }

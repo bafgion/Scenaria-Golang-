@@ -84,15 +84,13 @@ func (namedParallelExecutor) ExecuteScenario(_ context.Context, input ScenarioIn
 	}, nil
 }
 
-func TestSetMaxLoopIterations(t *testing.T) {
-	old := MaxLoopIterations
-	defer func() { MaxLoopIterations = old }()
-	SetMaxLoopIterations(42)
-	if MaxLoopIterations != 42 {
-		t.Fatalf("expected 42, got %d", MaxLoopIterations)
+func TestExecutorMaxLoopIterations(t *testing.T) {
+	exec := NewStepExecutor(ExecutorOptions{MaxLoopIterations: 42})
+	if got := exec.maxLoopIterations(); got != 42 {
+		t.Fatalf("expected 42, got %d", got)
 	}
-	SetMaxLoopIterations(0)
-	if MaxLoopIterations != 42 {
-		t.Fatalf("zero should not change limit")
+	exec = NewStepExecutor(ExecutorOptions{})
+	if got := exec.maxLoopIterations(); got != DefaultMaxLoopIterations {
+		t.Fatalf("expected default %d, got %d", DefaultMaxLoopIterations, got)
 	}
 }

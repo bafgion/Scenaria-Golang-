@@ -184,6 +184,130 @@ export function buildCatalogTree(
   return rootNode
 }
 
+/** Ключ для кэша структуры дерева (без статусов прогона). */
+export function catalogStructureKey(root: string, featurePaths: string[]): string {
+  return `${root}\0${featurePaths.join('\0')}`
+}
+
+/** Построить дерево без статусов прогона — для кэширования между обновлениями runResults. */
+export function buildCatalogStructure(root: string, featurePaths: string[]): CatalogNode {
+  return buildCatalogTree(root, featurePaths, new Map())
+}
+
+/** Наложить статусы последнего прогона на дерево (легче полной пересборки). */
+export function mapTreeRunStatus(node: CatalogNode, runByPath: Map<string, RunStatus>): CatalogNode {
+  if (node.kind === 'file') {
+    const run = runByPath.get(normPath(node.path))
+    return {
+      ...node,
+      runSuccess: run ? run.success : null,
+      runMessage: run?.message || '',
+      runAt: run?.at || '',
+      runRunner: run?.runner || '',
+    }
+  }
+  return {
+    ...node,
+    children: node.children.map((child) => mapTreeRunStatus(child, runByPath)),
+  }
+}
+
+export function buildRunByPathMap(
+  entries: Array<{ path: string; success: boolean; message?: string; at?: string; runner?: string }>,
+): Map<string, RunStatus> {
+  const map = new Map<string, RunStatus>()
+  for (const entry of entries) {
+    const key = normPath(entry.path)
+    if (map.has(key)) continue
+    map.set(key, {
+      success: entry.success,
+      message: entry.message || '',
+      at: entry.at || '',
+      runner: entry.runner || '',
+    })
+  }
+  return map
+}
+
+/** Собрать состояние explorer из закэшированной структуры + фильтр + статусы прогона. */
+export function buildCatalogViewStateFromBase(
+  root: string | null,
+  baseTree: CatalogNode | null,
+  filterText: string,
+  runByPath: Map<string, RunStatus>,
+  rootExists = true,
+  tagsByPath: Map<string, string[]> = new Map(),
+): CatalogViewState {
+  if (!root) {
+    return {
+      tree: null,
+      emptyTitle: 'Проект не открыт',
+      emptyHint: 'Откройте папку с .feature сценариями.\nПроект → Открыть проект…',
+      emptyKind: 'no_project',
+      expandAll: false,
+      showEmptyMessage: true,
+    }
+  }
+  if (!rootExists || !baseTree) {
+    return {
+      tree: null,
+      emptyTitle: 'Папка не найдена',
+      emptyHint: `Путь недоступен:\n${root}\n\nВыберите другой проект.`,
+      emptyKind: 'missing',
+      expandAll: false,
+      showEmptyMessage: true,
+    }
+  }
+
+  const totalFiles = countFeatureFiles(baseTree)
+  const { query, tag } = parseCatalogFilter(filterText)
+  const filtered = query || tag ? filterTree(baseTree, query, tag, tagsByPath) : baseTree
+  const tree = filtered ? mapTreeRunStatus(filtered, runByPath) : null
+  const visibleFiles = countFeatureFiles(tree)
+
+  if (totalFiles === 0) {
+    return {
+      tree,
+      emptyTitle: 'Нет сценариев',
+      emptyHint: `В «${basename(root)}» пока нет .feature файлов.\nНажмите + или Сценарий → Новый.\nДля пакетного запуска: режим «Выбор» или Ctrl+клик по файлу.`,
+      emptyKind: 'no_files',
+      expandAll: false,
+      showEmptyMessage: true,
+    }
+  }
+
+  if ((query || tag) && visibleFiles === 0) {
+    const trimmed = filterText.trim()
+    if (tag && !query) {
+      return {
+        tree,
+        emptyTitle: 'Нет сценариев с тегом',
+        emptyHint: `Тег «@${tag}» не найден ни в одном сценарии.\nОчистите поле поиска.`,
+        emptyKind: 'no_match',
+        expandAll: true,
+        showEmptyMessage: true,
+      }
+    }
+    return {
+      tree,
+      emptyTitle: 'Ничего не найдено',
+      emptyHint: `Запрос «${trimmed}» не дал результатов.\nОчистите поле поиска.`,
+      emptyKind: 'no_match',
+      expandAll: true,
+      showEmptyMessage: true,
+    }
+  }
+
+  return {
+    tree,
+    emptyTitle: null,
+    emptyHint: null,
+    emptyKind: null,
+    expandAll: Boolean(query || tag),
+    showEmptyMessage: false,
+  }
+}
+
 export function buildCatalogViewState(
   root: string | null,
   featurePaths: string[],
@@ -272,6 +396,19 @@ export function formatLastRunSummary(node: CatalogNode): string {
   return parts.join('\n')
 }
 
+export function normFeaturePath(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase()
+}
+
+export function featurePathsEqual(a: string, b: string): boolean {
+  return normFeaturePath(a) === normFeaturePath(b)
+}
+
+export function isFeaturePathSelected(path: string, selected: string[]): boolean {
+  const norm = normFeaturePath(path)
+  return selected.some((p) => normFeaturePath(p) === norm)
+}
+
 export function fileTreeLabel(
   node: CatalogNode,
   selectionMode: boolean,
@@ -285,7 +422,7 @@ export function fileTreeLabel(
   if (selectionMode) {
     mark = selected ? '☑ ' : '☐ '
   } else if (selected) {
-    mark = '◉ '
+    mark = '• '
   }
 
   return `${mark}${badge} ${node.name}`

@@ -45,7 +45,7 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette" role="dialog" aria-modal="true" aria-label="Палитра команд" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="palette command-palette" role="dialog" aria-modal="true" aria-label="Палитра команд" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <input class="palette-input" bind:value={query} placeholder="Введите команду…" autofocus />
     <ul class="palette-list">
       {#each filtered as cmd, i}
@@ -62,79 +62,3 @@
     </ul>
   </div>
 </div>
-
-<style>
-  .palette-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1500;
-    background: rgba(0, 0, 0, 0.45);
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding-top: 12vh;
-  }
-
-  .palette {
-    width: min(560px, 92vw);
-    background: var(--color-sidebar);
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-  }
-
-  .palette-input {
-    width: 100%;
-    padding: 12px 14px;
-    border: none;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-toolbar);
-    color: var(--color-text);
-    font-size: 14px;
-    outline: none;
-  }
-
-  .palette-list {
-    list-style: none;
-    margin: 0;
-    padding: 4px 0;
-    max-height: 360px;
-    overflow-y: auto;
-  }
-
-  .palette-list button {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 12px;
-    width: 100%;
-    text-align: left;
-    padding: 8px 14px;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    font-size: 13px;
-  }
-
-  .palette-list button.selected,
-  .palette-list button:hover {
-    background: var(--color-selected);
-  }
-
-  .group {
-    color: var(--color-muted);
-    font-size: 11px;
-  }
-
-  .shortcut {
-    color: var(--color-muted);
-    font-size: 11px;
-    font-family: var(--font-mono);
-  }
-
-  .empty {
-    padding: 12px 14px;
-    color: var(--color-muted);
-    font-size: 12px;
-  }
-</style>

@@ -10,6 +10,10 @@ export function ApplyScenarioHintFix(arg1) {
   return window['go']['wailsapp']['App']['ApplyScenarioHintFix'](arg1);
 }
 
+export function ApplyUpdate() {
+  return window['go']['wailsapp']['App']['ApplyUpdate']();
+}
+
 export function ArtifactExists(arg1) {
   return window['go']['wailsapp']['App']['ArtifactExists'](arg1);
 }
@@ -76,10 +80,6 @@ export function DescribeEditorLine(arg1) {
 
 export function DownloadUpdate() {
   return window['go']['wailsapp']['App']['DownloadUpdate']();
-}
-
-export function ApplyUpdate() {
-  return window['go']['wailsapp']['App']['ApplyUpdate']();
 }
 
 export function DuplicateFeature(arg1, arg2) {

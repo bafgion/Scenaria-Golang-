@@ -803,22 +803,6 @@ export namespace gui {
 	        this.canAutoApply = source["canAutoApply"];
 	    }
 	}
-	export class UpdateProgressDTO {
-	    stage: string;
-	    message: string;
-	    percent: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new UpdateProgressDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stage = source["stage"];
-	        this.message = source["message"];
-	        this.percent = source["percent"];
-	    }
-	}
 	export class ValidateRequest {
 	    browser: string;
 	    skipBrowser: boolean;

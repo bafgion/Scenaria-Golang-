@@ -263,35 +263,6 @@
     text-decoration: underline;
   }
 
-  .quick-start {
-    display: flex;
-    gap: 8px;
-    margin: 6px 0 12px;
-  }
-
-  .quick-start input {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 10px;
-    background: var(--color-input);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    color: var(--color-text);
-    font-size: 13px;
-  }
-
-  .quick-start .primary {
-    padding: 6px 14px;
-    background: var(--color-primary);
-    border: none;
-    border-radius: 3px;
-    color: #ffffff;
-    white-space: nowrap;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 400;
-  }
-
   .section-heading {
     margin: 8px 0 0;
     font-size: 13px;

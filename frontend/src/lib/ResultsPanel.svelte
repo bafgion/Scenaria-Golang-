@@ -105,15 +105,6 @@
     flex-wrap: wrap;
   }
 
-  .results-toolbar button {
-    padding: 4px 10px;
-    font-size: 11px;
-    background: var(--color-input);
-    border: 1px solid var(--color-border);
-    border-radius: 2px;
-    color: var(--color-text);
-  }
-
   .rerun {
     margin-left: auto;
   }

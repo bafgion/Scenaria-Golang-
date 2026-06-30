@@ -260,16 +260,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-warning, #c9a227);
-  }
-
-  input, select {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    background: var(--color-input-bg, var(--color-bg));
-    color: inherit;
-    font-size: 12px;
+    color: var(--color-warning);
   }
 
   .input-row {
@@ -285,7 +276,7 @@
   .warning {
     margin: -4px 0 10px;
     font-size: 11px;
-    color: var(--color-warning, #c9a227);
+    color: var(--color-warning);
   }
 
   .issues, .hints {
@@ -299,41 +290,20 @@
   }
 
   .issues li {
-    color: var(--color-error, #e06c75);
+    color: var(--color-error);
   }
 
   .hints li.warn {
-    color: var(--color-warning, #c9a227);
+    color: var(--color-warning);
   }
 
   .hints li.error {
-    color: var(--color-error, #e06c75);
+    color: var(--color-error);
   }
 
   .error {
-    color: var(--color-error, #e06c75);
+    color: var(--color-error);
     font-size: 11px;
     margin: 0 0 8px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    margin-top: 8px;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: #fff;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-
-  button.primary:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 </style>

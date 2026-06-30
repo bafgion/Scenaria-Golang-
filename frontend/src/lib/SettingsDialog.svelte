@@ -294,8 +294,8 @@
                 <li>
                   <span class="strategy-name">{labelForStrategy(key)}</span>
                   <span class="strategy-actions">
-                    <button type="button" title="Выше" disabled={i === 0} on:click={() => moveClickStrategy(i, -1)}>↑</button>
-                    <button type="button" title="Ниже" disabled={i === selectorClickStrategies.length - 1} on:click={() => moveClickStrategy(i, 1)}>↓</button>
+                    <button type="button" class="btn-compact" title="Выше" disabled={i === 0} on:click={() => moveClickStrategy(i, -1)}>↑</button>
+                    <button type="button" class="btn-compact" title="Ниже" disabled={i === selectorClickStrategies.length - 1} on:click={() => moveClickStrategy(i, 1)}>↓</button>
                   </span>
                 </li>
               {/each}
@@ -307,8 +307,8 @@
                 <li>
                   <span class="strategy-name">{labelForStrategy(key)}</span>
                   <span class="strategy-actions">
-                    <button type="button" title="Выше" disabled={i === 0} on:click={() => moveInputStrategy(i, -1)}>↑</button>
-                    <button type="button" title="Ниже" disabled={i === selectorInputStrategies.length - 1} on:click={() => moveInputStrategy(i, 1)}>↓</button>
+                    <button type="button" class="btn-compact" title="Выше" disabled={i === 0} on:click={() => moveInputStrategy(i, -1)}>↑</button>
+                    <button type="button" class="btn-compact" title="Ниже" disabled={i === selectorInputStrategies.length - 1} on:click={() => moveInputStrategy(i, 1)}>↓</button>
                   </span>
                 </li>
               {/each}
@@ -539,12 +539,6 @@
     word-break: break-all;
   }
 
-  .install-btn {
-    flex-shrink: 0;
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-
   .browser-install-progress {
     margin: 0 0 12px;
     min-height: 1.2em;
@@ -559,27 +553,6 @@
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 8px;
-  }
-
-  .preset-chip {
-    padding: 3px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: transparent;
-    color: var(--color-muted);
-    font-size: 11px;
-    cursor: pointer;
-  }
-
-  .preset-chip:hover {
-    color: var(--color-text);
-    border-color: var(--color-primary);
-  }
-
-  .preset-chip.active {
-    color: var(--color-text);
-    border-color: var(--color-primary);
-    background: rgba(0, 122, 204, 0.15);
   }
 
   .strategy-group-title {
@@ -617,10 +590,8 @@
     gap: 4px;
   }
 
-  .strategy-actions button {
+  .strategy-actions :global(.btn-compact) {
     min-width: 24px;
-    padding: 2px 6px;
-    font-size: 11px;
   }
 </style>
 

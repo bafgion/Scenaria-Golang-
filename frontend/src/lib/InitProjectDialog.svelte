@@ -46,19 +46,4 @@
     word-break: break-all;
     color: var(--color-text);
   }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
-  }
 </style>

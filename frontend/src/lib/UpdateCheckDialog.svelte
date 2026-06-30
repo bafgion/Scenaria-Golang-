@@ -80,37 +80,13 @@
   .update-available {
     margin: 0 0 8px;
     font-size: 13px;
-    color: var(--color-accent);
+    color: var(--color-brand);
   }
 
   .up-to-date {
     margin: 0 0 8px;
     font-size: 13px;
-    color: var(--color-success, #4ec9b0);
-  }
-
-  .progress-block {
-    margin: 0 0 12px;
-  }
-
-  .progress-label {
-    margin: 0 0 6px;
-    font-size: 12px;
-    color: var(--color-text);
-  }
-
-  .progress-track {
-    height: 8px;
-    border-radius: 4px;
-    background: var(--color-input);
-    border: 1px solid var(--color-border);
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: var(--color-accent);
-    transition: width 0.2s ease;
+    color: var(--color-success);
   }
 
   .details {
@@ -121,35 +97,9 @@
     white-space: pre-wrap;
     background: var(--color-input);
     border: 1px solid var(--color-border);
-    border-radius: 3px;
+    border-radius: 4px;
     max-height: 160px;
     overflow: auto;
-  }
-
-  .modal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
+    font-family: var(--font-mono);
   }
 </style>

@@ -80,16 +80,6 @@
     color: var(--color-muted);
   }
 
-  input[type='text'],
-  input:not([type]) {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
   .check-row {
     display: flex;
     align-items: center;
@@ -124,20 +114,5 @@
     border-color: var(--color-primary);
     color: var(--color-text);
     background: var(--color-selected);
-  }
-
-  button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
   }
 </style>

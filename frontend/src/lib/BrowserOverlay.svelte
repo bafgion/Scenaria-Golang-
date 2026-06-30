@@ -98,7 +98,7 @@
     on:lostpointercapture={onLostPointerCapture}
   >
     <p class="title" class:recording class:playing={playing && !recording}>{title}</p>
-    <div class="actions">
+    <div class="overlay-actions">
       <button type="button" disabled={!recordEnabled} on:click={onRecord}>
         {@html icons.record}<span>Запись</span>
       </button>
@@ -149,32 +149,5 @@
 
   .title.playing {
     color: var(--color-primary);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .actions button {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-    background: var(--color-input);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    color: var(--color-text);
-  }
-
-  .actions button:disabled {
-    opacity: 0.45;
-  }
-
-  .actions button :global(svg) {
-    width: 14px;
-    height: 14px;
   }
 </style>

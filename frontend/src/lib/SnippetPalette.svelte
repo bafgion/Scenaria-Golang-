@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
   import type { SnippetEntry } from './stepTypes'
@@ -11,6 +11,7 @@
   let entries: SnippetEntry[] = []
   let selected = 0
   let loading = true
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   onMount(async () => {
     try {
@@ -31,12 +32,20 @@
   $: if (selected >= filtered.length) selected = Math.max(0, filtered.length - 1)
 
   async function onQueryInput() {
-    try {
-      entries = await SearchSteps(asStepSearchQuery(query))
-    } catch {
-      /* keep previous */
-    }
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(async () => {
+      searchDebounceTimer = null
+      try {
+        entries = await SearchSteps(asStepSearchQuery(query))
+      } catch {
+        /* keep previous */
+      }
+    }, 200)
   }
+
+  onDestroy(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  })
 
   function runSelected() {
     const item = filtered[selected]
@@ -67,7 +76,7 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette" role="dialog" aria-modal="true" aria-label="Палитра сниппетов" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="palette snippet-palette" role="dialog" aria-modal="true" aria-label="Палитра сниппетов" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <input
       class="palette-input"
       bind:value={query}
@@ -75,7 +84,7 @@
       on:input={onQueryInput}
       autofocus
     />
-    <ul class="palette-list">
+    <ul class="palette-list snippet-grid">
       {#if loading}
         <li class="empty">Загрузка…</li>
       {:else if filtered.length === 0}
@@ -94,88 +103,3 @@
     </ul>
   </div>
 </div>
-
-<style>
-  .palette-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 1200;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding-top: 12vh;
-  }
-
-  .palette {
-    width: min(640px, 92vw);
-    max-height: 70vh;
-    background: var(--color-sidebar);
-    border: 1px solid var(--color-border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-  }
-
-  .palette-input {
-    margin: 12px;
-    padding: 8px 10px;
-    background: var(--color-input);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    font-size: 14px;
-  }
-
-  .palette-list {
-    list-style: none;
-    margin: 0;
-    padding: 0 0 8px;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .palette-list button {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 2px 12px;
-    width: 100%;
-    text-align: left;
-    padding: 8px 14px;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .palette-list button:hover,
-  .palette-list button.selected {
-    background: var(--color-input);
-  }
-
-  .label {
-    font-family: var(--font-mono);
-    color: var(--color-text);
-    grid-column: 1;
-  }
-
-  .group {
-    color: var(--color-muted);
-    font-size: 10px;
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .help {
-    color: var(--color-muted);
-    font-size: 11px;
-    grid-column: 1 / -1;
-  }
-
-  .empty {
-    padding: 16px;
-    color: var(--color-muted);
-    font-size: 12px;
-  }
-</style>

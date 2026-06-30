@@ -21,8 +21,8 @@ func main() {
 		Title:  brand.Name,
 		Width:  560,
 		Height: 500,
-		MinWidth:  960,
-		MinHeight: 640,
+		MinWidth:  800,
+		MinHeight: 520,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,

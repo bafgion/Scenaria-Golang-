@@ -12,7 +12,7 @@ import {
 } from '../../wailsjs/runtime/runtime'
 
 export const SPLASH_WINDOW = { width: 560, height: 500 }
-export const MAIN_WINDOW = { width: 1280, height: 800, minWidth: 960, minHeight: 640 }
+export const MAIN_WINDOW = { width: 1280, height: 800, minWidth: 800, minHeight: 520 }
 
 function hasWailsRuntime(): boolean {
   return typeof window !== 'undefined' && !!(window as Window & { runtime?: unknown }).runtime

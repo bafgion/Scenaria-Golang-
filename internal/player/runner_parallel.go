@@ -42,8 +42,7 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
 	var firstErr error
-	var errMu sync.Mutex
-	var resultsMu sync.Mutex
+	var mu sync.Mutex
 
 	for index, runCase := range plan.Cases {
 		wg.Add(1)
@@ -53,17 +52,27 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 			defer func() { <-sem }()
 
 			runResult, err := r.Executor.ExecuteScenario(ctx, scenarioInputFromCase(rc))
+			mu.Lock()
+			defer mu.Unlock()
 			if err != nil {
-				errMu.Lock()
 				if firstErr == nil {
 					firstErr = err
 				}
-				errMu.Unlock()
-				return
+				if runResult.Scenario == "" {
+					runResult = ScenarioResult{
+						FeaturePath: rc.FeaturePath,
+						Scenario:    rc.Name,
+						Status:      "failed",
+						Message:     err.Error(),
+					}
+				} else if runResult.Status == "" {
+					runResult.Status = "failed"
+					if runResult.Message == "" {
+						runResult.Message = err.Error()
+					}
+				}
 			}
-			resultsMu.Lock()
 			results[i] = runResult
-			resultsMu.Unlock()
 		}(index, runCase)
 	}
 	wg.Wait()

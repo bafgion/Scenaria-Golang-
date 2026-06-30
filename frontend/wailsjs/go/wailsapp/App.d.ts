@@ -6,6 +6,8 @@ export function AnalyzeScenarioHints(arg1:string):Promise<Array<gui.ScenarioHint
 
 export function ApplyScenarioHintFix(arg1:gui.ScenarioHintFixRequest):Promise<gui.RefactorResult>;
 
+export function ApplyUpdate():Promise<void>;
+
 export function ArtifactExists(arg1:string):Promise<boolean>;
 
 export function BeginRecordingCapture():Promise<void>;
@@ -39,8 +41,6 @@ export function DeleteTestClient(arg1:string):Promise<void>;
 export function DescribeEditorLine(arg1:string):Promise<gui.StepCatalogEntry>;
 
 export function DownloadUpdate():Promise<string>;
-
-export function ApplyUpdate():Promise<void>;
 
 export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
 

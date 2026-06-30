@@ -49,11 +49,7 @@ func TestChaosResolveTextRandomPlaceholders(t *testing.T) {
 }
 
 func TestChaosMaxLoopIterationsEnforced(t *testing.T) {
-	old := MaxLoopIterations
-	defer func() { MaxLoopIterations = old }()
-	SetMaxLoopIterations(3)
-
-	exec := NewStepExecutor(ExecutorOptions{})
+	exec := NewStepExecutor(ExecutorOptions{MaxLoopIterations: 3})
 	steps := []gherkin.Step{{
 		Block:       gherkin.BlockRepeat,
 		RepeatCount: 100,

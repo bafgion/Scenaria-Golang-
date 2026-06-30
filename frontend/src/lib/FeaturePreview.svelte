@@ -50,7 +50,11 @@
   $: text, theme, fontSize, fontFamily, syncPreview()
 
   onDestroy(() => {
+    const model = editor?.getModel()
     editor?.dispose()
+    if (model && !model.isDisposed()) {
+      model.dispose()
+    }
     editor = null
   })
 </script>

@@ -15,13 +15,13 @@ func TestGenerateByKind(t *testing.T) {
 }
 
 func TestEmailCodePromptCallback(t *testing.T) {
-	EmailCodePrompt = func(email string) (string, error) {
+	SetEmailCodePrompt(func(email string) (string, error) {
 		if email != "" && email != "a@b.c" {
 			t.Fatalf("unexpected email: %q", email)
 		}
 		return "654321", nil
-	}
-	defer func() { EmailCodePrompt = nil }()
+	})
+	defer func() { SetEmailCodePrompt(nil) }()
 	ctx := NewRunContext(nil, 1, "")
 	code, err := ctx.EmailCode()
 	if err != nil || code != "654321" {
@@ -30,7 +30,8 @@ func TestEmailCodePromptCallback(t *testing.T) {
 }
 
 func TestEmailCodeFromEnv(t *testing.T) {
-	EmailCodePrompt = nil
+	SetEmailCodePrompt(nil)
+	defer func() { SetEmailCodePrompt(nil) }()
 	t.Setenv("SCENARIA_EMAIL_CODE", "123456")
 	ctx := NewRunContext(nil, 1, "")
 	code, err := ctx.EmailCode()

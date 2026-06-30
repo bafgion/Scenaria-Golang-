@@ -4,7 +4,7 @@
 
   export let tree: CatalogNode
   export let activeFeature = ''
-  export let batchSelected: string[] = []
+  export let batchSelectedSet: Set<string> = new Set()
   export let batchMode = false
   export let expandAll = false
   export let collapsed: Set<string> = new Set()
@@ -24,7 +24,7 @@
     node={tree}
     depth={0}
     {activeFeature}
-    {batchSelected}
+    batchSelectedSet={batchSelectedSet}
     {batchMode}
     {expandAll}
     {collapsed}

@@ -10,7 +10,15 @@ import (
 )
 
 type ExecutorOptions struct {
-	BaseURL string
+	BaseURL           string
+	MaxLoopIterations int
+}
+
+func (e *StepExecutor) maxLoopIterations() int {
+	if e != nil && e.options.MaxLoopIterations > 0 {
+		return e.options.MaxLoopIterations
+	}
+	return DefaultMaxLoopIterations
 }
 
 type StepExecutor struct {
@@ -45,7 +53,8 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		return nil
 	case gherkin.BlockWhile:
 		iterations := 0
-		for iterations < MaxLoopIterations {
+		limit := e.maxLoopIterations()
+		for iterations < limit {
 			if runCtx == nil || !runCtx.EvaluateCondition(step.Condition) {
 				break
 			}
@@ -57,7 +66,7 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 				return nil
 			}
 		}
-		if iterations >= MaxLoopIterations && runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
+		if iterations >= limit && runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
 			return fmt.Errorf("превышен лимит итераций цикла «пока»")
 		}
 		return nil
@@ -66,8 +75,9 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		if count < 1 {
 			count = 1
 		}
-		if count > MaxLoopIterations {
-			count = MaxLoopIterations
+		limit := e.maxLoopIterations()
+		if count > limit {
+			count = limit
 		}
 		for i := 0; i < count; i++ {
 			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {

@@ -17,7 +17,7 @@
       Записано шагов: {stepCount} — {basename(path)}
       <span class="hint-note">Подсказки — в редакторе (лампочка / Ctrl+.)</span>
     </div>
-    <div class="actions">
+    <div class="banner-actions">
       <button type="button" class="primary" on:click={onValidate}>Проверить</button>
       <button type="button" on:click={onSave}>Сохранить</button>
       <button type="button" class="dismiss" on:click={onClose}>Закрыть</button>
@@ -51,31 +51,5 @@
     margin-top: 2px;
     color: var(--color-muted);
     font-size: 11px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  button {
-    padding: 4px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  button.primary {
-    background: var(--color-accent);
-    color: var(--color-on-accent, #fff);
-    border-color: var(--color-accent);
-  }
-
-  button.dismiss {
-    color: var(--color-muted);
   }
 </style>

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/browserconfig"
@@ -23,6 +24,8 @@ type PlaywrightExecutorOptions struct {
 	TraceDir          string
 	VideoDir          string
 	HTTPCredentials   *playwright.HttpCredentials
+	MaxLoopIterations int
+	PromptEmailCode   EmailCodePrompter
 }
 
 type PlaywrightExecutor struct {
@@ -34,6 +37,7 @@ func NewPlaywrightExecutor(options PlaywrightExecutorOptions) *PlaywrightExecuto
 }
 
 type browserSession struct {
+	mu           sync.Mutex
 	browser      playwright.Browser
 	context      playwright.BrowserContext
 	page         playwright.Page
@@ -41,6 +45,7 @@ type browserSession struct {
 	traceEnabled bool
 	traceStopped bool
 	videoEnabled bool
+	videoRetained bool
 }
 
 func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOptions) (*browserSession, error) {
@@ -87,6 +92,8 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 }
 
 func (s *browserSession) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
@@ -95,8 +102,20 @@ func (s *browserSession) close() {
 		s.traceStopped = true
 	}
 	if s.page != nil {
-		_ = s.page.Close()
-		s.page = nil
+		if s.videoEnabled && !s.videoRetained {
+			recorder := s.page.Video()
+			_ = s.page.Close()
+			s.page = nil
+			if recorder != nil {
+				path, err := recorder.Path()
+				if err == nil && strings.TrimSpace(path) != "" {
+					_ = os.Remove(path)
+				}
+			}
+		} else {
+			_ = s.page.Close()
+			s.page = nil
+		}
 	}
 	if s.context != nil {
 		_ = s.context.Close()
@@ -111,6 +130,8 @@ func (s *browserSession) close() {
 
 // finalizeVideoRecording closes page and context so Playwright flushes the webm, then reads it.
 func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s == nil || s.closed || !s.videoEnabled || s.page == nil {
 		return nil
 	}
@@ -121,6 +142,7 @@ func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
 		_ = s.context.Close()
 		s.context = nil
 	}
+	s.videoRetained = true
 	if recorder == nil {
 		return nil
 	}

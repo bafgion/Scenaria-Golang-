@@ -5,7 +5,20 @@
   import CatalogEmptyState from './lib/CatalogEmptyState.svelte'
   import FeatureCatalogTree from './lib/FeatureCatalogTree.svelte'
   import EditorTabBar from './lib/EditorTabBar.svelte'
-  import { buildCatalogViewState, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
+  import { buildCatalogViewState, buildCatalogStructure, buildCatalogViewStateFromBase, buildRunByPathMap, catalogStructureKey, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
+  import {
+    buildBatchSelectedSet,
+    selectAllFeaturesUnder,
+    toggleBatchPath,
+  } from './lib/batchSelection'
+  import { debounce, deferToNextFrame } from './lib/uiScheduler'
+  import {
+    MAX_OPEN_EDITOR_TABS,
+    pathsToRetainModels,
+    tabEditorText,
+    tabNeedsDiskReload,
+    trimRetainedTabBodies,
+  } from './lib/tabMemory'
   import SettingsDialog from './lib/SettingsDialog.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
   import type { PaletteCommand } from './lib/paletteTypes'
@@ -50,6 +63,15 @@
   import HttpAuthDialog from './lib/HttpAuthDialog.svelte'
   import PickerStepDialog from './lib/PickerStepDialog.svelte'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
+  import {
+    clampBottomPanelHeight,
+    clampStepsPanelHeight,
+    effectivePreviewWidth,
+    effectiveSidebarWidth,
+    shouldAutoCompactToolbar,
+    shouldShowPreviewPane,
+    toolbarIconOnlyThreshold,
+  } from './lib/viewport'
   import ErrorPanel from './lib/ErrorPanel.svelte'
   import ResultsPanel from './lib/ResultsPanel.svelte'
   import ValidatePanel from './lib/ValidatePanel.svelte'
@@ -146,7 +168,7 @@
 
   const WELCOME_KEY = '__welcome__'
 
-  type EditorTab = { path: string; content: string; dirty: boolean; draft?: string }
+  type EditorTab = { path: string; content: string; dirty: boolean; draft?: string; unloaded?: boolean }
   type EditorStepRow = gui.EditorStepRow
 
   let version = ''
@@ -317,15 +339,37 @@
   let stepsPanelHeight = 160
   let bottomPanelHeight = 200
   let sidebarSearch = ''
+  let catalogFilterText = ''
   let openMenu: string | null = null
   let statusMessage = 'Проект → Открыть проект…'
   let statusTone: 'normal' | 'error' | 'success' | 'busy' = 'normal'
 
-  let batchMode = false
+  let catalogBaseTree: CatalogNode | null = null
+  let catalogBaseTreeKey = ''
+
+  const applyCatalogFilterDebounced = debounce((text: string) => {
+    catalogFilterText = text
+  }, 200)
+
+  function onSidebarSearchInput(e: Event) {
+    const value = (e.currentTarget as HTMLInputElement).value
+    sidebarSearch = value
+    applyCatalogFilterDebounced(value)
+  }
+
+  function setSidebarSearch(value: string) {
+    sidebarSearch = value
+    applyCatalogFilterDebounced.cancel()
+    catalogFilterText = value
+  }
   let batchSelected: string[] = []
+  let batchMode = false
   let catalogCollapsed = new Set<string>()
   let showBatchHint = true
   let toolbarCompact = false
+  let viewportWidth = 1280
+  let viewportHeight = 800
+  let viewportAutoCompact = false
 
   let filterRecording = false
   let navOnlyRecording = false
@@ -384,6 +428,7 @@
   }
   $: stepCount = editorSteps.length
   $: batchCount = batchSelected.length
+  $: batchSelectedSet = buildBatchSelectedSet(batchSelected)
   $: showRecordingBar = recording && !showRecord
   $: showPlayingBar = playing
   $: showBrowserOverlay = false
@@ -396,23 +441,14 @@
   let actionBarEl: HTMLElement | undefined
   let toolbarIconOnly = true
 
+  $: actionBarCompact = toolbarCompact || viewportAutoCompact
+  $: layoutSidebarWidth = effectiveSidebarWidth(sidebarWidth, viewportWidth, sidebarVisible)
+  $: showPreviewPane = shouldShowPreviewPane(viewportWidth, previewVisible)
+  $: layoutPreviewWidth = effectivePreviewWidth(previewWidth, viewportWidth, previewVisible)
+
   $: activeFeaturePath = activeTab !== WELCOME_KEY ? activeTab : ''
 
-  $: runByPath = (() => {
-    const map = new Map<string, { success: boolean; message: string; at: string; runner: string }>()
-    for (const entry of runResults) {
-      const key = entry.path.replace(/\\/g, '/').toLowerCase()
-      if (!map.has(key)) {
-        map.set(key, {
-          success: entry.success,
-          message: entry.message || '',
-          at: entry.at || '',
-          runner: entry.runner || '',
-        })
-      }
-    }
-    return map
-  })()
+  $: runByPath = buildRunByPathMap(runResults)
 
   $: tagsByPath = (() => {
     const map = new Map<string, string[]>()
@@ -422,10 +458,18 @@
     return map
   })()
 
-  $: catalogViewState = buildCatalogViewState(
+  $: {
+    const key = projectPath ? catalogStructureKey(projectPath, features) : ''
+    if (key !== catalogBaseTreeKey) {
+      catalogBaseTreeKey = key
+      catalogBaseTree = projectPath ? buildCatalogStructure(projectPath, features) : null
+    }
+  }
+
+  $: catalogViewState = buildCatalogViewStateFromBase(
     projectPath || null,
-    features,
-    sidebarSearch,
+    catalogBaseTree,
+    catalogFilterText,
     runByPath,
     true,
     tagsByPath,
@@ -626,7 +670,8 @@
       /* dev without wails runtime */
     }
 
-    const onResize = () => syncToolbarDensity()
+    const onResize = () => syncViewportLayout()
+    syncViewportLayout()
     window.addEventListener('resize', onResize)
     unsubscribers.push(() => window.removeEventListener('resize', onResize))
 
@@ -648,7 +693,9 @@
   onDestroy(() => {
     stopVanessaPoll()
     stopBrowserWatch()
+    applyCatalogFilterDebounced.cancel()
     if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
+    if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
     if (draftAutosaveTimer) clearInterval(draftAutosaveTimer)
     for (const off of unsubscribers) off()
   })
@@ -691,7 +738,7 @@
     syncActiveTabContent()
     for (const tab of tabs) {
       if (!tab.dirty || isUntitled(tab.path)) continue
-      const text = tab.path === activeTab ? editorText : (tab.draft ?? tab.content)
+      const text = tab.path === activeTab ? editorText : tabEditorText(tab)
       try {
         await SaveFeatureDraft(tab.path, text)
       } catch {
@@ -843,7 +890,7 @@
       { id: 'run-tag', label: 'Запустить сценарии с тегом…', group: 'Запись и тест', run: () => openRunDialog('Запуск с тегом', {}) },
       { id: 'playwright', label: 'Playwright…', group: 'Запись и тест', run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
       { id: 'dry', label: 'Dry-run', group: 'Запись и тест', run: () => executeRun({ ...lastRun, dryRun: true }) },
-      { id: 'batch', label: 'Пакетный выбор', group: 'Запись и тест', run: () => (batchMode = !batchMode) },
+      { id: 'batch', label: 'Пакетный выбор', group: 'Запись и тест', run: () => toggleBatchMode() },
       { id: 'batch-run', label: 'Запустить выбранные', group: 'Запись и тест', run: () => runBatchSelected(false) },
       { id: 'batch-dry', label: 'Dry-run выбранных', group: 'Запись и тест', run: () => runBatchSelected(true) },
       { id: 'rerun-failed', label: 'Перезапустить упавшие', group: 'Запись и тест', run: rerunFailed },
@@ -1355,10 +1402,15 @@
     features = []
     tags = []
     featureTags = {}
+    for (const t of tabs) {
+      monaco?.releaseTab(t.path)
+    }
+    monaco?.retainTabs([])
     tabs = []
     activeTab = WELCOME_KEY
     welcomeTabVisible = true
     editorText = ''
+    monaco?.activateTab(null, '')
     batchSelected = []
     batchMode = false
     editorValidationIssues = []
@@ -1453,11 +1505,25 @@
   }
 
   function toggleBatchFeature(path: string) {
-    if (batchSelected.includes(path)) {
-      batchSelected = batchSelected.filter((p) => p !== path)
-    } else {
-      batchSelected = [...batchSelected, path]
+    batchSelected = toggleBatchPath(batchSelected, path)
+  }
+
+  function toggleBatchMode() {
+    if (batchMode) {
+      batchMode = false
+      batchSelected = []
+      return
     }
+    batchMode = true
+    const tree = catalogViewState.tree
+    deferToNextFrame(() => {
+      if (batchMode) batchSelected = selectAllFeaturesUnder(tree)
+    })
+  }
+
+  function onCatalogToggleBatch(path: string) {
+    if (!batchMode) batchMode = true
+    toggleBatchFeature(path)
   }
 
   function onCatalogCollapse(key: string, collapsed: boolean) {
@@ -1484,7 +1550,10 @@
         continue
       }
       if (isUntitled(path) || tab.dirty) {
-        const content = path === activeTab ? editorText : (tab.draft ?? tab.content)
+        let content = path === activeTab ? editorText : tabEditorText(tab)
+        if (!content && tabNeedsDiskReload(tab)) {
+          content = await ReadFeature(path)
+        }
         diskTargets.push(await WriteTempFeature(content))
       } else {
         diskTargets.push(path)
@@ -1674,7 +1743,8 @@
     const startY = e.clientY
     const startH = bottomPanelHeight
     const onMove = (ev: MouseEvent) => {
-      bottomPanelHeight = Math.max(100, Math.min(window.innerHeight * 0.6, startH + (startY - ev.clientY)))
+      bottomPanelHeight = Math.max(80, Math.min(window.innerHeight * 0.6, startH + (startY - ev.clientY)))
+      bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight, window.innerHeight)
     }
     const onUp = () => {
       resizingBottom = false
@@ -1693,6 +1763,7 @@
     const startH = stepsPanelHeight
     const onMove = (ev: MouseEvent) => {
       stepsPanelHeight = Math.max(80, Math.min(480, startH + (startY - ev.clientY)))
+      stepsPanelHeight = clampStepsPanelHeight(stepsPanelHeight, window.innerHeight)
     }
     const onUp = async () => {
       resizingSteps = false
@@ -1729,12 +1800,23 @@
     recentProjects = ['target', 'examples', 'test', 'demo', 'sandbox']
   }
 
+  function syncViewportLayout() {
+    if (typeof window === 'undefined') return
+    viewportWidth = window.innerWidth
+    viewportHeight = window.innerHeight
+    viewportAutoCompact = shouldAutoCompactToolbar(viewportWidth)
+    bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight, viewportHeight)
+    stepsPanelHeight = clampStepsPanelHeight(stepsPanelHeight, viewportHeight)
+    syncToolbarDensity()
+  }
+
   function syncToolbarDensity() {
     if (!actionBarEl) return
+    const barWidth = actionBarEl.getBoundingClientRect().width
     const urlBlock = actionBarEl.querySelector('.url-block') as HTMLElement | null
-    const urlWidth = urlBlock?.getBoundingClientRect().width ?? 300
-    const available = actionBarEl.getBoundingClientRect().width - urlWidth - 48
-    toolbarIconOnly = available < 880
+    const urlWidth = urlBlock?.getBoundingClientRect().width ?? 0
+    const available = barWidth - urlWidth - 48
+    toolbarIconOnly = available < toolbarIconOnlyThreshold(barWidth)
   }
 
   function observeActionBar(node: HTMLElement) {
@@ -1900,6 +1982,23 @@
     await openProjectAt(path)
   }
 
+  function trimTabsMemory() {
+    if (isWelcome || !activeTab) {
+      tabs = trimRetainedTabBodies(tabs, activeTab || '')
+    } else {
+      tabs = trimRetainedTabBodies(tabs, activeTab)
+    }
+    monaco?.retainTabs(pathsToRetainModels(tabs, isWelcome ? '' : activeTab))
+  }
+
+  function warnManyOpenTabs() {
+    if (tabs.length >= MAX_OPEN_EDITOR_TABS) {
+      appendLog(
+        `Открыто ${tabs.length} вкладок — закройте лишние, иначе растёт потребление памяти редактора.`,
+      )
+    }
+  }
+
   function syncActiveTabContent() {
     if (isWelcome || !activeTab) return
     tabs = tabs.map((t) => {
@@ -1927,8 +2026,20 @@
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
       activeTab = path
-      const text = existing.dirty ? (existing.draft ?? existing.content) : existing.content
-      await applyEditorText(text, { saved: !existing.dirty })
+      trimTabsMemory()
+      let text = tabEditorText(existing)
+      if (tabNeedsDiskReload(existing)) {
+        try {
+          text = await ReadFeature(path)
+          tabs = tabs.map((t) =>
+            t.path === path ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
+          )
+        } catch (e: any) {
+          appendLog(`Ошибка открытия: ${e}`)
+          return
+        }
+      }
+      await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
       return
@@ -1948,11 +2059,13 @@
         /* no draft */
       }
       tabs = [...tabs, { path, content, dirty }]
+      warnManyOpenTabs()
       activeTab = path
+      trimTabsMemory()
       await rememberFeature(path)
       const recents = await loadRecents()
       recentFeatures = recents.features
-      await applyEditorText(content, { saved: !dirty })
+      await applyEditorText(content, { saved: !dirty, switchTab: true, tabPath: path, skipValidate: true })
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
     } catch (e: any) {
@@ -1965,6 +2078,8 @@
       welcomeTabVisible = true
       syncActiveTabContent()
       activeTab = WELCOME_KEY
+      trimTabsMemory()
+      void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       return
     }
     if (path === activeTab) return
@@ -1977,7 +2092,7 @@
       if (activeTab === WELCOME_KEY) {
         const next = tabs[tabs.length - 1]
         activeTab = next.path
-        void applyEditorText(next.content)
+        void loadFeature(next.path)
       }
       return
     }
@@ -1998,16 +2113,18 @@
   }
 
   function finalizeCloseTab(path: string) {
+    monaco?.releaseTab(path)
     tabs = tabs.filter((t) => t.path !== path)
+    trimTabsMemory()
     if (activeTab === path) {
       const next = tabs[tabs.length - 1]
       if (next) {
         activeTab = next.path
-        void applyEditorText(next.content)
+        void loadFeature(next.path)
       } else {
         welcomeTabVisible = true
         activeTab = WELCOME_KEY
-        void applyEditorText('')
+        void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
         stepStatus = '0 шагов'
         stepStatusError = false
       }
@@ -2496,13 +2613,24 @@
     showSnippetPalette = true
   }
 
-  async function applyEditorText(text: string, options?: { saved?: boolean }) {
+  async function applyEditorText(
+    text: string,
+    options?: { saved?: boolean; switchTab?: boolean; tabPath?: string | null; skipValidate?: boolean },
+  ) {
     editorText = text
-    monaco?.setContent(text)
+    if (options?.switchTab) {
+      monaco?.activateTab(options.tabPath ?? null, text)
+    } else {
+      monaco?.setContent(text)
+    }
     if (options?.saved) {
       markActiveTabSaved(text)
     } else {
       syncActiveTabContent()
+    }
+    if (options?.skipValidate) {
+      void refreshEditorSteps()
+      return
     }
     await validateEditor()
   }
@@ -3399,7 +3527,7 @@
   </div>
 
   <div class="ide-main">
-    <div class="ide-center" class:no-sidebar={!sidebarVisible} style="--sidebar-width: {sidebarWidth}px">
+    <div class="ide-center" class:no-sidebar={!sidebarVisible} style="--sidebar-width: {layoutSidebarWidth}px">
       <!-- Activity bar -->
       <aside class="activity-bar">
         <button
@@ -3428,14 +3556,14 @@
 
       <!-- Explorer -->
       {#if sidebarVisible}
-        <div class="sidebar-column" style="width: {sidebarWidth + 4}px">
-        <aside class="explorer" style="width: {sidebarWidth}px">
+        <div class="sidebar-column" style="width: {layoutSidebarWidth + 4}px">
+        <aside class="explorer" style="width: {layoutSidebarWidth}px">
           <div class="explorer-header">
             <p class="zone-title">СЦЕНАРИИ</p>
             <div class="explorer-tools">
-              <input class="explorer-search" bind:value={sidebarSearch} placeholder="Поиск, @тег или tag:smoke" />
+              <input class="explorer-search" value={sidebarSearch} placeholder="Поиск, @тег или tag:smoke" on:input={onSidebarSearchInput} />
               <button class="icon-btn" title="Новый сценарий" on:click={newScenario}>{@html icons.plus}</button>
-              <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск" on:click={() => (batchMode = !batchMode)}>
+              <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск: выбрать все видимые сценарии" on:click={toggleBatchMode}>
                 Выбор
               </button>
             </div>
@@ -3446,7 +3574,7 @@
                     type="button"
                     class="chip"
                     class:active={sidebarSearch.trim() === tag || sidebarSearch.trim() === `@${tag.replace(/^@/, '')}`}
-                    on:click={() => (sidebarSearch = tag.startsWith('@') ? tag : `@${tag}`)}
+                    on:click={() => setSidebarSearch(tag.startsWith('@') ? tag : `@${tag}`)}
                   >
                     {tag.startsWith('@') ? tag : `@${tag}`}
                   </button>
@@ -3468,17 +3596,13 @@
               <FeatureCatalogTree
                 tree={catalogViewState.tree}
                 activeFeature={activeFeaturePath}
-                {batchSelected}
+                batchSelectedSet={batchSelectedSet}
                 {batchMode}
                 expandAll={catalogViewState.expandAll}
                 collapsed={catalogCollapsed}
                 dropTarget={catalogDropTarget}
                 onActivate={onCatalogActivate}
-                onToggleBatch={(path) => {
-                  if (!batchMode) batchMode = true
-                  toggleBatchFeature(path)
-                  void loadFeature(path)
-                }}
+                onToggleBatch={onCatalogToggleBatch}
                 onCollapseChange={onCatalogCollapse}
                 onFileContextMenu={onFileContextMenu}
                 onFolderContextMenu={onFolderContextMenu}
@@ -3494,7 +3618,7 @@
 
       <!-- Workspace -->
       <section class="workspace">
-        <div class="action-bar" class:compact={toolbarCompact} use:observeActionBar>
+        <div class="action-bar" class:compact={actionBarCompact} use:observeActionBar>
           <div class="quick-toolbar">
             <div class="toolbar-row primary">
               <button class="tool-btn primary" title="Браузер (Ctrl+B)" on:click={() => void openBrowser()} disabled={!projectPath}>
@@ -3533,7 +3657,7 @@
                 {@html toolbarIcons.save()}<span>Сохранить</span>
               </button>
             </div>
-            {#if !toolbarCompact}
+            {#if !actionBarCompact}
             <div class="toolbar-row secondary" class:icon-only={toolbarIconOnly}>
               <button class="tool-btn" on:click={continueRecord} disabled={!projectPath || recording} title="Продолжить запись в конец сценария">
                 {@html toolbarIcons.continueRecord()}<span>Дозапись</span>
@@ -3570,15 +3694,6 @@
             </div>
             {/if}
           </div>
-
-          {#if !isWelcome && activeFeatureTab}
-            <div class="scenario-chip">
-              <span class="name">{featureTabLabel(activeTab)}</span>
-              {#if activeTabUnsaved}<span class="badge">*</span>{/if}
-            </div>
-          {/if}
-
-          <span class="action-bar-sep" aria-hidden="true"></span>
 
           <div class="url-block">
             <span>URL</span>
@@ -3677,12 +3792,16 @@
               </div>
             {/if}
             <div class="gherkin-hints">
-              <span>{stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления</span>
-              <button on:click={openStepsDialog}>Шаблон</button>
-              <button on:click={() => openStepsHelp()}>Справка</button>
-              <button class:active={previewVisible} on:click={togglePreview}>Превью</button>
+              <span class="hint-summary" title="{stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления">
+                {stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления
+              </span>
+              <div class="hint-actions">
+                <button on:click={openStepsDialog}>Шаблон</button>
+                <button on:click={() => openStepsHelp()}>Справка</button>
+                <button class:active={previewVisible} on:click={togglePreview}>Превью</button>
+              </div>
             </div>
-            <div class="editor-row" style="--preview-width: {previewWidth}px">
+            <div class="editor-row" style="--preview-width: {layoutPreviewWidth}px">
               <div class="editor-main">
                 <div class="editor-area" class:playing-active={playing}>
                     <MonacoEditor
@@ -3770,9 +3889,9 @@
                 </div>
                 {/if}
               </div>
-              {#if previewVisible}
+              {#if showPreviewPane}
                 <div class="splitter-v" role="separator" on:mousedown={startResizePreview}></div>
-                <div class="feature-preview-pane" style="width: {previewWidth}px">
+                <div class="feature-preview-pane" style="width: {layoutPreviewWidth}px">
                   <div class="preview-header">Превью Gherkin</div>
                   <FeaturePreview
                     text={editorText}

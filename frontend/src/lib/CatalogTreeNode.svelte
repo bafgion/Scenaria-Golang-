@@ -1,6 +1,7 @@
 <script lang="ts">
   import { icons } from './icons'
-  import { type CatalogNode, fileTreeLabel, fileTreeTooltip } from './catalogTree'
+  import { resolveCatalogFileClickAction } from './batchSelection'
+  import { type CatalogNode, fileTreeLabel, fileTreeTooltip, normFeaturePath } from './catalogTree'
   import Self from './CatalogTreeNode.svelte'
 
   const DRAG_TYPE = 'application/x-scenaria-feature'
@@ -8,7 +9,7 @@
   export let node: CatalogNode
   export let depth = 0
   export let activeFeature = ''
-  export let batchSelected: string[] = []
+  export let batchSelectedSet: Set<string> = new Set()
   export let batchMode = false
   export let expandAll = false
   export let collapsed: Set<string> = new Set()
@@ -31,16 +32,11 @@
     onCollapseChange(node.path, expanded)
   }
 
-  function isSelected(path: string): boolean {
-    const norm = path.replace(/\\/g, '/').toLowerCase()
-    return batchSelected.some((p) => p.replace(/\\/g, '/').toLowerCase() === norm)
-  }
-
   function onRowClick(e: MouseEvent) {
     if (node.kind === 'file') {
-      if (batchMode || e.ctrlKey || e.metaKey) {
+      const action = resolveCatalogFileClickAction(batchMode, e.ctrlKey, e.metaKey)
+      if (action === 'toggle-batch') {
         onToggleBatch(node.path)
-        onActivate(node.path, node.kind)
         return
       }
       onActivate(node.path, node.kind)
@@ -50,7 +46,11 @@
   }
 
   function onRowDblClick() {
-    if (node.kind !== 'file') onActivate(node.path, node.kind)
+    if (node.kind === 'file') {
+      onActivate(node.path, node.kind)
+      return
+    }
+    onActivate(node.path, node.kind)
   }
 
   function onDragStart(e: DragEvent) {
@@ -85,11 +85,12 @@
     if (src) onMoveFeature(src, node.path)
   }
 
+  $: selected = node.kind === 'file' && batchSelectedSet.has(normFeaturePath(node.path))
   $: rowClass = [
     'catalog-tree-row',
     node.kind === 'file' ? 'file' : 'folder',
     node.kind === 'file' && node.path === activeFeature ? 'active' : '',
-    node.kind === 'file' && isSelected(node.path) ? 'batch-selected' : '',
+    node.kind === 'file' && selected ? 'batch-selected' : '',
     node.kind === 'file' && node.runSuccess === true ? 'run-ok' : '',
     node.kind === 'file' && node.runSuccess === false ? 'run-fail' : '',
     node.kind === 'file' && node.runSuccess === null ? 'run-none' : '',
@@ -99,7 +100,6 @@
     .join(' ')
 
   $: indent = `${depth * 16}px`
-  $: selected = isSelected(node.path)
 </script>
 
 <div class="catalog-tree-item">
@@ -142,7 +142,7 @@
         node={child}
         depth={depth + 1}
         {activeFeature}
-        {batchSelected}
+        batchSelectedSet={batchSelectedSet}
         {batchMode}
         {expandAll}
         {collapsed}
@@ -191,6 +191,10 @@
 
   .catalog-tree-row.batch-selected {
     background: rgba(9, 71, 113, 0.35);
+  }
+
+  .catalog-tree-row.active.batch-selected {
+    background: #094771;
   }
 
   .catalog-tree-row.drop-target {

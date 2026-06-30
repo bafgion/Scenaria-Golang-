@@ -79,6 +79,7 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	if err != nil {
 		return ScenarioResult{}, err
 	}
+	defer session.close()
 
 	failed := false
 	if input.TestClient != nil {
@@ -100,6 +101,5 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 			session, input, e.options.TraceDir, e.options.VideoDir,
 		)
 	}
-	session.close()
 	return result, nil
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
   import type { StepHelpEntry } from './stepTypes'
@@ -41,6 +41,7 @@
   let selected = 0
   let loading = true
   let searchInput: HTMLInputElement
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   async function loadEntries(q: unknown) {
     const searchQ = asStepSearchQuery(q)
@@ -61,6 +62,10 @@
     searchInput?.focus()
   })
 
+  onDestroy(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  })
+
   $: filtered = entries.filter((e) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
@@ -71,8 +76,13 @@
   $: current = filtered[selected]
 
   async function onQueryInput() {
-    await loadEntries(query)
-    selected = 0
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null
+      void loadEntries(query).then(() => {
+        selected = 0
+      })
+    }, 200)
   }
 
   function onKey(e: KeyboardEvent) {
@@ -168,7 +178,7 @@
             <pre class="detail-example">{detailExample(current)}</pre>
           </section>
           {#if onInsert}
-            <button type="button" class="insert-btn" on:click={() => { onInsert(current.template); onClose() }}>
+            <button type="button" class="primary insert-action" on:click={() => { onInsert(current.template); onClose() }}>
               Вставить в редактор
             </button>
           {/if}
@@ -191,6 +201,10 @@
     flex-direction: column;
   }
 
+  .steps-help > .actions {
+    margin-top: 12px;
+  }
+
   h3 {
     margin: 0 0 10px;
     font-size: 14px;
@@ -198,12 +212,7 @@
 
   .search {
     width: 100%;
-    padding: 6px 8px;
     margin-bottom: 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
     box-sizing: border-box;
   }
 
@@ -375,33 +384,14 @@
     word-break: break-word;
   }
 
-  .insert-btn {
+  .insert-action {
     margin-top: 12px;
-    padding: 6px 12px;
-    border: 1px solid var(--color-primary);
-    border-radius: 3px;
-    background: var(--color-primary);
-    color: #fff;
-    cursor: pointer;
+    min-width: 0;
   }
 
   .empty {
     padding: 12px;
     color: var(--color-muted);
     font-size: 12px;
-  }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 12px;
-  }
-
-  .actions button {
-    padding: 6px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
   }
 </style>

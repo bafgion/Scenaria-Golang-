@@ -29,7 +29,7 @@ func NewApp() *App {
 
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
-	player.EmailCodePrompt = a.promptEmailCode
+	player.SetEmailCodePrompt(a.promptEmailCode)
 }
 
 func (a *App) promptEmailCode(email string) (string, error) {

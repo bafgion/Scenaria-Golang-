@@ -13,19 +13,20 @@ import (
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
-// MaxLoopIterations caps repeat/while loops (overridable via settings / CLI).
-var MaxLoopIterations = 100
-
-func SetMaxLoopIterations(n int) {
-	if n > 0 {
-		MaxLoopIterations = n
-	}
-}
-
-// EmailCodePrompt is set by desktop/CLI for interactive OTP entry.
-var EmailCodePrompt func(email string) (string, error)
+// DefaultMaxLoopIterations caps repeat/while loops when not overridden per executor.
+const DefaultMaxLoopIterations = 100
 
 var placeholderRE = regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_:]+)\s*\}\}`)
+
+// RunContextOption configures NewRunContext.
+type RunContextOption func(*RunContext)
+
+// WithPromptEmailCode sets the OTP prompt callback for this run context.
+func WithPromptEmailCode(fn EmailCodePrompter) RunContextOption {
+	return func(c *RunContext) {
+		c.PromptEmailCode = fn
+	}
+}
 
 type RunContext struct {
 	Variables      map[string]string
@@ -40,17 +41,21 @@ type RunContext struct {
 	PromptEmailCode func(email string) (string, error)
 }
 
-func NewRunContext(variables map[string]string, seed int64, projectRoot string) *RunContext {
+func NewRunContext(variables map[string]string, seed int64, projectRoot string, opts ...RunContextOption) *RunContext {
 	if variables == nil {
 		variables = map[string]string{}
 	}
-	return &RunContext{
+	ctx := &RunContext{
 		Variables:       variables,
 		values:          map[string]string{},
 		rng:             rand.New(rand.NewSource(seed)),
 		projectRoot:     projectRoot,
-		PromptEmailCode: EmailCodePrompt,
+		PromptEmailCode: emailCodePrompter(),
 	}
+	for _, opt := range opts {
+		opt(ctx)
+	}
+	return ctx
 }
 
 func (c *RunContext) SetPage(page playwright.Page) {

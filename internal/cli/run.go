@@ -36,6 +36,7 @@ type runOptions struct {
 	testClient        string
 	slowMo            float64
 	workers           int
+	maxLoopIterations int
 	startStep         int
 	endStep           int
 }
@@ -190,7 +191,7 @@ func parseRunOptions(args []string) (runOptions, error) {
 			opts.workers = cfg.ParallelWorkers
 		}
 		if cfg.MaxLoopIterations > 0 {
-			player.SetMaxLoopIterations(cfg.MaxLoopIterations)
+			opts.maxLoopIterations = cfg.MaxLoopIterations
 		}
 	}
 	for i := 0; i < len(args); i++ {
@@ -383,14 +384,15 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 		httpCreds := player.ResolveRunHTTPCredentials(opts.baseURL, plan, appCfg)
 		return player.BrowserRunner{
 			Executor: player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
-				BrowserName:     opts.browser,
-				Headless:        !opts.headed,
-				BaseURL:         opts.baseURL,
-				AutoInstall:     opts.installPlaywright,
-				SlowMo:          opts.slowMo,
-				TraceDir:        opts.traceDir,
-				VideoDir:        opts.videoDir,
-				HTTPCredentials: httpCreds,
+				BrowserName:       opts.browser,
+				Headless:          !opts.headed,
+				BaseURL:           opts.baseURL,
+				AutoInstall:       opts.installPlaywright,
+				SlowMo:            opts.slowMo,
+				TraceDir:          opts.traceDir,
+				VideoDir:          opts.videoDir,
+				HTTPCredentials:   httpCreds,
+				MaxLoopIterations: opts.maxLoopIterations,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil

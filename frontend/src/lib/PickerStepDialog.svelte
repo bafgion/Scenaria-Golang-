@@ -107,7 +107,7 @@
 
   .choice-list button.selected,
   .choice-list button:hover {
-    background: var(--color-input);
+    background: var(--color-selected);
   }
 
   .preview-pane {

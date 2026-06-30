@@ -15,6 +15,8 @@
   let error = ''
   let loading = true
 
+  $: runnablePluginEntries = entries.filter((e) => e.runnable)
+
   onMount(() => void refresh())
 
   async function refresh() {
@@ -66,10 +68,6 @@
     return entry.description || entry.id || entry.name
   }
 
-  function runnableEntries(): gui.PluginEntryDTO[] {
-    return entries.filter((e) => e.runnable)
-  }
-
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose()
   }
@@ -116,7 +114,7 @@
       <button type="button" class="primary" disabled={busy} on:click={install}>Установить</button>
     </div>
 
-    {#each runnableEntries() as entry (entry.name)}
+    {#each runnablePluginEntries as entry (entry.name)}
       <div class="runners">
         <span>{pluginTitle(entry)}:</span>
         {#if entry.vanessa}
@@ -196,15 +194,6 @@
     color: var(--color-muted);
   }
 
-  input {
-    padding: 6px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-input);
-    color: var(--color-text);
-    font-size: 12px;
-  }
-
   .runners {
     display: flex;
     align-items: center;
@@ -222,14 +211,9 @@
     color: var(--color-error);
   }
 
-  button.primary {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: #fff;
-    justify-self: start;
-  }
-
   button.danger {
     color: var(--color-error);
+    background: transparent;
+    border-color: var(--color-border);
   }
 </style>

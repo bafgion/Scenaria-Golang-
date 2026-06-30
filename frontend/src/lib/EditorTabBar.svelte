@@ -84,8 +84,6 @@
     flex-shrink: 0;
     min-width: 0;
     overflow: hidden;
-    position: relative;
-    z-index: 2100;
   }
 
   .editor-tab {
