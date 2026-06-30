@@ -7,21 +7,25 @@
   export let message = ''
   export let hasUpdate = false
   export let downloading = false
+  export let progress: gui.UpdateProgressDTO | null = null
   export let canAutoApply = false
   export let onClose: () => void = () => {}
   export let onOpenRelease: () => void = () => {}
   export let onDownload: () => void = () => {}
   export let onApply: () => void = () => {}
 
+  $: progressPercent = Math.max(0, Math.min(100, progress?.percent ?? 0))
+  $: progressLabel = progress?.message || (downloading ? 'Обновление…' : '')
+
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape' && !downloading) onClose()
   }
 </script>
 
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="modal-backdrop" role="presentation" on:click={onClose}>
+<div class="modal-backdrop" role="presentation" on:click={() => !downloading && onClose()}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal update-dialog" role="dialog" aria-modal="true" aria-label="Обновления" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Обновления {BRAND_NAME}</h3>
@@ -31,12 +35,20 @@
     {:else}
       <p class="up-to-date">Установлена актуальная версия</p>
     {/if}
+    {#if downloading && progressLabel}
+      <div class="progress-block" aria-live="polite">
+        <div class="progress-label">{progressLabel}</div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPercent}>
+          <div class="progress-fill" style:width="{progressPercent}%"></div>
+        </div>
+      </div>
+    {/if}
     {#if message}
       <pre class="details">{message.trim()}</pre>
     {/if}
     <div class="modal-actions">
       {#if hasUpdate && info?.htmlUrl}
-        <button type="button" on:click={onOpenRelease}>Страница релиза</button>
+        <button type="button" disabled={downloading} on:click={onOpenRelease}>Страница релиза</button>
       {/if}
       {#if hasUpdate && canAutoApply && info?.downloadUrl}
         <button type="button" class="primary" disabled={downloading} on:click={onApply}>
@@ -48,7 +60,7 @@
           {downloading ? 'Скачивание…' : 'Скачать вручную'}
         </button>
       {/if}
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" disabled={downloading} on:click={onClose}>Закрыть</button>
     </div>
   </div>
 </div>
@@ -75,6 +87,30 @@
     margin: 0 0 8px;
     font-size: 13px;
     color: var(--color-success, #4ec9b0);
+  }
+
+  .progress-block {
+    margin: 0 0 12px;
+  }
+
+  .progress-label {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--color-text);
+  }
+
+  .progress-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--color-input);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--color-accent);
+    transition: width 0.2s ease;
   }
 
   .details {
@@ -104,6 +140,11 @@
     background: var(--color-input);
     color: var(--color-text);
     font-size: 12px;
+  }
+
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 
   button.primary {

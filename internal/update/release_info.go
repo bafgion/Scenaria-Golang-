@@ -3,7 +3,6 @@ package update
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,10 +152,14 @@ func matchAsset(assets []ReleaseAsset, pred func(string) bool) *ReleaseAsset {
 }
 
 func DownloadFile(url, destPath string) error {
-	return downloadFileWithClient(&http.Client{Timeout: 10 * time.Minute}, url, destPath)
+	return downloadFile(destPath, url, nil)
 }
 
-func downloadFileWithClient(client *http.Client, url, destPath string) error {
+func downloadFile(destPath, url string, onProgress func(downloaded, total int64)) error {
+	return downloadFileWithClient(&http.Client{Timeout: 10 * time.Minute}, url, destPath, onProgress)
+}
+
+func downloadFileWithClient(client *http.Client, url, destPath string, onProgress func(downloaded, total int64)) error {
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Minute}
 	}
@@ -176,7 +179,7 @@ func downloadFileWithClient(client *http.Client, url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(out, resp.Body)
+	_, copyErr := copyWithProgress(out, resp.Body, resp.ContentLength, onProgress)
 	closeErr := out.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)

@@ -25,6 +25,12 @@ type UpdateInfoDTO struct {
 	CanAutoApply    bool   `json:"canAutoApply"`
 }
 
+type UpdateProgressDTO struct {
+	Stage   string `json:"stage"`
+	Message string `json:"message"`
+	Percent int    `json:"percent"`
+}
+
 func updateInfoFrom(info *update.Info) UpdateInfoDTO {
 	if info == nil {
 		return UpdateInfoDTO{CurrentVersion: version.Version, CanAutoApply: runtime.GOOS == "windows"}
@@ -77,7 +83,7 @@ func (s *Service) DownloadUpdate() (string, error) {
 	return dest, nil
 }
 
-func (s *Service) ApplyUpdate() error {
+func (s *Service) ApplyUpdateProgress(report func(UpdateProgressDTO)) error {
 	if runtime.GOOS != "windows" {
 		return fmt.Errorf("автообновление поддерживается только в Windows")
 	}
@@ -85,8 +91,22 @@ func (s *Service) ApplyUpdate() error {
 	if err != nil {
 		return err
 	}
-	_, err = update.Apply(version.Version, installDir, os.Getpid())
+	var reporter update.Reporter
+	if report != nil {
+		reporter = func(p update.Progress) {
+			report(UpdateProgressDTO{
+				Stage:   p.Stage,
+				Message: p.Message,
+				Percent: p.Percent,
+			})
+		}
+	}
+	_, err = update.ApplyWithProgress(version.Version, installDir, os.Getpid(), reporter)
 	return err
+}
+
+func (s *Service) ApplyUpdate() error {
+	return s.ApplyUpdateProgress(nil)
 }
 
 func (s *Service) OpenExternalURL(url string) error {

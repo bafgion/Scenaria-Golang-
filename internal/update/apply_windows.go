@@ -23,7 +23,7 @@ const (
 )
 
 // ApplyDownloaded launches the correct auto-update flow for the downloaded artifact.
-func ApplyDownloaded(assetPath string, kind ApplyKind, installDir string, parentPID int) error {
+func ApplyDownloaded(assetPath string, kind ApplyKind, installDir string, parentPID int, report Reporter) error {
 	assetPath = strings.TrimSpace(assetPath)
 	installDir = strings.TrimSpace(installDir)
 	if assetPath == "" || installDir == "" {
@@ -32,9 +32,14 @@ func ApplyDownloaded(assetPath string, kind ApplyKind, installDir string, parent
 	installDir = filepath.Clean(installDir)
 	switch kind {
 	case ApplyKindPortable:
-		return applyPortableZip(assetPath, installDir, parentPID)
+		return applyPortableZip(assetPath, installDir, parentPID, report)
 	case ApplyKindSetup:
-		return applySetupExe(assetPath)
+		report.report("apply", "Запуск установщика…", 92)
+		err := applySetupExe(assetPath)
+		if err == nil {
+			report.report("restart", "Перезапуск приложения…", 100)
+		}
+		return err
 	default:
 		return fmt.Errorf("unsupported update kind %q", kind)
 	}
@@ -59,7 +64,8 @@ func applySetupExe(setupPath string) error {
 	return nil
 }
 
-func applyPortableZip(zipPath, installDir string, parentPID int) error {
+func applyPortableZip(zipPath, installDir string, parentPID int, report Reporter) error {
+	report.report("prepare", "Распаковка обновления…", 84)
 	tempRoot, err := os.MkdirTemp("", "scenaria-update-")
 	if err != nil {
 		return err
@@ -74,6 +80,7 @@ func applyPortableZip(zipPath, installDir string, parentPID int) error {
 	if err != nil {
 		return err
 	}
+	report.report("prepare", "Копирование файлов…", 88)
 	localStaging := filepath.Join(installDir, updateStagingDir)
 	_ = os.RemoveAll(localStaging)
 	if err := copyTree(payloadRoot, localStaging); err != nil {
@@ -83,7 +90,12 @@ func applyPortableZip(zipPath, installDir string, parentPID int) error {
 	if err := os.WriteFile(scriptPath, []byte(portableUpdateScript(installDir, localStaging, parentPID)), 0o644); err != nil {
 		return err
 	}
-	return launchHiddenBatch(scriptPath)
+	report.report("apply", "Установка обновления…", 95)
+	if err := launchHiddenBatch(scriptPath); err != nil {
+		return err
+	}
+	report.report("restart", "Перезапуск приложения…", 100)
+	return nil
 }
 
 func extractZip(zipPath, targetDir string) error {

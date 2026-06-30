@@ -10,6 +10,11 @@ import (
 
 // Apply performs download, verification, and launch of the auto-update for installDir.
 func Apply(currentVersion, installDir string, parentPID int) (*Info, error) {
+	return ApplyWithProgress(currentVersion, installDir, parentPID, nil)
+}
+
+// ApplyWithProgress is Apply with optional progress reporting.
+func ApplyWithProgress(currentVersion, installDir string, parentPID int, report Reporter) (*Info, error) {
 	if runtime.GOOS != "windows" {
 		return nil, fmt.Errorf("автообновление поддерживается только в Windows")
 	}
@@ -18,6 +23,7 @@ func Apply(currentVersion, installDir string, parentPID int) (*Info, error) {
 		return nil, fmt.Errorf("каталог установки не определён")
 	}
 	installDir = filepath.Clean(installDir)
+	report.report("check", "Проверка обновления…", 2)
 	info, err := CheckInstallDir(currentVersion, installDir)
 	if err != nil {
 		return nil, err
@@ -38,10 +44,14 @@ func Apply(currentVersion, installDir string, parentPID int) (*Info, error) {
 		}
 	}
 	dest := filepath.Join(tempDir, name)
-	if err := DownloadFile(info.DownloadURL, dest); err != nil {
+	report.report("download", "Скачивание обновления…", 5)
+	if err := downloadFile(dest, info.DownloadURL, func(done, total int64) {
+		report.report("download", formatDownloadMessage(done, total), downloadPercent(done, total, 5, 70))
+	}); err != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, err
 	}
+	report.report("verify", "Проверка контрольной суммы…", 78)
 	if err := verifyFileSHA256(dest, info.SHA256); err != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, err
@@ -50,9 +60,11 @@ func Apply(currentVersion, installDir string, parentPID int) (*Info, error) {
 	if kind == "" {
 		kind = applyKindForAsset(name)
 	}
-	if err := ApplyDownloaded(dest, kind, installDir, parentPID); err != nil {
+	report.report("prepare", "Подготовка к установке…", 82)
+	if err := ApplyDownloaded(dest, kind, installDir, parentPID, report); err != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, err
 	}
+	report.report("restart", "Перезапуск приложения…", 100)
 	return info, nil
 }

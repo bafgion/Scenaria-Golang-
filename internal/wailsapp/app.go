@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
 	"github.com/bafgion/scenaria-golang/internal/paths"
@@ -175,14 +176,22 @@ func (a *App) DownloadUpdate() (string, error) {
 	return a.svc.DownloadUpdate()
 }
 
-func (a *App) ApplyUpdate() error {
-	if err := a.svc.ApplyUpdate(); err != nil {
-		return err
+func (a *App) ApplyUpdate() {
+	if a.ctx == nil {
+		return
 	}
-	if a.ctx != nil {
+	go func() {
+		err := a.svc.ApplyUpdateProgress(func(p gui.UpdateProgressDTO) {
+			runtime.EventsEmit(a.ctx, "update-progress", p)
+		})
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Error: err.Error()})
+			return
+		}
+		runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Output: "restart"})
+		time.Sleep(900 * time.Millisecond)
 		runtime.Quit(a.ctx)
-	}
-	return nil
+	}()
 }
 
 func (a *App) OpenExternalURL(url string) error {

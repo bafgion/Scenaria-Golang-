@@ -72,7 +72,7 @@
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
   import { icons, toolbarIcons } from './lib/icons'
-  import { EventsOn, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
+  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
   import {
     Version,
     OpenProject,
@@ -209,6 +209,7 @@
   let updateCheckHasUpdate = false
   let updateCheckInfo: gui.UpdateInfoDTO | null = null
   let updateDownloading = false
+  let updateProgress: gui.UpdateProgressDTO | null = null
   let showInitProject = false
   let renameFeaturePath = ''
   let exportInputPath = ''
@@ -2718,13 +2719,36 @@
   async function applyUpdate() {
     if (updateDownloading) return
     updateDownloading = true
+    updateProgress = { stage: 'check', message: 'Запуск обновления…', percent: 0 }
     appendLog('Установка обновления…')
+    let lastStage = ''
+    const onProgress = (payload: gui.UpdateProgressDTO) => {
+      updateProgress = payload
+      if (payload?.stage && payload.stage !== lastStage) {
+        lastStage = payload.stage
+        if (payload.message) appendLog(payload.message)
+      }
+    }
+    const onFinished = (result: gui.RunResult) => {
+      EventsOff('update-progress', 'update-finished')
+      if (result?.error) {
+        appendLog(`Ошибка обновления: ${result.error}`)
+        updateDownloading = false
+        updateProgress = null
+        return
+      }
+      updateProgress = { stage: 'restart', message: 'Перезапуск приложения…', percent: 100 }
+      appendLog('Приложение перезапускается…')
+    }
+    EventsOn('update-progress', onProgress)
+    EventsOn('update-finished', onFinished)
     try {
       await ApplyUpdate()
-      appendLog('Приложение завершается для установки обновления…')
     } catch (err) {
+      EventsOff('update-progress', 'update-finished')
       appendLog(`Ошибка обновления: ${err instanceof Error ? err.message : String(err)}`)
       updateDownloading = false
+      updateProgress = null
     }
   }
 
@@ -3985,6 +4009,7 @@
     message={updateCheckMessage}
     hasUpdate={updateCheckHasUpdate}
     downloading={updateDownloading}
+    progress={updateProgress}
     onClose={() => (showUpdateCheck = false)}
     onOpenRelease={openUpdateRelease}
     onDownload={downloadUpdate}

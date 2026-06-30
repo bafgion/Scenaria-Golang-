@@ -28,7 +28,7 @@ func TestApplyDownloadedPortableStagesAndScript(t *testing.T) {
 	}
 	defer func() { launchHiddenBatchHook = oldHook }()
 
-	if err := ApplyDownloaded(zipPath, ApplyKindPortable, installDir, 4242); err != nil {
+	if err := ApplyDownloaded(zipPath, ApplyKindPortable, installDir, 4242, nil); err != nil {
 		t.Fatalf("ApplyDownloaded: %v", err)
 	}
 	staging := filepath.Join(installDir, updateStagingDir)
@@ -50,22 +50,28 @@ func TestApplyDownloadedPortableStagesAndScript(t *testing.T) {
 	if !strings.Contains(script, "robocopy") {
 		t.Fatalf("missing robocopy: %s", script)
 	}
+	if !strings.Contains(script, "cd /d") {
+		t.Fatalf("expected working dir change in script")
+	}
+	if !strings.Contains(script, "/D") {
+		t.Fatalf("expected start /D in script")
+	}
 	if !strings.Contains(script, "4242") {
 		t.Fatalf("missing parent pid in script")
 	}
 }
 
 func TestApplyDownloadedRejectsEmptyPaths(t *testing.T) {
-	if err := ApplyDownloaded("", ApplyKindPortable, t.TempDir(), 1); err == nil {
+	if err := ApplyDownloaded("", ApplyKindPortable, t.TempDir(), 1, nil); err == nil {
 		t.Fatal("expected error for empty asset path")
 	}
-	if err := ApplyDownloaded("x.zip", ApplyKindPortable, "", 1); err == nil {
+	if err := ApplyDownloaded("x.zip", ApplyKindPortable, "", 1, nil); err == nil {
 		t.Fatal("expected error for empty install dir")
 	}
 }
 
 func TestApplyDownloadedUnsupportedKind(t *testing.T) {
-	err := ApplyDownloaded("file.exe", ApplyKind("msi"), t.TempDir(), 1)
+	err := ApplyDownloaded("file.exe", ApplyKind("msi"), t.TempDir(), 1, nil)
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
