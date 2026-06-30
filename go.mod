@@ -6,6 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/wailsapp/wails/v2 v2.12.0
+	golang.org/x/mod v0.23.0
 	golang.org/x/sys v0.30.0
 )
 

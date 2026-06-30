@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/semver"
 )
 
 type Release struct {
@@ -42,6 +44,34 @@ func fetchRelease(client *http.Client, url string) (*Release, error) {
 	return &release, nil
 }
 
+// canonicalVersionTag normalizes app and GitHub release versions for comparison.
+func canonicalVersionTag(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if !strings.HasPrefix(strings.ToLower(v), "v") {
+		v = "v" + v
+	}
+	return v
+}
+
+// DisplayVersion strips a leading v/V for UI messages.
+func DisplayVersion(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	return v
+}
+
 func IsNewer(current, latest string) bool {
-	return strings.TrimSpace(current) != "" && strings.TrimSpace(latest) != "" && current != latest
+	cur := canonicalVersionTag(current)
+	lat := canonicalVersionTag(latest)
+	if cur == "" || lat == "" {
+		return false
+	}
+	if semver.IsValid(cur) && semver.IsValid(lat) {
+		return semver.Compare(cur, lat) < 0
+	}
+	return DisplayVersion(current) != DisplayVersion(latest)
 }

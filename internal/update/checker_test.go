@@ -17,6 +17,18 @@ func TestIsNewer(t *testing.T) {
 	if IsNewer("1.0.0", "1.0.0") {
 		t.Fatal("same version is not newer")
 	}
+	if IsNewer("0.17.0", "v0.17.0") {
+		t.Fatal("same version with v prefix is not newer")
+	}
+	if IsNewer("v0.17.0", "0.17.0") {
+		t.Fatal("same version without v prefix is not newer")
+	}
+	if IsNewer("0.18.0", "v0.17.0") {
+		t.Fatal("newer local version should not prompt update")
+	}
+	if !IsNewer("0.16.0", "v0.17.0") {
+		t.Fatal("expected older version to need update")
+	}
 	if IsNewer("2.0.0", "") {
 		t.Fatal("empty latest should not compare as newer")
 	}

@@ -55,8 +55,8 @@ func CheckInstallDir(currentVersion, installDir string) (*Info, error) {
 		mode = detectInstallMode(installDir)
 	}
 	info := &Info{
-		CurrentVersion: strings.TrimSpace(currentVersion),
-		LatestVersion:  strings.TrimSpace(release.TagName),
+		CurrentVersion: DisplayVersion(currentVersion),
+		LatestVersion:  DisplayVersion(release.TagName),
 		HTMLURL:        strings.TrimSpace(release.HTMLURL),
 		InstallMode:    string(mode),
 	}
