@@ -781,6 +781,9 @@ export namespace gui {
 	    downloadUrl: string;
 	    downloadName: string;
 	    message: string;
+	    installMode: string;
+	    applyKind: string;
+	    canAutoApply: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfoDTO(source);
@@ -795,6 +798,9 @@ export namespace gui {
 	        this.downloadUrl = source["downloadUrl"];
 	        this.downloadName = source["downloadName"];
 	        this.message = source["message"];
+	        this.installMode = source["installMode"];
+	        this.applyKind = source["applyKind"];
+	        this.canAutoApply = source["canAutoApply"];
 	    }
 	}
 	export class ValidateRequest {

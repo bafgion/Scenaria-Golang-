@@ -7,9 +7,11 @@
   export let message = ''
   export let hasUpdate = false
   export let downloading = false
+  export let canAutoApply = false
   export let onClose: () => void = () => {}
   export let onOpenRelease: () => void = () => {}
   export let onDownload: () => void = () => {}
+  export let onApply: () => void = () => {}
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose()
@@ -36,9 +38,14 @@
       {#if hasUpdate && info?.htmlUrl}
         <button type="button" on:click={onOpenRelease}>Страница релиза</button>
       {/if}
+      {#if hasUpdate && canAutoApply && info?.downloadUrl}
+        <button type="button" class="primary" disabled={downloading} on:click={onApply}>
+          {downloading ? 'Обновление…' : 'Установить обновление'}
+        </button>
+      {/if}
       {#if hasUpdate && info?.downloadUrl}
-        <button type="button" class="primary" disabled={downloading} on:click={onDownload}>
-          {downloading ? 'Скачивание…' : 'Скачать обновление'}
+        <button type="button" disabled={downloading} on:click={onDownload}>
+          {downloading ? 'Скачивание…' : 'Скачать вручную'}
         </button>
       {/if}
       <button type="button" on:click={onClose}>Закрыть</button>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/bafgion/scenaria-golang/internal/brand"
 	"github.com/bafgion/scenaria-golang/internal/paths"
@@ -19,11 +20,14 @@ type UpdateInfoDTO struct {
 	DownloadURL     string `json:"downloadUrl"`
 	DownloadName    string `json:"downloadName"`
 	Message         string `json:"message"`
+	InstallMode     string `json:"installMode"`
+	ApplyKind       string `json:"applyKind"`
+	CanAutoApply    bool   `json:"canAutoApply"`
 }
 
 func updateInfoFrom(info *update.Info) UpdateInfoDTO {
 	if info == nil {
-		return UpdateInfoDTO{CurrentVersion: version.Version}
+		return UpdateInfoDTO{CurrentVersion: version.Version, CanAutoApply: runtime.GOOS == "windows"}
 	}
 	return UpdateInfoDTO{
 		CurrentVersion:  info.CurrentVersion,
@@ -33,19 +37,24 @@ func updateInfoFrom(info *update.Info) UpdateInfoDTO {
 		DownloadURL:     info.DownloadURL,
 		DownloadName:    info.DownloadName,
 		Message:         info.Message,
+		InstallMode:     info.InstallMode,
+		ApplyKind:       info.ApplyKind,
+		CanAutoApply:    runtime.GOOS == "windows",
 	}
 }
 
 func (s *Service) CheckUpdateInfo() (UpdateInfoDTO, error) {
-	info, err := update.Check(version.Version)
+	installDir, _ := paths.AppInstallDir()
+	info, err := update.CheckInstallDir(version.Version, installDir)
 	if err != nil {
-		return UpdateInfoDTO{CurrentVersion: version.Version}, err
+		return UpdateInfoDTO{CurrentVersion: version.Version, CanAutoApply: runtime.GOOS == "windows"}, err
 	}
 	return updateInfoFrom(info), nil
 }
 
 func (s *Service) DownloadUpdate() (string, error) {
-	info, err := update.Check(version.Version)
+	installDir, _ := paths.AppInstallDir()
+	info, err := update.CheckInstallDir(version.Version, installDir)
 	if err != nil {
 		return "", err
 	}
@@ -66,6 +75,18 @@ func (s *Service) DownloadUpdate() (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+func (s *Service) ApplyUpdate() error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("автообновление поддерживается только в Windows")
+	}
+	installDir, err := paths.AppInstallDir()
+	if err != nil {
+		return err
+	}
+	_, err = update.Apply(version.Version, installDir, os.Getpid())
+	return err
 }
 
 func (s *Service) OpenExternalURL(url string) error {

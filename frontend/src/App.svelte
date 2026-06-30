@@ -106,6 +106,7 @@
     SubmitOTPCode,
     CancelOTP,
     CheckUpdateInfo,
+    ApplyUpdate,
     DownloadUpdate,
     OpenExternalURL,
     ValidateBrowser,
@@ -2714,6 +2715,19 @@
     }
   }
 
+  async function applyUpdate() {
+    if (updateDownloading) return
+    updateDownloading = true
+    appendLog('Установка обновления…')
+    try {
+      await ApplyUpdate()
+      appendLog('Приложение завершается для установки обновления…')
+    } catch (err) {
+      appendLog(`Ошибка обновления: ${err instanceof Error ? err.message : String(err)}`)
+      updateDownloading = false
+    }
+  }
+
   async function downloadUpdate() {
     if (updateDownloading) return
     updateDownloading = true
@@ -3974,6 +3988,8 @@
     onClose={() => (showUpdateCheck = false)}
     onOpenRelease={openUpdateRelease}
     onDownload={downloadUpdate}
+    onApply={applyUpdate}
+    canAutoApply={updateCheckInfo?.canAutoApply ?? false}
   />
 {/if}
 

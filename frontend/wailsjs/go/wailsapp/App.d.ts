@@ -40,6 +40,8 @@ export function DescribeEditorLine(arg1:string):Promise<gui.StepCatalogEntry>;
 
 export function DownloadUpdate():Promise<string>;
 
+export function ApplyUpdate():Promise<void>;
+
 export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;

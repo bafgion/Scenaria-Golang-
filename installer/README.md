@@ -25,4 +25,15 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 ## CI / релиз
 
-Тег `v*` на `master` запускает job `release`: собирает `dist/Scenaria-Portable.zip`, `dist/Scenaria-Setup.exe` и публикует их в GitHub Releases.
+Тег `v*` запускает отдельный workflow `.github/workflows/release.yml` (без дублирования тестов из `ci.yml`).
+
+## Автообновление
+
+IDE определяет тип установки по реестру Inno Setup:
+
+| Тип | Артефакт | Действие |
+|-----|----------|----------|
+| **Setup** (`Program Files\Scenaria`) | `Scenaria-Setup.exe` | тихий установщик `/VERYSILENT` |
+| **Portable** | `Scenaria-Portable.zip` | robocopy + перезапуск `scenaria-gui.exe` |
+
+Кнопка **«Установить обновление»** в диалоге обновлений скачивает файл, проверяет SHA256 из `latest.json` и закрывает приложение для применения.

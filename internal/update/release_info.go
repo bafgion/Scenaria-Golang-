@@ -14,6 +14,8 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/brand"
 )
 
+var releaseLatestURL = "https://api.github.com/repos/" + brand.DefaultGitHubRepo + "/releases/latest"
+
 type ReleaseAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
@@ -33,21 +35,36 @@ type Info struct {
 	DownloadURL     string `json:"downloadUrl"`
 	DownloadName    string `json:"downloadName"`
 	Message         string `json:"message"`
+	InstallMode     string `json:"installMode"`
+	ApplyKind       string `json:"applyKind"`
+	SHA256          string `json:"sha256,omitempty"`
 }
 
+// Check reports whether a newer GitHub release exists and picks the update asset for this install.
 func Check(currentVersion string) (*Info, error) {
+	return CheckInstallDir(currentVersion, "")
+}
+
+func CheckInstallDir(currentVersion, installDir string) (*Info, error) {
 	release, err := fetchReleasePayload(&http.Client{Timeout: 20 * time.Second})
 	if err != nil {
 		return nil, err
+	}
+	mode := InstallModePortable
+	if strings.TrimSpace(installDir) != "" {
+		mode = detectInstallMode(installDir)
 	}
 	info := &Info{
 		CurrentVersion: strings.TrimSpace(currentVersion),
 		LatestVersion:  strings.TrimSpace(release.TagName),
 		HTMLURL:        strings.TrimSpace(release.HTMLURL),
+		InstallMode:    string(mode),
 	}
-	if asset := pickUpdateAsset(release.Assets); asset != nil {
+	if asset := pickAssetForMode(mode, release.Assets); asset != nil {
 		info.DownloadURL = strings.TrimSpace(asset.BrowserDownloadURL)
 		info.DownloadName = strings.TrimSpace(asset.Name)
+		info.ApplyKind = string(applyKindForAsset(info.DownloadName))
+		info.SHA256 = sha256FromManifest(release.Assets, info.DownloadName)
 	}
 	info.UpdateAvailable = IsNewer(info.CurrentVersion, info.LatestVersion)
 	if info.UpdateAvailable {
@@ -59,11 +76,14 @@ func Check(currentVersion string) (*Info, error) {
 }
 
 func fetchReleasePayload(client *http.Client) (*releasePayload, error) {
-	url := "https://api.github.com/repos/" + brand.DefaultGitHubRepo + "/releases/latest"
+	return fetchReleasePayloadFrom(client, releaseLatestURL)
+}
+
+func fetchReleasePayloadFrom(client *http.Client, apiURL string) (*releasePayload, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +153,13 @@ func matchAsset(assets []ReleaseAsset, pred func(string) bool) *ReleaseAsset {
 }
 
 func DownloadFile(url, destPath string) error {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return fmt.Errorf("download url is required")
+	return downloadFileWithClient(&http.Client{Timeout: 10 * time.Minute}, url, destPath)
+}
+
+func downloadFileWithClient(client *http.Client, url, destPath string) error {
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Minute}
 	}
-	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("download update: %w", err)

@@ -175,6 +175,16 @@ func (a *App) DownloadUpdate() (string, error) {
 	return a.svc.DownloadUpdate()
 }
 
+func (a *App) ApplyUpdate() error {
+	if err := a.svc.ApplyUpdate(); err != nil {
+		return err
+	}
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
+	return nil
+}
+
 func (a *App) OpenExternalURL(url string) error {
 	return a.svc.OpenExternalURL(url)
 }

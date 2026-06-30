@@ -78,6 +78,10 @@ export function DownloadUpdate() {
   return window['go']['wailsapp']['App']['DownloadUpdate']();
 }
 
+export function ApplyUpdate() {
+  return window['go']['wailsapp']['App']['ApplyUpdate']();
+}
+
 export function DuplicateFeature(arg1, arg2) {
   return window['go']['wailsapp']['App']['DuplicateFeature'](arg1, arg2);
 }
