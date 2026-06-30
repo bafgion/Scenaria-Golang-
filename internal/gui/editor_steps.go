@@ -35,12 +35,18 @@ func ParseEditorSteps(text string) []EditorStepRow {
 		if stepText == "" && keyword == "" {
 			continue
 		}
-	row := EditorStepRow{
-		Line:    i + 1,
-		Keyword: keyword,
-		Action:  stepText,
-		Text:    stepText,
-	}
+		row := EditorStepRow{
+			Line:    i + 1,
+			Keyword: keyword,
+			Action:  stepText,
+			Text:    stepText,
+		}
+		if gherkin.IsTestClientStep(gherkin.Step{Text: stepText}) {
+			row.Kind = "test-client"
+			row.Action = "TestClient"
+			out = append(out, row)
+			continue
+		}
 		action, err := stepdsl.Parse(gherkin.Step{Line: i + 1, Text: stepText})
 		if err != nil {
 			row.Error = fmt.Sprintf("%v", err)
@@ -57,7 +63,7 @@ func ParseEditorSteps(text string) []EditorStepRow {
 
 func splitStepKeyword(line string) (keyword, rest string) {
 	for _, kw := range []string{
-		"Допустим ", "Когда ", "Тогда ", "И ", "Но ",
+		"Допустим ", "Дано ", "Когда ", "Тогда ", "И ", "Но ",
 		"Given ", "When ", "Then ", "And ", "But ",
 	} {
 		if strings.HasPrefix(line, kw) {

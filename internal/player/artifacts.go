@@ -18,13 +18,8 @@ func captureFailureArtifacts(session *browserSession, input ScenarioInput, trace
 	}
 	screenshot = captureFailureScreenshot(session)
 	trace = captureTraceZIP(session, traceDir, input)
-	if session.videoEnabled && session.page != nil {
-		recorder := session.page.Video()
-		_ = session.page.Close()
-		session.page = nil
-		if recorder != nil {
-			video = readVideoRecording(recorder, videoDir)
-		}
+	if session.videoEnabled {
+		video = session.finalizeVideoRecording(videoDir)
 	}
 	return screenshot, trace, video
 }

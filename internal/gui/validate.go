@@ -57,6 +57,9 @@ func validateFeatureLines(text string) []ValidationIssue {
 		if stepText == "" {
 			continue
 		}
+		if gherkin.IsTestClientStep(gherkin.Step{Text: stepText}) {
+			continue
+		}
 		if _, err := stepdsl.Parse(gherkin.Step{Line: i + 1, Text: stepText}); err != nil {
 			issues = append(issues, ValidationIssue{
 				Line:    i + 1,
@@ -74,6 +77,10 @@ func validateStepList(steps []gherkin.Step, issues *[]ValidationIssue) {
 			continue
 		}
 		if strings.TrimSpace(step.Text) == "" {
+			validateStepList(step.Children, issues)
+			continue
+		}
+		if gherkin.IsTestClientStep(step) {
 			validateStepList(step.Children, issues)
 			continue
 		}
@@ -121,7 +128,7 @@ func isTableLine(line string) bool {
 }
 
 func stripGherkinKeyword(line string) string {
-	for _, keyword := range []string{"Допустим ", "Когда ", "Тогда ", "И ", "Но ", "Given ", "When ", "Then ", "And ", "But "} {
+	for _, keyword := range []string{"Допустим ", "Дано ", "Когда ", "Тогда ", "И ", "Но ", "Given ", "When ", "Then ", "And ", "But "} {
 		if strings.HasPrefix(line, keyword) {
 			return strings.TrimSpace(strings.TrimPrefix(line, keyword))
 		}

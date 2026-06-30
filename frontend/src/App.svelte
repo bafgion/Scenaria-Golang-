@@ -2147,6 +2147,7 @@
 
   function gotoEditorLine(line: number) {
     monaco?.gotoLine(line)
+    editorCursorLine = line
   }
 
   function validateProjectHint(): string {
@@ -3438,6 +3439,7 @@
                 onToggleBatch={(path) => {
                   if (!batchMode) batchMode = true
                   toggleBatchFeature(path)
+                  void loadFeature(path)
                 }}
                 onCollapseChange={onCatalogCollapse}
                 onFileContextMenu={onFileContextMenu}

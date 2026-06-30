@@ -23,3 +23,13 @@ func TestParseEditorSteps(t *testing.T) {
 		t.Fatalf("assert step: %+v", rows[2])
 	}
 }
+
+func TestParseEditorSteps_TestClient(t *testing.T) {
+	rows := ParseEditorSteps("\tДано я подключаю TestClient \"DemoUser\"\n")
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 step, got %d", len(rows))
+	}
+	if rows[0].Error != "" || rows[0].Kind != "test-client" {
+		t.Fatalf("unexpected TestClient row: %+v", rows[0])
+	}
+}

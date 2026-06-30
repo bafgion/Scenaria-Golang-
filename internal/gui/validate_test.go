@@ -18,7 +18,7 @@ func TestValidateFeatureContent(t *testing.T) {
 
 func TestValidateFeatureContent_TagsAndOutline(t *testing.T) {
 	root := filepath.Join("..", "..", "examples")
-	for _, name := range []string{"01-pervaya-proverka.feature", "04-tablica-primerov.feature"} {
+	for _, name := range []string{"01-pervaya-proverka.feature", "04-tablica-primerov.feature", "05-testclient-kontekst.feature"} {
 		path := filepath.Join(root, name)
 		payload, err := os.ReadFile(path)
 		if err != nil {
@@ -40,5 +40,18 @@ func TestValidateFeatureContent_TagLineOnly(t *testing.T) {
 `
 	if issues := ValidateFeatureContent(content); len(issues) != 0 {
 		t.Fatalf("expected no issues for tagged feature, got %#v", issues)
+	}
+}
+
+func TestValidateFeatureContent_TestClientContext(t *testing.T) {
+	content := `Функционал: Примеры
+Контекст:
+	Дано я подключаю TestClient "DemoUser"
+Сценарий: S
+	Допустим открыт "https://example.com"
+	И закрываю браузер
+`
+	if issues := ValidateFeatureContent(content); len(issues) != 0 {
+		t.Fatalf("expected no issues for TestClient context, got %#v", issues)
 	}
 }

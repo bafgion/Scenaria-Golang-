@@ -1,5 +1,6 @@
 import {
   BeginSplashWindowChrome,
+  CenterAppWindow,
   OpenMainWindowChrome,
 } from '../../wailsjs/go/wailsapp/App'
 import {
@@ -17,6 +18,26 @@ function hasWailsRuntime(): boolean {
   return typeof window !== 'undefined' && !!(window as Window & { runtime?: unknown }).runtime
 }
 
+async function waitForWindowLayout(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
+}
+
+/** Center after size/chrome changes; Wails runtime + native Win32 when available. */
+export async function centerAppWindowOnScreen() {
+  if (!hasWailsRuntime()) return
+  try {
+    WindowCenter()
+    await CenterAppWindow()
+    await waitForWindowLayout()
+    WindowCenter()
+    await CenterAppWindow()
+  } catch {
+    /* dev without wails */
+  }
+}
+
 /** Compact centered window for splash-only phase (Photoshop-style). */
 export async function beginSplashWindow() {
   if (!hasWailsRuntime()) return
@@ -24,9 +45,9 @@ export async function beginSplashWindow() {
     WindowSetMinSize(SPLASH_WINDOW.width, SPLASH_WINDOW.height)
     WindowSetMaxSize(SPLASH_WINDOW.width, SPLASH_WINDOW.height)
     WindowSetSize(SPLASH_WINDOW.width, SPLASH_WINDOW.height)
-    WindowCenter()
     WindowShow()
     await BeginSplashWindowChrome()
+    await centerAppWindowOnScreen()
   } catch {
     /* dev without wails */
   }
@@ -40,7 +61,7 @@ export async function openMainWindow() {
     WindowSetMaxSize(0, 0)
     WindowSetMinSize(MAIN_WINDOW.minWidth, MAIN_WINDOW.minHeight)
     WindowSetSize(MAIN_WINDOW.width, MAIN_WINDOW.height)
-    WindowCenter()
+    await centerAppWindowOnScreen()
   } catch {
     /* dev without wails */
   }

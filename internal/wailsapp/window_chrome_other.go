@@ -2,5 +2,6 @@
 
 package wailsapp
 
-func applySplashChrome() {}
-func applyMainChrome()  {}
+func applySplashChrome()  {}
+func applyMainChrome()   {}
+func centerAppWindow()   {}

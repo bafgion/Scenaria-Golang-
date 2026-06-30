@@ -251,6 +251,7 @@
     if (!editor || line < 1) return
     editor.revealLineInCenter(line)
     editor.setPosition({ lineNumber: line, column: 1 })
+    dispatch('cursorline', line)
     editor.focus()
   }
 

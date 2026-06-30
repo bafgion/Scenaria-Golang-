@@ -40,6 +40,7 @@
     if (node.kind === 'file') {
       if (batchMode || e.ctrlKey || e.metaKey) {
         onToggleBatch(node.path)
+        onActivate(node.path, node.kind)
         return
       }
       onActivate(node.path, node.kind)

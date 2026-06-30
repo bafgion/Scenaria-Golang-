@@ -42,6 +42,10 @@ export function CaptureBrowserSession(arg1) {
   return window['go']['wailsapp']['App']['CaptureBrowserSession'](arg1);
 }
 
+export function CenterAppWindow() {
+  return window['go']['wailsapp']['App']['CenterAppWindow']();
+}
+
 export function CheckUpdate() {
   return window['go']['wailsapp']['App']['CheckUpdate']();
 }

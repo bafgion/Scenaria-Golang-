@@ -362,7 +362,7 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.Browser != "" && !req.DryRun {
 		args = append(args, "--browser", req.Browser)
 	}
-	if req.Workers > 1 {
+	if req.Workers > 0 {
 		args = append(args, "--workers", fmt.Sprintf("%d", req.Workers))
 	}
 	if req.SlowMo > 0 && !req.DryRun {

@@ -291,7 +291,7 @@ func parseRunOptions(args []string) (runOptions, error) {
 			if eq <= 0 {
 				return runOptions{}, fmt.Errorf("--var expects NAME=VALUE, got %q", pair)
 			}
-			opts.variables[pair[:eq]] = pair[eq+1:]
+			opts.variables[strings.TrimSpace(pair[:eq])] = pair[eq+1:]
 		case "--slow-mo":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--slow-mo requires milliseconds value")

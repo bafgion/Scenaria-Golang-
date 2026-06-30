@@ -521,3 +521,11 @@ func (a *App) BeginSplashWindowChrome() {
 func (a *App) OpenMainWindowChrome() {
 	applyMainChrome()
 }
+
+// CenterAppWindow centers the native app window on the current monitor.
+func (a *App) CenterAppWindow() {
+	if a.ctx != nil {
+		runtime.WindowCenter(a.ctx)
+	}
+	centerAppWindow()
+}

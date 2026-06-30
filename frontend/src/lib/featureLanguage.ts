@@ -29,6 +29,7 @@ export function registerFeatureLanguage(monaco: typeof Monaco) {
         ],
         [new RegExp(`^\\s*(${STEP_KEYWORDS})\\s+`), 'keyword.step'],
         [new RegExp(`^\\s*(${BLOCK_KEYWORDS})(?:\\s|$)`), 'keyword.block'],
+        [/я\s+подключаю/i, 'keyword.step'],
         [/TestClient/, 'type.testclient'],
         [/^\s*\|.*\|\s*$/, 'string.table'],
         [/"(?:[^"\\]|\\.)*"/, 'string'],

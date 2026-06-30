@@ -1,7 +1,11 @@
-.PHONY: test run install-cli gui gui-wails build build-windows build-portable
+.PHONY: test chaos run install-cli gui gui-wails build build-windows build-portable
 
 test:
 	go test ./...
+
+chaos:
+	go test ./internal/gherkin ./internal/player ./internal/gui ./internal/cli ./internal/recorder -run Chaos -count=3 -race
+	go test ./internal/gherkin -run FuzzParseFeature -fuzztime=5s || true
 
 run:
 	go run ./cmd/scenaria --help

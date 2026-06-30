@@ -81,6 +81,7 @@ func labelFromTemplate(template string) string {
 func manualEntries() []Entry {
 	desc := func(text string) string { return text }
 	return []Entry{
+		entryManual("Сессия и TestClient", `я подключаю TestClient "имя"`, "test_client", desc("Именованный профиль cookies/localStorage из .scenaria/test_clients (блок «Контекст»)")),
 		entryManual("Структура", "Если вижу \"#modal\"", "if", desc("Условный блок: шаги внутри выполняются, если элемент виден")),
 		entryManual("Структура", "Повторяю 3 раза", "repeat", desc("Цикл с фиксированным числом повторений")),
 		entryManual("Структура", "Пока вижу \"#next\"", "while", desc("Цикл «пока условие истинно»")),

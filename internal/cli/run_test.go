@@ -253,3 +253,28 @@ func TestBuildRunner(t *testing.T) {
 		t.Fatal("expected error for unknown engine")
 	}
 }
+
+func TestBuildRunnerPassesWorkers(t *testing.T) {
+	emptyPlan := player.ExecutionPlan{}
+	runner, err := buildRunner(runOptions{engine: "stub", workers: 4}, emptyPlan)
+	if err != nil {
+		t.Fatalf("buildRunner failed: %v", err)
+	}
+	br, ok := runner.(player.BrowserRunner)
+	if !ok {
+		t.Fatalf("expected BrowserRunner, got %T", runner)
+	}
+	if br.ParallelWorkers != 4 {
+		t.Fatalf("ParallelWorkers = %d, want 4", br.ParallelWorkers)
+	}
+}
+
+func TestParseRunOptionsRepeatedVar(t *testing.T) {
+	opts, err := parseRunOptions([]string{"./features", "--var", "A=1", "--var", "B=2", "--var", "A=3"})
+	if err != nil {
+		t.Fatalf("parseRunOptions failed: %v", err)
+	}
+	if opts.variables["A"] != "3" || opts.variables["B"] != "2" {
+		t.Fatalf("unexpected variables: %#v", opts.variables)
+	}
+}

@@ -50,7 +50,23 @@ var (
 	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
 	procShowWindow               = user32.NewProc("ShowWindow")
 	procRedrawWindow             = user32.NewProc("RedrawWindow")
+	procGetWindowRect            = user32.NewProc("GetWindowRect")
+	procMonitorFromWindow        = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW          = user32.NewProc("GetMonitorInfoW")
 )
+
+const monitorDefaultToNearest = 2
+
+type winRect struct {
+	Left, Top, Right, Bottom int32
+}
+
+type monitorInfo struct {
+	CbSize    uint32
+	RcMonitor winRect
+	RcWork    winRect
+	DwFlags   uint32
+}
 
 func findWindow(className, windowName *uint16) windows.Handle {
 	r, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(windowName)))
@@ -149,6 +165,7 @@ func applySplashChrome() {
 	setWindowLong(hwnd, gwlStyle, undecorated)
 	frameChanged(hwnd)
 	splashChromeOn = true
+	centerAppWindow()
 }
 
 func applyMainChrome() {
@@ -185,4 +202,45 @@ func applyMainChrome() {
 	redrawWindow(hwnd)
 	splashChromeOn = false
 	appWindow = hwnd
+}
+
+func centerAppWindow() {
+	hwnd := appWindow
+	if hwnd == 0 {
+		hwnd = findAppWindow()
+	}
+	if hwnd == 0 {
+		return
+	}
+
+	var windowRect winRect
+	if r, _, _ := procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&windowRect))); r == 0 {
+		return
+	}
+	width := windowRect.Right - windowRect.Left
+	height := windowRect.Bottom - windowRect.Top
+
+	monitor, _, _ := procMonitorFromWindow.Call(uintptr(hwnd), monitorDefaultToNearest)
+	if monitor == 0 {
+		return
+	}
+	var info monitorInfo
+	info.CbSize = uint32(unsafe.Sizeof(info))
+	if r, _, _ := procGetMonitorInfoW.Call(monitor, uintptr(unsafe.Pointer(&info))); r == 0 {
+		return
+	}
+
+	work := info.RcWork
+	x := work.Left + (work.Right-work.Left-width)/2
+	y := work.Top + (work.Bottom-work.Top-height)/2
+
+	procSetWindowPos.Call(
+		uintptr(hwnd),
+		0,
+		uintptr(x),
+		uintptr(y),
+		0,
+		0,
+		swpNosize|swpNozorder|swpNoownerzorder,
+	)
 }

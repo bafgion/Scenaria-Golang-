@@ -18,8 +18,8 @@ func main() {
 	app := wailsapp.NewApp()
 	err := wails.Run(&options.App{
 		Title:  "Scenaria",
-		Width:  1280,
-		Height: 800,
+		Width:  560,
+		Height: 500,
 		MinWidth:  960,
 		MinHeight: 640,
 		StartHidden: true,

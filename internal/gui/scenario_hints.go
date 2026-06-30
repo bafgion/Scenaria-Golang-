@@ -233,6 +233,11 @@ func gotoNoWaitHint(steps []parsedScenarioStep, index int) *ScenarioHintDTO {
 	if next.err != nil {
 		return nil
 	}
+	// Block headers (Если/Пока/…) are skipped in the flat list; nested steps are not
+	// immediate successors of «открыт» on the same indentation level.
+	if len(next.line.indent) > len(steps[index].line.indent) {
+		return nil
+	}
 	if _, ok := interactiveAfterGoto[next.action.Kind]; !ok {
 		return nil
 	}

@@ -22,6 +22,8 @@ export function CancelRecording():Promise<void>;
 
 export function CaptureBrowserSession(arg1:string):Promise<string>;
 
+export function CenterAppWindow():Promise<void>;
+
 export function CheckUpdate():Promise<gui.RunResult>;
 
 export function CheckUpdateInfo():Promise<gui.UpdateInfoDTO>;

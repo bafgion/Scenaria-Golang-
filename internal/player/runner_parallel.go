@@ -43,6 +43,7 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	var wg sync.WaitGroup
 	var firstErr error
 	var errMu sync.Mutex
+	var resultsMu sync.Mutex
 
 	for index, runCase := range plan.Cases {
 		wg.Add(1)
@@ -60,7 +61,9 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 				errMu.Unlock()
 				return
 			}
+			resultsMu.Lock()
 			results[i] = runResult
+			resultsMu.Unlock()
 		}(index, runCase)
 	}
 	wg.Wait()

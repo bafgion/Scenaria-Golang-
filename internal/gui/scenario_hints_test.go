@@ -104,6 +104,16 @@ func TestAnalyzeGotoNoWait(t *testing.T) {
 	}
 }
 
+func TestAnalyzeGotoNoWaitSkipsNestedBlockSteps(t *testing.T) {
+	text := "Функционал: demo\n\tСценарий: s\n\tДопустим открыт \"https://example.com\"\n\tЕсли вижу \"a\"\n\t\tИ нажимаю \"a\"\n"
+	hints := AnalyzeScenarioHints(text)
+	for _, h := range hints {
+		if h.ID == "goto_no_wait" {
+			t.Fatalf("unexpected goto_no_wait inside conditional block: %+v", hints)
+		}
+	}
+}
+
 func TestApplyFillNoAssertFix(t *testing.T) {
 	text := "\tКогда ввожу \"alice\" в \"#name\"\n\tИ нажимаю \"#submit\"\n"
 	result := ApplyScenarioHintFix(ScenarioHintFixRequest{

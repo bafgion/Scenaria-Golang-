@@ -96,14 +96,35 @@ func (s *browserSession) close() {
 	}
 	if s.page != nil {
 		_ = s.page.Close()
+		s.page = nil
 	}
 	if s.context != nil {
 		_ = s.context.Close()
+		s.context = nil
 	}
 	if s.browser != nil {
 		_ = s.browser.Close()
+		s.browser = nil
 	}
 	s.closed = true
+}
+
+// finalizeVideoRecording closes page and context so Playwright flushes the webm, then reads it.
+func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
+	if s == nil || s.closed || !s.videoEnabled || s.page == nil {
+		return nil
+	}
+	recorder := s.page.Video()
+	_ = s.page.Close()
+	s.page = nil
+	if s.context != nil {
+		_ = s.context.Close()
+		s.context = nil
+	}
+	if recorder == nil {
+		return nil
+	}
+	return readVideoRecording(recorder, videoDir)
 }
 
 func (s *browserSession) setPage(page playwright.Page) {

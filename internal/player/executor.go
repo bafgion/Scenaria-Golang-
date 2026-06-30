@@ -82,6 +82,10 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		return e.executeForEach(ctx, session, step, runCtx)
 	}
 
+	if gherkin.IsTestClientStep(step) {
+		return nil
+	}
+
 	action, err := stepdsl.Parse(step)
 	if err != nil {
 		return err
