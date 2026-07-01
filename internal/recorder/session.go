@@ -169,7 +169,6 @@ func (s *LiveSession) InitRecordMode() {
 func (s *LiveSession) BeginCapture() error {
 	s.mu.Lock()
 	page := s.page
-	steps := s.steps
 	s.mu.Unlock()
 	if page != nil && !s.recorderInjected.Load() {
 		if err := page.Context().AddInitScript(playwright.Script{
@@ -194,14 +193,38 @@ func (s *LiveSession) BeginCapture() error {
 	s.captureEver.Store(true)
 	s.captureEnabled.Store(true)
 	s.paused.Store(false)
-	if page != nil && steps != nil {
-		if u := strings.TrimSpace(page.URL()); u != "" && u != "about:blank" {
-			if len(*steps) == 0 || (*steps)[len(*steps)-1].Action != "goto" || (*steps)[len(*steps)-1].Value != u {
-				*steps = append(*steps, RecordedStep{Action: "goto", Value: u})
+	if page != nil {
+		s.mu.Lock()
+		if s.steps != nil {
+			if u := strings.TrimSpace(page.URL()); u != "" && u != "about:blank" {
+				if len(*s.steps) == 0 || (*s.steps)[len(*s.steps)-1].Action != "goto" || (*s.steps)[len(*s.steps)-1].Value != u {
+					*s.steps = append(*s.steps, RecordedStep{Action: "goto", Value: u})
+				}
 			}
 		}
+		s.mu.Unlock()
 	}
 	return nil
+}
+
+// AppendCoalescedStep records a step using live coalescing rules (thread-safe).
+func (s *LiveSession) AppendCoalescedStep(step RecordedStep, notify StepNotifier) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.steps == nil {
+		return
+	}
+	appendCoalescedStep(s.steps, step, notify)
+}
+
+// AppendGotoStep records navigation (thread-safe).
+func (s *LiveSession) AppendGotoStep(url string, notify StepNotifier) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.steps == nil {
+		return
+	}
+	appendGotoStep(s.steps, url, notify)
 }
 
 func (s *LiveSession) RecordedStepCount() int {

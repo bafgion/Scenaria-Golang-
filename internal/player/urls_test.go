@@ -1,6 +1,10 @@
 package player
 
-import "testing"
+import (
+	"testing"
+
+	playwright "github.com/mxschmitt/playwright-go"
+)
 
 func TestUrlsMatch(t *testing.T) {
 	cases := []struct {
@@ -12,11 +16,26 @@ func TestUrlsMatch(t *testing.T) {
 		{"https://example.com/page/", "https://example.com/page", true},
 		{"https://example.com/other", "https://example.com/page", false},
 		{"", "https://example.com", false},
+		{"https://example.com/page?tab=1", "https://example.com/page?tab=1", true},
+		{"https://example.com/page?tab=2", "https://example.com/page?tab=1", false},
+		{"https://example.com/page?tab=1", "https://example.com/page", true},
+		{"https://example.com/page#section", "https://example.com/page#section", true},
+		{"https://example.com/page#other", "https://example.com/page#section", false},
 	}
 	for _, tc := range cases {
 		if got := UrlsMatch(tc.current, tc.target); got != tc.want {
 			t.Fatalf("UrlsMatch(%q, %q) = %v, want %v", tc.current, tc.target, got, tc.want)
 		}
+	}
+}
+
+func TestParseNavWaitUntil(t *testing.T) {
+	got, err := ParseNavWaitUntil("networkidle")
+	if err != nil || got != playwright.WaitUntilStateNetworkidle {
+		t.Fatalf("networkidle: %v %v", err, got)
+	}
+	if _, err := ParseNavWaitUntil("invalid"); err == nil {
+		t.Fatal("expected error for invalid nav wait until")
 	}
 }
 

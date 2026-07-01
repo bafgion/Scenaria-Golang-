@@ -3,6 +3,7 @@
   import { preloadMonacoEditor } from './appBootstrap'
   import type { EditorSettings } from './editorOptions'
   import type { editor as MonacoEditor } from 'monaco-editor'
+  import { replaceModelText } from './editorTextSync'
 
   export let text = ''
   export let theme: EditorSettings['theme'] = 'scenaria-dark'
@@ -12,15 +13,27 @@
   let container: HTMLDivElement
   let editor: MonacoEditor.IStandaloneCodeEditor | null = null
   let monacoApi: typeof import('monaco-editor') | null = null
+  let textSyncTimer: ReturnType<typeof setTimeout> | null = null
 
-  function syncPreview() {
+  function syncPreviewChrome() {
     if (!editor || !monacoApi) return
     const themeName = theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
     monacoApi.editor.setTheme(themeName)
     editor.updateOptions({ fontSize, fontFamily, wordWrap: 'on' })
-    if (editor.getValue() !== text) {
-      editor.setValue(text)
-    }
+  }
+
+  function syncPreviewText() {
+    if (!editor) return
+    if (editor.getValue() === text) return
+    replaceModelText(editor, text, 'preview-sync')
+  }
+
+  function schedulePreviewTextSync() {
+    if (textSyncTimer) clearTimeout(textSyncTimer)
+    textSyncTimer = setTimeout(() => {
+      textSyncTimer = null
+      syncPreviewText()
+    }, 150)
   }
 
   onMount(async () => {
@@ -47,9 +60,11 @@
     })
   })
 
-  $: text, theme, fontSize, fontFamily, syncPreview()
+  $: theme, fontSize, fontFamily, syncPreviewChrome()
+  $: text, schedulePreviewTextSync()
 
   onDestroy(() => {
+    if (textSyncTimer) clearTimeout(textSyncTimer)
     const model = editor?.getModel()
     editor?.dispose()
     if (model && !model.isDisposed()) {

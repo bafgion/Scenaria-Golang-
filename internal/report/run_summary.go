@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/player"
@@ -31,6 +32,11 @@ func WriteRunSummary(path string, summary RunSummary) error {
 	payload, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode run summary %q: %w", path, err)
+	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create run summary dir %q: %w", dir, err)
+		}
 	}
 	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
 		return fmt.Errorf("write run summary %q: %w", path, err)

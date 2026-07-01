@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 )
 
@@ -15,9 +16,11 @@ const (
 
 func isRetryableAction(kind string) bool {
 	switch kind {
-	case "click", "double-click", "hover", "fill", "check", "uncheck",
+	case "click", "double-click", "hover", "fill", "check", "uncheck", "clear",
+		"select", "press-in", "scroll-to", "drag-drop",
 		"assert-visible", "assert-hidden", "assert-text",
-		"wait-visible", "wait-hidden", "scroll-to", "drag-drop":
+		"assert-url", "assert-url-contains",
+		"wait-visible", "wait-hidden":
 		return true
 	default:
 		return false
@@ -52,6 +55,7 @@ func (e *StepExecutor) runAction(ctx context.Context, session *browserSession, a
 			return err
 		}
 		if attempt > 0 {
+			logx.Debug("action retry", "kind", action.Kind, "attempt", attempt+1, "max", attempts)
 			if err := sleepRetryBackoff(ctx, attempt, e.retryBackoff()); err != nil {
 				return err
 			}

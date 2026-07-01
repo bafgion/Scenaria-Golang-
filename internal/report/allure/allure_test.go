@@ -62,6 +62,30 @@ func TestWriteResultsWithTrace(t *testing.T) {
 	}
 }
 
+func TestWriteResultsUniqueTimestamps(t *testing.T) {
+	dir := t.TempDir()
+	result := player.ExecutionResult{
+		ScenarioResults: []player.ScenarioResult{
+			{FeaturePath: "a.feature", Scenario: "One", Status: "passed"},
+			{FeaturePath: "a.feature", Scenario: "Two", Status: "passed"},
+		},
+	}
+	if err := WriteResults(dir, result); err != nil {
+		t.Fatalf("WriteResults: %v", err)
+	}
+	// Re-run should replace prior results, not accumulate stale files.
+	if err := WriteResults(dir, result); err != nil {
+		t.Fatalf("WriteResults second run: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 result files after clean, got %d", len(entries))
+	}
+}
+
 func TestMapStatus(t *testing.T) {
 	if mapStatus("passed") != "passed" || mapStatus("failed") != "failed" || mapStatus("skipped") != "skipped" {
 		t.Fatal("unexpected status mapping")

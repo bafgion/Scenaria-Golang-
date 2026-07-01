@@ -32,6 +32,7 @@ func runLiveBrowserSession(
 	if err != nil {
 		return fmt.Errorf("create browser context: %w", err)
 	}
+	defer ReleasePickerBinding(bctx)
 	defer bctx.Close()
 	if err := registerBrowserInitScripts(bctx, !opts.BrowseOnly); err != nil {
 		return fmt.Errorf("register browser init scripts: %w", err)
@@ -206,7 +207,7 @@ func runLiveBrowserSession(
 		}
 
 		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
-			appendGotoStep(recorded, currentURL, stepNotify)
+			session.AppendGotoStep(currentURL, stepNotify)
 			lastURL = currentURL
 			lastEventAt = time.Now()
 		}
@@ -233,7 +234,7 @@ func runLiveBrowserSession(
 			if !ok {
 				continue
 			}
-			appendCoalescedStep(recorded, step, stepNotify)
+			session.AppendCoalescedStep(step, stepNotify)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}

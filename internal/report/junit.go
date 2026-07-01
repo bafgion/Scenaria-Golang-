@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/bafgion/scenaria-golang/internal/player"
 )
@@ -47,7 +48,7 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 			Name:      scenario.Scenario,
 		}
 		switch scenario.Status {
-		case "failed":
+		case "failed", "broken":
 			suite.Failures++
 			tc.Failure = &junitFailure{Message: scenario.Message}
 		case "skipped":
@@ -63,6 +64,11 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 	}
 	content := append([]byte(xml.Header), payload...)
 	content = append(content, '\n')
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create junit report dir %q: %w", dir, err)
+		}
+	}
 	if err := os.WriteFile(path, content, 0o644); err != nil {
 		return fmt.Errorf("write junit report %q: %w", path, err)
 	}

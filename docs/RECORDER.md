@@ -37,6 +37,8 @@ scenaria record --live --url https://example.com --output recorded.feature --idl
 
 Селекторы строятся в `internal/selector/recorder_script.js` (testid, id, label, has-text, canvas).
 
+Подробнее о лучших практиках: `docs/SELECTORS.md`.
+
 ## Динамический DOM
 
 - **MutationObserver** — новые узлы, shadow DOM
@@ -46,6 +48,17 @@ scenaria record --live --url https://example.com --output recorded.feature --idl
 ## Нормализация
 
 `internal/recorder/normalize.go` объединяет подряд идущие fill/select, убирает дубли goto/click/scroll.
+
+## Безопасность (trust)
+
+Recorder и picker инжектируют JS в открытые страницы через Playwright `ExposeBinding` (`pickSelectorDone` / `pickSelectorCancel`). Это доверенный режим для **ваших** тестовых стендов:
+
+- Не записывайте и не используйте picker на недоверенных / публичных сайтах с чувствительными данными.
+- Bindings привязаны к **browser context** сессии и сбрасываются при закрытии контекста.
+- Picker принимает callback только с **активной страницы** и того же origin, что при старте выбора (`internal/recorder/picker.go`).
+- Записанные пути (`Output`, `AppendTo`) ограничены корнем проекта — см. `paths.ConfineToProjectRoot`.
+
+При работе с внешними origin рассматривайте отдельный профиль браузера и изолированный проект.
 
 ## Тесты
 

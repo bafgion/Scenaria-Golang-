@@ -54,13 +54,9 @@ func loadTestClientForFeature(projectRoot, name string) (*settings.TestClient, e
 	return settings.LoadTestClient(path)
 }
 
-func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input ScenarioInput, run func(context.Context, *browserSession) error) (ScenarioResult, error) {
-	result := ScenarioResult{
-		FeaturePath: input.FeaturePath,
-		Scenario:    input.ScenarioName,
-		Status:      "passed",
-	}
+type ScenarioSessionRun func(context.Context, *browserSession) (*RunContext, error)
 
+func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input ScenarioInput, run ScenarioSessionRun) (ScenarioResult, error) {
 	if err := ctx.Err(); err != nil {
 		return ScenarioResult{}, err
 	}
@@ -73,17 +69,34 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 		paths.ConfigurePlaywrightBrowsersForEngine(e.options.BrowserName)
 	}
 
-	pw, err := playwright.Run()
+	pw, stopPW, err := startPlaywright(ctx)
 	if err != nil {
 		return ScenarioResult{}, fmt.Errorf("start playwright: %w", err)
 	}
-	defer func() { _ = pw.Stop() }()
+	defer stopPW()
 
 	session, err := newBrowserSession(pw, e.options)
 	if err != nil {
 		return ScenarioResult{}, err
 	}
+	stopWatch := session.watchContext(ctx)
+	defer stopWatch()
 	defer session.close()
+
+	return e.runScenarioOnSession(ctx, session, input, run)
+}
+
+func (e *PlaywrightExecutor) runScenarioOnSession(
+	ctx context.Context,
+	session *browserSession,
+	input ScenarioInput,
+	run ScenarioSessionRun,
+) (ScenarioResult, error) {
+	result := ScenarioResult{
+		FeaturePath: input.FeaturePath,
+		Scenario:    input.ScenarioName,
+		Status:      "passed",
+	}
 
 	if err := ctx.Err(); err != nil {
 		return ScenarioResult{}, err
@@ -98,10 +111,16 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 		}
 	}
 	if !failed {
-		if err := run(ctx, session); err != nil {
+		runCtx, err := run(ctx, session)
+		if err != nil {
 			failed = true
 			result.Status = "failed"
 			result.Message = err.Error()
+			if runCtx != nil {
+				if idx := runCtx.FailedLeafStep(); idx >= 0 {
+					result.FailedStep = &idx
+				}
+			}
 		}
 	}
 	if failed {
@@ -111,3 +130,4 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	}
 	return result, nil
 }
+

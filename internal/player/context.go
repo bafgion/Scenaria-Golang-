@@ -28,6 +28,7 @@ func WithPromptEmailCode(fn EmailCodePrompter) RunContextOption {
 type RunContext struct {
 	Variables       map[string]string
 	values          map[string]string
+	resolving       map[string]bool
 	rng             *rand.Rand
 	person          *personBundle
 	page            playwright.Page
@@ -37,8 +38,11 @@ type RunContext struct {
 	lastDownload    string
 	downloadDir     string
 	completedSteps  []gherkin.Step
+	failedLeafStep  int
 	PromptEmailCode func(email string) (string, error)
 }
+
+const noFailedLeafStep = -1
 
 func NewRunContext(variables map[string]string, seed int64, projectRoot string, opts ...RunContextOption) *RunContext {
 	if variables == nil {
@@ -47,9 +51,11 @@ func NewRunContext(variables map[string]string, seed int64, projectRoot string, 
 	ctx := &RunContext{
 		Variables:       variables,
 		values:          map[string]string{},
+		resolving:       map[string]bool{},
 		rng:             rand.New(rand.NewSource(seed)),
 		projectRoot:     projectRoot,
 		runSeed:         seed,
+		failedLeafStep:  noFailedLeafStep,
 		PromptEmailCode: emailCodePrompter(),
 	}
 	for _, opt := range opts {
@@ -76,6 +82,15 @@ func (c *RunContext) SetLastDownload(path string) {
 
 func (c *RunContext) LastDownload() string {
 	return c.lastDownload
+}
+
+func (c *RunContext) CleanupDownloads() {
+	if c == nil || c.downloadDir == "" {
+		return
+	}
+	_ = os.RemoveAll(c.downloadDir)
+	c.downloadDir = ""
+	c.lastDownload = ""
 }
 
 func (c *RunContext) DownloadDir() string {
@@ -172,6 +187,20 @@ func (c *RunContext) EvaluateCondition(cond *gherkin.Condition) bool {
 
 func (c *RunContext) RecordStep(step gherkin.Step) {
 	c.completedSteps = append(c.completedSteps, step)
+}
+
+func (c *RunContext) markFailedLeafStep() {
+	if c == nil {
+		return
+	}
+	c.failedLeafStep = len(c.completedSteps)
+}
+
+func (c *RunContext) FailedLeafStep() int {
+	if c == nil {
+		return noFailedLeafStep
+	}
+	return c.failedLeafStep
 }
 
 func (c *RunContext) PriorSteps() []gherkin.Step {

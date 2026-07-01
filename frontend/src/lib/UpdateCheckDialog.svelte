@@ -14,8 +14,9 @@
   export let onDownload: () => void = () => {}
   export let onApply: () => void = () => {}
 
-  $: progressPercent = Math.max(0, Math.min(100, progress?.percent ?? 0))
+  $: progressPercent = Math.max(0, Math.min(100, Number(progress?.percent ?? 0)))
   $: progressLabel = progress?.message || (downloading ? 'Обновление…' : '')
+  $: progressIndeterminate = downloading && progressPercent <= 0 && (!progress?.stage || progress.stage === 'download')
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape' && !downloading) onClose()
@@ -38,8 +39,8 @@
     {#if downloading && progressLabel}
       <div class="progress-block" aria-live="polite">
         <div class="progress-label">{progressLabel}</div>
-        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPercent}>
-          <div class="progress-fill" style:width="{progressPercent}%"></div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPercent} aria-busy={progressIndeterminate}>
+          <div class="progress-fill" class:indeterminate={progressIndeterminate} style:width="{progressPercent}%"></div>
         </div>
       </div>
     {/if}
@@ -101,5 +102,44 @@
     max-height: 160px;
     overflow: auto;
     font-family: var(--font-mono);
+  }
+
+  .progress-block {
+    margin: 0 0 12px;
+  }
+
+  .progress-label {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--color-text);
+  }
+
+  .progress-track {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--color-input);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    min-width: 0;
+    background: var(--color-primary);
+    transition: width 0.2s ease;
+  }
+
+  .progress-fill.indeterminate {
+    width: 40% !important;
+    animation: update-progress-slide 1.1s ease-in-out infinite;
+  }
+
+  @keyframes update-progress-slide {
+    0% {
+      transform: translateX(-120%);
+    }
+    100% {
+      transform: translateX(320%);
+    }
   }
 </style>

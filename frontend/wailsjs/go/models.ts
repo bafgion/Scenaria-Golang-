@@ -20,6 +20,7 @@ export namespace gui {
 	    parallelWorkers: number;
 	    slowMo: number;
 	    maxLoopIterations: number;
+	    navWaitUntil: string;
 	    filterRecording: boolean;
 	    navOnlyRecording: boolean;
 	    hoverRecord: boolean;
@@ -51,6 +52,7 @@ export namespace gui {
 	        this.parallelWorkers = source["parallelWorkers"];
 	        this.slowMo = source["slowMo"];
 	        this.maxLoopIterations = source["maxLoopIterations"];
+	        this.navWaitUntil = source["navWaitUntil"];
 	        this.filterRecording = source["filterRecording"];
 	        this.navOnlyRecording = source["navOnlyRecording"];
 	        this.hoverRecord = source["hoverRecord"];
@@ -268,6 +270,80 @@ export namespace gui {
 	        this.force = source["force"];
 	    }
 	}
+	export class FlakyStepDTO {
+	    path: string;
+	    step: number;
+	    failures: number;
+	    last_failed_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlakyStepDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.step = source["step"];
+	        this.failures = source["failures"];
+	        this.last_failed_at = source["last_failed_at"];
+	    }
+	}
+	export class FlakyScenarioDTO {
+	    path: string;
+	    failures: number;
+	    passes: number;
+	    total: number;
+	    flaky: boolean;
+	    last_failed_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FlakyScenarioDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.failures = source["failures"];
+	        this.passes = source["passes"];
+	        this.total = source["total"];
+	        this.flaky = source["flaky"];
+	        this.last_failed_at = source["last_failed_at"];
+	    }
+	}
+	export class FlakyMetricsDTO {
+	    scenarios: FlakyScenarioDTO[];
+	    steps: FlakyStepDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FlakyMetricsDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scenarios = this.convertValues(source["scenarios"], FlakyScenarioDTO);
+	        this.steps = this.convertValues(source["steps"], FlakyStepDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class HTTPAuthCredentials {
 	    username: string;
 	    password: string;
@@ -682,6 +758,7 @@ export namespace gui {
 	    message: string;
 	    runner: string;
 	    at: string;
+	    failed_step?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunResultEntry(source);
@@ -694,6 +771,7 @@ export namespace gui {
 	        this.message = source["message"];
 	        this.runner = source["runner"];
 	        this.at = source["at"];
+	        this.failed_step = source["failed_step"];
 	    }
 	}
 	

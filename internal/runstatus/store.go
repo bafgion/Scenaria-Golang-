@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 type Entry struct {
@@ -24,8 +26,8 @@ type Store struct {
 }
 
 func Open(projectRoot string) (*Store, error) {
-	dir := filepath.Join(projectRoot, ".scenaria")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := paths.WritableScenariaDir(projectRoot)
+	if err != nil {
 		return nil, fmt.Errorf("create run status dir: %w", err)
 	}
 	return &Store{path: filepath.Join(dir, "run_status.json")}, nil

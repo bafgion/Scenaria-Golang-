@@ -65,11 +65,15 @@ func PickerStepChoices(selector, keyword string) []PickerStepChoice {
 func (s *Service) PickSelector() PickSelectorResult {
 	s.mu.RLock()
 	session := s.liveSession
+	ctx := s.recordCtx
 	s.mu.RUnlock()
 	if session == nil {
 		return PickSelectorResult{Error: "браузер не открыт"}
 	}
-	selector, err := session.PickSelector(context.Background())
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	selector, err := session.PickSelector(ctx)
 	if err != nil {
 		if errors.Is(err, recorder.ErrPickerCancelled) {
 			return PickSelectorResult{Error: "отменено"}

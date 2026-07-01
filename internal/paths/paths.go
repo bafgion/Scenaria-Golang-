@@ -1,26 +1,11 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
-
-	"github.com/bafgion/scenaria-golang/internal/brand"
+	"strings"
 )
-
-func AppDataDir() string {
-	if runtime.GOOS == "windows" {
-		base := os.Getenv("APPDATA")
-		if base != "" {
-			return filepath.Join(base, brand.AppDataDir)
-		}
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return filepath.Join(home, ".scenaria")
-}
 
 func InferProjectRoot(paths []string) string {
 	if len(paths) == 0 {
@@ -61,4 +46,27 @@ func InferProjectRoot(paths []string) string {
 
 func ScenariaProjectDir(projectRoot string) string {
 	return filepath.Join(projectRoot, ".scenaria")
+}
+
+// ConfineToProjectRoot resolves userPath relative to projectRoot and rejects paths outside the project.
+func ConfineToProjectRoot(projectRoot, userPath string) (string, error) {
+	userPath = strings.TrimSpace(userPath)
+	if userPath == "" {
+		return "", nil
+	}
+	absRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve project root: %w", err)
+	}
+	var absPath string
+	if filepath.IsAbs(userPath) {
+		absPath = filepath.Clean(userPath)
+	} else {
+		absPath = filepath.Clean(filepath.Join(absRoot, userPath))
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("path must be inside project: %s", userPath)
+	}
+	return absPath, nil
 }

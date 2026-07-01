@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
@@ -26,8 +27,15 @@ type Service struct {
 	mu           sync.RWMutex
 	projectPath  string
 	liveSession  *recorder.LiveSession
+	recordCtx    context.Context
 	recordCancel context.CancelFunc
 	recordEmit   func(string, any)
+	recordGen    uint64
+	runCtx       context.Context
+	runCancel    context.CancelFunc
+	runGen       uint64
+	tempFeatureMu   sync.Mutex
+	tempFeatureDirs []string
 }
 
 func NewService() *Service {
@@ -123,6 +131,7 @@ type AppSettingsDTO struct {
 	ParallelWorkers   int    `json:"parallelWorkers"`
 	SlowMo            int    `json:"slowMo"`
 	MaxLoopIterations int    `json:"maxLoopIterations"`
+	NavWaitUntil      string `json:"navWaitUntil"`
 	FilterRecording   bool   `json:"filterRecording"`
 	NavOnlyRecording  bool   `json:"navOnlyRecording"`
 	HoverRecord       bool   `json:"hoverRecord"`
@@ -150,11 +159,33 @@ type UntitledTabDTO struct {
 }
 
 type RunResultEntry struct {
-	Path    string `json:"path"`
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Runner  string `json:"runner"`
-	At      string `json:"at"`
+	Path       string `json:"path"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	Runner     string `json:"runner"`
+	At         string `json:"at"`
+	FailedStep *int   `json:"failed_step,omitempty"`
+}
+
+type FlakyScenarioDTO struct {
+	Path       string `json:"path"`
+	Failures   int    `json:"failures"`
+	Passes     int    `json:"passes"`
+	Total      int    `json:"total"`
+	Flaky      bool   `json:"flaky"`
+	LastFailed string `json:"last_failed_at,omitempty"`
+}
+
+type FlakyStepDTO struct {
+	Path       string `json:"path"`
+	Step       int    `json:"step"`
+	Failures   int    `json:"failures"`
+	LastFailed string `json:"last_failed_at,omitempty"`
+}
+
+type FlakyMetricsDTO struct {
+	Scenarios []FlakyScenarioDTO `json:"scenarios"`
+	Steps     []FlakyStepDTO     `json:"steps"`
 }
 
 func (s *Service) ListRunResults(limit int) ([]RunResultEntry, error) {
@@ -173,11 +204,54 @@ func (s *Service) ListRunResults(limit int) ([]RunResultEntry, error) {
 	out := make([]RunResultEntry, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, RunResultEntry{
-			Path:    e.Path,
-			Success: e.Success,
-			Message: e.Message,
-			Runner:  e.Runner,
-			At:      e.At,
+			Path:       e.Path,
+			Success:    e.Success,
+			Message:    e.Message,
+			Runner:     e.Runner,
+			At:         e.At,
+			FailedStep: e.FailedStep,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) FlakyMetrics(historyLimit int) (FlakyMetricsDTO, error) {
+	path := s.ProjectPath()
+	if path == "" {
+		return FlakyMetricsDTO{}, nil
+	}
+	store, err := runstatus.Open(path)
+	if err != nil {
+		return FlakyMetricsDTO{}, err
+	}
+	if historyLimit <= 0 {
+		historyLimit = 200
+	}
+	entries, err := store.List(historyLimit)
+	if err != nil {
+		return FlakyMetricsDTO{}, err
+	}
+	scenarios, steps := runstatus.FlakyStats(entries)
+	out := FlakyMetricsDTO{
+		Scenarios: make([]FlakyScenarioDTO, 0, len(scenarios)),
+		Steps:     make([]FlakyStepDTO, 0, len(steps)),
+	}
+	for _, item := range scenarios {
+		out.Scenarios = append(out.Scenarios, FlakyScenarioDTO{
+			Path:       item.Path,
+			Failures:   item.Failures,
+			Passes:     item.Passes,
+			Total:      item.Total,
+			Flaky:      item.Flaky,
+			LastFailed: item.LastFailed,
+		})
+	}
+	for _, item := range steps {
+		out.Steps = append(out.Steps, FlakyStepDTO{
+			Path:       item.Path,
+			Step:       item.Step,
+			Failures:   item.Failures,
+			LastFailed: item.LastFailed,
 		})
 	}
 	return out, nil
@@ -295,15 +369,39 @@ func (s *Service) SaveFeature(path, content string) error {
 }
 
 func (s *Service) WriteTempFeature(content string) (string, error) {
-	dir, err := os.MkdirTemp("", "scenaria-run-")
-	if err != nil {
-		return "", fmt.Errorf("create temp dir: %w", err)
+	root := s.ProjectPath()
+	var dir string
+	if root != "" {
+		dir = filepath.Join(root, ".scenaria", "temp", fmt.Sprintf("run-%d", time.Now().UnixNano()))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return "", fmt.Errorf("create temp dir: %w", err)
+		}
+	} else {
+		var err error
+		dir, err = os.MkdirTemp("", "scenaria-run-")
+		if err != nil {
+			return "", fmt.Errorf("create temp dir: %w", err)
+		}
 	}
 	path := filepath.Join(dir, "scenario.feature")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		_ = os.RemoveAll(dir)
 		return "", fmt.Errorf("write temp feature: %w", err)
 	}
+	s.tempFeatureMu.Lock()
+	s.tempFeatureDirs = append(s.tempFeatureDirs, dir)
+	s.tempFeatureMu.Unlock()
 	return path, nil
+}
+
+func (s *Service) cleanupTempFeatureDirs() {
+	s.tempFeatureMu.Lock()
+	dirs := s.tempFeatureDirs
+	s.tempFeatureDirs = nil
+	s.tempFeatureMu.Unlock()
+	for _, dir := range dirs {
+		_ = os.RemoveAll(dir)
+	}
 }
 
 func (s *Service) InitProject() (string, error) {
@@ -315,6 +413,7 @@ func (s *Service) InitProject() (string, error) {
 }
 
 func (s *Service) Run(req RunRequest) RunResult {
+	defer s.cleanupTempFeatureDirs()
 	path := s.ProjectPath()
 	args := []string{}
 	if len(req.Targets) > 0 {
@@ -384,11 +483,40 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.EndStep >= 0 {
 		args = append(args, "--end-step", fmt.Sprintf("%d", req.EndStep))
 	}
-	out, err := captureCLI(func() error { return cli.RunRun(args) })
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if s.runCancel != nil {
+		s.runCancel()
+	}
+	s.runGen++
+	myGen := s.runGen
+	s.runCtx = ctx
+	s.runCancel = cancel
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.runGen == myGen {
+			s.runCtx = nil
+			s.runCancel = nil
+		}
+		s.mu.Unlock()
+		cancel()
+	}()
+	out, err := captureCLI(func() error { return cli.RunRunContext(ctx, args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
 	return RunResult{Output: out}
+}
+
+// CancelRun aborts an in-progress GUI scenario run.
+func (s *Service) CancelRun() {
+	s.mu.Lock()
+	cancel := s.runCancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (s *Service) Validate(req ValidateRequest) RunResult {
@@ -533,6 +661,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		ParallelWorkers:   maxInt(1, cfg.ParallelWorkers),
 		SlowMo:            maxInt(0, cfg.SlowMo),
 		MaxLoopIterations: maxInt(1, cfg.MaxLoopIterations),
+		NavWaitUntil:        strings.TrimSpace(cfg.NavWaitUntil),
 		FilterRecording:   cfg.RecordingFilterMode,
 		NavOnlyRecording:    cfg.NavOnlyRecording,
 		HoverRecord:         cfg.RecordingHoverMode,
@@ -571,6 +700,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 		ParallelWorkers:     maxInt(1, dto.ParallelWorkers),
 		SlowMo:              maxInt(0, dto.SlowMo),
 		MaxLoopIterations:   maxInt(1, dto.MaxLoopIterations),
+		NavWaitUntil:        strings.TrimSpace(dto.NavWaitUntil),
 		RecordingFilterMode: dto.FilterRecording,
 		NavOnlyRecording:      dto.NavOnlyRecording,
 		RecordingHoverMode:    dto.HoverRecord,
@@ -612,7 +742,12 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	return nil
 }
 
+var captureStdoutMu sync.Mutex
+
 func captureCLI(fn func() error) (string, error) {
+	captureStdoutMu.Lock()
+	defer captureStdoutMu.Unlock()
+
 	old := os.Stdout
 	r, w, err := os.Pipe()
 	if err != nil {

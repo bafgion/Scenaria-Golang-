@@ -30,6 +30,7 @@ func NewApp() *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	player.SetEmailCodePrompt(a.promptEmailCode)
+	player.SetOTPCancelHook(a.CancelOTP)
 }
 
 func (a *App) promptEmailCode(email string) (string, error) {
@@ -39,6 +40,8 @@ func (a *App) promptEmailCode(email string) (string, error) {
 	a.otpMu.Unlock()
 
 	runtime.EventsEmit(a.ctx, "otp-prompt", email)
+
+	defer a.clearOTPChannels()
 
 	select {
 	case code := <-a.otpCode:
@@ -50,22 +53,39 @@ func (a *App) promptEmailCode(email string) (string, error) {
 	}
 }
 
+func (a *App) clearOTPChannels() {
+	a.otpMu.Lock()
+	a.otpCode = nil
+	a.otpErr = nil
+	a.otpMu.Unlock()
+}
+
 func (a *App) SubmitOTPCode(code string) bool {
 	a.otpMu.Lock()
 	defer a.otpMu.Unlock()
-	if a.otpCode != nil {
-		a.otpCode <- code
-		return true
+	if a.otpCode == nil {
+		return false
 	}
-	return false
+	select {
+	case a.otpCode <- code:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *App) CancelOTP() {
 	a.otpMu.Lock()
 	defer a.otpMu.Unlock()
-	if a.otpErr != nil {
-		a.otpErr <- fmt.Errorf("otp cancelled")
+	if a.otpErr == nil {
+		return
 	}
+	select {
+	case a.otpErr <- fmt.Errorf("otp cancelled"):
+	default:
+	}
+	a.otpCode = nil
+	a.otpErr = nil
 }
 
 func (a *App) Version() string {
@@ -102,6 +122,10 @@ func (a *App) InitProject() (string, error) {
 
 func (a *App) Run(req gui.RunRequest) gui.RunResult {
 	return a.svc.Run(req)
+}
+
+func (a *App) CancelRun() {
+	a.svc.CancelRun()
 }
 
 func (a *App) Validate(req gui.ValidateRequest) gui.RunResult {
@@ -181,8 +205,20 @@ func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDT
 	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}
 }
 
-func (a *App) DownloadUpdate() (string, error) {
-	return a.svc.DownloadUpdate()
+func (a *App) DownloadUpdate() {
+	if a.ctx == nil {
+		return
+	}
+	go func() {
+		path, err := a.svc.DownloadUpdateProgress(func(p gui.UpdateProgressDTO) {
+			runtime.EventsEmit(a.ctx, "update-progress", p)
+		})
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Error: err.Error()})
+			return
+		}
+		runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Output: path})
+	}()
 }
 
 func (a *App) ApplyUpdate() {
@@ -221,6 +257,10 @@ func (a *App) InstallBrowserEngine(engine string) gui.RunResult {
 
 func (a *App) ListRunResults(limit int) ([]gui.RunResultEntry, error) {
 	return a.svc.ListRunResults(limit)
+}
+
+func (a *App) FlakyMetrics(historyLimit int) (gui.FlakyMetricsDTO, error) {
+	return a.svc.FlakyMetrics(historyLimit)
 }
 
 func (a *App) BundledExamplesPath() string {
@@ -375,11 +415,18 @@ func (a *App) RunPlugin(req gui.PluginRunRequest) gui.RunResult {
 	return a.svc.RunPlugin(req)
 }
 
+func (a *App) emitEvent(name string, payload any) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, name, payload)
+}
+
 func (a *App) StartVanessaRun(req gui.PluginRunRequest) {
 	go func() {
-		runtime.EventsEmit(a.ctx, "vanessa-run-started", nil)
+		a.emitEvent("vanessa-run-started", nil)
 		result := a.svc.RunVanessaPlugin(req)
-		runtime.EventsEmit(a.ctx, "vanessa-run-finished", result)
+		a.emitEvent("vanessa-run-finished", result)
 	}()
 }
 
@@ -394,7 +441,7 @@ func (a *App) PollBrowserSession() gui.BrowserSessionDTO {
 func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
 	go func() {
 		emit := func(name string, payload any) {
-			runtime.EventsEmit(a.ctx, name, payload)
+			a.emitEvent(name, payload)
 		}
 		emit("browser-opened", nil)
 		result := a.svc.OpenBrowser(req, emit)
@@ -405,7 +452,7 @@ func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
 func (a *App) StartRecord(req gui.RecordRequest) {
 	go func() {
 		emit := func(name string, payload any) {
-			runtime.EventsEmit(a.ctx, name, payload)
+			a.emitEvent(name, payload)
 		}
 		req.BrowseOnly = false
 		if !a.svc.HasLiveBrowser() {
@@ -415,7 +462,7 @@ func (a *App) StartRecord(req gui.RecordRequest) {
 		if !a.svc.HasLiveBrowser() {
 			emit("record-finished", result)
 		} else if result.Error != "" {
-			runtime.EventsEmit(a.ctx, "record-error", result.Error)
+			a.emitEvent("record-error", result.Error)
 		}
 	}()
 }

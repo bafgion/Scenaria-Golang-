@@ -11,6 +11,8 @@ describe('matchHotkey', () => {
     expect(matchHotkey(keyEvent({ code: 'KeyN', ctrlKey: true }))).toBe('new')
     expect(matchHotkey(keyEvent({ code: 'F1' }))).toBe('steps-help')
     expect(matchHotkey(keyEvent({ code: 'F1', shiftKey: true }))).toBe('hotkeys')
+    expect(matchHotkey(keyEvent({ code: 'KeyO', ctrlKey: true, shiftKey: true }))).toBe('goto-symbol')
+    expect(matchHotkey(keyEvent({ code: 'KeyF', shiftKey: true, altKey: true }))).toBe('format')
   })
 })
 

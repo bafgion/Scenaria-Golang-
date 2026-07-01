@@ -21,10 +21,13 @@
     toMonacoOptions,
     type EditorSettings,
   } from './editorOptions'
+  import { editorOptionsForLineCount } from './editorLargeFile'
   import type { gui } from '../../wailsjs/go/models'
   import type { HotkeyId } from './hotkeys'
   import type { editor as MonacoEditor } from 'monaco-editor'
+  import { replaceModelText } from './editorTextSync'
   import { MonacoTabModelStore } from './monacoTabModels'
+  import { MonacoTabViewStateStore } from './monacoTabViewState'
 
   export let value = ''
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
@@ -40,31 +43,61 @@
   let editor: MonacoEditor.IStandaloneCodeEditor | null = null
   let monacoApi: typeof import('monaco-editor') | null = null
   let applyingExternal = false
+  let suppressMarkerSync = false
   let validationMarkerIssues: MarkerIssue[] = []
   let activeTabPath: string | null = null
   let welcomeModel: MonacoEditor.ITextModel | null = null
+  let largeFileOptionsTimer: ReturnType<typeof setTimeout> | null = null
   const tabModels = new MonacoTabModelStore()
+  const tabViewStates = new MonacoTabViewStateStore()
 
   const dispatch = createEventDispatcher<{ change: string; cursorline: number }>()
 
   function ensureWelcomeModel(text: string): MonacoEditor.ITextModel {
     if (!monacoApi) throw new Error('monaco not ready')
     if (welcomeModel && !welcomeModel.isDisposed()) {
-      if (welcomeModel.getValue() !== text) welcomeModel.setValue(text)
       return welcomeModel
     }
     welcomeModel = monacoApi.editor.createModel(text, 'scenaria-feature')
     return welcomeModel
   }
 
+  function finishExternalEdit() {
+    applyingExternal = false
+    suppressMarkerSync = false
+  }
+
   function attachModel(model: MonacoEditor.ITextModel) {
     if (!editor) return
     applyingExternal = true
+    suppressMarkerSync = true
     editor.setModel(model)
-    value = model.getValue()
+    const modelText = model.getValue()
+    if (modelText !== value) {
+      value = modelText
+      dispatch('change', modelText)
+    }
     queueMicrotask(() => {
-      applyingExternal = false
+      finishExternalEdit()
+      syncEditorMarkers()
+      syncLargeFileOptions()
     })
+  }
+
+  function syncLargeFileOptions() {
+    if (!editor || !monacoApi) return
+    const lineCount = editor.getModel()?.getLineCount() ?? 0
+    editor.updateOptions(editorOptionsForLineCount(editorSettings, monacoApi, lineCount))
+    refreshGherkinCodeLens(editor)
+    refreshGherkinInlayHints(editor)
+  }
+
+  function scheduleLargeFileOptionsSync() {
+    if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
+    largeFileOptionsTimer = setTimeout(() => {
+      largeFileOptionsTimer = null
+      syncLargeFileOptions()
+    }, 250)
   }
 
   function buildEditorOptions(monaco: typeof import('monaco-editor')) {
@@ -85,7 +118,8 @@
     if (!editor || !monacoApi) return
     const theme = settings.theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
     monacoApi.editor.setTheme(theme)
-    editor.updateOptions(toMonacoOptions(settings, monacoApi))
+    const lineCount = editor.getModel()?.getLineCount() ?? 0
+    editor.updateOptions(editorOptionsForLineCount(settings, monacoApi, lineCount))
     refreshGherkinCodeLens(editor)
     refreshGherkinInlayHints(editor)
   }
@@ -141,6 +175,7 @@
       }
       value = editor.getValue()
       dispatch('change', value)
+      scheduleLargeFileOptionsSync()
     })
 
     editor.onDidChangeCursorPosition((event) => {
@@ -163,6 +198,18 @@
     })
     editor.addCommand(KeyMod.Shift | KeyMod.Alt | KeyCode.KeyF, () => {
       void formatDocument()
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyZ, () => {
+      editor?.trigger('keyboard', 'undo', {})
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyZ, () => {
+      editor?.trigger('keyboard', 'redo', {})
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyY, () => {
+      editor?.trigger('keyboard', 'redo', {})
+    })
+    editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyO, () => {
+      openSymbolOutline()
     })
 
     applyScenarioHintMarkers()
@@ -211,6 +258,7 @@
   }
 
   onDestroy(() => {
+    if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
     if (monacoApi) {
       tabModels.releaseAll(monacoApi)
     }
@@ -224,24 +272,44 @@
 
   /** Переключить активную вкладку: отдельная модель Monaco на файл. */
   export function activateTab(path: string | null, text: string) {
+    if (editor) {
+      tabViewStates.capture(editor, activeTabPath)
+    }
     activeTabPath = path
     if (!editor || !monacoApi) {
       value = text
       return
     }
     if (!path) {
-      attachModel(ensureWelcomeModel(text))
+      const model = ensureWelcomeModel(text)
+      attachModel(model)
+      if (text !== model.getValue()) {
+        void setContent(text).then(() => {
+          if (editor) tabViewStates.restore(editor, path)
+        })
+      } else {
+        syncEditorMarkers()
+        tabViewStates.restore(editor, path)
+      }
+      return
+    }
+    const existing = tabModels.getModel(monacoApi, path)
+    if (existing) {
+      attachModel(existing)
       syncEditorMarkers()
+      tabViewStates.restore(editor, path)
       return
     }
     const model = tabModels.getOrCreate(monacoApi, path, text)
     attachModel(model)
+    tabViewStates.restore(editor, path)
     syncEditorMarkers()
   }
 
   /** Закрыть вкладку — освободить модель и память Monaco. */
   export function releaseTab(path: string) {
     if (!monacoApi || !path) return
+    tabViewStates.drop(path)
     tabModels.release(monacoApi, path)
     if (activeTabPath === path) {
       activeTabPath = null
@@ -251,32 +319,49 @@
   /** Синхронизировать модели с набором открытых путей (после выгрузки тел вкладок). */
   export function retainTabs(paths: string[]) {
     if (!monacoApi) return
+    const keep = new Set(paths)
+    for (const path of tabModels.trackedPaths()) {
+      if (!keep.has(path)) {
+        tabViewStates.drop(path)
+      }
+    }
     tabModels.releaseExcept(monacoApi, paths)
   }
 
-  export function setContent(text: string) {
+  /** Replace editor text from outside (hint fix, refactor, recording). Deferred to avoid Monaco quick-fix deadlocks. */
+  export function setContent(text: string): Promise<void> {
     if (!editor) {
       value = text
-      return
+      return Promise.resolve()
+    }
+    if (editor.getModel()?.getValue() === text) {
+      value = text
+      return Promise.resolve()
     }
     applyingExternal = true
-    const model = editor.getModel()
-    if (model) {
-      editor.pushUndoStop()
-      if (model.getValue() !== text) {
-        model.setValue(text)
-      }
-      editor.setPosition({ lineNumber: 1, column: 1 })
-      editor.pushUndoStop()
-    }
-    value = text
-    queueMicrotask(() => {
-      applyingExternal = false
+    suppressMarkerSync = true
+    const ed = editor
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        if (ed && ed === editor) {
+          replaceModelText(ed, text, 'set-content')
+          value = text
+        }
+        finishExternalEdit()
+        syncEditorMarkers()
+        resolve()
+      }, 0)
     })
   }
 
-  $: if (editor && !applyingExternal && activeTabPath === null && editor.getValue() !== value) {
-    setContent(value)
+  $: if (
+    editor &&
+    !applyingExternal &&
+    !suppressMarkerSync &&
+    activeTabPath === null &&
+    editor.getValue() !== value
+  ) {
+    void setContent(value)
   }
 
   export function insertAtCursor(text: string) {
@@ -304,6 +389,7 @@
   }
 
   function syncEditorMarkers() {
+    if (suppressMarkerSync) return
     const model = editor?.getModel()
     if (!model || !monacoApi) return
     applyEditorMarkers(monacoApi, model, validationMarkerIssues, scenarioHints)
@@ -325,6 +411,11 @@
 
   export function getCursorLine(): number {
     return editor?.getPosition()?.lineNumber ?? 1
+  }
+
+  /** Source of truth for feature text (avoids stale Svelte state during live record). */
+  export function getEditorText(): string {
+    return editor?.getModel()?.getValue() ?? value
   }
 </script>
 

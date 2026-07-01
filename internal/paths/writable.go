@@ -23,7 +23,11 @@ func WritableScenariaDir(projectRoot string) (string, error) {
 	if err != nil {
 		abs = projectRoot
 	}
-	fallback := filepath.Join(AppDataDir(), "projects", projectScenariaSlug(abs))
+	slug := projectScenariaSlug(abs)
+	if legacy := LegacyProjectMirrorDir(slug); legacy != "" && dirWritable(legacy) {
+		return legacy, nil
+	}
+	fallback := filepath.Join(AppDataDir(), "projects", slug)
 	if err := os.MkdirAll(fallback, 0o755); err != nil {
 		return "", fmt.Errorf("create scenaria dir: %w", err)
 	}

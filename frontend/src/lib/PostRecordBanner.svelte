@@ -3,6 +3,7 @@
   export let stepCount = 0
   export let onValidate: () => void = () => {}
   export let onSave: () => void = () => {}
+  export let onShowDiff: () => void = () => {}
   export let onClose: () => void = () => {}
 
   function basename(p: string): string {
@@ -18,6 +19,7 @@
       <span class="hint-note">Подсказки — в редакторе (лампочка / Ctrl+.)</span>
     </div>
     <div class="banner-actions">
+      <button type="button" on:click={onShowDiff}>Сравнить</button>
       <button type="button" class="primary" on:click={onValidate}>Проверить</button>
       <button type="button" on:click={onSave}>Сохранить</button>
       <button type="button" class="dismiss" on:click={onClose}>Закрыть</button>

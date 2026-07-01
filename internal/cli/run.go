@@ -39,9 +39,17 @@ type runOptions struct {
 	maxLoopIterations int
 	startStep         int
 	endStep           int
+	navWaitUntil      string
 }
 
 func RunRun(args []string) error {
+	ctx, stop := InterruptContext()
+	defer stop()
+	return RunRunContext(ctx, args)
+}
+
+// RunRunContext executes scenarios using the supplied context (GUI cancel, tests).
+func RunRunContext(ctx context.Context, args []string) error {
 	opts, err := parseRunOptions(args)
 	if err != nil {
 		return err
@@ -56,6 +64,7 @@ func RunRun(args []string) error {
 		}
 		files = append(files, discovered...)
 	}
+	files = dedupePaths(files)
 	if len(files) == 0 {
 		return fmt.Errorf("no .feature files found in %v", opts.targets)
 	}
@@ -120,11 +129,29 @@ func RunRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := runner.Execute(context.Background(), plan)
+	result, err := runner.Execute(ctx, plan)
+	if reportErr := writeRunReports(opts, result); reportErr != nil {
+		return reportErr
+	}
+	if !opts.dryRun {
+		recordRunStatus(opts, result)
+	}
+
+	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
+	if opts.startStep >= 0 || opts.endStep >= 0 {
+		fmt.Printf("Partial run: %s\n", formatPartialStepRange(opts.startStep, opts.endStep))
+	}
+	if opts.dryRun {
+		fmt.Println("Dry-run mode enabled: browser execution skipped")
+		return nil
+	}
 	if err != nil {
 		return err
 	}
+	return nil
+}
 
+func writeRunReports(opts runOptions, result player.ExecutionResult) error {
 	if opts.summaryJSON != "" {
 		if writeErr := report.WriteRunSummary(opts.summaryJSON, report.FromExecutionResult(result)); writeErr != nil {
 			return writeErr
@@ -149,36 +176,31 @@ func RunRun(args []string) error {
 		}
 		fmt.Printf("Wrote Allure results: %s\n", opts.allureDir)
 	}
+	return nil
+}
 
-	if !opts.dryRun {
-		if root := paths.InferProjectRoot(opts.targets); root != "" {
-			if store, storeErr := runstatus.Open(root); storeErr == nil {
-				for _, scenarioResult := range result.ScenarioResults {
-					_ = store.Record(runstatus.Entry{
-						Path:    scenarioResult.FeaturePath + "::" + scenarioResult.Scenario,
-						Success: scenarioResult.Status == "passed",
-						Message: scenarioResult.Message,
-						Runner:  opts.engine,
-					})
+func recordRunStatus(opts runOptions, result player.ExecutionResult) {
+	if root := paths.InferProjectRoot(opts.targets); root != "" {
+		if store, storeErr := runstatus.Open(root); storeErr == nil {
+			for _, scenarioResult := range result.ScenarioResults {
+				entry := runstatus.Entry{
+					Path:    scenarioResult.FeaturePath + "::" + scenarioResult.Scenario,
+					Success: scenarioResult.Status == "passed",
+					Message: scenarioResult.Message,
+					Runner:  opts.engine,
 				}
+				if scenarioResult.FailedStep != nil {
+					entry.FailedStep = scenarioResult.FailedStep
+				}
+				_ = store.Record(entry)
 			}
 		}
 	}
-
-	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
-	if opts.startStep >= 0 || opts.endStep >= 0 {
-		fmt.Printf("Partial run: %s\n", formatPartialStepRange(opts.startStep, opts.endStep))
-	}
-	if opts.dryRun {
-		fmt.Println("Dry-run mode enabled: browser execution skipped")
-		return nil
-	}
-	return nil
 }
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--html <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>] [--nav-wait-until load|domcontentloaded|networkidle|commit]")
 	}
 	opts := runOptions{
 		engine:    "",
@@ -197,6 +219,7 @@ func parseRunOptions(args []string) (runOptions, error) {
 		if cfg.MaxLoopIterations > 0 {
 			opts.maxLoopIterations = cfg.MaxLoopIterations
 		}
+		opts.navWaitUntil = cfg.NavWaitUntil
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -337,6 +360,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 				return runOptions{}, fmt.Errorf("--end-step expects non-negative integer, got %q", args[i])
 			}
 			opts.endStep = end
+		case "--nav-wait-until":
+			if i+1 >= len(args) {
+				return runOptions{}, fmt.Errorf("--nav-wait-until requires a value (load|domcontentloaded|networkidle|commit)")
+			}
+			i++
+			opts.navWaitUntil = args[i]
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}
@@ -386,6 +415,13 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 	case "playwright":
 		appCfg, _ := settings.LoadDefaultAppSettings()
 		httpCreds := player.ResolveRunHTTPCredentials(opts.baseURL, plan, appCfg)
+		navWait := opts.navWaitUntil
+		if navWait == "" && appCfg != nil {
+			navWait = appCfg.NavWaitUntil
+		}
+		if _, err := player.ParseNavWaitUntil(navWait); err != nil {
+			return nil, err
+		}
 		return player.BrowserRunner{
 			Executor: player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
 				BrowserName:       opts.browser,
@@ -397,11 +433,12 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 				VideoDir:          opts.videoDir,
 				HTTPCredentials:   httpCreds,
 				MaxLoopIterations: opts.maxLoopIterations,
+				NavWaitUntil:      navWait,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)
+		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", engine)
 	}
 }
 

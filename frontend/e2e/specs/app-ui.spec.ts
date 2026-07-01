@@ -8,6 +8,7 @@ import {
   openMenuItem,
   openTestProject,
   startRecordingFromDialog,
+  stopRecording,
 } from '../helpers/app'
 
 test.beforeEach(async ({ page }) => {
@@ -273,4 +274,49 @@ test('live recording inserts steps into editor', async ({ page }) => {
   await page.keyboard.press('Control+Space')
   await expect(page.locator('.monaco-editor .suggest-widget')).toBeVisible({ timeout: 10_000 })
   await expect(page.locator('.monaco-list-row', { hasText: 'нажимаю' }).first()).toBeVisible()
+})
+
+test('Ctrl+Shift+O opens symbol outline in editor', async ({ page }) => {
+  await bootApp(page)
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await expect(editorLine(page, 'тест')).toBeVisible({ timeout: 20_000 })
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('Control+Shift+KeyO')
+  await expect(page.locator('.quick-input-widget .monaco-list-row')).not.toHaveCount(0, {
+    timeout: 10_000,
+  })
+})
+
+test('post-record diff compares baseline and recorded steps', async ({ page }) => {
+  await bootApp(page, '?e2e=post-record-diff')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await startRecordingFromDialog(page)
+  await expect(editorLine(page, 'нажимаю "#login"')).toBeVisible({ timeout: 10_000 })
+  await stopRecording(page)
+  await expect(page.getByRole('status').filter({ hasText: 'Записано шагов' })).toBeVisible({
+    timeout: 10_000,
+  })
+  await page.getByRole('button', { name: 'Сравнить' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Изменения после записи' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.diff-host .view-lines').first()).toBeVisible({ timeout: 10_000 })
+  expect(await dialog.locator('.diff-host .monaco-editor').count()).toBeGreaterThanOrEqual(2)
+})
+
+test('run history flaky filter shows unstable scenarios', async ({ page }) => {
+  await bootApp(page, '?e2e=flaky-run')
+  await openTestProject(page)
+  await openMenuItem(page, 'Запись и тест', 'История запусков…')
+  const dialog = page.getByRole('dialog', { name: 'История запусков' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.flaky-tag').first()).toBeVisible()
+  await dialog.locator('select').selectOption('flaky')
+  await expect(dialog.locator('tbody tr')).toHaveCount(2)
+  await expect(dialog.locator('.flaky-tag')).toHaveCount(2)
+  await dialog.getByRole('button', { name: 'Закрыть' }).click()
+  await expect(dialog).toBeHidden()
+  await openMenuItem(page, 'Вид', 'Результаты')
+  await expect(page.locator('.results-panel .flaky-tag').first()).toBeVisible()
 })

@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { flattenFeatureSymbols, parseFeatureSymbols } from './gherkinDocumentSymbols'
+  import { flattenFeatureSymbols } from './gherkinDocumentSymbols'
+  import { getCachedFeatureSymbols } from './featureSymbolCache'
 
   export let text = ''
   export let currentLine = 1
   export let onGoto: (line: number) => void = () => {}
 
-  $: rows = flattenFeatureSymbols(parseFeatureSymbols(text))
+  $: rows = flattenFeatureSymbols(getCachedFeatureSymbols(text))
 </script>
 
 {#if rows.length === 0}

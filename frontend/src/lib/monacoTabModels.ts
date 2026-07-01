@@ -31,9 +31,7 @@ export class MonacoTabModelStore {
   getOrCreate(monaco: MonacoApi, path: string, text: string): MonacoEditor.ITextModel {
     const existing = this.getModel(monaco, path)
     if (existing) {
-      if (existing.getValue() !== text) {
-        existing.setValue(text)
-      }
+      // Model is source of truth while the tab is open — setValue would wipe undo history.
       this.tracked.add(path)
       return existing
     }

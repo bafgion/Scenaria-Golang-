@@ -1,8 +1,11 @@
 package player
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
+
+	playwright "github.com/mxschmitt/playwright-go"
 )
 
 const (
@@ -24,7 +27,33 @@ func UrlsMatch(current, target string) bool {
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	return cur.Scheme == tgt.Scheme &&
-		cur.Host == tgt.Host &&
-		strings.TrimRight(cur.Path, "/") == strings.TrimRight(tgt.Path, "/")
+	if cur.Scheme != tgt.Scheme || cur.Host != tgt.Host {
+		return false
+	}
+	if strings.TrimRight(cur.Path, "/") != strings.TrimRight(tgt.Path, "/") {
+		return false
+	}
+	if tgt.RawQuery != "" && cur.RawQuery != tgt.RawQuery {
+		return false
+	}
+	if tgt.Fragment != "" && cur.Fragment != tgt.Fragment {
+		return false
+	}
+	return true
+}
+
+// ParseNavWaitUntil maps CLI/settings values to Playwright navigation wait states.
+func ParseNavWaitUntil(s string) (*playwright.WaitUntilState, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "domcontentloaded", "dom":
+		return playwright.WaitUntilStateDomcontentloaded, nil
+	case "load":
+		return playwright.WaitUntilStateLoad, nil
+	case "networkidle", "network_idle":
+		return playwright.WaitUntilStateNetworkidle, nil
+	case "commit":
+		return playwright.WaitUntilStateCommit, nil
+	default:
+		return nil, fmt.Errorf("unsupported nav wait until %q (supported: load, domcontentloaded, networkidle, commit)", s)
+	}
 }

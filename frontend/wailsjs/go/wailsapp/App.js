@@ -42,6 +42,10 @@ export function CancelRecording() {
   return window['go']['wailsapp']['App']['CancelRecording']();
 }
 
+export function CancelRun() {
+  return window['go']['wailsapp']['App']['CancelRun']();
+}
+
 export function CaptureBrowserSession(arg1) {
   return window['go']['wailsapp']['App']['CaptureBrowserSession'](arg1);
 }
@@ -96,6 +100,10 @@ export function EventBindingTypes() {
 
 export function Export(arg1) {
   return window['go']['wailsapp']['App']['Export'](arg1);
+}
+
+export function FlakyMetrics(arg1) {
+  return window['go']['wailsapp']['App']['FlakyMetrics'](arg1);
 }
 
 export function FocusBrowser() {

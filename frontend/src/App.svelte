@@ -62,6 +62,7 @@
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
+  import PostRecordDiffDialog from './lib/PostRecordDiffDialog.svelte'
   import type { HintActionHandlers } from './lib/gherkinHintActions'
   import RunHistoryDialog from './lib/RunHistoryDialog.svelte'
   import StepsHelpDialog from './lib/StepsHelpDialog.svelte'
@@ -91,7 +92,7 @@
   import BrowserOverlay from './lib/BrowserOverlay.svelte'
   import SplashScreen from './lib/SplashScreen.svelte'
   import { beginSplashWindow, openMainWindow, setSplashDocumentState } from './lib/splashWindow'
-  import { preloadMonacoEditor } from './lib/appBootstrap'
+  import { prefetchMonacoEditor } from './lib/appBootstrap'
   import { setStepHoverEnabled } from './lib/gherkinStepHover'
   import { filterScenarioHints, applyAutoFixableScenarioHints } from './lib/scenarioHints'
   import {
@@ -101,6 +102,7 @@
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
+  import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
   import { icons, toolbarIcons } from './lib/icons'
@@ -112,6 +114,7 @@
     SaveFeature,
     WriteTempFeature,
     Run,
+    CancelRun,
     Validate,
     ValidateFeature,
     ListTestClients,
@@ -145,6 +148,7 @@
     OpenExternalURL,
     ValidateBrowser,
     ListRunResults,
+    FlakyMetrics,
     BundledExamplesPath,
     ProjectArtifacts,
     ScenariaArtifactPath,
@@ -324,6 +328,9 @@
   let replaceCaseSensitive = false
   let postRecordPath = ''
   let postRecordStepCount = 0
+  let postRecordBaselineText = ''
+  let showPostRecordDiff = false
+  let flakyMetrics: gui.FlakyMetricsDTO | null = null
   let editorScenarioHints: gui.ScenarioHintDTO[] = []
   let editorHintsDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
@@ -345,6 +352,8 @@
   let sidebarVisible = true
   let sidebarWidth = 260
   let previewVisible = false
+  let previewPaneMounted = false
+  let previewMountTimer: ReturnType<typeof setTimeout> | null = null
   let previewWidth = 360
   let bottomPanelOpen = false
   let bottomTab: 'journal' | 'results' | 'validate' | 'error' = 'journal'
@@ -416,6 +425,7 @@
   let recordScenarioName = 'Запись'
   let lastRecordTarget = ''
   let liveRecordStepLines: Record<number, number> = {}
+  let recordStepApplyChain: Promise<void> = Promise.resolve()
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
@@ -427,6 +437,8 @@
   let recentFeatures: string[] = []
   let runResults: gui.RunResultEntry[] = []
   let lastErrorEntry: gui.RunResultEntry | null = null
+  $: flakyByPath = flakyScenarioMap(flakyMetrics)
+  $: flakyStepByPath = flakyStepHints(flakyMetrics)
   let editorSteps: EditorStepRow[] = []
   let editorValidationIssues: gui.ValidationIssue[] = []
   let validatePanelIssues: gui.ValidationIssue[] = []
@@ -461,6 +473,20 @@
   $: compactCatalogTree = isCompactCatalogTree(layoutSidebarWidth)
   $: showPreviewPane = shouldShowPreviewPane(viewportWidth, previewVisible)
   $: layoutPreviewWidth = effectivePreviewWidth(previewWidth, viewportWidth, previewVisible)
+  $: {
+    if (previewMountTimer) {
+      clearTimeout(previewMountTimer)
+      previewMountTimer = null
+    }
+    if (showPreviewPane) {
+      previewMountTimer = setTimeout(() => {
+        previewPaneMounted = true
+        previewMountTimer = null
+      }, 80)
+    } else {
+      previewPaneMounted = false
+    }
+  }
 
   $: activeFeaturePath = activeTab !== WELCOME_KEY ? activeTab : ''
 
@@ -528,6 +554,7 @@
       await dismissSplash(startedAt)
       applyDevUiMock()
       syncIdleStatus()
+      prefetchMonacoEditor()
       void checkUpdatesOnStartup()
     }
     const startupGuard = window.setTimeout(() => {
@@ -549,15 +576,7 @@
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth || 360
 
-    setSplashStage('Загрузка редактора…', 28)
-    setStepHoverEnabled(() => editorSettings.stepHover)
-    try {
-      await preloadMonacoEditor()
-    } catch (err) {
-      console.error('Monaco preload failed', err)
-    }
-
-    setSplashStage('Подключение к приложению…', 48)
+    setSplashStage('Подключение к приложению…', 40)
 
     try {
       version = await Version()
@@ -565,7 +584,7 @@
       version = 'dev'
     }
 
-    setSplashStage('Загрузка настроек…', 68)
+    setSplashStage('Загрузка настроек…', 60)
 
     const [recents, settings] = await Promise.all([
       loadRecents(),
@@ -650,6 +669,9 @@
             liveRecordStepLines = {}
             if (!appendOnly) {
               await prepareRecordEditorTab(meta.output || '')
+              postRecordBaselineText = monaco?.getEditorText() ?? editorText
+            } else {
+              postRecordBaselineText = monaco?.getEditorText() ?? editorText
             }
           }
           if (!appendOnly && !syncOnly) {
@@ -739,6 +761,7 @@
       void persistSettings()
     }
     if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
+    if (previewMountTimer) clearTimeout(previewMountTimer)
     if (draftAutosaveTimer) clearInterval(draftAutosaveTimer)
     for (const off of unsubscribers) off()
   })
@@ -1085,18 +1108,24 @@
     })
   }
 
+  let hintFixInFlight = false
+
   async function applyEditorHintFix(hint: gui.ScenarioHintDTO) {
-    const result = await ApplyScenarioHintFix({
-      text: editorText,
-      hintId: hint.id,
-      stepIndex: hint.stepIndex,
-    })
-    if (result.count > 0) {
-      editorText = result.text
-      syncActiveTabContent()
-      monaco?.setContent(editorText)
-      appendLog(`Исправлена подсказка: ${hint.title}`)
-      await validateEditor()
+    if (hintFixInFlight || isWelcome) return
+    hintFixInFlight = true
+    try {
+      const result = await ApplyScenarioHintFix({
+        text: editorText,
+        hintId: hint.id,
+        stepIndex: hint.stepIndex,
+      })
+      if (result.count > 0) {
+        await applyEditorText(result.text, { skipValidate: true })
+        appendLog(`Исправлена подсказка: ${hint.title}`)
+        scheduleValidateEditor(150)
+      }
+    } finally {
+      hintFixInFlight = false
     }
   }
 
@@ -1124,6 +1153,18 @@
   function dismissPostRecord() {
     postRecordPath = ''
     postRecordStepCount = 0
+    postRecordBaselineText = ''
+    showPostRecordDiff = false
+  }
+
+  function openPostRecordDiff() {
+    if (!postRecordPath) return
+    const modified = monaco?.getEditorText() ?? editorText
+    if (postRecordBaselineText === modified) {
+      appendLog('Нет изменений для сравнения с текстом до записи')
+      return
+    }
+    showPostRecordDiff = true
   }
 
   async function postRecordValidate() {
@@ -1412,8 +1453,10 @@
     try {
       runResults = await ListRunResults(50)
       lastErrorEntry = runResults.find((e) => !e.success) || null
+      flakyMetrics = await FlakyMetrics(200)
     } catch {
       runResults = []
+      flakyMetrics = null
     }
   }
 
@@ -1748,6 +1791,12 @@
       case 'journal':
         bottomPanelOpen = !bottomPanelOpen
         if (bottomPanelOpen) bottomTab = 'journal'
+        break
+      case 'format':
+        if (!isWelcome && activeTab) void monaco?.formatDocument()
+        break
+      case 'goto-symbol':
+        if (!isWelcome && activeTab) monaco?.openSymbolOutline()
         break
       case 'escape':
         openMenu = null
@@ -2103,6 +2152,9 @@
     }
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
+      if (path === activeTab && !tabNeedsDiskReload(existing)) {
+        return
+      }
       let text = tabEditorText(existing)
       if (tabNeedsDiskReload(existing)) {
         try {
@@ -2268,19 +2320,17 @@
       return
     }
     try {
-      let text = editorText
+      let text = monaco?.getEditorText() ?? editorText
       if (editorSettings.formatOnSave) {
-        text = await FormatFeature(text)
-        if (text !== editorText) {
-          editorText = text
-          monaco?.setContent(text)
-        }
+        await monaco?.formatDocument()
+        text = monaco?.getEditorText() ?? text
+        editorText = text
       }
       const autoFixed = await runScenarioHintsAutoFix(text)
       if (autoFixed !== text) {
         text = autoFixed
         editorText = text
-        monaco?.setContent(text)
+        await monaco?.setContent(text)
         appendLog('Применены авто-исправления подсказок сценария')
       }
       await SaveFeature(activeTab, text)
@@ -2509,9 +2559,15 @@
     playingLabel = ''
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
-      appendLog(`Ошибка: ${result.error}`)
-      setStatus('Ошибка теста', 'error')
-      bottomTab = 'error'
+      if (/context canceled/i.test(result.error)) {
+        appendLog('Тест остановлен.')
+        setStatus('Тест остановлен', 'busy')
+        bottomTab = 'journal'
+      } else {
+        appendLog(`Ошибка: ${result.error}`)
+        setStatus('Ошибка теста', 'error')
+        bottomTab = 'error'
+      }
     } else {
       appendLog('Завершено.')
       setStatus('Тест завершён', 'success')
@@ -2718,7 +2774,7 @@
         )
       }
     } else {
-      monaco?.setContent(text)
+      await monaco?.setContent(text)
       if (options?.saved) {
         markActiveTabSaved(text)
       } else {
@@ -2941,21 +2997,38 @@
     }
   }
 
+  function normalizeUpdateProgress(raw: unknown): gui.UpdateProgressDTO {
+    const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const percent = Number(src.percent ?? src.Percent ?? 0)
+    return gui.UpdateProgressDTO.createFrom({
+      stage: src.stage ?? src.Stage ?? '',
+      message: src.message ?? src.Message ?? '',
+      percent: Number.isFinite(percent) ? percent : 0,
+    })
+  }
+
+  function listenUpdateProgress(onFinished: (result: gui.RunResult) => void) {
+    let lastLoggedStage = ''
+    const onProgress = (raw: unknown) => {
+      updateProgress = normalizeUpdateProgress(raw)
+      const stage = updateProgress?.stage ?? ''
+      if (stage && stage !== lastLoggedStage) {
+        lastLoggedStage = stage
+        if (updateProgress?.message) appendLog(updateProgress.message)
+      }
+    }
+    EventsOn('update-progress', onProgress)
+    EventsOn('update-finished', onFinished)
+    return () => EventsOff('update-progress', 'update-finished')
+  }
+
   async function applyUpdate() {
     if (updateDownloading) return
     updateDownloading = true
     updateProgress = { stage: 'check', message: 'Запуск обновления…', percent: 0 }
     appendLog('Установка обновления…')
-    let lastStage = ''
-    const onProgress = (payload: gui.UpdateProgressDTO) => {
-      updateProgress = payload
-      if (payload?.stage && payload.stage !== lastStage) {
-        lastStage = payload.stage
-        if (payload.message) appendLog(payload.message)
-      }
-    }
-    const onFinished = (result: gui.RunResult) => {
-      EventsOff('update-progress', 'update-finished')
+    const unbind = listenUpdateProgress((result) => {
+      unbind()
       if (result?.error) {
         appendLog(`Ошибка обновления: ${result.error}`)
         updateDownloading = false
@@ -2964,13 +3037,11 @@
       }
       updateProgress = { stage: 'restart', message: 'Перезапуск приложения…', percent: 100 }
       appendLog('Приложение перезапускается…')
-    }
-    EventsOn('update-progress', onProgress)
-    EventsOn('update-finished', onFinished)
+    })
     try {
       await ApplyUpdate()
     } catch (err) {
-      EventsOff('update-progress', 'update-finished')
+      unbind()
       appendLog(`Ошибка обновления: ${err instanceof Error ? err.message : String(err)}`)
       updateDownloading = false
       updateProgress = null
@@ -2980,17 +3051,31 @@
   async function downloadUpdate() {
     if (updateDownloading) return
     updateDownloading = true
+    updateProgress = { stage: 'check', message: 'Подготовка к скачиванию…', percent: 0 }
     appendLog('Скачивание обновления…')
-    try {
-      const path = await DownloadUpdate()
+    const unbind = listenUpdateProgress(async (result) => {
+      unbind()
+      if (result?.error) {
+        appendLog(`Ошибка скачивания: ${result.error}`)
+        updateDownloading = false
+        updateProgress = null
+        return
+      }
+      const path = result.output || ''
       appendLog(`Скачано: ${path}`)
       updateCheckMessage = `${updateCheckMessage}\n\nФайл сохранён:\n${path}`.trim()
       const folder = path.replace(/[\\/][^\\/]+$/, '')
       if (folder) await OpenFolder(folder)
-    } catch (err) {
-      appendLog(`Ошибка скачивания: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
       updateDownloading = false
+      updateProgress = null
+    })
+    try {
+      await DownloadUpdate()
+    } catch (err) {
+      unbind()
+      appendLog(`Ошибка скачивания: ${err instanceof Error ? err.message : String(err)}`)
+      updateDownloading = false
+      updateProgress = null
     }
   }
 
@@ -3224,10 +3309,15 @@
 
   async function applyLiveRecordedStep(index: number, line: string) {
     if (!line.trim() || isWelcome || !activeTab) return
-    const result = upsertRecordedStepInText(editorText, index, line, liveRecordStepLines)
-    liveRecordStepLines = result.lineByIndex
-    await applyEditorText(result.text, { skipValidate: true })
-    scheduleValidateEditor(150)
+    recordStepApplyChain = recordStepApplyChain.then(async () => {
+      if (!line.trim() || isWelcome || !activeTab) return
+      const sourceText = monaco?.getEditorText() ?? editorText
+      const result = upsertRecordedStepInText(sourceText, index, line, liveRecordStepLines)
+      liveRecordStepLines = result.lineByIndex
+      await applyEditorText(result.text, { skipValidate: true })
+      scheduleValidateEditor(150)
+    })
+    await recordStepApplyChain
   }
 
   function handleRecordStopped() {
@@ -3243,6 +3333,8 @@
   }
 
   async function handleRecordSessionEnd(result: gui.RunResult, kind: 'record' | 'browse') {
+    const recordTarget =
+      (recordAppendTo || lastRecordTarget || (activeTab && !isWelcome ? activeTab : '')).trim().replace(/\\/g, '/')
     recording = false
     browserOpen = false
     recordPaused = false
@@ -3253,6 +3345,11 @@
     if (result.error) appendLog(`Ошибка записи: ${result.error}`)
     else if (kind === 'record') {
       appendLog('Браузер закрыт. Сохраните сценарий (Ctrl+S), если ещё не сохраняли.')
+      if (recordTarget && !isUntitled(recordTarget)) {
+        await showPostRecordBanner(recordTarget)
+      } else if (activeTab && !isWelcome) {
+        await showPostRecordBanner(activeTab)
+      }
     }
     statusTone = 'normal'
     syncIdleStatus()
@@ -3328,6 +3425,11 @@
   }
 
   async function stopRecord() {
+    if (playing) {
+      appendLog('Остановка теста…')
+      await CancelRun()
+      return
+    }
     if (recording) {
       await StopRecordingCapture()
       return
@@ -3578,7 +3680,7 @@
           <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
           <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
           <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>Запись из шагов…</button>
-          <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen}>Стоп</button>
+          <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen && !playing}>Стоп</button>
           <button class="menu-item" on:click={toggleRecordPause} disabled={!recording}>Пауза</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openTestClientDialog} disabled={!projectPath}>TestClient…</button>
@@ -3924,6 +4026,7 @@
                 stepCount={postRecordStepCount}
                 onValidate={postRecordValidate}
                 onSave={postRecordSave}
+                onShowDiff={openPostRecordDiff}
                 onClose={dismissPostRecord}
               />
             {/if}
@@ -4070,7 +4173,7 @@
                 </div>
                 {/if}
               </div>
-              {#if showPreviewPane}
+              {#if showPreviewPane && previewPaneMounted}
                 <div class="splitter-v" role="separator" on:mousedown={startResizePreview}></div>
                 <div class="feature-preview-pane" style="width: {layoutPreviewWidth}px">
                   <div class="preview-header">Превью Gherkin</div>
@@ -4105,6 +4208,8 @@
       {:else if bottomTab === 'results'}
         <ResultsPanel
           entries={runResults}
+          flakyByPath={flakyByPath}
+          flakyStepByPath={flakyStepByPath}
           artifacts={projectArtifacts}
           onRerun={rerunFailed}
           onOpenFolder={openArtifactPath}
@@ -4453,9 +4558,20 @@
 {#if showRunHistory}
   <RunHistoryDialog
     entries={runResults}
+    flakyByPath={flakyByPath}
+    flakyStepByPath={flakyStepByPath}
     onOpenFeature={openFeatureFromHistory}
     onRerunFailed={() => { showRunHistory = false; rerunFailed() }}
     onClose={() => (showRunHistory = false)}
+  />
+{/if}
+
+{#if showPostRecordDiff && postRecordPath}
+  <PostRecordDiffDialog
+    path={postRecordPath}
+    original={postRecordBaselineText}
+    modified={monaco?.getEditorText() ?? editorText}
+    onClose={() => (showPostRecordDiff = false)}
   />
 {/if}
 
@@ -4545,7 +4661,7 @@
   paused={recordPaused}
   onRecord={beginRecord}
   onPause={toggleRecordPause}
-  onStop={() => { if (recording) stopRecord(); playing = false }}
+  onStop={stopRecord}
   onPicker={pickElement}
   onFocusBrowser={focusBrowserWindow}
 />

@@ -14,6 +14,8 @@ export type HotkeyId =
   | 'palette'
   | 'snippets'
   | 'journal'
+  | 'format'
+  | 'goto-symbol'
   | 'escape'
 
 function hasMod(e: KeyboardEvent): boolean {
@@ -28,8 +30,10 @@ export function matchHotkey(e: KeyboardEvent): HotkeyId | null {
   if (hasMod(e) && e.code === 'KeyB') return 'browser'
   if (hasMod(e) && e.code === 'KeyR') return 'record'
   if (hasMod(e) && e.code === 'KeyN') return 'new'
+  if (hasMod(e) && e.shiftKey && e.code === 'KeyO') return 'goto-symbol'
   if (hasMod(e) && e.code === 'KeyO') return 'open'
   if (hasMod(e) && e.code === 'KeyH') return 'find'
+  if (e.shiftKey && e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyF') return 'format'
   if (e.code === 'F1' && e.shiftKey) return 'hotkeys'
   if (e.code === 'F1' && !e.shiftKey) return 'steps-help'
   if (hasMod(e) && e.code === 'Comma') return 'settings'

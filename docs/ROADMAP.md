@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.15; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.24.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -8,10 +8,15 @@
 |---|-------------|--------|
 | P0 | Wails IDE | done |
 | P0 | Recorder | done |
+| **P0** | **Стабильность Web UI (Фаза 8)** | **done** |
 | P1 | Monaco / редактор IDE | done (Фаза 6) |
-| P1 | Паритет Python IDE | in progress (Фаза 7) |
+| P1 | Паритет Python IDE | done (Фаза 7) |
 | P1 | Allure | done |
 | P1 | Portable release | done |
+| **P1** | **Monaco hardening (Фаза 9)** | **done** |
+| **P2** | **Flaky-run + post-record diff (Фаза 10)** | **done** |
+| **P2** | **Cold start + FailedStep + E2E (Фаза 11)** | **done** |
+| **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
 
 ---
 
@@ -137,6 +142,8 @@
 
 ## Фаза 7 — Паритет с Python IDE
 
+**Статус: done** (v0.19.0).
+
 Цель: закрыть реальные пробелы относительно Python/Qt v0.12, не дублируя то, что уже сделано иначе (Monaco, dirty→temp-before-run, hints в редакторе).
 
 Статусы в матрице: **эквивалент** | **иначе (осознанно)** | **нет**.
@@ -213,3 +220,182 @@
 | **0.17.0** | Monaco: format, outline, completions/snippets (план: Фаза 6.4–6.6) |
 | **0.18.0** | Monaco: code lens, inlay hints, read-only preview, hints settings (Фаза 6.7–6.11) |
 | **0.19.0** | Паритет Python: run-from-step, сессия, запись/запуск, params (Фаза 7.1–7.4) |
+| **0.20.0** | Стабильность Web UI: player/recorder lifecycle, отчёты при fail, concurrency, security (Фаза 8) — **master** |
+| **0.21.0** | Monaco: shortcuts, запись без гонок, preview perf, lifecycle вкладок, масштабирование (Фаза 9) — **master** |
+| **0.22.0** | Flaky-run метрики, post-record diff, release CI (Фаза 10) — **master** |
+| **0.23.0** | Monaco lazy load, FailedStep в player, E2E outline/diff (Фаза 11) — **master** |
+| **0.24.0** | Lazy Monaco workers, E2E flaky-run UI (Фаза 12) — **master** |
+
+---
+
+## Фаза 9 — Monaco Editor hardening (аудит 2026)
+
+**Статус: done** (v0.21.0).
+
+Цель: закрыть пробелы интеграции Monaco + Svelte + Wails после аудита редактора.
+
+### 9.1 P0 — Критические UX
+
+- [x] **`Ctrl+Shift+O`:** привязка `editor.action.quickOutline` в Monaco (не только палитра)
+- [x] **Live record:** шаги записи без гонки с ручным вводом (текст из модели + очередь)
+- [x] **FeaturePreview:** debounce + `replaceModelText` вместо `setValue` на каждый символ
+
+### 9.2 P1 — Стабильность
+
+- [x] **Providers:** `providerRegistered` для completions и document symbols (HMR/dev)
+- [x] **Вкладки:** сохранение cursor/scroll при переключении файлов
+- [x] **Hotkeys:** `Shift+Alt+F` и `Ctrl+Shift+O` вне фокуса редактора (explorer и т.д.)
+- [x] **`formatOnSave`:** через `formatDocument()` Monaco (единый путь с Shift+Alt+F)
+
+### 9.3 P2 — Масштабирование
+
+- [x] Кэш `parseFeatureSymbols` по `model.getVersionId()` (`featureSymbolCache.ts`)
+- [x] Folding ranges для блоков Если/Повторяю/Пока/Для каждого (`gherkinFolding.ts`)
+- [x] Lazy-mount превью (80 ms defer); отключение minimap/code lens/inlay на файлах ≥2000 строк
+- [x] Monaco отдельный chunk в Vite (`manualChunks` → `monaco.js`)
+
+---
+
+## Следующие шаги (вне закрытых фаз)
+
+Опционально:
+
+- Flaky-run E2E с реальным прогоном (не mock)
+- Language workers Monaco (json/css/html) при необходимости
+
+---
+
+## Фаза 12 — Lazy workers + flaky E2E (v0.24.0)
+
+**Статус: done** (v0.24.0).
+
+### 12.1 Отложенные Monaco workers
+
+- [x] `ensureMonacoEnvironment()` — dynamic import `editor.worker` при первом `preloadMonacoEditor`
+- [x] Убран sync import `monaco-env` из `main.ts` (cold start без worker bundle)
+
+### 12.2 E2E flaky-run UI
+
+- [x] Mock `?e2e=flaky-run` — `ListRunResults` + `FlakyMetrics` с flaky-сценарием
+- [x] E2E: история запусков (фильтр Flaky) + бейдж в панели «Результаты»
+
+---
+
+## Фаза 11 — Cold start, FailedStep, E2E (v0.23.0)
+
+**Статус: done** (v0.23.0).
+
+### 11.1 Динамический import Monaco
+
+- [x] `import('monaco-editor')` в `appBootstrap` — отдельный chunk, не блокирует main bundle
+- [x] Splash без await Monaco; `prefetchMonacoEditor()` после показа shell
+- [x] `gherkinHintActions` — только type-import Monaco
+
+### 11.2 FailedStep в player
+
+- [x] `RunContext.markFailedLeafStep` / `FailedLeafStep` (0-based leaf index)
+- [x] `ScenarioResult.FailedStep` → `run_status.json` через CLI
+- [x] Step-flaky метрики получают данные из реальных прогонов
+
+### 11.3 E2E
+
+- [x] `Ctrl+Shift+O` → quick outline widget
+- [x] Post-record diff: режим `?e2e=post-record-diff`, banner + diff dialog
+
+---
+
+## Фаза 10 — Flaky-run, post-record diff, release CI (v0.22.0)
+
+**Статус: done** (v0.22.0).
+
+### 10.1 Метрики flaky-run
+
+- [x] `runstatus.FlakyStats` — сценарии с чередованием pass/fail; шаги с ≥2 падениями
+- [x] API `FlakyMetrics` + `failed_step` в `ListRunResults`
+- [x] UI: фильтр «Flaky» в истории; бейджи в Results / Run history
+
+### 10.2 Monaco diff после записи
+
+- [x] Baseline текста при `record-started`
+- [x] Post-record banner + кнопка «Сравнить»
+- [x] `PostRecordDiffDialog` — Monaco `createDiffEditor` (до / после)
+
+### 10.3 Release CI
+
+- [x] `.github/workflows/release.yml` — tag `v*` → portable zip + installer + `latest.json` (уже было; задокументировано в ROADMAP)
+
+---
+
+## Фаза 8 — Стабильность Web UI (аудит 2026)
+
+**Статус: done** (v0.20.0).
+
+Цель: закрыть критические пробелы player / recorder / отчётов / Wails для production Web UI automation.
+
+Оценка до фиксов: **5/10**. После фазы: **7+/10**.
+
+### 8.1 P0 — Критические (player / CLI / recorder)
+
+- [x] **Runner + CLI:** partial `ExecutionResult` при падении; HTML/JUnit/Allure пишутся до return error
+- [x] **`browserSession`:** сериализация доступа к `page`/`closed` (mutex на `executeAction`)
+- [x] **`waitForLocator`:** drain goroutine при `ctx.Done()` (не оставлять зависший `WaitFor`)
+- [x] **`RecordLive`:** session generation ID — не обнулять `liveSession`/`recordCancel` чужим goroutine
+- [x] **Recorded steps:** все мутации `*steps` под `LiveSession.mu` (poll-loop + undo)
+
+### 8.2 P1 — Важные (reliability / security)
+
+- [x] **Signal handling:** SIGINT/SIGTERM → cancel run context (CLI); GUI `CancelRun` + `RunRunContext`
+- [x] **`runstatus`:** `WritableScenariaDir` вместо жёсткого `project/.scenaria`
+- [x] **Record timeout:** idle-only (не wall-clock `idle+30` на всю сессию)
+- [x] **`PickSelector`:** cancel через `recordCtx` / `recordCancel`
+- [x] **Picker bindings:** per-context или reset при close browser
+- [x] **`captureCLI`:** mutex на stdout (без гонок при параллельных GUI вызовах)
+- [x] **OTP channels:** очищать после use (`wailsapp/app.go`)
+- [x] **`UrlsMatch`:** опционально query/fragment для SPA
+- [x] **Navigation:** configurable `waitUntil` (не только `domcontentloaded`)
+- [x] **OTP / download / press:** thread `ctx` через все блокирующие waits
+- [x] **Path confinement:** `Output`/`AppendTo` в recorder — только внутри project root
+- [x] **Gherkin sanitize:** escape `\n` в recorded step text
+- [x] **Allure:** очистка stale results + уникальные timestamps per scenario
+- [x] **`ServeAllure`:** tracking PID, не плодить JVM
+- [x] **CLI validate:** flag-first parsing (`validate --no-browser ./features`)
+- [x] **CLI run:** dedupe discovered `.feature` paths
+- [x] **`writeJSON` / reports:** `MkdirAll` parent dir
+- [x] **Wails async:** `ctx != nil` guard в `StartRecord`/`OpenBrowser`/`StartVanessaRun`
+- [x] **`buildRunner` error:** показывать resolved engine name
+
+### 8.3 P2 — Улучшения / flakiness / DX
+
+- [x] **Browser pool** (reuse context per worker) — снижение RAM при `--workers N`
+- [x] **`for_each`:** re-query locators per iteration
+- [x] **`downloadByClick` / `upload`:** chained locators как у click/fill
+- [x] **`assert-hidden` / `wait-hidden`:** проверять все matches, не только `.First()`
+- [x] **JUnit:** статус `broken` → failures
+- [x] **`WriteTempFeature`:** cleanup temp dirs
+- [x] **Download artifacts:** teardown `.scenaria/downloads/run-*`
+- [x] **Recorder trust:** document hostile-origin risk; validate picker binding origin
+- [x] **Linux paths:** единый app-data root (settings + artifacts)
+- [x] **Structured errors:** `ExecutionFailure` с partial result (typed)
+- [x] **Observability:** slog `run_id` при старте прогона, debug-логи retry
+- [x] **CLI help:** упомянуть `--html`
+- [x] **`RunInit`:** не глотать ошибки scaffold
+
+### 8.4 Уже сделано (аудит follow-up)
+
+- [x] `watchContext` + `pw.Stop()` при cancel
+- [x] Parallel fail-fast (`cancel()` on first failure)
+- [x] `waitForURL` polling с учётом ctx deadline
+- [x] Chained locators + retry для большинства actions
+- [x] Writable artifacts fallback (`paths.WritableScenariaDir`)
+- [x] Monaco: Ctrl+Z (без `setValue` на tab switch), deferred hint fix
+- [x] Integration: `parallel_cancel_integration_test.go`
+- [x] `docs/SELECTORS.md`, placeholder cycle detection
+
+### Матрица приоритетов фазы 8
+
+| Область | P0 | P1 | P2 |
+|---------|----|----|-----|
+| Player / runner | partial results, session lock, wait drain | signal, UrlsMatch, ctx OTP | pool, for_each, selectors |
+| Recorder | session gen, steps mutex | picker cancel, path confine | trust doc, sanitize |
+| Reports / CLI | reports on failure | runstatus, dedupe, validate flags | JUnit broken, help |
+| Wails / GUI | — | OTP, captureCLI, ctx guard | temp cleanup, Allure PID |

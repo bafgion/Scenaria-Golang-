@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
+import { monacoColumnToRuneIndex, runeIndexToMonacoColumn, runeSlice } from './editorColumns'
 import {
   completionFilterText,
   completionSortKey,
@@ -27,15 +28,22 @@ export function formatInsertText(line: string, snippet: gui.StepCompletionSnippe
   return snippet.insert
 }
 
+let providerRegistered = false
+
 export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletions: CompletionFetcher) {
+  if (providerRegistered) {
+    return
+  }
+  providerRegistered = true
+
   monaco.languages.registerCompletionItemProvider('scenaria-feature', {
     triggerCharacters: [' ', '"', "'", '.', '@'],
     provideCompletionItems: async (model, position) => {
       const line = model.getLineContent(position.lineNumber)
-      const column = position.column - 1
+      const runeColumn = monacoColumnToRuneIndex(line, position.column - 1)
       let result: gui.StepCompletionsDTO
       try {
-        result = await fetchCompletions(line, column)
+        result = await fetchCompletions(line, runeColumn)
       } catch {
         return { suggestions: [] }
       }
@@ -43,15 +51,15 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
         return { suggestions: [] }
       }
 
-      const startCol = result.start + 1
-      const endCol = result.end + 1
+      const startCol = runeIndexToMonacoColumn(line, result.start) + 1
+      const endCol = runeIndexToMonacoColumn(line, result.end) + 1
       const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: startCol,
         endColumn: endCol,
       }
-      const typedPrefix = line.slice(result.start, result.end)
+      const typedPrefix = runeSlice(line, result.start, result.end)
 
       const suggestions = result.items.map((item, index) => {
         const formatted = formatInsertText(line, item)

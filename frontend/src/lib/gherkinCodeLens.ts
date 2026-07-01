@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
-import { parseFeatureSymbols, type FeatureSymbol } from './gherkinDocumentSymbols'
+import { getCachedFeatureSymbols } from './featureSymbolCache'
+import type { FeatureSymbol } from './gherkinDocumentSymbols'
 import { scenarioAtLine } from './scenarioAtLine'
 
 export type RunCodeLensPayload = {
@@ -69,9 +70,9 @@ function walkSymbols(text: string, nodes: FeatureSymbol[], out: RunCodeLensItem[
 }
 
 /** Collects run code lens rows for a feature file (testable without Monaco). */
-export function collectRunCodeLenses(text: string): RunCodeLensItem[] {
+export function collectRunCodeLenses(text: string, versionId?: number | null): RunCodeLensItem[] {
   const out: RunCodeLensItem[] = []
-  walkSymbols(text, parseFeatureSymbols(text), out)
+  walkSymbols(text, getCachedFeatureSymbols(text, versionId), out)
   return out
 }
 
@@ -105,7 +106,7 @@ export function registerGherkinCodeLens(monacoInstance: typeof Monaco, handlers:
       if (!activeHandlers?.isEnabled()) {
         return { lenses: [], dispose: () => {} }
       }
-      const lenses = toMonacoLenses(collectRunCodeLenses(model.getValue()))
+      const lenses = toMonacoLenses(collectRunCodeLenses(model.getValue(), model.getVersionId()))
       return { lenses, dispose: () => {} }
     },
     resolveCodeLens(model, codeLens) {

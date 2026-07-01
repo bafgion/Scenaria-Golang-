@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 type AppSettings struct {
@@ -17,6 +19,7 @@ type AppSettings struct {
 	ParallelWorkers     int    `json:"parallel_workers"`
 	SlowMo              int    `json:"slow_mo"`
 	MaxLoopIterations   int    `json:"max_loop_iterations"`
+	NavWaitUntil        string `json:"nav_wait_until,omitempty"`
 	ToolbarCompact      bool   `json:"toolbar_compact"`
 	StepsPanelVisible   bool     `json:"steps_panel_visible"`
 	StepsPanelHeight    int      `json:"steps_panel_height"`
@@ -64,14 +67,16 @@ type Cookie struct {
 }
 
 func DefaultAppSettingsPath() string {
-	if base := os.Getenv("APPDATA"); base != "" {
-		return filepath.Join(base, "Scenaria", "settings.json")
+	primary := filepath.Join(paths.AppDataDir(), "settings.json")
+	if paths.FileExists(primary) {
+		return primary
 	}
-	config, err := os.UserConfigDir()
-	if err != nil {
-		return ""
+	for _, legacy := range paths.LegacySettingsPaths() {
+		if paths.FileExists(legacy) {
+			return legacy
+		}
 	}
-	return filepath.Join(config, "Scenaria", "settings.json")
+	return primary
 }
 
 func LoadDefaultAppSettings() (*AppSettings, error) {
@@ -145,6 +150,11 @@ func writeJSON(path string, src any) error {
 	payload, err := json.MarshalIndent(src, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode json file %q: %w", path, err)
+	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create json dir %q: %w", dir, err)
+		}
 	}
 	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
 		return fmt.Errorf("write json file %q: %w", path, err)

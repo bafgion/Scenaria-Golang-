@@ -51,8 +51,9 @@ describe('monacoTabModels', () => {
     const monaco = mockMonaco()
     const store = new MonacoTabModelStore()
     const m1 = store.getOrCreate(monaco as never, '/p/a.feature', 'hello')
-    const m2 = store.getOrCreate(monaco as never, '/p/a.feature', 'hello')
+    const m2 = store.getOrCreate(monaco as never, '/p/a.feature', 'changed')
     expect(m1).toBe(m2)
+    expect(m1.getValue()).toBe('hello')
     expect(store.trackedPaths()).toHaveLength(1)
   })
 

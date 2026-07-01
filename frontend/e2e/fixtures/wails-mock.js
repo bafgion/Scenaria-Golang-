@@ -140,6 +140,53 @@
     },
   ]
 
+  const flakyScenarioPath = `${E2E_PROJECT}/smoke.feature::тест`
+  const flakyRunResults = [
+    {
+      path: flakyScenarioPath,
+      success: false,
+      message: 'элемент не найден',
+      runner: 'playwright',
+      at: '2026-06-28T12:00:00Z',
+      failed_step: 1,
+    },
+    {
+      path: flakyScenarioPath,
+      success: true,
+      message: '',
+      runner: 'playwright',
+      at: '2026-06-27T12:00:00Z',
+    },
+    {
+      path: `${E2E_PROJECT}/smoke.feature::стабильный`,
+      success: true,
+      message: '',
+      runner: 'playwright',
+      at: '2026-06-26T12:00:00Z',
+    },
+  ]
+
+  const flakyMetricsPayload = {
+    scenarios: [
+      {
+        path: flakyScenarioPath,
+        failures: 1,
+        passes: 1,
+        total: 2,
+        flaky: true,
+        last_failed_at: '2026-06-28T12:00:00Z',
+      },
+    ],
+    steps: [
+      {
+        path: `${E2E_PROJECT}/checkout.feature::оплата`,
+        step: 2,
+        failures: 2,
+        last_failed_at: '2026-06-25T09:00:00Z',
+      },
+    ],
+  }
+
   const app = {
     Version: async () => 'e2e-test',
     LoadSettings: async () => ({ ...settings }),
@@ -213,10 +260,12 @@
     SaveFeature: asyncOk,
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
     Run: async (opts) => ({ output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }),
+    CancelRun: noop,
     Validate: async () => ({ output: 'Проверка завершена.', error: '' }),
     ListTestClients: async () => [],
     ListPlugins: async () => [],
-    ListRunResults: async () => [],
+    ListRunResults: async () => (e2eMode() === 'flaky-run' ? flakyRunResults : []),
+    FlakyMetrics: async () => (e2eMode() === 'flaky-run' ? flakyMetricsPayload : { scenarios: [], steps: [] }),
     ProjectArtifacts: async () => ({ allureDir: '', reportHtml: '' }),
     ScenariaArtifactPath: async (sub) => `${E2E_PROJECT}/.scenaria/${sub}`,
     ParseEditorSteps: async () => {
@@ -272,14 +321,14 @@
     RunPlugin: asyncOk,
     StartRecord: async () => {
       const mode = e2eMode()
-      if (mode === 'post-record' || mode === 'record-resume') {
+      if (mode === 'post-record' || mode === 'post-record-diff' || mode === 'record-resume') {
         liveRecord.browserOpen = true
         liveRecord.recording = true
         liveRecord.captureEver = true
         liveRecord.paused = false
-        liveRecord.steps = mode === 'post-record' ? [...postRecordSteps] : [...resumeRecordSteps]
+        liveRecord.steps = mode === 'record-resume' ? [...resumeRecordSteps] : [...postRecordSteps]
         emitE2E('browser-opened', '')
-        emitE2E('record-started', { resume: false, output: '' })
+        emitE2E('record-started', { resume: false, output: `${E2E_PROJECT}/smoke.feature` })
         queueMicrotask(() => {
           for (const step of liveRecord.steps) {
             emitE2E('record-step', step)
@@ -326,6 +375,15 @@
       liveRecord.steps = []
     },
     CloseBrowser: async () => {
+      if (e2eMode() === 'post-record-diff' && liveRecord.captureEver) {
+        liveRecord.browserOpen = false
+        liveRecord.recording = false
+        liveRecord.paused = false
+        liveRecord.captureEver = false
+        liveRecord.steps = []
+        emitE2E('record-finished', { output: 'Запись сохранена', error: '' })
+        return
+      }
       liveRecord.browserOpen = false
       liveRecord.recording = false
       liveRecord.paused = false
@@ -333,6 +391,15 @@
       liveRecord.steps = []
     },
     StopRecordingCapture: async () => {
+      if (e2eMode() === 'post-record-diff') {
+        liveRecord.browserOpen = false
+        liveRecord.recording = false
+        liveRecord.paused = false
+        liveRecord.captureEver = false
+        liveRecord.steps = []
+        emitE2E('record-finished', { output: 'Запись сохранена', error: '' })
+        return
+      }
       if (!liveRecord.browserOpen) {
         throw new Error('браузер не открыт')
       }

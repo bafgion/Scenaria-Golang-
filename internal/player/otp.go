@@ -1,6 +1,7 @@
 package player
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,9 +15,9 @@ import (
 const otpKeyboardDelayMs = 80
 
 var (
-	emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	emailRE         = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 	codeNormalizeRE = regexp.MustCompile(`[\s\-–—]`)
-	inputEventsJS = `(el) => {
+	inputEventsJS   = `(el) => {
  el.dispatchEvent(new Event('input', { bubbles: true }));
  el.dispatchEvent(new Event('change', { bubbles: true }));
 }`
@@ -106,7 +107,7 @@ func otpAutoSubmitted(locator playwright.Locator, fieldCount int, expected strin
 	return true
 }
 
-func fillVerificationCode(page playwright.Page, locator playwright.Locator, code string, digits int, method string) error {
+func fillVerificationCode(ctx context.Context, page playwright.Page, locator playwright.Locator, code string, digits int, method string) error {
 	value := normalizeVerificationCode(code)
 	if value == "" {
 		return fmt.Errorf("verification code is empty")
@@ -133,7 +134,7 @@ func fillVerificationCode(page playwright.Page, locator playwright.Locator, code
 		if len(value) > fieldCount {
 			value = value[:fieldCount]
 		}
-		return fillSegmentedCode(page, locator, value, fieldCount, method)
+		return fillSegmentedCode(ctx, page, locator, value, fieldCount, method)
 	}
 
 	target := locator.First()
@@ -161,7 +162,7 @@ func fillVerificationCode(page playwright.Page, locator playwright.Locator, code
 	return tryAutoSubmit(page, locator)
 }
 
-func fillSegmentedCode(page playwright.Page, locator playwright.Locator, value string, fieldCount int, method string) error {
+func fillSegmentedCode(ctx context.Context, page playwright.Page, locator playwright.Locator, value string, fieldCount int, method string) error {
 	tryFill := func(stage string, fillFn func() error) error {
 		if err := fillFn(); err != nil {
 			if otpAutoSubmitted(locator, fieldCount, value) {
@@ -196,7 +197,9 @@ func fillSegmentedCode(page playwright.Page, locator playwright.Locator, value s
 		if err := first.Click(); err != nil {
 			return err
 		}
-		time.Sleep(120 * time.Millisecond)
+		if err := sleepContext(ctx, 120*time.Millisecond); err != nil {
+			return err
+		}
 		return page.Keyboard().Type(value, playwright.KeyboardTypeOptions{
 			Delay: playwright.Float(otpKeyboardDelayMs),
 		})
@@ -214,23 +217,26 @@ func fillSegmentedCode(page playwright.Page, locator playwright.Locator, value s
 			if err := cell.Click(); err != nil {
 				return err
 			}
-			time.Sleep(60 * time.Millisecond)
+			if err := sleepContext(ctx, 60*time.Millisecond); err != nil {
+				return err
+			}
 			if err := page.Keyboard().Type(string(ch), playwright.KeyboardTypeOptions{
 				Delay: playwright.Float(otpKeyboardDelayMs),
 			}); err != nil {
 				return err
 			}
-			time.Sleep(40 * time.Millisecond)
+			if err := sleepContext(ctx, 40*time.Millisecond); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 }
 
-func runEmailCode(page playwright.Page, action stepdsl.Action, runCtx *RunContext) error {
+func runEmailCode(ctx context.Context, page playwright.Page, action stepdsl.Action, runCtx *RunContext) error {
 	locator := page.Locator(action.Value2)
-	if err := locator.First().WaitFor(playwright.LocatorWaitForOptions{
-		State:   playwright.WaitForSelectorStateVisible,
-		Timeout: playwright.Float(60000),
+	if err := waitForLocator(ctx, locator.First(), playwright.LocatorWaitForOptions{
+		State: playwright.WaitForSelectorStateVisible,
 	}); err != nil {
 		return fmt.Errorf("email code field not visible: %w", err)
 	}
@@ -250,7 +256,7 @@ func runEmailCode(page playwright.Page, action stepdsl.Action, runCtx *RunContex
 	if method == "" {
 		method = "fill"
 	}
-	if err := fillVerificationCode(page, locator, code, digits, method); err != nil {
+	if err := fillVerificationCode(ctx, page, locator, code, digits, method); err != nil {
 		return err
 	}
 	return tryAutoSubmit(page, locator)

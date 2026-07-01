@@ -72,9 +72,15 @@ func (c *RunContext) resolvePlaceholderKey(key string) (string, error) {
 		return value, nil
 	}
 	if value, ok := c.Variables[key]; ok {
+		if strings.Contains(value, "{{") {
+			return c.resolveNestedValue(key, value)
+		}
 		return value, nil
 	}
 	if value, ok := c.values[key]; ok {
+		if strings.Contains(value, "{{") {
+			return c.resolveNestedValue(key, value)
+		}
 		return value, nil
 	}
 	generated, err := c.generate(key)
@@ -83,4 +89,13 @@ func (c *RunContext) resolvePlaceholderKey(key string) (string, error) {
 	}
 	c.values[key] = generated
 	return generated, nil
+}
+
+func (c *RunContext) resolveNestedValue(key, value string) (string, error) {
+	if c.resolving[key] {
+		return "", fmt.Errorf("circular placeholder reference for %q", key)
+	}
+	c.resolving[key] = true
+	defer delete(c.resolving, key)
+	return c.ResolveText(value)
 }

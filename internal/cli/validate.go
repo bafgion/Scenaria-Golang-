@@ -15,7 +15,7 @@ import (
 )
 
 type validateOptions struct {
-	target      string
+	targets     []string
 	json        string
 	browser     bool
 	noBrowser   bool
@@ -34,12 +34,17 @@ func RunValidate(args []string) error {
 	}
 
 	store := scenario.NewFeatureStore()
-	files, err := store.Discover(opts.target)
-	if err != nil {
-		return err
+	files := make([]string, 0)
+	for _, target := range opts.targets {
+		discovered, err := store.Discover(target)
+		if err != nil {
+			return err
+		}
+		files = append(files, discovered...)
 	}
+	files = dedupePaths(files)
 	if len(files) == 0 {
-		return fmt.Errorf("no .feature files found in %q", opts.target)
+		return fmt.Errorf("no .feature files found in %v", opts.targets)
 	}
 
 	validator := selector.Validator{}
@@ -125,22 +130,22 @@ func RunValidate(args []string) error {
 
 func parseValidateOptions(args []string) (validateOptions, error) {
 	if len(args) == 0 {
-		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [--json <file>] [--browser [chromium|firefox|webkit]] [--no-browser] [--headed] [--base-url <url>]")
+		return validateOptions{}, fmt.Errorf("usage: scenaria validate <path> [more paths...] [--json <file>] [--browser [chromium|firefox|webkit]] [--no-browser] [--headed] [--base-url <url>]")
 	}
-	opts := validateOptions{target: args[0], headless: true, browserName: "chromium"}
+	opts := validateOptions{headless: true, browserName: "chromium"}
 	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
 		if appCfg.Browser != "" {
 			opts.browserName = appCfg.Browser
 		}
 		opts.headless = appCfg.Headless
 	}
-	if root := paths.InferProjectRoot([]string{args[0]}); root != "" {
-		if projectCfg, err := settings.LoadProjectConfig(root); err == nil && projectCfg.BaseURL != "" && opts.baseURL == "" {
-			opts.baseURL = projectCfg.BaseURL
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			opts.targets = append(opts.targets, arg)
+			continue
 		}
-	}
-	for i := 1; i < len(args); i++ {
-		switch args[i] {
+		switch arg {
 		case "--json":
 			if i+1 >= len(args) {
 				return validateOptions{}, fmt.Errorf("--json requires a file path")
@@ -168,7 +173,15 @@ func parseValidateOptions(args []string) (validateOptions, error) {
 			i++
 			opts.baseURL = args[i]
 		default:
-			return validateOptions{}, fmt.Errorf("unknown flag for validate: %s", args[i])
+			return validateOptions{}, fmt.Errorf("unknown flag for validate: %s", arg)
+		}
+	}
+	if len(opts.targets) == 0 {
+		return validateOptions{}, fmt.Errorf("validate requires at least one path")
+	}
+	if root := paths.InferProjectRoot(opts.targets); root != "" {
+		if projectCfg, err := settings.LoadProjectConfig(root); err == nil && projectCfg.BaseURL != "" && opts.baseURL == "" {
+			opts.baseURL = projectCfg.BaseURL
 		}
 	}
 	return opts, nil

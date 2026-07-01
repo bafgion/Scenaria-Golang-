@@ -1,6 +1,7 @@
 package player
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,17 @@ func TestResolveLeavesUnclosedPlaceholderLiteral(t *testing.T) {
 	got, err := ctx.ResolveText(`value {{open`)
 	if err != nil || got != `value {{open` {
 		t.Fatalf("ResolveText() = %q, %v", got, err)
+	}
+}
+
+func TestResolveCircularPlaceholder(t *testing.T) {
+	ctx := NewRunContext(map[string]string{
+		"a": "{{b}}",
+		"b": "{{a}}",
+	}, 1, "")
+	_, err := ctx.ResolveText("{{a}}")
+	if err == nil || !strings.Contains(err.Error(), "circular") {
+		t.Fatalf("expected circular error, got %v", err)
 	}
 }
 

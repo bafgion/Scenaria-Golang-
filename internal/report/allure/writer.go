@@ -48,20 +48,47 @@ func WriteResults(dir string, result player.ExecutionResult) error {
 		return fmt.Errorf("allure output directory is required")
 	}
 	dir = filepath.Clean(dir)
+	if err := cleanAllureDir(dir); err != nil {
+		return fmt.Errorf("clean allure dir: %w", err)
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create allure dir: %w", err)
 	}
 
-	now := time.Now().UnixMilli()
-	for _, scenario := range result.ScenarioResults {
-		if err := writeScenarioResult(dir, scenario, now); err != nil {
+	base := time.Now().UnixMilli()
+	for i, scenario := range result.ScenarioResults {
+		start := base + int64(i*100)
+		stop := start + 50
+		if stop <= start {
+			stop = start + 1
+		}
+		if err := writeScenarioResult(dir, scenario, start, stop); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writeScenarioResult(dir string, scenario player.ScenarioResult, now int64) error {
+func cleanAllureDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasSuffix(name, "-result.json") || strings.Contains(name, "-attachment") {
+			if err := os.Remove(filepath.Join(dir, name)); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func writeScenarioResult(dir string, scenario player.ScenarioResult, start, stop int64) error {
 	status := mapStatus(scenario.Status)
 	id := uuid.New().String()
 	entry := resultFile{
@@ -71,8 +98,8 @@ func writeScenarioResult(dir string, scenario player.ScenarioResult, now int64) 
 		FullName:  scenario.FeaturePath + "::" + scenario.Scenario,
 		Status:    status,
 		Stage:     "finished",
-		Start:     now,
-		Stop:      now,
+		Start:     start,
+		Stop:      stop,
 		Labels: []label{
 			{Name: "suite", Value: filepath.Base(scenario.FeaturePath)},
 			{Name: "parentSuite", Value: scenario.FeaturePath},

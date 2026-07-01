@@ -13,7 +13,13 @@ import (
 var unsafeNameRE = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func captureFailureArtifacts(session *browserSession, input ScenarioInput, traceDir, videoDir string) (screenshot, trace, video []byte) {
-	if session == nil || session.closed {
+	if session == nil {
+		return nil, nil, nil
+	}
+	session.mu.Lock()
+	closed := session.closed
+	session.mu.Unlock()
+	if closed {
 		return nil, nil, nil
 	}
 	screenshot = captureFailureScreenshot(session)

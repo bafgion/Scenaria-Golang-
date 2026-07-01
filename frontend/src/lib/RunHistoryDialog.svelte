@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { gui } from '../../wailsjs/go/models'
+  import { flakyLabel, isFlakyPath, type FlakyScenarioStat } from './flakyMetrics'
 
   export let entries: gui.RunResultEntry[] = []
+  export let flakyByPath: Map<string, FlakyScenarioStat> = new Map()
+  export let flakyStepByPath: Map<string, string> = new Map()
   export let onOpenFeature: (path: string) => void = () => {}
   export let onRerunFailed: () => void = () => {}
   export let onClose: () => void = () => {}
@@ -10,6 +13,7 @@
   let query = ''
 
   $: filtered = entries.filter((entry) => {
+    if (filter === 'flaky' && !isFlakyPath(flakyByPath, entry.path)) return false
     if (filter === 'failed' && entry.success) return false
     if (filter === 'passed' && !entry.success) return false
     const hay = `${entry.path} ${entry.message} ${entry.runner}`.toLowerCase()
@@ -59,6 +63,7 @@
         <option value="all">Все</option>
         <option value="failed">Только упавшие</option>
         <option value="passed">Только успешные</option>
+        <option value="flaky">Flaky</option>
       </select>
       <button type="button" on:click={onRerunFailed}>Перезапустить упавшие</button>
     </div>
@@ -78,10 +83,18 @@
           <tbody>
             {#each filtered as entry}
               {@const parts = splitPath(entry.path)}
-              <tr class:failed={!entry.success} on:dblclick={() => openEntry(entry)} title="Двойной клик — открыть feature">
+              {@const flakyStat = flakyByPath.get(entry.path)}
+              {@const stepHint = flakyStepByPath.get(entry.path)}
+              <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky} on:dblclick={() => openEntry(entry)} title="Двойной клик — открыть feature">
                 <td>
                   <div class="scenario">{parts.scenario || basename(parts.feature)}</div>
                   <div class="feature">{basename(parts.feature)}</div>
+                  {#if flakyStat?.flaky}
+                    <div class="flaky-tag">{flakyLabel(flakyStat)}</div>
+                  {/if}
+                  {#if stepHint}
+                    <div class="step-flaky">{stepHint}</div>
+                  {/if}
                 </td>
                 <td>{entry.success ? 'OK' : 'FAIL'}</td>
                 <td class="msg">{entry.message || '—'}</td>
@@ -157,11 +170,26 @@
     color: var(--color-success);
   }
 
+  tr.flaky td:first-child {
+    border-left: 2px solid var(--color-warning, #d4a017);
+  }
+
   .scenario {
     color: var(--color-text);
   }
 
   .feature {
+    font-size: 10px;
+    color: var(--color-muted);
+  }
+
+  .flaky-tag {
+    font-size: 10px;
+    color: var(--color-warning, #d4a017);
+    margin-top: 2px;
+  }
+
+  .step-flaky {
     font-size: 10px;
     color: var(--color-muted);
   }

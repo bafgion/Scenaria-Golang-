@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/brand"
@@ -69,6 +70,11 @@ func WriteHTML(path string, result player.ExecutionResult) error {
 	tmpl, err := template.New("report").Parse(htmlTemplate)
 	if err != nil {
 		return fmt.Errorf("parse html template: %w", err)
+	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create html report dir %q: %w", dir, err)
+		}
 	}
 	file, err := os.Create(path)
 	if err != nil {

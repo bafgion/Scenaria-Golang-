@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -34,6 +35,24 @@ func TestRunRun_StubEngineNotImplemented(t *testing.T) {
 	err := RunRun([]string{tmp, "--engine", "stub"})
 	if !errors.Is(err, player.ErrBrowserExecutionNotImplemented) {
 		t.Fatalf("expected not-implemented error, got: %v", err)
+	}
+}
+
+func TestRunRun_WritesJUnitOnExecutorFailure(t *testing.T) {
+	tmp := t.TempDir()
+	featurePath := filepath.Join(tmp, "ok.feature")
+	content := "Функционал: Demo\nСценарий: S1\nКогда выполняю шаг\n"
+	if err := os.WriteFile(featurePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write feature: %v", err)
+	}
+	junitPath := filepath.Join(tmp, "junit.xml")
+
+	err := RunRunContext(context.Background(), []string{tmp, "--engine", "stub", "--junit", junitPath})
+	if err == nil {
+		t.Fatal("expected stub engine failure")
+	}
+	if _, statErr := os.Stat(junitPath); statErr != nil {
+		t.Fatalf("expected junit report on failure: %v", statErr)
 	}
 }
 

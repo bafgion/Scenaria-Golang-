@@ -18,6 +18,7 @@ func TestWriteJUnit(t *testing.T) {
 			{FeaturePath: "a.feature", Scenario: "S1", Status: "passed"},
 			{FeaturePath: "a.feature", Scenario: "S2", Status: "skipped", Message: "dry-run mode"},
 			{FeaturePath: "b.feature", Scenario: "S3", Status: "failed", Message: "assertion failed"},
+			{FeaturePath: "c.feature", Scenario: "S4", Status: "broken", Message: "browser crashed"},
 		},
 	}
 
@@ -39,7 +40,7 @@ func TestWriteJUnit(t *testing.T) {
 	if err := xml.Unmarshal(payload, &suite); err != nil {
 		t.Fatalf("failed to decode junit xml: %v", err)
 	}
-	if suite.Tests != 3 || suite.Failures != 1 || suite.Skipped != 1 {
+	if suite.Tests != 4 || suite.Failures != 2 || suite.Skipped != 1 {
 		t.Fatalf("unexpected junit counters: %+v", suite)
 	}
 }

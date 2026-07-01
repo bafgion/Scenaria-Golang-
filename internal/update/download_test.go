@@ -61,6 +61,41 @@ func TestDownloadFileReportsProgress(t *testing.T) {
 	}
 }
 
+func TestDownloadPercentUnknownTotal(t *testing.T) {
+	if got := downloadPercent(0, -1, 5, 70); got != 5 {
+		t.Fatalf("start=%d", got)
+	}
+	mid := downloadPercent(256*1024, -1, 5, 70)
+	if mid <= 5 || mid >= 74 {
+		t.Fatalf("mid=%d", mid)
+	}
+	if got := downloadPercent(2*1024*1024, -1, 5, 70); got != 74 {
+		t.Fatalf("end=%d", got)
+	}
+}
+
+func TestDownloadFileReportsProgressWithoutContentLength(t *testing.T) {
+	body := []byte("0123456789abcdef")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	var calls int
+	dest := filepath.Join(t.TempDir(), "progress-no-length.zip")
+	if err := downloadFileWithClient(srv.Client(), srv.URL, dest, func(done, total int64) {
+		calls++
+		if done < 0 {
+			t.Fatalf("done=%d", done)
+		}
+	}); err != nil {
+		t.Fatalf("downloadFileWithClient: %v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("expected progress callbacks, got %d", calls)
+	}
+}
+
 func TestDownloadFileReplacesExisting(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("new"))

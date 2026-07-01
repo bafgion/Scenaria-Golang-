@@ -59,7 +59,18 @@ func (s *Service) CheckUpdateInfo() (UpdateInfoDTO, error) {
 }
 
 func (s *Service) DownloadUpdate() (string, error) {
+	return s.DownloadUpdateProgress(nil)
+}
+
+func (s *Service) DownloadUpdateProgress(report func(UpdateProgressDTO)) (string, error) {
 	installDir, _ := paths.AppInstallDir()
+	reportProgress := func(stage, message string, percent int) {
+		if report == nil {
+			return
+		}
+		report(UpdateProgressDTO{Stage: stage, Message: message, Percent: percent})
+	}
+	reportProgress("check", "Проверка обновления…", 2)
 	info, err := update.CheckInstallDir(version.Version, installDir)
 	if err != nil {
 		return "", err
@@ -77,9 +88,13 @@ func (s *Service) DownloadUpdate() (string, error) {
 	}
 	destDir = filepath.Join(destDir, "Downloads")
 	dest := filepath.Join(destDir, name)
-	if err := update.DownloadFile(info.DownloadURL, dest); err != nil {
+	reportProgress("download", "Скачивание обновления…", 5)
+	if err := update.DownloadFileWithProgress(info.DownloadURL, dest, func(done, total int64) {
+		reportProgress("download", update.FormatDownloadMessage(done, total), update.DownloadPercent(done, total, 5, 90))
+	}); err != nil {
 		return "", err
 	}
+	reportProgress("done", "Скачивание завершено", 100)
 	return dest, nil
 }
 

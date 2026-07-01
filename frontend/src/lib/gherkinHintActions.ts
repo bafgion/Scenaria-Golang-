@@ -1,4 +1,4 @@
-import * as monaco from 'monaco-editor'
+import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
 import {
   findHintForMarker,
@@ -16,7 +16,7 @@ export type HintActionHandlers = {
   onDismiss: (hint: gui.ScenarioHintDTO) => void
 }
 
-let monacoApi: typeof monaco | null = null
+let monacoApi: typeof Monaco | null = null
 let activeHandlers: HintActionHandlers | null = null
 let providerRegistered = false
 
@@ -24,7 +24,7 @@ function findHintByArgs(hintId: string, stepIndex: number): gui.ScenarioHintDTO 
   return activeHandlers?.getHints().find((h) => h.id === hintId && h.stepIndex === stepIndex)
 }
 
-export function registerHintCodeActions(monacoInstance: typeof monaco, handlers: HintActionHandlers) {
+export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers: HintActionHandlers) {
   monacoApi = monacoInstance
   activeHandlers = handlers
   if (providerRegistered) return
@@ -47,7 +47,7 @@ export function registerHintCodeActions(monacoInstance: typeof monaco, handlers:
         if (!api) return { actions: [], dispose: () => {} }
 
         const hints = activeHandlers?.getHints() ?? []
-        const actions: monaco.languages.CodeAction[] = []
+        const actions: Monaco.languages.CodeAction[] = []
 
         const markers = api.editor
           .getModelMarkers({ resource: model.uri })
@@ -59,7 +59,7 @@ export function registerHintCodeActions(monacoInstance: typeof monaco, handlers:
           const hint = findHintForMarker(hints, marker)
           if (!hint) continue
 
-          const diagnostic: monaco.editor.IMarkerData = {
+          const diagnostic: Monaco.editor.IMarkerData = {
             severity: marker.severity,
             message: marker.message,
             source: marker.source,

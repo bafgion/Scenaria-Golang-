@@ -155,6 +155,11 @@ func DownloadFile(url, destPath string) error {
 	return downloadFile(destPath, url, nil)
 }
 
+// DownloadFileWithProgress downloads url to destPath and reports byte progress.
+func DownloadFileWithProgress(url, destPath string, onProgress func(downloaded, total int64)) error {
+	return downloadFile(destPath, url, onProgress)
+}
+
 func downloadFile(destPath, url string, onProgress func(downloaded, total int64)) error {
 	return downloadFileWithClient(&http.Client{Timeout: 10 * time.Minute}, url, destPath, onProgress)
 }

@@ -1,7 +1,10 @@
 <script lang="ts">
   import { gui } from '../../wailsjs/go/models'
+  import { flakyLabel, type FlakyScenarioStat } from './flakyMetrics'
 
   export let entries: gui.RunResultEntry[] = []
+  export let flakyByPath: Map<string, FlakyScenarioStat> = new Map()
+  export let flakyStepByPath: Map<string, string> = new Map()
   export let artifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
   export let onRerun: () => void = () => {}
   export let onOpenFolder: (path: string) => void = () => {}
@@ -69,10 +72,18 @@
       <tbody>
         {#each entries as entry}
           {@const parts = splitPath(entry.path)}
-          <tr class:failed={!entry.success}>
+          {@const flakyStat = flakyByPath.get(entry.path)}
+          {@const stepHint = flakyStepByPath.get(entry.path)}
+          <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky}>
             <td>
               <div class="scenario-name">{parts.scenario || basename(parts.feature)}</div>
               <div class="feature-name">{basename(parts.feature)}</div>
+              {#if flakyStat?.flaky}
+                <div class="flaky-tag">{flakyLabel(flakyStat)}</div>
+              {/if}
+              {#if stepHint}
+                <div class="step-flaky">{stepHint}</div>
+              {/if}
             </td>
             <td class="status">{entry.success ? '✓ OK' : '✗ FAIL'}</td>
             <td class="msg">{entry.message || '—'}</td>
@@ -139,6 +150,21 @@
 
   tr.failed td.status {
     color: var(--color-error);
+  }
+
+  tr.flaky td:first-child {
+    border-left: 2px solid var(--color-warning, #d4a017);
+  }
+
+  .flaky-tag {
+    font-size: 10px;
+    color: var(--color-warning, #d4a017);
+    margin-top: 2px;
+  }
+
+  .step-flaky {
+    font-size: 10px;
+    color: var(--color-muted);
   }
 
   tr:not(.failed) td.status {

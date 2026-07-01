@@ -6,8 +6,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/paths"
+)
+
+var (
+	allureServeMu  sync.Mutex
+	allureServeCmd *exec.Cmd
 )
 
 func (s *Service) defaultAllureDir() (string, error) {
@@ -46,12 +52,25 @@ func (s *Service) ServeAllure(dir string) RunResult {
 			Error: "allure CLI not found in PATH — install from https://docs.qameta.io/allure/",
 		}
 	}
+	allureServeMu.Lock()
+	if allureServeCmd != nil && allureServeCmd.Process != nil {
+		allureServeMu.Unlock()
+		return RunResult{Output: "Allure serve уже запущен\n"}
+	}
 	cmd := exec.Command("allure", "serve", resultsDir)
 	if err := cmd.Start(); err != nil {
+		allureServeMu.Unlock()
 		return RunResult{Error: fmt.Sprintf("start allure serve: %v", err)}
 	}
+	allureServeCmd = cmd
+	allureServeMu.Unlock()
 	go func() {
 		_ = cmd.Wait()
+		allureServeMu.Lock()
+		if allureServeCmd == cmd {
+			allureServeCmd = nil
+		}
+		allureServeMu.Unlock()
 	}()
 	return RunResult{Output: fmt.Sprintf("Allure serve: %s\n", resultsDir)}
 }

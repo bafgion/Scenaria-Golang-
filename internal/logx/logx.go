@@ -13,6 +13,9 @@ func Init() {
 	switch os.Getenv("SCENARIA_LOG") {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stderr, opts)
+	case "debug":
+		opts.Level = slog.LevelDebug
+		handler = slog.NewTextHandler(os.Stderr, opts)
 	default:
 		handler = slog.NewTextHandler(os.Stderr, opts)
 	}

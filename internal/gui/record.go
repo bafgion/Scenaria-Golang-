@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/httpauth"
+	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 )
@@ -220,8 +221,20 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	output := strings.TrimSpace(req.Output)
 	if output == "" {
 		output = filepath.Join(path, "recorded.feature")
-	} else if !filepath.IsAbs(output) {
-		output = filepath.Join(path, output)
+	} else {
+		confined, err := paths.ConfineToProjectRoot(path, output)
+		if err != nil {
+			return RunResult{Error: err.Error()}
+		}
+		output = confined
+	}
+	appendTo := strings.TrimSpace(req.AppendTo)
+	if appendTo != "" {
+		confined, err := paths.ConfineToProjectRoot(path, appendTo)
+		if err != nil {
+			return RunResult{Error: err.Error()}
+		}
+		appendTo = confined
 	}
 	idle := req.IdleSeconds
 	if idle <= 0 {
@@ -245,24 +258,24 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	if s.recordCancel != nil {
 		s.recordCancel()
 	}
+	s.recordGen++
+	myGen := s.recordGen
 	session := recorder.NewLiveSession()
 	s.liveSession = session
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if req.BrowseOnly {
-		ctx, cancel = context.WithCancel(context.Background())
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(idle+30)*time.Second)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.recordCtx = ctx
 	s.recordCancel = cancel
 	s.recordEmit = emit
 	s.mu.Unlock()
 
-	defer func() {
+	clearRecordSession := func() {
 		s.mu.Lock()
-		s.recordEmit = nil
+		if s.recordGen == myGen {
+			s.recordEmit = nil
+		}
 		s.mu.Unlock()
-	}()
+	}
+	defer clearRecordSession()
 
 	idleTimeout := time.Duration(idle) * time.Second
 	if req.BrowseOnly {
@@ -295,7 +308,7 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 		Headless:          req.Headless,
 		IdleTimeout:       idleTimeout,
 		Session:           session,
-		AppendTo:          strings.TrimSpace(req.AppendTo),
+		AppendTo:          appendTo,
 		FilterImportant:   req.FilterRecording,
 		NavOnly:           req.NavOnlyRecording,
 		HoverRecord:       req.HoverRecord,
@@ -308,8 +321,11 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	})
 
 	s.mu.Lock()
-	s.recordCancel = nil
-	s.liveSession = nil
+	if s.recordGen == myGen {
+		s.recordCancel = nil
+		s.liveSession = nil
+		s.recordCtx = nil
+	}
 	s.mu.Unlock()
 
 	if err != nil {
@@ -350,8 +366,12 @@ func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
 	output := strings.TrimSpace(req.Output)
 	if output == "" {
 		output = filepath.Join(path, "recorded.feature")
-	} else if !filepath.IsAbs(output) {
-		output = filepath.Join(path, output)
+	} else {
+		confined, err := paths.ConfineToProjectRoot(path, output)
+		if err != nil {
+			return RunResult{Error: err.Error()}
+		}
+		output = confined
 	}
 	featureName := strings.TrimSpace(req.FeatureName)
 	if featureName == "" {
@@ -446,10 +466,11 @@ func (s *Service) StopRecordingCapture() error {
 func (s *Service) CloseBrowser() {
 	s.mu.Lock()
 	cancel := s.recordCancel
-	s.recordCancel = nil
 	session := s.liveSession
+	s.recordCancel = nil
 	s.liveSession = nil
 	s.recordEmit = nil
+	s.recordCtx = nil
 	s.mu.Unlock()
 	if session != nil {
 		session.Clear()

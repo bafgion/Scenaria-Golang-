@@ -113,18 +113,18 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 
 	action, err := stepdsl.Parse(step)
 	if err != nil {
-		return err
+		return e.failLeafStep(runCtx, err)
 	}
 	if runCtx != nil {
 		if action.Value1, err = runCtx.ResolveText(action.Value1); err != nil {
-			return err
+			return e.failLeafStep(runCtx, err)
 		}
 		if action.Value2, err = runCtx.ResolveText(action.Value2); err != nil {
-			return err
+			return e.failLeafStep(runCtx, err)
 		}
 	}
 	if err := e.runAction(ctx, session, action, runCtx); err != nil {
-		return err
+		return e.failLeafStep(runCtx, err)
 	}
 	if runCtx != nil {
 		runCtx.RecordStep(step)
@@ -140,14 +140,15 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 	if err != nil {
 		return err
 	}
-	locators, err := session.page.Locator(selector).All()
+	locators, err := session.page.Locator(selector).Count()
 	if err != nil {
 		return fmt.Errorf("for_each locator failed: %w", err)
 	}
-	for index, locator := range locators {
+	for index := 0; index < locators; index++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		locator := session.page.Locator(selector).Nth(index)
 		text, _ := locator.InnerText()
 		text = strings.TrimSpace(text)
 		if text == "" {
@@ -162,4 +163,11 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		}
 	}
 	return nil
+}
+
+func (e *StepExecutor) failLeafStep(runCtx *RunContext, err error) error {
+	if runCtx != nil {
+		runCtx.markFailedLeafStep()
+	}
+	return err
 }

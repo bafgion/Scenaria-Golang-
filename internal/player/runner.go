@@ -27,6 +27,7 @@ type ScenarioResult struct {
 	Scenario      string
 	Status        string
 	Message       string
+	FailedStep    *int
 	ScreenshotPNG []byte
 	TraceZIP      []byte
 	VideoWebM     []byte

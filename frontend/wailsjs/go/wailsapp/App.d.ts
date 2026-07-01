@@ -22,6 +22,8 @@ export function CancelOTP():Promise<void>;
 
 export function CancelRecording():Promise<void>;
 
+export function CancelRun():Promise<void>;
+
 export function CaptureBrowserSession(arg1:string):Promise<string>;
 
 export function CenterAppWindow():Promise<void>;
@@ -42,13 +44,15 @@ export function DeleteTestClient(arg1:string):Promise<void>;
 
 export function DescribeEditorLine(arg1:string):Promise<gui.StepCatalogEntry>;
 
-export function DownloadUpdate():Promise<string>;
+export function DownloadUpdate():Promise<void>;
 
 export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
 
 export function EventBindingTypes():Promise<gui.UpdateProgressDTO|gui.VanessaRunResultDTO>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
+
+export function FlakyMetrics(arg1:number):Promise<gui.FlakyMetricsDTO>;
 
 export function FocusBrowser():Promise<void>;
 
