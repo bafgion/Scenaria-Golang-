@@ -1,5 +1,19 @@
 export namespace gui {
 	
+	export class UntitledTabDTO {
+	    path: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UntitledTabDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	    }
+	}
 	export class AppSettingsDTO {
 	    browser: string;
 	    headless: boolean;
@@ -18,6 +32,7 @@ export namespace gui {
 	    sessionProject: string;
 	    openTabs: string[];
 	    activeTab: string;
+	    untitledTabs: UntitledTabDTO[];
 	    scrollBeforeClick: boolean;
 	    hoverRecordMinMs: number;
 	    selectorClickStrategies: string[];
@@ -48,6 +63,7 @@ export namespace gui {
 	        this.sessionProject = source["sessionProject"];
 	        this.openTabs = source["openTabs"];
 	        this.activeTab = source["activeTab"];
+	        this.untitledTabs = this.convertValues(source["untitledTabs"], UntitledTabDTO);
 	        this.scrollBeforeClick = source["scrollBeforeClick"];
 	        this.hoverRecordMinMs = source["hoverRecordMinMs"];
 	        this.selectorClickStrategies = source["selectorClickStrategies"];
@@ -773,6 +789,7 @@ export namespace gui {
 		    return a;
 		}
 	}
+	
 	export class UpdateInfoDTO {
 	    currentVersion: string;
 	    latestVersion: string;
@@ -801,6 +818,22 @@ export namespace gui {
 	        this.installMode = source["installMode"];
 	        this.applyKind = source["applyKind"];
 	        this.canAutoApply = source["canAutoApply"];
+	    }
+	}
+	export class UpdateProgressDTO {
+	    stage: string;
+	    message: string;
+	    percent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateProgressDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stage = source["stage"];
+	        this.message = source["message"];
+	        this.percent = source["percent"];
 	    }
 	}
 	export class ValidateRequest {
@@ -837,6 +870,44 @@ export namespace gui {
 	        this.success = source["success"];
 	        this.message = source["message"];
 	    }
+	}
+	export class VanessaRunResultDTO {
+	    output: string;
+	    error: string;
+	    success: boolean;
+	    runDir: string;
+	    cases: VanessaCaseDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new VanessaRunResultDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.output = source["output"];
+	        this.error = source["error"];
+	        this.success = source["success"];
+	        this.runDir = source["runDir"];
+	        this.cases = this.convertValues(source["cases"], VanessaCaseDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class VanessaRunSnapshotDTO {
 	    runDir: string;

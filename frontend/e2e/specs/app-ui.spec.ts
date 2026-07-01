@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test'
-import { bootApp, createNewScenario, mockPath, openMenuItem, openTestProject } from '../helpers/app'
+import {
+  bootApp,
+  catalogFeature,
+  createNewScenario,
+  editorLine,
+  mockPath,
+  openMenuItem,
+  openTestProject,
+  startRecordingFromDialog,
+} from '../helpers/app'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript({ path: mockPath })
@@ -48,6 +57,25 @@ test('settings browser engine status updates on selection', async ({ page }) => 
 test('new scenario creates untitled tab', async ({ page }) => {
   await bootApp(page)
   await createNewScenario(page)
+})
+
+test('untitled tab restores after reload when project is open', async ({ page }) => {
+  await bootApp(page)
+  await openTestProject(page)
+  await createNewScenario(page)
+  const marker = 'E2E_SESSION_RESTORE_MARKER'
+  await page.locator('.monaco-editor .view-lines').click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type(marker)
+  await page.waitForTimeout(600)
+  await expect(page.locator('.monaco-editor .view-line', { hasText: marker })).toBeVisible()
+  await page.reload()
+  await expect(page.locator('.ide')).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature' })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(page.locator('.monaco-editor .view-line', { hasText: marker })).toBeVisible({ timeout: 10_000 })
 })
 
 test('hotkeys dialog opens with Shift+F1', async ({ page }) => {
@@ -225,20 +253,18 @@ test('run dialog dry-run logs completion', async ({ page }) => {
   await expect(page.locator('.panel-body')).toContainText('Завершено.', { timeout: 10_000 })
 })
 
-test('post-record banner shows hints after recording', async ({ page }) => {
+test('live recording inserts steps into editor', async ({ page }) => {
   await bootApp(page, '?e2e=post-record')
   await openTestProject(page)
-  await page.locator('.tree-file-label', { hasText: 'smoke' }).click()
-  await page.locator('button.tool-btn.primary[title="Запись (Ctrl+R)"]').click()
-  const recordDialog = page.getByRole('dialog', { name: 'Запись сценария' })
-  await recordDialog.getByRole('button', { name: 'Начать' }).click()
-  await expect(recordDialog).toBeHidden({ timeout: 10_000 })
-  const banner = page.locator('.post-record-banner')
-  await expect(banner).toBeVisible({ timeout: 10_000 })
-  await expect(banner).toContainText('Записано шагов: 3')
-  await expect(banner).toContainText('лампочка')
+  await catalogFeature(page, 'smoke').click()
+  await startRecordingFromDialog(page)
+  await expect(editorLine(page, 'нажимаю "#login"')).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(editorLine(page, 'ввожу "user" в "#email"')).toBeVisible()
+  await expect(editorLine(page, 'нажимаю "#submit"')).toBeVisible()
 
-  await page.locator('.monaco-editor .view-line').nth(2).click()
+  await editorLine(page, 'нажимаю "#login"').click()
   await expect(page.locator('.monaco-editor .squiggly-warning')).toBeVisible({ timeout: 10_000 })
 
   await page.keyboard.press('Control+End')

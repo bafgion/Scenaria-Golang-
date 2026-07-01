@@ -124,6 +124,32 @@ func (s *LiveSession) CaptureEverEnabled() bool {
 	return s.captureEver.Load()
 }
 
+// ShouldSyncRecordedStepsOnCaptureStart reports whether existing recorded steps should be pushed to the editor.
+// It must be called before BeginCapture while capture is still disabled.
+func ShouldSyncRecordedStepsOnCaptureStart(session *LiveSession) bool {
+	return !session.CaptureEverEnabled()
+}
+
+// EndCapture stops step capture but keeps the browser session alive.
+// Recorded steps are cleared so the next «Запись» starts a fresh segment (use Pause to continue).
+func (s *LiveSession) EndCapture() {
+	s.captureEnabled.Store(false)
+	s.paused.Store(false)
+	s.captureEver.Store(false)
+	s.mu.Lock()
+	page := s.page
+	if s.steps != nil {
+		*s.steps = (*s.steps)[:0]
+	}
+	s.mu.Unlock()
+	if page != nil {
+		_, _ = page.Evaluate(`() => {
+			const r = window.__scenariaRecorder;
+			if (r) r.events = [];
+		}`, nil)
+	}
+}
+
 // InitBrowseMode opens the browser without capturing interactions until BeginCapture.
 func (s *LiveSession) InitBrowseMode() {
 	s.captureEnabled.Store(false)
@@ -168,9 +194,11 @@ func (s *LiveSession) BeginCapture() error {
 	s.captureEver.Store(true)
 	s.captureEnabled.Store(true)
 	s.paused.Store(false)
-	if page != nil && steps != nil && len(*steps) == 0 {
+	if page != nil && steps != nil {
 		if u := strings.TrimSpace(page.URL()); u != "" && u != "about:blank" {
-			*steps = append(*steps, RecordedStep{Action: "goto", Value: u})
+			if len(*steps) == 0 || (*steps)[len(*steps)-1].Action != "goto" || (*steps)[len(*steps)-1].Value != u {
+				*steps = append(*steps, RecordedStep{Action: "goto", Value: u})
+			}
 		}
 	}
 	return nil
@@ -183,6 +211,22 @@ func (s *LiveSession) RecordedStepCount() int {
 		return 0
 	}
 	return len(*s.steps)
+}
+
+// EachRecordedLine invokes fn for every recorded step line in order.
+func (s *LiveSession) EachRecordedLine(fn func(index int, line string)) {
+	if fn == nil {
+		return
+	}
+	s.mu.Lock()
+	steps := s.steps
+	s.mu.Unlock()
+	if steps == nil {
+		return
+	}
+	for i, line := range RecordedStepsToLines(*steps) {
+		fn(i, line)
+	}
 }
 
 func (s *LiveSession) BrowserAlive() bool {

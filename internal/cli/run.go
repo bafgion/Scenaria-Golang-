@@ -112,6 +112,10 @@ func RunRun(args []string) error {
 		return fmt.Errorf("no runnable scenarios found in %v", opts.targets)
 	}
 
+	if root := paths.InferProjectRoot(opts.targets); root != "" {
+		opts = remapScenariaArtifacts(root, opts)
+	}
+
 	runner, err := buildRunner(opts, plan)
 	if err != nil {
 		return err
@@ -399,6 +403,16 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 	default:
 		return nil, fmt.Errorf("unsupported run engine %q (supported: stub, playwright)", opts.engine)
 	}
+}
+
+func remapScenariaArtifacts(root string, opts runOptions) runOptions {
+	opts.htmlPath = paths.RemapScenariaArtifact(root, opts.htmlPath)
+	opts.junitPath = paths.RemapScenariaArtifact(root, opts.junitPath)
+	opts.summaryJSON = paths.RemapScenariaArtifact(root, opts.summaryJSON)
+	opts.allureDir = paths.RemapScenariaArtifact(root, opts.allureDir)
+	opts.traceDir = paths.RemapScenariaArtifact(root, opts.traceDir)
+	opts.videoDir = paths.RemapScenariaArtifact(root, opts.videoDir)
+	return opts
 }
 
 func formatPartialStepRange(start, end int) string {

@@ -37,6 +37,8 @@ func NormalizeSteps(steps []RecordedStep) []RecordedStep {
 		merged[i] = upgradeClickSelector(merged[i])
 	}
 	merged = collapseDuplicateScrolls(merged)
+	merged = collapseDuplicateHovers(merged)
+	merged = collapseRedundantHoverBeforeClick(merged)
 	merged = collapseDuplicateClicks(merged)
 	merged = dropDuplicateGotos(merged)
 	return merged
@@ -171,6 +173,40 @@ func collapseDuplicateClicks(steps []RecordedStep) []RecordedStep {
 	return result
 }
 
+func collapseDuplicateHovers(steps []RecordedStep) []RecordedStep {
+	result := make([]RecordedStep, 0, len(steps))
+	seenSinceGoto := map[string]struct{}{}
+	for _, step := range steps {
+		if step.Action == "goto" {
+			seenSinceGoto = map[string]struct{}{}
+			result = append(result, step)
+			continue
+		}
+		if step.Action == "hover" {
+			if _, ok := seenSinceGoto[step.Selector]; ok {
+				continue
+			}
+			seenSinceGoto[step.Selector] = struct{}{}
+		}
+		result = append(result, step)
+	}
+	return result
+}
+
+func collapseRedundantHoverBeforeClick(steps []RecordedStep) []RecordedStep {
+	result := make([]RecordedStep, 0, len(steps))
+	for _, step := range steps {
+		if step.Action == "click" && len(result) > 0 {
+			last := result[len(result)-1]
+			if last.Action == "hover" && last.Selector == step.Selector {
+				result = result[:len(result)-1]
+			}
+		}
+		result = append(result, step)
+	}
+	return result
+}
+
 func dropDuplicateGotos(steps []RecordedStep) []RecordedStep {
 	result := make([]RecordedStep, 0, len(steps))
 	for _, step := range steps {
@@ -204,7 +240,7 @@ func upgradeClickSelector(step RecordedStep) RecordedStep {
 	if len(label) < 2 {
 		return step
 	}
-	step.Selector = `button:has-text("` + escapeSelectorText(label) + `")`
+	step.Selector = `text="` + escapeSelectorText(label) + `"`
 	return step
 }
 
@@ -282,7 +318,7 @@ func contextualButtonSelector(context, label string) string {
 	if len(label) > 60 {
 		label = label[:40]
 	}
-	return `div:has-text("` + escapeSelectorText(context) + `") >> button:has-text("` + escapeSelectorText(label) + `")`
+	return `text="` + escapeSelectorText(context) + `" >> text="` + escapeSelectorText(label) + `"`
 }
 
 func selectorIsFragile(selector string) bool {

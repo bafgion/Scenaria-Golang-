@@ -61,6 +61,10 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 		Status:      "passed",
 	}
 
+	if err := ctx.Err(); err != nil {
+		return ScenarioResult{}, err
+	}
+
 	if e.options.AutoInstall {
 		if err := paths.EnsurePlaywrightEngine(e.options.BrowserName); err != nil {
 			return ScenarioResult{}, fmt.Errorf("playwright install failed: %w", err)
@@ -80,6 +84,10 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 		return ScenarioResult{}, err
 	}
 	defer session.close()
+
+	if err := ctx.Err(); err != nil {
+		return ScenarioResult{}, err
+	}
 
 	failed := false
 	if input.TestClient != nil {

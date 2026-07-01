@@ -29,13 +29,7 @@
     const normalized = String(text || visibleText(el) || '').trim();
     if (!normalized || normalized.length < 2 || normalized.length > 80) return null;
     const escaped = normalized.replace(/"/g, '\\"');
-    const tag = (el.tagName || '').toUpperCase();
-    if (tag === 'BUTTON') return `button:has-text("${escaped}")`;
-    if (tag === 'A') return `a:has-text("${escaped}")`;
-    const role = el.getAttribute('role');
-    if (role === 'button') return `button:has-text("${escaped}")`;
-    if (role === 'link') return `a:has-text("${escaped}")`;
-    return `button:has-text("${escaped}")`;
+    return `text="${escaped}"`;
   }
 
   function clickableAncestor(el) {
@@ -92,7 +86,7 @@
     const cfg = window.__scenariaSelectorOrder || {};
     const defaults = kind === 'input'
       ? ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
-      : ['testid', 'id', 'aria', 'contextual', 'text'];
+      : ['testid', 'id', 'aria', 'title', 'contextual', 'text'];
     const order = cfg[kind];
     return Array.isArray(order) && order.length ? order : defaults;
   }
@@ -109,6 +103,10 @@
       aria() {
         const aria = target.getAttribute('aria-label');
         return aria && aria.trim() ? `[aria-label="${cssEscape(aria.trim())}"]` : null;
+      },
+      title() {
+        const title = target.getAttribute('title');
+        return title && title.trim() ? `[title="${cssEscape(title.trim())}"]` : null;
       },
       contextual() {
         return buildContextualClickSelector(target);
@@ -160,6 +158,35 @@
     return null;
   }
 
+  function navScopeTag(el) {
+    if (!el || el.nodeType !== 1) return null;
+    const nav = el.closest('nav, header, [role="navigation"], [role="menubar"]');
+    if (!nav) return null;
+    const tag = (nav.tagName || 'nav').toUpperCase();
+    return tag === 'HEADER' ? 'header' : 'nav';
+  }
+
+  function scopedTextSelector(scopeTag, text) {
+    const normalized = String(text || '').trim();
+    if (!normalized || normalized.length < 2 || normalized.length > 80) return null;
+    const escaped = normalized.replace(/"/g, '\\"');
+    if (scopeTag) {
+      return `${scopeTag} >> text="${escaped}"`;
+    }
+    return `text="${escaped}"`;
+  }
+
+  function buildMenuTriggerSelector(trigger) {
+    if (!trigger || trigger.nodeType !== 1) return null;
+    const text = visibleText(trigger).trim();
+    if (!text) return buildClickSelector(trigger);
+    const scopeTag = navScopeTag(trigger);
+    if (scopeTag) {
+      return scopedTextSelector(scopeTag, text);
+    }
+    return buildClickSelector(trigger);
+  }
+
   function countMatchingClickables(doc, label) {
     if (!doc || !label) return 0;
     let count = 0;
@@ -175,15 +202,17 @@
     const label = visibleText(target).trim();
     if (!label || label.length > 40) return null;
     if (countMatchingClickables(target.ownerDocument, label) <= 1) return null;
+    const scopeTag = navScopeTag(target);
+    if (scopeTag) {
+      return scopedTextSelector(scopeTag, label);
+    }
     let node = target.parentElement;
     for (let depth = 0; node && depth < 8; depth++) {
       const caption = visibleText(node).trim();
-      if (caption.length >= 6 && caption !== label && caption.length <= 80) {
+      if (caption.length >= 6 && caption.length <= 40 && caption !== label) {
         const escapedCaption = caption.replace(/"/g, '\\"');
         const escapedLabel = label.replace(/"/g, '\\"');
-        const tag = (target.tagName || 'BUTTON').toLowerCase();
-        const btnTag = tag === 'a' ? 'a' : 'button';
-        return `div:has-text("${escapedCaption}") >> ${btnTag}:has-text("${escapedLabel}")`;
+        return `text="${escapedCaption}" >> text="${escapedLabel}"`;
       }
       node = node.parentElement;
     }
@@ -212,7 +241,7 @@
     const input = buildInputSelector(el);
     if (input) return input;
     if (el.id) return `#${cssEscape(el.id)}`;
-    return el.tagName.toLowerCase();
+    return '';
   }
 
   function clickContextCaption(clickEl) {
@@ -242,6 +271,7 @@
       contexttext: type === 'click' ? clickContextCaption(target) : '',
       placeholder: target.getAttribute('placeholder') || '',
       arialabel: (target.getAttribute('aria-label') || '').trim(),
+      title: (target.getAttribute('title') || '').trim(),
       role: target.getAttribute('role') || '',
       checked: target.checked ? 'true' : 'false',
     };
@@ -259,6 +289,9 @@
     isSignatureCanvas,
     buildInputSelector,
     buildSelector,
+    buildMenuTriggerSelector,
+    navScopeTag,
+    scopedTextSelector,
     collect,
   };
 })();

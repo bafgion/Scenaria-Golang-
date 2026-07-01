@@ -94,6 +94,7 @@ describe('catalogTree', () => {
     }
     expect(fileTreeLabel(node, true, true)).toContain('☑')
     expect(fileTreeLabel(node, true, false)).toContain('☐')
+    expect(fileTreeLabel(node, true, true, true)).toBe('☑ a.feature')
   })
 
   it('catalogStructureKey changes only when feature list changes', () => {

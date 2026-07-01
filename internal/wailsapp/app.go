@@ -80,6 +80,10 @@ func (a *App) ProjectPath() string {
 	return a.svc.ProjectPath()
 }
 
+func (a *App) ScenariaArtifactPath(sub string) string {
+	return a.svc.ScenariaArtifactPath(sub)
+}
+
 func (a *App) ReadFeature(path string) (string, error) {
 	return a.svc.ReadFeature(path)
 }
@@ -170,6 +174,11 @@ func (a *App) CheckUpdate() gui.RunResult {
 
 func (a *App) CheckUpdateInfo() (gui.UpdateInfoDTO, error) {
 	return a.svc.CheckUpdateInfo()
+}
+
+// EventBindingTypes exposes DTOs used only in runtime.EventsEmit so wails generate keeps them in models.ts.
+func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDTO) {
+	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}
 }
 
 func (a *App) DownloadUpdate() (string, error) {
@@ -399,17 +408,28 @@ func (a *App) StartRecord(req gui.RecordRequest) {
 			runtime.EventsEmit(a.ctx, name, payload)
 		}
 		req.BrowseOnly = false
-		emit("record-started", req.Output)
+		if !a.svc.HasLiveBrowser() {
+			emit("record-started", map[string]any{"resume": false, "output": req.Output})
+		}
 		result := a.svc.RecordLive(req, emit)
-		emit("record-finished", result)
+		if !a.svc.HasLiveBrowser() {
+			emit("record-finished", result)
+		} else if result.Error != "" {
+			runtime.EventsEmit(a.ctx, "record-error", result.Error)
+		}
 	}()
 }
 
 func (a *App) BeginRecordingCapture() error {
-	if err := a.svc.BeginRecordingCapture(); err != nil {
+	started, err := a.svc.BeginRecordingCapture()
+	if err != nil {
 		return err
 	}
-	runtime.EventsEmit(a.ctx, "record-started", "")
+	payload := map[string]any{"append": true}
+	if !started {
+		payload["sync"] = true
+	}
+	runtime.EventsEmit(a.ctx, "record-started", payload)
 	return nil
 }
 
@@ -420,6 +440,14 @@ func (a *App) RecordBaseline(req gui.BaselineRecordRequest) gui.RunResult {
 func (a *App) PauseRecording()  { a.svc.PauseRecording() }
 func (a *App) ResumeRecording() { a.svc.ResumeRecording() }
 func (a *App) CancelRecording() { a.svc.CancelRecording() }
+func (a *App) CloseBrowser()    { a.svc.CloseBrowser() }
+func (a *App) StopRecordingCapture() error {
+	err := a.svc.StopRecordingCapture()
+	if err == nil {
+		runtime.EventsEmit(a.ctx, "record-stopped", nil)
+	}
+	return err
+}
 func (a *App) IsRecordingPaused() bool {
 	return a.svc.IsRecordingPaused()
 }

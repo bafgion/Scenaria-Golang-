@@ -4,7 +4,7 @@ import "testing"
 
 func TestNormalizeClickStrategiesPreservesOrder(t *testing.T) {
 	got := NormalizeClickStrategies([]string{"text", "id", "testid"})
-	want := []string{"text", "id", "testid", "aria", "contextual"}
+	want := []string{"text", "id", "testid", "aria", "title", "contextual"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v want %v", got, want)
 	}

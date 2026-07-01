@@ -35,9 +35,11 @@ type LiveOptions struct {
 }
 
 type LiveCallbacks struct {
-	OnCaptureStart  func()
+	OnCaptureStart  func(resume bool)
+	OnCaptureStop   func()
 	OnPickerRequest func()
 	OnBrowserLost   func()
+	OnStepRecorded  func(index int, line string)
 }
 
 type recorderEvent struct {
@@ -107,6 +109,9 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 
 	if opts.BrowseOnly && !session.CaptureEverEnabled() {
 		return context.Canceled
+	}
+	if opts.Callbacks.OnStepRecorded != nil {
+		return nil
 	}
 	return persistLiveRecording(opts, session, recorded, runErr)
 }

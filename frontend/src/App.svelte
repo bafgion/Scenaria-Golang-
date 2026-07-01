@@ -51,7 +51,13 @@
   import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
-  import { isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
+  import { upsertRecordedStepInText } from './lib/recordedStepEditor'
+  import { isUntitled, makeUntitledPath, syncUntitledCounterFromPaths, untitledLabel } from './lib/untitled'
+  import {
+    buildSessionTabsSnapshot,
+    sessionTabPathsFromSettings,
+    untitledContentMap,
+  } from './lib/sessionTabs'
   import { matchHotkey, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
@@ -64,13 +70,17 @@
   import PickerStepDialog from './lib/PickerStepDialog.svelte'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
   import {
+    catalogIndentStep,
+    clampSidebarWidth,
     clampBottomPanelHeight,
     clampStepsPanelHeight,
     effectivePreviewWidth,
     effectiveSidebarWidth,
+    isCompactCatalogTree,
     shouldAutoCompactToolbar,
     shouldShowPreviewPane,
     toolbarIconOnlyThreshold,
+    VIEWPORT,
   } from './lib/viewport'
   import ErrorPanel from './lib/ErrorPanel.svelte'
   import ResultsPanel from './lib/ResultsPanel.svelte'
@@ -117,6 +127,8 @@
     PauseRecording,
     ResumeRecording,
     CancelRecording,
+    CloseBrowser,
+    StopRecordingCapture,
     FocusBrowser,
     PollBrowserSession,
     UndoRecordedStep,
@@ -135,6 +147,7 @@
     ListRunResults,
     BundledExamplesPath,
     ProjectArtifacts,
+    ScenariaArtifactPath,
     ParseEditorSteps,
     ArtifactExists,
     OpenFolder,
@@ -402,6 +415,7 @@
   let recordFeatureName = 'Записанный сценарий'
   let recordScenarioName = 'Запись'
   let lastRecordTarget = ''
+  let liveRecordStepLines: Record<number, number> = {}
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
@@ -443,6 +457,8 @@
 
   $: actionBarCompact = toolbarCompact || viewportAutoCompact
   $: layoutSidebarWidth = effectiveSidebarWidth(sidebarWidth, viewportWidth, sidebarVisible)
+  $: catalogIndent = catalogIndentStep(layoutSidebarWidth)
+  $: compactCatalogTree = isCompactCatalogTree(layoutSidebarWidth)
   $: showPreviewPane = shouldShowPreviewPane(viewportWidth, previewVisible)
   $: layoutPreviewWidth = effectivePreviewWidth(previewWidth, viewportWidth, previewVisible)
 
@@ -529,7 +545,7 @@
     sidebarVisible = layout.sidebarVisible
     bottomPanelOpen = layout.bottomPanelOpen
     bottomPanelHeight = layout.bottomPanelHeight
-    sidebarWidth = layout.sidebarWidth || 260
+    sidebarWidth = clampSidebarWidth(layout.sidebarWidth || 260)
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth || 360
 
@@ -562,7 +578,9 @@
       setStepHoverEnabled(() => editorSettings.stepHover)
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       stepsPanelHeight = settings.stepsPanelHeight || 160
-      if (settings.sidebarWidth >= 120) sidebarWidth = settings.sidebarWidth
+      if (settings.sidebarWidth >= VIEWPORT.sidebarMin) {
+        sidebarWidth = clampSidebarWidth(settings.sidebarWidth)
+      }
       if (settings.recentProjects?.length) recentProjects = settings.recentProjects
       if (settings.recentFeatures?.length) recentFeatures = settings.recentFeatures
       await restoreWorkspaceSession(settings)
@@ -620,12 +638,33 @@
         }),
       )
       unsubscribers.push(
-        EventsOn('record-started', () => {
+        EventsOn('record-started', async (payload: string | { append?: boolean; sync?: boolean; output?: string }) => {
+          const meta = typeof payload === 'object' && payload !== null ? payload : { append: false, output: payload }
+          const appendOnly = meta.append === true
+          const syncOnly = meta.sync === true
           applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
           showRecord = false
           setStatus('● Идёт запись', 'busy')
-          appendLog('Запись начата…')
           startBrowserWatch()
+          if (!syncOnly) {
+            liveRecordStepLines = {}
+            if (!appendOnly) {
+              await prepareRecordEditorTab(meta.output || '')
+            }
+          }
+          if (!appendOnly && !syncOnly) {
+            appendLog('Запись начата…')
+          }
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('record-stopped', () => {
+          handleRecordStopped()
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('record-step', (payload: { index: number; line: string }) => {
+          void applyLiveRecordedStep(payload?.index ?? 0, payload?.line ?? '')
         }),
       )
       unsubscribers.push(
@@ -694,15 +733,15 @@
     stopVanessaPoll()
     stopBrowserWatch()
     applyCatalogFilterDebounced.cancel()
-    if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
+    if (sessionPersistTimer) {
+      clearTimeout(sessionPersistTimer)
+      sessionPersistTimer = null
+      void persistSettings()
+    }
     if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
     if (draftAutosaveTimer) clearInterval(draftAutosaveTimer)
     for (const off of unsubscribers) off()
   })
-
-  function sessionTabPaths(): string[] {
-    return tabs.map((t) => t.path).filter((p) => p && !isUntitled(p))
-  }
 
   function schedulePersistSession() {
     if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
@@ -714,17 +753,42 @@
     if (!proj) return
     try {
       await openProjectAt(proj)
-      const tabPaths = (s.openTabs || []).filter((p) => p && !isUntitled(p))
+      const untitledBodies = untitledContentMap(s.untitledTabs)
+      syncUntitledCounterFromPaths([
+        ...(s.openTabs || []),
+        ...untitledBodies.keys(),
+      ])
+      const tabPaths = sessionTabPathsFromSettings(s.openTabs, s.untitledTabs)
       for (const p of tabPaths) {
+        if (isUntitled(p)) {
+          const content = untitledBodies.get(p)
+          if (content === undefined || tabs.some((t) => t.path === p)) continue
+          tabs = [...tabs, { path: p, content, dirty: true }]
+          continue
+        }
         try {
           await loadFeature(p)
         } catch {
           /* skip missing files */
         }
       }
-      if (s.activeTab && tabPaths.includes(s.activeTab)) {
-        await loadFeature(s.activeTab)
+      const active = (s.activeTab || '').trim()
+      if (active) {
         welcomeTabVisible = false
+        if (isUntitled(active)) {
+          const tab = tabs.find((t) => t.path === active)
+          if (tab) {
+            await applyEditorText(tabEditorText(tab), {
+              switchTab: true,
+              tabPath: active,
+              skipValidate: true,
+            })
+            activeTab = active
+            trimTabsMemory()
+          }
+        } else {
+          await loadFeature(active)
+        }
       } else if (tabPaths.length > 0) {
         welcomeTabVisible = false
       }
@@ -883,13 +947,13 @@
       { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
       { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
       { id: 'pause', label: 'Пауза', group: 'Запись и тест', run: toggleRecordPause },
-      { id: 'run', label: 'Запустить', group: 'Запись и тест', shortcut: 'Ctrl+Enter', run: () => executeRun({ ...lastRun, dryRun: false }) },
+      { id: 'run', label: 'Запустить', group: 'Запись и тест', shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
       { id: 'run-current', label: 'Запустить текущий сценарий', group: 'Запись и тест', shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
       { id: 'run-current-dry', label: 'Dry-run текущего сценария', group: 'Запись и тест', run: () => runCurrentScenario(true) },
       { id: 'run-dialog', label: 'Запустить…', group: 'Запись и тест', run: () => openRunDialog('Запуск сценария', {}) },
       { id: 'run-tag', label: 'Запустить сценарии с тегом…', group: 'Запись и тест', run: () => openRunDialog('Запуск с тегом', {}) },
       { id: 'playwright', label: 'Playwright…', group: 'Запись и тест', run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
-      { id: 'dry', label: 'Dry-run', group: 'Запись и тест', run: () => executeRun({ ...lastRun, dryRun: true }) },
+      { id: 'dry', label: 'Dry-run', group: 'Запись и тест', run: () => runPrimary(true) },
       { id: 'batch', label: 'Пакетный выбор', group: 'Запись и тест', run: () => toggleBatchMode() },
       { id: 'batch-run', label: 'Запустить выбранные', group: 'Запись и тест', run: () => runBatchSelected(false) },
       { id: 'batch-dry', label: 'Dry-run выбранных', group: 'Запись и тест', run: () => runBatchSelected(true) },
@@ -963,7 +1027,7 @@
     sidebarVisible = layout.sidebarVisible
     bottomPanelOpen = layout.bottomPanelOpen
     bottomPanelHeight = layout.bottomPanelHeight
-    sidebarWidth = layout.sidebarWidth
+    sidebarWidth = clampSidebarWidth(layout.sidebarWidth)
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth
     appendLog('Макет окон сброшен')
@@ -1576,6 +1640,14 @@
     await executeRun(opts, batchSelected)
   }
 
+  function runPrimary(dryRun = false) {
+    if (batchSelected.length > 0) {
+      void runBatchSelected(dryRun)
+      return
+    }
+    void executeRun({ ...lastRun, dryRun })
+  }
+
   async function runScenarioAtLine(line: number, dryRun = false, scenarioOverride = '', partial = false) {
     if (!activeTab || isWelcome) return
     let scenario = scenarioOverride || scenarioAtLine(editorText, line)
@@ -1638,7 +1710,7 @@
         void saveFeatureAs()
         break
       case 'run':
-        if (!isWelcome && (activeTab || projectPath)) void executeRun({ ...lastRun, dryRun: false })
+        if (!isWelcome && (activeTab || projectPath || batchSelected.length > 0)) void runPrimary(false)
         break
       case 'run-current':
         if (!isWelcome && activeTab) void runCurrentScenario(false)
@@ -1724,7 +1796,7 @@
     const startX = e.clientX
     const startW = sidebarWidth
     const onMove = (ev: MouseEvent) => {
-      sidebarWidth = Math.max(120, Math.min(480, startW + (ev.clientX - startX)))
+      sidebarWidth = clampSidebarWidth(startW + (ev.clientX - startX))
     }
     const onUp = async () => {
       resizingSidebar = false
@@ -1999,10 +2071,10 @@
     }
   }
 
-  function syncActiveTabContent() {
-    if (isWelcome || !activeTab) return
+  function syncTabContent(tabPath: string) {
+    if (!tabPath || tabPath === WELCOME_KEY) return
     tabs = tabs.map((t) => {
-      if (t.path !== activeTab) return t
+      if (t.path !== tabPath) return t
       const dirty = editorText !== t.content
       if (!dirty) {
         if (!t.dirty && t.draft === undefined) return t
@@ -2012,21 +2084,25 @@
     })
   }
 
-  function markActiveTabSaved(text: string) {
+  function syncActiveTabContent() {
     if (isWelcome || !activeTab) return
+    syncTabContent(activeTab)
+  }
+
+  function markActiveTabSaved(text: string, tabPath = activeTab) {
+    if (isWelcome || !tabPath) return
     tabs = tabs.map((t) =>
-      t.path === activeTab ? { ...t, content: text, dirty: false, draft: undefined } : t,
+      t.path === tabPath ? { ...t, content: text, dirty: false, draft: undefined } : t,
     )
   }
 
   async function loadFeature(path: string) {
-    if (activeTab && !isWelcome && activeTab !== path) {
-      syncActiveTabContent()
+    const leavingTab = activeTab
+    if (leavingTab && !isWelcome && leavingTab !== path) {
+      syncTabContent(leavingTab)
     }
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
-      activeTab = path
-      trimTabsMemory()
       let text = tabEditorText(existing)
       if (tabNeedsDiskReload(existing)) {
         try {
@@ -2039,7 +2115,10 @@
           return
         }
       }
+      welcomeTabVisible = false
       await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
+      activeTab = path
+      trimTabsMemory()
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
       return
@@ -2060,12 +2139,13 @@
       }
       tabs = [...tabs, { path, content, dirty }]
       warnManyOpenTabs()
-      activeTab = path
-      trimTabsMemory()
+      welcomeTabVisible = false
       await rememberFeature(path)
       const recents = await loadRecents()
       recentFeatures = recents.features
       await applyEditorText(content, { saved: !dirty, switchTab: true, tabPath: path, skipValidate: true })
+      activeTab = path
+      trimTabsMemory()
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
     } catch (e: any) {
@@ -2075,11 +2155,14 @@
 
   function selectTab(path: string) {
     if (path === WELCOME_KEY) {
+      const leavingTab = activeTab
+      if (leavingTab && !isWelcome) {
+        syncTabContent(leavingTab)
+      }
+      void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       welcomeTabVisible = true
-      syncActiveTabContent()
       activeTab = WELCOME_KEY
       trimTabsMemory()
-      void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       return
     }
     if (path === activeTab) return
@@ -2282,6 +2365,7 @@
   async function onEditorChange(text: string) {
     editorText = text
     syncActiveTabContent()
+    schedulePersistSession()
     if (editorSettings.validateOnType) {
       scheduleValidateEditor()
     }
@@ -2377,15 +2461,15 @@
           ? featureTabLabel(runTargets[0])
           : opts.scenario || opts.tag || 'тест'
 
-    const allureDir = opts.allure ? scenariaSubdir('allure-results') : ''
-    const traceDir = !opts.dryRun && opts.trace ? scenariaSubdir('traces') : ''
-    const videoDir = !opts.dryRun && opts.video ? scenariaSubdir('videos') : ''
+    const allureDir = opts.allure ? await scenariaSubdir('allure-results') : ''
+    const traceDir = !opts.dryRun && opts.trace ? await scenariaSubdir('traces') : ''
+    const videoDir = !opts.dryRun && opts.video ? await scenariaSubdir('videos') : ''
 
-    const htmlPath = opts.html ? scenariaSubdir('report.html') : ''
+    const htmlPath = opts.html ? await scenariaSubdir('report.html') : ''
 
-    const junitPath = opts.junit ? scenariaSubdir('junit.xml') : ''
+    const junitPath = opts.junit ? await scenariaSubdir('junit.xml') : ''
 
-    const summaryJsonPath = opts.summaryJson ? scenariaSubdir('summary.json') : ''
+    const summaryJsonPath = opts.summaryJson ? await scenariaSubdir('summary.json') : ''
 
     playing = !opts.dryRun
     setStatus('▶ Идёт тест', 'busy')
@@ -2447,8 +2531,14 @@
     }
   }
 
-  function scenariaSubdir(sub: string): string {
+  async function scenariaSubdir(sub: string): Promise<string> {
     if (!projectPath) return ''
+    try {
+      const path = await ScenariaArtifactPath(sub)
+      if (path) return path.replace(/\\/g, '/')
+    } catch {
+      /* fallback below */
+    }
     return `${projectPath.replace(/\\/g, '/')}/.scenaria/${sub}`
   }
 
@@ -2620,13 +2710,20 @@
     editorText = text
     if (options?.switchTab) {
       monaco?.activateTab(options.tabPath ?? null, text)
+      if (options?.saved) {
+        markActiveTabSaved(text, options.tabPath ?? activeTab)
+      } else if (options?.tabPath) {
+        tabs = tabs.map((t) =>
+          t.path === options.tabPath ? { ...t, draft: text, dirty: true } : t,
+        )
+      }
     } else {
       monaco?.setContent(text)
-    }
-    if (options?.saved) {
-      markActiveTabSaved(text)
-    } else {
-      syncActiveTabContent()
+      if (options?.saved) {
+        markActiveTabSaved(text)
+      } else {
+        syncActiveTabContent()
+      }
     }
     if (options?.skipValidate) {
       void refreshEditorSteps()
@@ -2905,6 +3002,8 @@
   }
 
   async function persistSettings() {
+    syncActiveTabContent()
+    const sessionTabs = buildSessionTabsSnapshot(tabs, activeTab, editorText, WELCOME_KEY)
     await SaveSettings(
       gui.AppSettingsDTO.createFrom({
       browser: settingsBrowser,
@@ -2915,8 +3014,9 @@
       scrollBeforeClick: settingsScrollBeforeClick,
       hoverRecordMinMs: settingsHoverRecordMinMs,
       sessionProject: projectPath,
-      openTabs: sessionTabPaths(),
-      activeTab: activeTab !== WELCOME_KEY && !isUntitled(activeTab) ? activeTab : '',
+      openTabs: sessionTabs.openTabs,
+      untitledTabs: sessionTabs.untitledTabs,
+      activeTab: sessionTabs.activeTab,
       filterRecording,
       navOnlyRecording,
       hoverRecord,
@@ -3051,14 +3151,23 @@
 
   async function startRecord(opts?: { headed?: boolean }) {
     await persistSettings()
+    if (recording) {
+      if (browserOpen) await focusBrowser()
+      return
+    }
     lastRecordTarget = recordAppendTo || recordOutput
-    if (browserOpen && !recording) {
+    let sessionOpen = browserOpen
+    if (!sessionOpen) {
+      try {
+        const s = await PollBrowserSession()
+        sessionOpen = s.browserOpen
+      } catch {
+        /* dev without wails */
+      }
+    }
+    if (sessionOpen) {
       try {
         await BeginRecordingCapture()
-        applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
-        showRecord = false
-        setStatus('● Идёт запись', 'busy')
-        startBrowserWatch()
       } catch (e: unknown) {
         appendLog(`Запись: ${e}`)
       }
@@ -3081,22 +3190,72 @@
     recordAppendTo = ''
   }
 
+  function resolveRecordFeaturePath(outputPath = ''): string {
+    const append = (recordAppendTo || '').trim().replace(/\\/g, '/')
+    if (append) return append
+    const target = (outputPath || lastRecordTarget || recordOutput || '').trim().replace(/\\/g, '/')
+    if (!target || !projectPath) return target
+    if (target.startsWith('/') || /^[A-Za-z]:\//.test(target)) return target
+    return `${projectPath.replace(/\\/g, '/')}/${target}`
+  }
+
+  async function prepareRecordEditorTab(outputPath = '') {
+    const appendPath = (recordAppendTo || '').trim().replace(/\\/g, '/')
+    if (appendPath && !isUntitled(appendPath)) {
+      await loadFeature(appendPath)
+      return
+    }
+    const featurePath = resolveRecordFeaturePath(outputPath)
+    if (featurePath && tabs.some((t) => t.path === featurePath)) {
+      await loadFeature(featurePath)
+      return
+    }
+    if (!activeTab || isWelcome) {
+      await openUntitledTab(
+        buildFeatureTemplate({
+          title: recordFeatureName,
+          scenario: recordScenarioName,
+          startUrl: recordURL || startURL || 'https://example.com',
+        }),
+        'zapis.feature',
+      )
+    }
+  }
+
+  async function applyLiveRecordedStep(index: number, line: string) {
+    if (!line.trim() || isWelcome || !activeTab) return
+    const result = upsertRecordedStepInText(editorText, index, line, liveRecordStepLines)
+    liveRecordStepLines = result.lineByIndex
+    await applyEditorText(result.text, { skipValidate: true })
+    scheduleValidateEditor(150)
+  }
+
+  function handleRecordStopped() {
+    recording = false
+    recordPaused = false
+    liveRecordStepLines = {}
+    if (browserOpen) {
+      setStatus('Браузер открыт', 'busy')
+      appendLog('Запись остановлена. Браузер остаётся открытым.')
+    } else {
+      syncIdleStatus()
+    }
+  }
+
   async function handleRecordSessionEnd(result: gui.RunResult, kind: 'record' | 'browse') {
     recording = false
     browserOpen = false
     recordPaused = false
     showRecord = false
-    const reloadPath = lastRecordTarget
+    liveRecordStepLines = {}
     lastRecordTarget = ''
     if (result.output) appendLog(result.output)
     if (result.error) appendLog(`Ошибка записи: ${result.error}`)
-    else if (kind === 'record' && reloadPath) await showPostRecordBanner(reloadPath)
+    else if (kind === 'record') {
+      appendLog('Браузер закрыт. Сохраните сценарий (Ctrl+S), если ещё не сохраняли.')
+    }
     statusTone = 'normal'
     syncIdleStatus()
-    await refreshProject()
-    if (!result.error && kind === 'record' && reloadPath) {
-      await loadFeature(reloadPath)
-    }
   }
 
   async function toggleRecordPause() {
@@ -3148,6 +3307,7 @@
       }
       if (!s.browserOpen) return
       const prevRecording = recording
+      const prevPaused = recordPaused
       applyBrowserSessionState({
         browserOpen: true,
         recording: s.recording,
@@ -3155,11 +3315,11 @@
       })
       if (s.recording && !prevRecording) {
         setStatus('● Идёт запись', 'busy')
-      } else if (s.recording && s.paused) {
+      } else if (s.recording && s.paused && (!prevPaused || !prevRecording)) {
         setStatus('⏸ Пауза', 'busy')
-      } else if (s.recording) {
+      } else if (s.recording && !s.paused && prevPaused) {
         setStatus('● Идёт запись', 'busy')
-      } else if (browserOpen) {
+      } else if (!s.recording && prevRecording) {
         setStatus('Браузер открыт', 'busy')
       }
     } catch {
@@ -3168,7 +3328,13 @@
   }
 
   async function stopRecord() {
-    await CancelRecording()
+    if (recording) {
+      await StopRecordingCapture()
+      return
+    }
+    if (browserOpen) {
+      await CloseBrowser()
+    }
   }
 
   async function submitOtp(code: string) {
@@ -3186,7 +3352,7 @@
   }
 
   function newScenario() {
-    openUntitledTab(
+    void openUntitledTab(
       buildFeatureTemplate({
         title: 'Примеры для новичков',
         scenario: 'Первая проверка страницы',
@@ -3195,13 +3361,21 @@
     )
   }
 
-  function openUntitledTab(content: string, displayName = 'novyy-scenariy.feature') {
-    welcomeTabVisible = false
+  async function openUntitledTab(content: string, displayName = 'novyy-scenariy.feature') {
+    const leavingTab = activeTab
+    if (leavingTab && !isWelcome) {
+      syncTabContent(leavingTab)
+    }
     const path = makeUntitledPath(displayName)
     tabs = [...tabs, { path, content, dirty: true }]
-    editorText = content
+    warnManyOpenTabs()
+    welcomeTabVisible = false
+    await applyEditorText(content, { switchTab: true, tabPath: path, skipValidate: true })
     activeTab = path
-    void validateEditor()
+    trimTabsMemory()
+    stepsPanelCollapsed = resolveStepsPanelCollapsed()
+    scheduleValidateEditor()
+    schedulePersistSession()
   }
 
   async function openFileDialog() {
@@ -3413,7 +3587,7 @@
           </button>
           <button class="menu-item" on:click={openHttpAuthDialog}>HTTP Auth…</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: false })} disabled={isWelcome && !projectPath}>
+          <button class="menu-item" on:click={() => runPrimary(false)} disabled={isWelcome && !projectPath && !batchSelected.length}>
             Запустить<span class="menu-shortcut">Ctrl+Enter</span>
           </button>
           <button class="menu-item" on:click={() => runCurrentScenario(false)} disabled={isWelcome || !activeTab}>
@@ -3434,7 +3608,7 @@
           <button class="menu-item" on:click={() => openRunDialog('Запуск с тегом', {})} disabled={isWelcome && !projectPath}>
             Запустить сценарии с тегом…
           </button>
-          <button class="menu-item" on:click={() => executeRun({ ...lastRun, dryRun: true })} disabled={isWelcome && !projectPath}>Dry-run</button>
+          <button class="menu-item" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>Dry-run</button>
           <button
             class="menu-item"
             on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
@@ -3562,10 +3736,13 @@
             <p class="zone-title">СЦЕНАРИИ</p>
             <div class="explorer-tools">
               <input class="explorer-search" value={sidebarSearch} placeholder="Поиск, @тег или tag:smoke" on:input={onSidebarSearchInput} />
-              <button class="icon-btn" title="Новый сценарий" on:click={newScenario}>{@html icons.plus}</button>
-              <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск: выбрать все видимые сценарии" on:click={toggleBatchMode}>
-                Выбор
-              </button>
+              <div class="explorer-tool-actions">
+                <button class="icon-btn" title="Новый сценарий" on:click={newScenario}>{@html icons.plus}</button>
+                <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск: выбрать все видимые сценарии" on:click={toggleBatchMode}>
+                  <span class="batch-toggle-icon" aria-hidden="true">{@html icons.validate}</span>
+                  <span class="batch-label">Выбор</span>
+                </button>
+              </div>
             </div>
             {#if tags.length > 0}
               <div class="explorer-tag-chips">
@@ -3598,6 +3775,8 @@
                 activeFeature={activeFeaturePath}
                 batchSelectedSet={batchSelectedSet}
                 {batchMode}
+                indentStep={catalogIndent}
+                compact={compactCatalogTree}
                 expandAll={catalogViewState.expandAll}
                 collapsed={catalogCollapsed}
                 dropTarget={catalogDropTarget}
@@ -3639,11 +3818,13 @@
               <button
                 class="tool-btn primary primary-run"
                 class:run-active={playing}
-                title="Запустить (Ctrl+Enter)"
-                on:click={() => executeRun({ ...lastRun, dryRun: false })}
-                disabled={(isWelcome && !projectPath) || playing}
+                title={batchSelected.length > 0
+                  ? `Запустить выбранные (${batchSelected.length})`
+                  : 'Запустить (Ctrl+Enter)'}
+                on:click={() => runPrimary(false)}
+                disabled={(isWelcome && !projectPath && !batchSelected.length) || playing}
               >
-                {@html toolbarIcons.play()}<span>Запустить</span>
+                {@html toolbarIcons.play()}<span>{batchSelected.length > 0 ? `Запустить (${batchSelected.length})` : 'Запустить'}</span>
               </button>
               <button
                 class="tool-btn"

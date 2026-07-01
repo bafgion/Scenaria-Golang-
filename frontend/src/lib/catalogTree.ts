@@ -413,7 +413,13 @@ export function fileTreeLabel(
   node: CatalogNode,
   selectionMode: boolean,
   selected: boolean,
+  compact = false,
 ): string {
+  if (compact) {
+    const mark = selectionMode ? (selected ? '☑ ' : '☐ ') : ''
+    return `${mark}${node.name}`
+  }
+
   let badge = '○'
   if (node.runSuccess === true) badge = '✓'
   else if (node.runSuccess === false) badge = '✗'

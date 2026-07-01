@@ -7,6 +7,7 @@
     clickableAncestor,
     findCanvas,
     buildSelector,
+    buildMenuTriggerSelector,
     isSignatureCanvas,
     collect,
   } = H;
@@ -39,12 +40,18 @@
     return false;
   }
 
+  function isScenariaUI(el) {
+    if (!el || el.nodeType !== 1) return false;
+    return !!el.closest('[data-scenaria-ui], #scenaria-browser-toolbar');
+  }
+
   const push = (type, el) => {
     if (!el || cfg().paused) return;
+    if (isScenariaUI(el)) return;
     const c = cfg();
     if (c.navOnly) {
       if (type !== 'click' || !isNavTarget(clickableAncestor(el) || el)) return;
-    } else if (c.filterImportant && type === 'click' && !isImportantTarget(clickableAncestor(el) || el)) {
+    } else if (c.filterImportant && (type === 'click' || type === 'hover') && !isImportantTarget(clickableAncestor(el) || el)) {
       return;
     }
     pushDetail(type, collect(el, type));
@@ -94,7 +101,7 @@
         for (const child of Array.from(item.children)) {
           if (child === trigger) continue;
           if (isSubmenuContainer(child) && child.contains(el) && trigger !== el) {
-            const selector = buildSelector(trigger);
+            const selector = buildMenuTriggerSelector(trigger);
             if (!selector) return null;
             return {
               selector,
@@ -114,7 +121,7 @@
         for (const child of node.children) {
           if (child === trigger) continue;
           if (isSubmenuContainer(child) && child.contains(el)) {
-            const selector = buildSelector(trigger);
+            const selector = buildMenuTriggerSelector(trigger);
             if (selector) {
               return {
                 selector,
@@ -134,7 +141,7 @@
         let sibling = trigger.nextElementSibling;
         while (sibling) {
           if (isSubmenuContainer(sibling) && sibling.contains(el)) {
-            const selector = buildSelector(trigger);
+            const selector = buildMenuTriggerSelector(trigger);
             if (selector) {
               return {
                 selector,
@@ -160,7 +167,7 @@
     if (!el || el.nodeType !== 1) return;
     const trigger = el.closest('a,button,[role="button"]');
     if (!trigger) return;
-    const selector = buildSelector(trigger);
+    const selector = buildMenuTriggerSelector(trigger);
     if (!selector) return;
     const text = (trigger.innerText || trigger.textContent || '').trim().slice(0, 120);
     lastHoverTrigger = { element: trigger, selector, text, at: Date.now() };
@@ -201,7 +208,7 @@
 
   function onDocumentClick(e) {
     const el = resolveClickTarget(e);
-    if (!el || shouldSkipDuplicateClick(el)) return;
+    if (!el || isScenariaUI(el) || shouldSkipDuplicateClick(el)) return;
     scrollIntoViewIfNeeded(clickableAncestor(el) || el);
     const tag = (el.tagName || '').toUpperCase();
     const inputType = (el.type || '').toLowerCase();

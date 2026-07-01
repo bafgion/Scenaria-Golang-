@@ -180,6 +180,9 @@ func launchBrowser(pw *playwright.Playwright, options PlaywrightExecutorOptions)
 }
 
 func executeAction(ctx context.Context, session *browserSession, action stepdsl.Action, baseURL string, runCtx *RunContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if session == nil || session.closed {
 		return fmt.Errorf("browser session is closed")
 	}
@@ -193,20 +196,20 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		_, err := page.Goto(url, playwright.PageGotoOptions{
 			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-			Timeout:   playwright.Float(NavTimeoutMs),
+			Timeout:   timeoutMs(ctx, NavTimeoutMs),
 		})
 		if err != nil {
 			return fmt.Errorf("goto failed: %w", err)
 		}
 		return nil
 	case "click":
-		if err := clickWithFallback(page, action.Value1); err != nil {
+		if err := clickWithFallback(ctx, page, action.Value1); err != nil {
 			return err
 		}
 		return nil
 	case "double-click":
 		locator := selector.ResolveChainedLocator(page, action.Value1)
-		if err := locator.Dblclick(playwright.LocatorDblclickOptions{Timeout: playwright.Float(9000)}); err != nil {
+		if err := locator.Dblclick(playwright.LocatorDblclickOptions{Timeout: timeoutMs(ctx, ActionTimeoutMs)}); err != nil {
 			return fmt.Errorf("double click failed: %w", err)
 		}
 		return nil
@@ -279,7 +282,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "assert-visible":
-		if err := page.Locator(action.Value1).WaitFor(playwright.LocatorWaitForOptions{
+		if err := waitForLocator(ctx, page.Locator(action.Value1), playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateVisible,
 		}); err != nil {
 			return fmt.Errorf("expected element %q to be visible: %w", action.Value1, err)
@@ -304,7 +307,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		return nil
 	case "assert-text":
 		locator := page.Locator(action.Value2)
-		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
+		if err := waitForLocator(ctx, locator, playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateVisible,
 		}); err != nil {
 			return fmt.Errorf("assert text failed: %w", err)
@@ -338,14 +341,14 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "wait-visible":
-		if err := page.Locator(action.Value1).WaitFor(playwright.LocatorWaitForOptions{
+		if err := waitForLocator(ctx, page.Locator(action.Value1), playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateVisible,
 		}); err != nil {
 			return fmt.Errorf("wait for visible failed: %w", err)
 		}
 		return nil
 	case "wait-hidden":
-		if err := page.Locator(action.Value1).WaitFor(playwright.LocatorWaitForOptions{
+		if err := waitForLocator(ctx, page.Locator(action.Value1), playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateHidden,
 		}); err != nil {
 			return fmt.Errorf("wait for hidden failed: %w", err)
@@ -355,6 +358,10 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		duration, err := stepdsl.ParseWaitDuration(action.Value1)
 		if err != nil {
 			return err
+		}
+		duration = capWaitDuration(ctx, duration)
+		if duration <= 0 {
+			return ctx.Err()
 		}
 		timer := time.NewTimer(duration)
 		defer timer.Stop()
@@ -367,7 +374,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 	case "reload":
 		if _, err := page.Reload(playwright.PageReloadOptions{
 			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-			Timeout:   playwright.Float(NavTimeoutMs),
+			Timeout:   timeoutMs(ctx, NavTimeoutMs),
 		}); err != nil {
 			return fmt.Errorf("reload failed: %w", err)
 		}
@@ -375,7 +382,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 	case "go-back":
 		if _, err := page.GoBack(playwright.PageGoBackOptions{
 			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-			Timeout:   playwright.Float(NavTimeoutMs),
+			Timeout:   timeoutMs(ctx, NavTimeoutMs),
 		}); err != nil {
 			return fmt.Errorf("go back failed: %w", err)
 		}
@@ -394,7 +401,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			return fmt.Errorf("remember-field requires run context")
 		}
 		locator := page.Locator(action.Value1)
-		if err := locator.WaitFor(playwright.LocatorWaitForOptions{
+		if err := waitForLocator(ctx, locator, playwright.LocatorWaitForOptions{
 			State: playwright.WaitForSelectorStateVisible,
 		}); err != nil {
 			return fmt.Errorf("remember field failed: %w", err)
@@ -436,7 +443,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "draw-signature":
-		return drawSignature(page, action.Value1)
+		return drawSignature(ctx, page, action.Value1)
 	case "prompt-email-code":
 		if runCtx == nil {
 			return fmt.Errorf("prompt-email-code requires run context")
@@ -464,10 +471,7 @@ func downloadByClick(page playwright.Page, selector string, runCtx *RunContext) 
 		return fmt.Errorf("download click failed: %w", err)
 	}
 	filename := download.SuggestedFilename()
-	if strings.TrimSpace(filename) == "" {
-		filename = fmt.Sprintf("download-%d", time.Now().UnixNano())
-	}
-	path := filepath.Join(runCtx.DownloadDir(), filename)
+	path := runCtx.allocateDownloadPath(filename)
 	if err := download.SaveAs(path); err != nil {
 		return fmt.Errorf("save download failed: %w", err)
 	}
@@ -475,42 +479,9 @@ func downloadByClick(page playwright.Page, selector string, runCtx *RunContext) 
 	return nil
 }
 
-func drawSignature(page playwright.Page, selector string) error {
-	locator := page.Locator(selector)
-	if err := locator.WaitFor(playwright.LocatorWaitForOptions{
-		State: playwright.WaitForSelectorStateVisible,
-	}); err != nil {
-		return fmt.Errorf("draw signature failed: %w", err)
-	}
-	box, err := locator.BoundingBox()
-	if err != nil || box == nil {
-		return fmt.Errorf("draw signature: element has no bounding box")
-	}
-	startX := box.X + box.Width*0.2
-	startY := box.Y + box.Height*0.6
-	endX := box.X + box.Width*0.8
-	endY := box.Y + box.Height*0.4
-	midX := box.X + box.Width*0.5
-	midY := box.Y + box.Height*0.7
-	mouse := page.Mouse()
-	if err := mouse.Move(startX, startY); err != nil {
-		return err
-	}
-	if err := mouse.Down(); err != nil {
-		return err
-	}
-	if err := mouse.Move(midX, midY); err != nil {
-		return err
-	}
-	if err := mouse.Move(endX, endY); err != nil {
-		return err
-	}
-	return mouse.Up()
-}
-
-func clickWithFallback(page playwright.Page, sel string) error {
+func clickWithFallback(ctx context.Context, page playwright.Page, sel string) error {
 	locator := selector.ResolveChainedLocator(page, sel)
-	timeout := playwright.Float(9000)
+	timeout := timeoutMs(ctx, ActionTimeoutMs)
 	if err := locator.Click(playwright.LocatorClickOptions{Timeout: timeout}); err != nil {
 		if revealHoverMenu(page, sel) == nil {
 			locator = selector.ResolveChainedLocator(page, sel)

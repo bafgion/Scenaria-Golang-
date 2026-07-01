@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
@@ -12,6 +13,8 @@ import (
 type ExecutorOptions struct {
 	BaseURL           string
 	MaxLoopIterations int
+	MaxActionRetries  int // 0 = default; <0 = disable retries
+	RetryBackoff      time.Duration
 }
 
 func (e *StepExecutor) maxLoopIterations() int {
@@ -34,6 +37,9 @@ func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession
 		runCtx.SetPage(session.page)
 	}
 	for _, step := range steps {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := e.executeStep(ctx, session, step, runCtx); err != nil {
 			return fmt.Errorf("line %d: %w", step.Line, err)
 		}
@@ -45,6 +51,9 @@ func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession
 }
 
 func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession, step gherkin.Step, runCtx *RunContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	switch step.Block {
 	case gherkin.BlockIf:
 		if runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
@@ -55,6 +64,9 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		iterations := 0
 		limit := e.maxLoopIterations()
 		for iterations < limit {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if runCtx == nil || !runCtx.EvaluateCondition(step.Condition) {
 				break
 			}
@@ -80,6 +92,9 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			count = limit
 		}
 		for i := 0; i < count; i++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
 				return err
 			}
@@ -108,7 +123,7 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			return err
 		}
 	}
-	if err := executeAction(ctx, session, action, e.options.BaseURL, runCtx); err != nil {
+	if err := e.runAction(ctx, session, action, runCtx); err != nil {
 		return err
 	}
 	if runCtx != nil {
@@ -130,6 +145,9 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		return fmt.Errorf("for_each locator failed: %w", err)
 	}
 	for index, locator := range locators {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		text, _ := locator.InnerText()
 		text = strings.TrimSpace(text)
 		if text == "" {

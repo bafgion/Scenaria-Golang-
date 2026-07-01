@@ -55,6 +55,17 @@ func TestDescribeEditorLineBinding(t *testing.T) {
 	}
 }
 
+func TestEventBindingTypes(t *testing.T) {
+	app := NewApp()
+	progress, result := app.EventBindingTypes()
+	if progress.Percent != 0 || progress.Message != "" {
+		t.Fatalf("expected zero progress DTO, got %+v", progress)
+	}
+	if result.Error != "" || result.Output != "" || len(result.Cases) != 0 {
+		t.Fatalf("expected zero result DTO, got %+v", result)
+	}
+}
+
 func TestRefactorReplaceDelegates(t *testing.T) {
 	app := NewApp()
 	got := app.svc.RefactorReplaceInText("hello", "hello", "bye", false)

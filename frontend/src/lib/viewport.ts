@@ -7,13 +7,23 @@ export const VIEWPORT = {
   minWindowWidth: 800,
   minWindowHeight: 520,
   activityWidth: 40,
-  sidebarMin: 120,
+  /** Минимальная ширина панели сценариев — уже уже ломает шапку и дерево. */
+  sidebarMin: 200,
   sidebarMax: 480,
   sidebarNarrowMax: 200,
+  explorerStackWidth: 220,
+  explorerIconOnlyWidth: 168,
 } as const
 
 export function shouldAutoCompactToolbar(width: number): boolean {
   return width < VIEWPORT.compactWidth
+}
+
+export function clampSidebarWidth(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) {
+    return 260
+  }
+  return Math.max(VIEWPORT.sidebarMin, Math.min(VIEWPORT.sidebarMax, width))
 }
 
 export function effectiveSidebarWidth(
@@ -60,4 +70,12 @@ export function clampStepsPanelHeight(height: number, viewportHeight: number): n
 
 export function toolbarIconOnlyThreshold(barWidth: number): number {
   return Math.min(880, Math.max(320, Math.floor(barWidth * 0.55)))
+}
+
+export function catalogIndentStep(sidebarWidth: number): number {
+  return sidebarWidth <= VIEWPORT.sidebarNarrowMax ? 10 : 16
+}
+
+export function isCompactCatalogTree(sidebarWidth: number): boolean {
+  return sidebarWidth <= VIEWPORT.sidebarNarrowMax
 }

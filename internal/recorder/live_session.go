@@ -83,6 +83,14 @@ func runLiveBrowserSession(
 		session.mu.Unlock()
 	}()
 
+	if session.CaptureEnabled() && opts.Callbacks.OnStepRecorded != nil {
+		for i, st := range *recorded {
+			if line, ok := RecordedStepToLine(st); ok {
+				opts.Callbacks.OnStepRecorded(i, line)
+			}
+		}
+	}
+
 	pageClosed := make(chan struct{}, 1)
 	page.OnClose(func(playwright.Page) {
 		select {
@@ -93,6 +101,11 @@ func runLiveBrowserSession(
 
 	lastURL := page.URL()
 	lastEventAt := time.Now()
+	stepNotify := func(index int, line string) {
+		if opts.Callbacks.OnStepRecorded != nil {
+			opts.Callbacks.OnStepRecorded(index, line)
+		}
+	}
 
 	for {
 		select {
@@ -115,6 +128,16 @@ func runLiveBrowserSession(
 		if action := takeToolbarAction(page); action != "" {
 			switch action {
 			case "stop":
+				if session.CaptureEnabled() {
+					session.EndCapture()
+					if opts.Callbacks.OnCaptureStop != nil {
+						opts.Callbacks.OnCaptureStop()
+					}
+					if opts.Callbacks.OnStepRecorded != nil {
+						continue
+					}
+					return context.Canceled
+				}
 				return context.Canceled
 			case "pause":
 				session.Pause()
@@ -122,11 +145,20 @@ func runLiveBrowserSession(
 				session.Resume()
 			case "record":
 				if !session.CaptureEnabled() {
+					replay := ShouldSyncRecordedStepsOnCaptureStart(session)
 					if err := session.BeginCapture(); err != nil {
-						return err
+						// Keep the browser alive; user can retry from the IDE.
+						continue
 					}
 					if opts.Callbacks.OnCaptureStart != nil {
-						opts.Callbacks.OnCaptureStart()
+						opts.Callbacks.OnCaptureStart(!replay)
+					}
+					if replay {
+						for i, st := range *recorded {
+							if line, ok := RecordedStepToLine(st); ok {
+								stepNotify(i, line)
+							}
+						}
 					}
 				}
 			case "picker":
@@ -157,6 +189,14 @@ func runLiveBrowserSession(
 		}
 		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
 		if opts.IdleTimeout > 0 && session.CaptureEnabled() && time.Since(lastEventAt) >= opts.IdleTimeout {
+			session.captureEnabled.Store(false)
+			session.paused.Store(false)
+			if opts.Callbacks.OnCaptureStop != nil {
+				opts.Callbacks.OnCaptureStop()
+			}
+			if opts.Callbacks.OnStepRecorded != nil {
+				continue
+			}
 			return nil
 		}
 
@@ -166,7 +206,7 @@ func runLiveBrowserSession(
 		}
 
 		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
-			*recorded = append(*recorded, RecordedStep{Action: "goto", Value: currentURL})
+			appendGotoStep(recorded, currentURL, stepNotify)
 			lastURL = currentURL
 			lastEventAt = time.Now()
 		}
@@ -193,7 +233,7 @@ func runLiveBrowserSession(
 			if !ok {
 				continue
 			}
-			appendCoalescedStep(recorded, step)
+			appendCoalescedStep(recorded, step, stepNotify)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}

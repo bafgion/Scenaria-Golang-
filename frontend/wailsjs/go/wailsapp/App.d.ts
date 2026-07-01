@@ -32,6 +32,8 @@ export function CheckUpdateInfo():Promise<gui.UpdateInfoDTO>;
 
 export function ClearFeatureDraft(arg1:string):Promise<void>;
 
+export function CloseBrowser():Promise<void>;
+
 export function CompletionsForLine(arg1:string,arg2:number):Promise<gui.StepCompletionsDTO>;
 
 export function DeleteFeature(arg1:string):Promise<void>;
@@ -43,6 +45,8 @@ export function DescribeEditorLine(arg1:string):Promise<gui.StepCatalogEntry>;
 export function DownloadUpdate():Promise<string>;
 
 export function DuplicateFeature(arg1:string,arg2:string):Promise<string>;
+
+export function EventBindingTypes():Promise<gui.UpdateProgressDTO|gui.VanessaRunResultDTO>;
 
 export function Export(arg1:gui.ExportRequest):Promise<gui.RunResult>;
 
@@ -174,6 +178,8 @@ export function SaveTestClientJSON(arg1:string,arg2:string):Promise<void>;
 
 export function SaveVanessaSettingsJSON(arg1:string):Promise<void>;
 
+export function ScenariaArtifactPath(arg1:string):Promise<string>;
+
 export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
 export function ServeAllure(arg1:string):Promise<gui.RunResult>;
@@ -181,6 +187,8 @@ export function ServeAllure(arg1:string):Promise<gui.RunResult>;
 export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
 
 export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
+
+export function StopRecordingCapture():Promise<void>;
 
 export function SubmitOTPCode(arg1:string):Promise<boolean>;
 

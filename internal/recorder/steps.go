@@ -13,6 +13,7 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 		if sel == "" {
 			sel = BuildSelectorFromDetail(detail)
 		}
+		sel = canonicalizeRecordedSelector(sel)
 		if sel == "" {
 			return RecordedStep{}, false
 		}
@@ -62,6 +63,7 @@ func EventToRecordedStep(eventType string, detail map[string]string) (RecordedSt
 		if sel == "" {
 			sel = BuildSelectorFromDetail(detail)
 		}
+		sel = canonicalizeRecordedSelector(sel)
 		if sel == "" {
 			return RecordedStep{}, false
 		}

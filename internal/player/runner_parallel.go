@@ -29,6 +29,9 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	}
 	if workers == 1 || len(plan.Cases) <= 1 {
 		for _, runCase := range plan.Cases {
+			if err := ctx.Err(); err != nil {
+				return ExecutionResult{}, err
+			}
 			runResult, err := r.Executor.ExecuteScenario(ctx, scenarioInputFromCase(runCase))
 			if err != nil {
 				return ExecutionResult{}, err
@@ -36,6 +39,12 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 			result.ScenarioResults = append(result.ScenarioResults, runResult)
 		}
 		return result, nil
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return ExecutionResult{}, err
 	}
 
 	results := make([]ScenarioResult, len(plan.Cases))
@@ -51,12 +60,25 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			runResult, err := r.Executor.ExecuteScenario(ctx, scenarioInputFromCase(rc))
+			if err := runCtx.Err(); err != nil {
+				mu.Lock()
+				results[i] = ScenarioResult{
+					FeaturePath: rc.FeaturePath,
+					Scenario:    rc.Name,
+					Status:      "failed",
+					Message:     err.Error(),
+				}
+				mu.Unlock()
+				return
+			}
+
+			runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				if firstErr == nil {
 					firstErr = err
+					cancel()
 				}
 				if runResult.Scenario == "" {
 					runResult = ScenarioResult{
@@ -78,6 +100,9 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	wg.Wait()
 	if firstErr != nil {
 		return ExecutionResult{}, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return ExecutionResult{}, err
 	}
 	result.ScenarioResults = results
 	return result, nil

@@ -118,7 +118,7 @@ func runFixtureRecording(t *testing.T, startURL, clickSelector string) []Recorde
 		if !ok {
 			continue
 		}
-		appendCoalescedStep(&recorded, step)
+		appendCoalescedStep(&recorded, step, nil)
 	}
 	return recorded
 }

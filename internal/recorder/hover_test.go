@@ -9,7 +9,7 @@ func TestAppendRecordedStepInsertsHoverBeforeMenuClick(t *testing.T) {
 	steps := make([]RecordedStep, 0)
 	appendRecordedStep(&steps, RecordedStep{
 		Action: "click", Selector: "a.item", HoverSelector: "nav.menu", HoverText: "Menu",
-	})
+	}, nil)
 	if len(steps) != 2 {
 		t.Fatalf("got %+v", steps)
 	}
@@ -25,7 +25,7 @@ func TestAppendRecordedStepSkipsDuplicateHover(t *testing.T) {
 	steps := []RecordedStep{{Action: "hover", Selector: "nav.menu"}}
 	appendRecordedStep(&steps, RecordedStep{
 		Action: "click", Selector: "a.item", HoverSelector: "nav.menu",
-	})
+	}, nil)
 	if len(steps) != 2 {
 		t.Fatalf("got %+v", steps)
 	}

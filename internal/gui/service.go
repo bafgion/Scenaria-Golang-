@@ -27,6 +27,7 @@ type Service struct {
 	projectPath  string
 	liveSession  *recorder.LiveSession
 	recordCancel context.CancelFunc
+	recordEmit   func(string, any)
 }
 
 func NewService() *Service {
@@ -134,12 +135,18 @@ type AppSettingsDTO struct {
 	SessionProject    string   `json:"sessionProject"`
 	OpenTabs          []string `json:"openTabs"`
 	ActiveTab         string   `json:"activeTab"`
+	UntitledTabs      []UntitledTabDTO `json:"untitledTabs"`
 	ScrollBeforeClick bool     `json:"scrollBeforeClick"`
 	HoverRecordMinMs        int      `json:"hoverRecordMinMs"`
 	SelectorClickStrategies []string `json:"selectorClickStrategies"`
 	SelectorInputStrategies []string `json:"selectorInputStrategies"`
 	CheckUpdatesOnStartup bool `json:"checkUpdatesOnStartup"`
 	Editor            settings.EditorSettings `json:"editor"`
+}
+
+type UntitledTabDTO struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 type RunResultEntry struct {
@@ -538,6 +545,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		SessionProject:      strings.TrimSpace(cfg.SessionProject),
 		OpenTabs:            trimRecents(cfg.OpenTabs),
 		ActiveTab:           strings.TrimSpace(cfg.ActiveTab),
+		UntitledTabs:        untitledTabsFromCfg(cfg.UntitledTabs),
 		ScrollBeforeClick:   cfg.ScrollBeforeClick,
 		HoverRecordMinMs:        maxInt(0, cfg.HoverRecordMinMs),
 		SelectorClickStrategies:   selector.NormalizeClickStrategies(cfg.SelectorClickStrategies),
@@ -575,6 +583,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 		SessionProject:          strings.TrimSpace(dto.SessionProject),
 		OpenTabs:                trimRecents(dto.OpenTabs),
 		ActiveTab:               strings.TrimSpace(dto.ActiveTab),
+		UntitledTabs:            untitledTabsToCfg(dto.UntitledTabs),
 		ScrollBeforeClick:       dto.ScrollBeforeClick,
 		HoverRecordMinMs:        normalizeHoverRecordMinMs(dto.HoverRecordMinMs),
 		SelectorClickStrategies: selector.NormalizeClickStrategies(dto.SelectorClickStrategies),
@@ -631,6 +640,36 @@ func normalizeHoverRecordMinMs(ms int) int {
 		return 600
 	}
 	return ms
+}
+
+func untitledTabsFromCfg(in []settings.UntitledTabSession) []UntitledTabDTO {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]UntitledTabDTO, 0, len(in))
+	for _, tab := range in {
+		path := strings.TrimSpace(tab.Path)
+		if path == "" {
+			continue
+		}
+		out = append(out, UntitledTabDTO{Path: path, Content: tab.Content})
+	}
+	return out
+}
+
+func untitledTabsToCfg(in []UntitledTabDTO) []settings.UntitledTabSession {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]settings.UntitledTabSession, 0, len(in))
+	for _, tab := range in {
+		path := strings.TrimSpace(tab.Path)
+		if path == "" {
+			continue
+		}
+		out = append(out, settings.UntitledTabSession{Path: path, Content: tab.Content})
+	}
+	return out
 }
 
 func runExport(args []string) error     { return cli.RunExport(args) }

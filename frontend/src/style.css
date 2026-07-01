@@ -498,7 +498,7 @@ html {
 /* —— Explorer sidebar —— */
 .explorer {
   width: var(--sidebar-width);
-  min-width: 120px;
+  min-width: 200px;
   max-width: 480px;
   display: flex;
   flex-direction: column;
@@ -506,6 +506,8 @@ html {
   border-right: 1px solid var(--color-border);
   min-height: 0;
   flex-shrink: 0;
+  container-type: inline-size;
+  container-name: explorer;
 }
 
 .sidebar-column {
@@ -556,6 +558,8 @@ html {
   padding: 8px 10px 6px;
   background: #2a2a2b;
   border-bottom: 1px solid var(--color-divider);
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .zone-title {
@@ -569,18 +573,91 @@ html {
 
 .explorer-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+  min-width: 0;
 }
 
 .explorer-search {
-  flex: 1;
+  flex: 1 1 96px;
+  min-width: 0;
   padding: 4px 8px;
   background: var(--color-input);
   border: 1px solid var(--color-border);
   border-radius: 2px;
   color: var(--color-text);
   font-size: 12px;
+}
+
+.explorer-tool-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+@container explorer (max-width: 220px) {
+  .explorer-tools {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .explorer-search {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .explorer-tool-actions {
+    margin-left: 0;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .explorer-tag-chips {
+    max-height: 52px;
+    overflow-y: auto;
+  }
+}
+
+@container explorer (max-width: 168px) {
+  .explorer-header {
+    padding: 6px 6px 4px;
+  }
+
+  .zone-title {
+    margin-bottom: 4px;
+    font-size: 10px;
+  }
+
+  .batch-toggle .batch-label {
+    display: none;
+  }
+
+  .batch-toggle .batch-toggle-icon {
+    display: flex;
+  }
+
+  .batch-toggle {
+    width: 26px;
+    min-width: 26px;
+    padding: 0;
+  }
+
+  .batch-selection {
+    font-size: 10px;
+  }
+}
+
+.batch-toggle .batch-toggle-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.batch-toggle .batch-toggle-icon :global(svg) {
+  width: 14px;
+  height: 14px;
 }
 
 .explorer-tag-chips {

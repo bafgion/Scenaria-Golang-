@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { isUntitled, makeUntitledPath, untitledLabel, UNTITLED_PREFIX } from './untitled'
+import {
+  isUntitled,
+  makeUntitledPath,
+  syncUntitledCounterFromPaths,
+  untitledLabel,
+  UNTITLED_PREFIX,
+} from './untitled'
 
 describe('untitled paths', () => {
   it('creates unique internal paths with display names', () => {
@@ -21,5 +27,11 @@ describe('untitled paths', () => {
     expect(isUntitled(path)).toBe(true)
     expect(untitledLabel(path)).toBe('Тест.feature')
     expect(untitledLabel('features/smoke.feature')).toBe('features/smoke.feature')
+  })
+
+  it('keeps unique ids across restore', () => {
+    syncUntitledCounterFromPaths([`${UNTITLED_PREFIX}3/a.feature`, `${UNTITLED_PREFIX}7/b.feature`])
+    const next = makeUntitledPath('c')
+    expect(next).toBe(`${UNTITLED_PREFIX}8/c.feature`)
   })
 })

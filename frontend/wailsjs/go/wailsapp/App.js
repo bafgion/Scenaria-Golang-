@@ -62,6 +62,10 @@ export function ClearFeatureDraft(arg1) {
   return window['go']['wailsapp']['App']['ClearFeatureDraft'](arg1);
 }
 
+export function CloseBrowser() {
+  return window['go']['wailsapp']['App']['CloseBrowser']();
+}
+
 export function CompletionsForLine(arg1, arg2) {
   return window['go']['wailsapp']['App']['CompletionsForLine'](arg1, arg2);
 }
@@ -84,6 +88,10 @@ export function DownloadUpdate() {
 
 export function DuplicateFeature(arg1, arg2) {
   return window['go']['wailsapp']['App']['DuplicateFeature'](arg1, arg2);
+}
+
+export function EventBindingTypes() {
+  return window['go']['wailsapp']['App']['EventBindingTypes']();
 }
 
 export function Export(arg1) {
@@ -346,6 +354,10 @@ export function SaveVanessaSettingsJSON(arg1) {
   return window['go']['wailsapp']['App']['SaveVanessaSettingsJSON'](arg1);
 }
 
+export function ScenariaArtifactPath(arg1) {
+  return window['go']['wailsapp']['App']['ScenariaArtifactPath'](arg1);
+}
+
 export function SearchSteps(arg1) {
   return window['go']['wailsapp']['App']['SearchSteps'](arg1);
 }
@@ -360,6 +372,10 @@ export function StartRecord(arg1) {
 
 export function StartVanessaRun(arg1) {
   return window['go']['wailsapp']['App']['StartVanessaRun'](arg1);
+}
+
+export function StopRecordingCapture() {
+  return window['go']['wailsapp']['App']['StopRecordingCapture']();
 }
 
 export function SubmitOTPCode(arg1) {

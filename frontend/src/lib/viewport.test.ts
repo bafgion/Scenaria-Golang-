@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  catalogIndentStep,
   clampBottomPanelHeight,
+  clampSidebarWidth,
   effectiveSidebarWidth,
+  isCompactCatalogTree,
   shouldAutoCompactToolbar,
   shouldShowPreviewPane,
   toolbarIconOnlyThreshold,
@@ -16,6 +19,7 @@ describe('viewport layout', () => {
   it('caps sidebar width on small screens', () => {
     expect(effectiveSidebarWidth(260, 1280, true)).toBe(260)
     expect(effectiveSidebarWidth(260, 860, true)).toBeLessThanOrEqual(200)
+    expect(effectiveSidebarWidth(150, 1280, true)).toBe(200)
     expect(effectiveSidebarWidth(260, 860, false)).toBe(0)
   })
 
@@ -32,5 +36,18 @@ describe('viewport layout', () => {
   it('scales toolbar icon-only threshold', () => {
     expect(toolbarIconOnlyThreshold(500)).toBeLessThan(880)
     expect(toolbarIconOnlyThreshold(1600)).toBe(880)
+  })
+
+  it('clamps saved sidebar width to minimum', () => {
+    expect(clampSidebarWidth(120)).toBe(200)
+    expect(clampSidebarWidth(260)).toBe(260)
+    expect(clampSidebarWidth(900)).toBe(480)
+  })
+
+  it('uses tighter catalog indent when sidebar is narrow', () => {
+    expect(catalogIndentStep(260)).toBe(16)
+    expect(catalogIndentStep(200)).toBe(10)
+    expect(isCompactCatalogTree(200)).toBe(true)
+    expect(isCompactCatalogTree(201)).toBe(false)
   })
 })

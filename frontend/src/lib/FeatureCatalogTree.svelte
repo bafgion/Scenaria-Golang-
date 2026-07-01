@@ -7,6 +7,8 @@
   export let batchSelectedSet: Set<string> = new Set()
   export let batchMode = false
   export let expandAll = false
+  export let indentStep = 16
+  export let compact = false
   export let collapsed: Set<string> = new Set()
   export let dropTarget = ''
 
@@ -27,6 +29,8 @@
     batchSelectedSet={batchSelectedSet}
     {batchMode}
     {expandAll}
+    {indentStep}
+    {compact}
     {collapsed}
     {dropTarget}
     {onActivate}

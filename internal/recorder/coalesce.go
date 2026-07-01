@@ -5,6 +5,11 @@ import "strings"
 // ApplyCoalescedStep merges step into steps using live-recording coalescing rules.
 // The second return value is nil when the incoming step is skipped (duplicate hover/click/tab).
 func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep, *RecordedStep) {
+	step, ok := polishIncomingStep(step)
+	if !ok {
+		return steps, nil
+	}
+
 	if step.Action == "fill" && (step.InputType == "checkbox" || isCheckboxValue(step.Value)) {
 		checked := isCheckedValue(step.Value)
 		return ApplyCoalescedStep(steps, RecordedStep{
@@ -31,7 +36,8 @@ func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep
 		return out, &upgraded
 	}
 
-	if action == "fill" && last.Action == "click" && last.Selector == step.Selector {
+	if action == "fill" && last.Action == "click" &&
+		(last.Selector == step.Selector || selectorIsFragile(last.Selector)) {
 		upgraded := upgradeFillSelector(step)
 		out := append(steps[:len(steps)-1], upgraded)
 		return out, &upgraded
@@ -57,11 +63,26 @@ func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep
 		}
 	}
 
-	if action == "hover" && last.Action == "hover" && last.Selector == step.Selector {
-		return steps, nil
+	if action == "hover" {
+		if last.Action == "hover" && last.Selector == step.Selector {
+			return steps, nil
+		}
+		if hoverSeenSinceGoto(steps, step.Selector) {
+			return steps, nil
+		}
 	}
 
-	if action == "click" && last.Action == "click" && last.Selector == step.Selector {
+	if action == "click" {
+		if last.Action == "hover" && last.Selector == step.Selector {
+			out := append(steps[:len(steps)-1], step)
+			return out, &step
+		}
+		if last.Action == "click" && last.Selector == step.Selector {
+			return steps, nil
+		}
+	}
+
+	if action == "goto" && last.Action == "goto" && last.Value == step.Value {
 		return steps, nil
 	}
 
@@ -74,24 +95,72 @@ func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep
 	return out, &lastStep
 }
 
-func appendRecordedStep(steps *[]RecordedStep, step RecordedStep) {
+type StepNotifier func(index int, line string)
+
+func appendRecordedStep(steps *[]RecordedStep, step RecordedStep, notify StepNotifier) {
+	step, ok := polishIncomingStep(step)
+	if !ok {
+		return
+	}
 	if step.Action == "click" {
 		hoverSel := strings.TrimSpace(step.HoverSelector)
-		if hoverSel != "" {
+		clickSel := strings.TrimSpace(step.Selector)
+		if hoverSel != "" && hoverSel != clickSel {
 			needsHover := len(*steps) == 0 ||
-				(*steps)[len(*steps)-1].Action != "hover" ||
-				(*steps)[len(*steps)-1].Selector != hoverSel
+				((*steps)[len(*steps)-1].Action != "hover" || (*steps)[len(*steps)-1].Selector != hoverSel) &&
+					!hoverSeenSinceGoto(*steps, hoverSel)
 			if needsHover {
 				hover := RecordedStep{Action: "hover", Selector: hoverSel, Text: step.HoverText}
-				updated, _ := ApplyCoalescedStep(*steps, hover)
+				updated, emitted := ApplyCoalescedStep(*steps, hover)
 				*steps = updated
+				emitRecordedStep(notify, *steps, emitted)
 			}
 		}
 	}
-	updated, _ := ApplyCoalescedStep(*steps, step)
+	updated, emitted := ApplyCoalescedStep(*steps, step)
 	*steps = updated
+	emitRecordedStep(notify, *steps, emitted)
 }
 
-func appendCoalescedStep(steps *[]RecordedStep, step RecordedStep) {
-	appendRecordedStep(steps, step)
+func emitRecordedStep(notify StepNotifier, steps []RecordedStep, emitted *RecordedStep) {
+	if notify == nil || emitted == nil {
+		return
+	}
+	idx := len(steps) - 1
+	for i := range steps {
+		if &steps[i] == emitted {
+			idx = i
+			break
+		}
+	}
+	if line, ok := RecordedStepToLine(*emitted); ok {
+		notify(idx, line)
+	}
+}
+
+func appendCoalescedStep(steps *[]RecordedStep, step RecordedStep, notify StepNotifier) {
+	appendRecordedStep(steps, step, notify)
+}
+
+func appendGotoStep(steps *[]RecordedStep, url string, notify StepNotifier) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return
+	}
+	step := RecordedStep{Action: "goto", Value: url}
+	updated, emitted := ApplyCoalescedStep(*steps, step)
+	*steps = updated
+	emitRecordedStep(notify, *steps, emitted)
+}
+
+func hoverSeenSinceGoto(steps []RecordedStep, selector string) bool {
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i].Action == "goto" {
+			break
+		}
+		if steps[i].Action == "hover" && steps[i].Selector == selector {
+			return true
+		}
+	}
+	return false
 }

@@ -46,8 +46,8 @@ func TestNormalizeStepsDropsDuplicateGoto(t *testing.T) {
 
 func TestNormalizeStepsDropsDuplicateClick(t *testing.T) {
 	steps := []RecordedStep{
-		{Action: "click", Selector: `button:has-text("OK")`},
-		{Action: "click", Selector: `button:has-text("OK")`},
+		{Action: "click", Selector: `text="OK"`},
+		{Action: "click", Selector: `text="OK"`},
 	}
 	out := NormalizeSteps(steps)
 	if len(out) != 1 {
@@ -164,6 +164,23 @@ func TestNormalizeUpgradesGenericPlaceholderUsingFieldText(t *testing.T) {
 	}
 	if !strings.Contains(out[1].Selector, "выдач") {
 		t.Fatalf("issue selector: %q", out[1].Selector)
+	}
+}
+
+func TestNormalizeUpgradesFragileClickToTextSelector(t *testing.T) {
+	steps := []RecordedStep{
+		{
+			Action:   "click",
+			Selector: "div > button:nth-of-type(2)",
+			Text:     "Сохранить",
+		},
+	}
+	out := NormalizeSteps(steps)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 step, got %+v", out)
+	}
+	if out[0].Selector != `text="Сохранить"` {
+		t.Fatalf("selector: %q", out[0].Selector)
 	}
 }
 

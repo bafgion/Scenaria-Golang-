@@ -7,7 +7,9 @@
   const E2E_PROJECT = 'C:/e2e/project'
   const e2eMode = () => new URLSearchParams(location.search).get('e2e')
 
-  const settings = {
+  const SETTINGS_STORAGE_KEY = 'scenaria.e2e.settings'
+
+  const defaultSettings = {
     browser: 'chromium',
     headless: false,
     parallelWorkers: 1,
@@ -17,6 +19,10 @@
     checkUpdatesOnStartup: false,
     recentProjects: [E2E_PROJECT],
     recentFeatures: [],
+    sessionProject: '',
+    openTabs: [],
+    untitledTabs: [],
+    activeTab: '',
     editor: {
       fontSize: 13,
       fontFamily: '"Cascadia Code", Consolas, monospace',
@@ -35,6 +41,33 @@
       validateOnType: true,
     },
   }
+
+  const readSettings = () => {
+    try {
+      const raw = sessionStorage.getItem(SETTINGS_STORAGE_KEY)
+      if (raw) {
+        return { ...defaultSettings, ...JSON.parse(raw) }
+      }
+    } catch {
+      /* ignore */
+    }
+    return { ...defaultSettings }
+  }
+
+  const params = new URLSearchParams(location.search)
+  if (params.has('__fresh')) {
+    try {
+      sessionStorage.removeItem(SETTINGS_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    params.delete('__fresh')
+    const qs = params.toString()
+    const next = `${location.pathname}${qs ? `?${qs}` : ''}${location.hash}`
+    history.replaceState(null, '', next)
+  }
+
+  let settings = readSettings()
 
   const sampleSteps = [
     {
@@ -73,6 +106,29 @@
     }
   }
 
+  const liveRecord = {
+    browserOpen: false,
+    recording: false,
+    paused: false,
+    captureEver: false,
+    steps: [],
+  }
+
+  const postRecordSteps = [
+    { index: 0, line: 'нажимаю "#login"' },
+    { index: 1, line: 'ввожу "user" в "#email"' },
+    { index: 2, line: 'нажимаю "#submit"' },
+  ]
+
+  const resumeRecordSteps = [
+    { index: 0, line: 'открыт "https://example.com"' },
+    { index: 1, line: 'нажимаю "#one"' },
+    { index: 2, line: 'открыт "https://iana.org"' },
+    { index: 3, line: 'открыт "https://iana.org/domains"' },
+    { index: 4, line: 'открыт "https://iana.org/domains/reserved"' },
+    { index: 5, line: 'открыт "https://iana.org/domains/example"' },
+  ]
+
   const postRecordHints = [
     {
       id: 'menu_hover',
@@ -86,8 +142,16 @@
 
   const app = {
     Version: async () => 'e2e-test',
-    LoadSettings: async () => settings,
-    SaveSettings: async (s) => ({ ...settings, ...s }),
+    LoadSettings: async () => ({ ...settings }),
+    SaveSettings: async (s) => {
+      settings = { ...settings, ...s }
+      try {
+        sessionStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+      } catch {
+        /* ignore */
+      }
+      return { ...settings }
+    },
     LoadRecents: async () => ({ projects: [E2E_PROJECT], features: [] }),
     RememberRecentProject: async () => {},
     RememberRecentFeature: async () => {},
@@ -154,6 +218,7 @@
     ListPlugins: async () => [],
     ListRunResults: async () => [],
     ProjectArtifacts: async () => ({ allureDir: '', reportHtml: '' }),
+    ScenariaArtifactPath: async (sub) => `${E2E_PROJECT}/.scenaria/${sub}`,
     ParseEditorSteps: async () => {
       if (e2eMode() === 'post-record') {
         return [
@@ -206,17 +271,77 @@
     Export: async (opts) => ({ output: `exported to ${opts?.output || ''}`, error: '' }),
     RunPlugin: asyncOk,
     StartRecord: async () => {
-      if (e2eMode() === 'post-record') {
-        emitE2E('record-started', null)
-        queueMicrotask(() =>
-          emitE2E('record-finished', { output: 'Записано шагов: 3', error: '' }),
-        )
+      const mode = e2eMode()
+      if (mode === 'post-record' || mode === 'record-resume') {
+        liveRecord.browserOpen = true
+        liveRecord.recording = true
+        liveRecord.captureEver = true
+        liveRecord.paused = false
+        liveRecord.steps = mode === 'post-record' ? [...postRecordSteps] : [...resumeRecordSteps]
+        emitE2E('browser-opened', '')
+        emitE2E('record-started', { resume: false, output: '' })
+        queueMicrotask(() => {
+          for (const step of liveRecord.steps) {
+            emitE2E('record-step', step)
+          }
+        })
       }
     },
+    BeginRecordingCapture: async () => {
+      if (!liveRecord.browserOpen) {
+        throw new Error('браузер не открыт')
+      }
+      if (liveRecord.recording) {
+        emitE2E('record-started', { append: true, sync: true })
+        return
+      }
+      liveRecord.captureEver = true
+      liveRecord.recording = true
+      liveRecord.paused = false
+      liveRecord.steps = []
+      emitE2E('record-started', { append: true })
+    },
+    PollBrowserSession: async () => ({
+      browserOpen: liveRecord.browserOpen,
+      recording: liveRecord.recording,
+      paused: liveRecord.paused,
+      stepCount: liveRecord.recording ? liveRecord.steps.length : 0,
+    }),
     RecordBaseline: asyncOk,
-    PauseRecording: noop,
-    ResumeRecording: noop,
-    CancelRecording: noop,
+    PauseRecording: async () => {
+      if (liveRecord.recording) {
+        liveRecord.paused = true
+      }
+    },
+    ResumeRecording: async () => {
+      if (liveRecord.recording) {
+        liveRecord.paused = false
+      }
+    },
+    CancelRecording: async () => {
+      liveRecord.browserOpen = false
+      liveRecord.recording = false
+      liveRecord.paused = false
+      liveRecord.captureEver = false
+      liveRecord.steps = []
+    },
+    CloseBrowser: async () => {
+      liveRecord.browserOpen = false
+      liveRecord.recording = false
+      liveRecord.paused = false
+      liveRecord.captureEver = false
+      liveRecord.steps = []
+    },
+    StopRecordingCapture: async () => {
+      if (!liveRecord.browserOpen) {
+        throw new Error('браузер не открыт')
+      }
+      liveRecord.recording = false
+      liveRecord.paused = false
+      liveRecord.captureEver = false
+      liveRecord.steps = []
+      emitE2E('record-stopped', null)
+    },
     FocusBrowser: noop,
     UndoRecordedStep: asyncOk,
     UpdateRecordingOptions: noop,
@@ -237,7 +362,7 @@
     HighlightFeature: noop,
     ImportJSON: asyncOk,
     InstallPlugin: asyncOk,
-    IsRecordingPaused: async () => false,
+    IsRecordingPaused: async () => liveRecord.paused,
     HTTPAuthForHost: async () => null,
     DeleteTestClient: asyncOk,
     CaptureBrowserSession: async (name) => `captured ${name}`,

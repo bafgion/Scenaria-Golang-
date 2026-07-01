@@ -36,7 +36,8 @@ func TestParallelRunnerFailureRecordsResultUnderMutex(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := int(executor.calls.Load()); got != 3 {
-		t.Fatalf("expected 3 calls, got %d", got)
+	calls := int(executor.calls.Load())
+	if calls < 2 || calls > 3 {
+		t.Fatalf("expected 2-3 calls before cancel on first error, got %d", calls)
 	}
 }

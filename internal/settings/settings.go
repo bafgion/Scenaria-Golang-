@@ -26,6 +26,7 @@ type AppSettings struct {
 	SessionProject      string   `json:"session_project,omitempty"`
 	OpenTabs            []string `json:"open_tabs,omitempty"`
 	ActiveTab           string   `json:"active_tab,omitempty"`
+	UntitledTabs        []UntitledTabSession `json:"untitled_tabs,omitempty"`
 	ScrollBeforeClick   bool     `json:"scroll_before_click"`
 	HoverRecordMinMs    int      `json:"hover_record_min_ms"`
 	SelectorClickStrategies []string `json:"selector_click_strategies,omitempty"`
@@ -33,6 +34,12 @@ type AppSettings struct {
 	CheckUpdatesOnStartup *bool  `json:"check_updates_on_startup,omitempty"`
 	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
 	Editor              EditorSettings             `json:"editor,omitempty"`
+}
+
+// UntitledTabSession stores in-memory editor tab state across app restarts.
+type UntitledTabSession struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 type HTTPAuthEntry struct {

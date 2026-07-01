@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,8 +14,6 @@ import (
 
 // DefaultMaxLoopIterations caps repeat/while loops when not overridden per executor.
 const DefaultMaxLoopIterations = 100
-
-var placeholderRE = regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_:]+)\s*\}\}`)
 
 // RunContextOption configures NewRunContext.
 type RunContextOption func(*RunContext)
@@ -29,15 +26,17 @@ func WithPromptEmailCode(fn EmailCodePrompter) RunContextOption {
 }
 
 type RunContext struct {
-	Variables      map[string]string
-	values         map[string]string
-	rng            *rand.Rand
-	person         *personBundle
-	page           playwright.Page
-	projectRoot    string
-	lastDownload   string
-	downloadDir    string
-	completedSteps []gherkin.Step
+	Variables       map[string]string
+	values          map[string]string
+	rng             *rand.Rand
+	person          *personBundle
+	page            playwright.Page
+	projectRoot     string
+	runSeed         int64
+	downloadSeq     int
+	lastDownload    string
+	downloadDir     string
+	completedSteps  []gherkin.Step
 	PromptEmailCode func(email string) (string, error)
 }
 
@@ -50,6 +49,7 @@ func NewRunContext(variables map[string]string, seed int64, projectRoot string, 
 		values:          map[string]string{},
 		rng:             rand.New(rand.NewSource(seed)),
 		projectRoot:     projectRoot,
+		runSeed:         seed,
 		PromptEmailCode: emailCodePrompter(),
 	}
 	for _, opt := range opts {
@@ -86,50 +86,10 @@ func (c *RunContext) DownloadDir() string {
 	if root == "" {
 		root = os.TempDir()
 	}
-	dir := filepath.Join(root, ".scenaria", "downloads")
+	dir := filepath.Join(root, ".scenaria", "downloads", fmt.Sprintf("run-%d", c.runSeed))
 	_ = os.MkdirAll(dir, 0o755)
 	c.downloadDir = dir
 	return dir
-}
-
-func (c *RunContext) ResolveText(text string) (string, error) {
-	if text == "" || !strings.Contains(text, "{{") {
-		return text, nil
-	}
-	var err error
-	out := placeholderRE.ReplaceAllStringFunc(text, func(match string) string {
-		if err != nil {
-			return match
-		}
-		groups := placeholderRE.FindStringSubmatch(match)
-		key := groups[1]
-		if strings.HasPrefix(strings.ToLower(key), "env:") {
-			envName := key[4:]
-			value := os.Getenv(envName)
-			if value == "" {
-				err = fmt.Errorf("environment variable %q is empty", envName)
-				return match
-			}
-			return value
-		}
-		if value, ok := c.Variables[key]; ok {
-			return value
-		}
-		if value, ok := c.values[key]; ok {
-			return value
-		}
-		generated, genErr := c.generate(key)
-		if genErr != nil {
-			err = genErr
-			return match
-		}
-		c.values[key] = generated
-		return generated
-	})
-	if err != nil {
-		return "", err
-	}
-	return out, nil
 }
 
 func (c *RunContext) GenerateByKind(kind string) (string, error) {

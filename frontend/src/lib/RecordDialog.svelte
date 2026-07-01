@@ -75,8 +75,10 @@
   function buildPreview(feature: string, scenario: string, stepList: string[]): string {
     const title = feature.trim() || 'Записанный сценарий'
     const scen = scenario.trim() || 'Базовый сценарий'
-    const lines = stepList.map((s) => `    Когда ${s.trim()}`).join('\n')
-    return `# language: ru\nФункционал: ${title}\n  Сценарий: ${scen}\n${lines || '    Когда выполняю действие'}`
+    const lines = stepList
+      .map((s, i) => `    ${i === 0 ? 'Допустим' : 'И'} ${s.trim()}`)
+      .join('\n')
+    return `# language: ru\nФункционал: ${title}\n  Сценарий: ${scen}\n${lines || '    Допустим выполняю действие'}`
   }
 
   function onKey(e: KeyboardEvent) {

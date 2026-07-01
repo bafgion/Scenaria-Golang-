@@ -33,11 +33,11 @@ func WriteFeature(path string, opts Options) error {
 		},
 	}
 	for _, line := range opts.Steps {
-		step, ok := parseRecordedStep(line)
-		if !ok {
+		steps := AssignRecordedStepKeywords([]string{line}, len(feature.Scenarios[0].Steps))
+		if len(steps) == 0 {
 			return fmt.Errorf("unsupported recorded step %q", line)
 		}
-		feature.Scenarios[0].Steps = append(feature.Scenarios[0].Steps, step)
+		feature.Scenarios[0].Steps = append(feature.Scenarios[0].Steps, steps[0])
 	}
 
 	content, err := gherkin.SerializeFeature(feature)
@@ -65,11 +65,11 @@ func AppendStepsToFeature(path string, newLines []string) error {
 		newLines = newLines[1:]
 	}
 	for _, line := range newLines {
-		step, ok := parseRecordedStep(line)
-		if !ok {
+		steps := AssignRecordedStepKeywords([]string{line}, len(scenario.Steps))
+		if len(steps) == 0 {
 			continue
 		}
-		scenario.Steps = append(scenario.Steps, step)
+		scenario.Steps = append(scenario.Steps, steps[0])
 	}
 	content, err := gherkin.SerializeFeature(feature)
 	if err != nil {
@@ -79,20 +79,11 @@ func AppendStepsToFeature(path string, newLines []string) error {
 }
 
 func parseRecordedStep(line string) (gherkin.Step, bool) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
+	steps := AssignRecordedStepKeywords([]string{line}, 0)
+	if len(steps) == 0 {
 		return gherkin.Step{}, false
 	}
-	keywords := []string{"Допустим", "Когда", "Тогда", "И", "Но"}
-	for _, keyword := range keywords {
-		if strings.HasPrefix(trimmed, keyword+" ") {
-			return gherkin.Step{
-				Keyword: keyword,
-				Text:    strings.TrimSpace(strings.TrimPrefix(trimmed, keyword)),
-			}, true
-		}
-	}
-	return gherkin.Step{Keyword: "Когда", Text: trimmed}, true
+	return steps[0], true
 }
 
 // EventsToStep converts a recorder DOM event into a Gherkin step line.
@@ -115,6 +106,7 @@ func BuildSelectorFromDetail(detail map[string]string) string {
 		Role:        detail["role"],
 		Label:       detail["captiontext"],
 		AriaLabel:   detail["arialabel"],
+		Title:       detail["title"],
 		Type:        detail["inputtype"],
 	})
 }

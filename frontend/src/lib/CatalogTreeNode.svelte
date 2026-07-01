@@ -12,6 +12,8 @@
   export let batchSelectedSet: Set<string> = new Set()
   export let batchMode = false
   export let expandAll = false
+  export let indentStep = 16
+  export let compact = false
   export let collapsed: Set<string> = new Set()
   export let dropTarget = ''
 
@@ -99,7 +101,7 @@
     .filter(Boolean)
     .join(' ')
 
-  $: indent = `${depth * 16}px`
+  $: indent = `${depth * indentStep}px`
 </script>
 
 <div class="catalog-tree-item">
@@ -132,7 +134,7 @@
       <span class="tree-folder">📁 {node.name}</span>
     {:else}
       <span class="tree-chevron spacer" aria-hidden="true"></span>
-      <span class="tree-file-label">{fileTreeLabel(node, batchMode, selected)}</span>
+      <span class="tree-file-label">{fileTreeLabel(node, batchMode, selected, compact)}</span>
     {/if}
   </button>
 
@@ -145,6 +147,8 @@
         batchSelectedSet={batchSelectedSet}
         {batchMode}
         {expandAll}
+        {indentStep}
+        {compact}
         {collapsed}
         {dropTarget}
         {onActivate}
@@ -168,6 +172,7 @@
     display: flex;
     align-items: center;
     width: 100%;
+    min-width: 0;
     min-height: 20px;
     padding: 0 4px 0 4px;
     border: none;
@@ -249,5 +254,9 @@
 
   .tree-folder {
     color: var(--color-text);
+  }
+
+  :global(.explorer) .catalog-tree-row {
+    max-width: 100%;
   }
 </style>

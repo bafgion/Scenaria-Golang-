@@ -3,7 +3,7 @@ import type { editor as MonacoEditor } from 'monaco-editor'
 export type MonacoApi = typeof import('monaco-editor')
 
 /** Стабильный URI модели Monaco для пути .feature (одна модель на вкладку). */
-export function featureTabUri(monaco: MonacoApi, path: string): MonacoEditor.Uri {
+export function featureTabUri(monaco: MonacoApi, path: string) {
   const normalized = path.replace(/\\/g, '/')
   return monaco.Uri.parse(`inmemory://scenaria/feature/${encodeURIComponent(normalized)}`)
 }

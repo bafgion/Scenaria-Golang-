@@ -41,7 +41,7 @@ func TestEventPipelineDeterministicOrder(t *testing.T) {
 		if !ok {
 			t.Fatalf("unexpected event %+v", event)
 		}
-		appendCoalescedStep(&recorded, step)
+		appendCoalescedStep(&recorded, step, nil)
 	}
 	if len(recorded) != 3 {
 		t.Fatalf("expected 3 steps, got %+v", recorded)
@@ -69,7 +69,7 @@ func TestAppendCoalescedStepAddsHoverBeforeMenuClick(t *testing.T) {
 		Selector:      "a.item",
 		HoverSelector: "nav.menu",
 		HoverText:     "Каталог",
-	})
+	}, nil)
 	if len(recorded) != 2 {
 		t.Fatalf("expected hover+click, got %+v", recorded)
 	}
@@ -83,12 +83,12 @@ func TestAppendCoalescedStepAddsHoverBeforeMenuClick(t *testing.T) {
 
 func TestAppendCoalescedStepSkipsRedundantHoverBeforeClick(t *testing.T) {
 	var recorded []RecordedStep
-	appendCoalescedStep(&recorded, RecordedStep{Action: "hover", Selector: "nav.menu"})
+	appendCoalescedStep(&recorded, RecordedStep{Action: "hover", Selector: "nav.menu"}, nil)
 	appendCoalescedStep(&recorded, RecordedStep{
 		Action:        "click",
 		Selector:      "a.item",
 		HoverSelector: "nav.menu",
-	})
+	}, nil)
 	if len(recorded) != 2 {
 		t.Fatalf("expected single hover before click, got %+v", recorded)
 	}

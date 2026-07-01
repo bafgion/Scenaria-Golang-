@@ -69,7 +69,7 @@ func TestEventPipelineCheckboxCheckEvent(t *testing.T) {
 	}
 
 	var recorded []RecordedStep
-	appendCoalescedStep(&recorded, step)
+	appendCoalescedStep(&recorded, step, nil)
 	if len(recorded) != 1 || recorded[0].Action != "check" {
 		t.Fatalf("pipeline: %+v", recorded)
 	}

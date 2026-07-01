@@ -3,6 +3,8 @@ package gui
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 // ProjectArtifacts lists artifact directories for the open project.
@@ -15,30 +17,55 @@ type ProjectArtifacts struct {
 	SummaryJSON string `json:"summaryJson"`
 }
 
-func (s *Service) ProjectArtifacts() ProjectArtifacts {
+func (s *Service) scenariaDirs() []string {
 	root := s.ProjectPath()
 	if root == "" {
+		return nil
+	}
+	dirs := []string{filepath.Join(root, ".scenaria")}
+	if writable, err := paths.WritableScenariaDir(root); err == nil && writable != dirs[0] {
+		dirs = append([]string{writable}, dirs...)
+	}
+	return dirs
+}
+
+func (s *Service) ScenariaArtifactPath(sub string) string {
+	root := s.ProjectPath()
+	if root == "" {
+		return ""
+	}
+	path, err := paths.ScenariaArtifactPath(root, sub)
+	if err != nil {
+		return filepath.Join(root, ".scenaria", sub)
+	}
+	return path
+}
+
+func (s *Service) ProjectArtifacts() ProjectArtifacts {
+	dirs := s.scenariaDirs()
+	if len(dirs) == 0 {
 		return ProjectArtifacts{}
 	}
-	scenaria := filepath.Join(root, ".scenaria")
 	out := ProjectArtifacts{}
-	if s.ArtifactExists(filepath.Join(scenaria, "allure-results")) {
-		out.AllureDir = filepath.Join(scenaria, "allure-results")
-	}
-	if s.ArtifactExists(filepath.Join(scenaria, "traces")) {
-		out.TracesDir = filepath.Join(scenaria, "traces")
-	}
-	if s.ArtifactExists(filepath.Join(scenaria, "videos")) {
-		out.VideosDir = filepath.Join(scenaria, "videos")
-	}
-	if s.ArtifactExists(filepath.Join(scenaria, "report.html")) {
-		out.HTMLReport = filepath.Join(scenaria, "report.html")
-	}
-	if s.ArtifactExists(filepath.Join(scenaria, "junit.xml")) {
-		out.JUnitReport = filepath.Join(scenaria, "junit.xml")
-	}
-	if s.ArtifactExists(filepath.Join(scenaria, "summary.json")) {
-		out.SummaryJSON = filepath.Join(scenaria, "summary.json")
+	for _, scenaria := range dirs {
+		if out.AllureDir == "" && s.ArtifactExists(filepath.Join(scenaria, "allure-results")) {
+			out.AllureDir = filepath.Join(scenaria, "allure-results")
+		}
+		if out.TracesDir == "" && s.ArtifactExists(filepath.Join(scenaria, "traces")) {
+			out.TracesDir = filepath.Join(scenaria, "traces")
+		}
+		if out.VideosDir == "" && s.ArtifactExists(filepath.Join(scenaria, "videos")) {
+			out.VideosDir = filepath.Join(scenaria, "videos")
+		}
+		if out.HTMLReport == "" && s.ArtifactExists(filepath.Join(scenaria, "report.html")) {
+			out.HTMLReport = filepath.Join(scenaria, "report.html")
+		}
+		if out.JUnitReport == "" && s.ArtifactExists(filepath.Join(scenaria, "junit.xml")) {
+			out.JUnitReport = filepath.Join(scenaria, "junit.xml")
+		}
+		if out.SummaryJSON == "" && s.ArtifactExists(filepath.Join(scenaria, "summary.json")) {
+			out.SummaryJSON = filepath.Join(scenaria, "summary.json")
+		}
 	}
 	return out
 }

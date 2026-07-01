@@ -46,6 +46,7 @@ type ElementInfo struct {
 	Text        string
 	TestID      string
 	AriaLabel   string
+	Title       string
 }
 
 func BuildFromElement(el ElementInfo) string {
@@ -72,6 +73,9 @@ func BuildFromElement(el ElementInfo) string {
 	}
 	if aria := strings.TrimSpace(el.AriaLabel); aria != "" {
 		return fmt.Sprintf(`[aria-label=%q]`, aria)
+	}
+	if title := strings.TrimSpace(el.Title); title != "" {
+		return fmt.Sprintf(`[title=%q]`, title)
 	}
 	if label := strings.TrimSpace(el.Label); label != "" {
 		return fmt.Sprintf(`text=%q`, label)

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 func (s *Service) defaultAllureDir() (string, error) {
@@ -13,7 +15,7 @@ func (s *Service) defaultAllureDir() (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("open a project folder first")
 	}
-	return filepath.Join(path, ".scenaria", "allure-results"), nil
+	return paths.ScenariaArtifactPath(path, "allure-results")
 }
 
 func (s *Service) resolveAllureDir(dir string) (string, error) {
@@ -57,11 +59,15 @@ func (s *Service) ServeAllure(dir string) RunResult {
 func (s *Service) OpenHTMLReport(path string) RunResult {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		path = s.ProjectPath()
-		if path == "" {
+		root := s.ProjectPath()
+		if root == "" {
 			return RunResult{Error: "open a project folder first"}
 		}
-		path = filepath.Join(path, ".scenaria", "report.html")
+		resolved, err := paths.ScenariaArtifactPath(root, "report.html")
+		if err != nil {
+			return RunResult{Error: err.Error()}
+		}
+		path = resolved
 	} else if !filepath.IsAbs(path) {
 		root := s.ProjectPath()
 		if root == "" {

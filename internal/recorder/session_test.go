@@ -34,6 +34,27 @@ func TestLiveSessionPauseResume(t *testing.T) {
 	}
 }
 
+func TestLiveSessionEndCaptureResume(t *testing.T) {
+	s := NewLiveSession()
+	s.InitBrowseMode()
+	if err := s.BeginCapture(); err != nil {
+		t.Fatal(err)
+	}
+	s.EndCapture()
+	if s.CaptureEnabled() {
+		t.Fatal("expected capture disabled after EndCapture")
+	}
+	if s.CaptureEverEnabled() {
+		t.Fatal("expected captureEver reset after EndCapture (stop starts fresh segment)")
+	}
+	if err := s.BeginCapture(); err != nil {
+		t.Fatal(err)
+	}
+	if !s.CaptureEnabled() {
+		t.Fatal("expected capture enabled after resume")
+	}
+}
+
 func TestLiveSessionRecordMode(t *testing.T) {
 	s := NewLiveSession()
 	s.InitRecordMode()
