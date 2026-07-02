@@ -24,6 +24,16 @@ func LeafStepIndexAtLine(steps []Step, line int) (int, bool) {
 	return 0, false
 }
 
+// LeafStepLineAtIndex returns the 1-based source line for a leaf step index.
+func LeafStepLineAtIndex(steps []Step, index int) (int, bool) {
+	leaves := LeafSteps(steps)
+	if index < 0 || index >= len(leaves) {
+		return 0, false
+	}
+	line := leaves[index].Line
+	return line, line > 0
+}
+
 // ApplyStepRange slices leaf steps from start through end (inclusive).
 // Negative start is treated as 0; negative end runs through the last step.
 func ApplyStepRange(steps []Step, start, end int) []Step {

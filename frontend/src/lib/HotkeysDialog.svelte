@@ -23,6 +23,7 @@
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal wide hotkeys-dialog" role="dialog" aria-modal="true" aria-label="Горячие клавиши" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Горячие клавиши</h3>
+    <p class="hotkeys-note">В редакторе: <kbd>Ctrl+F</kbd> — найти, <kbd>Ctrl+H</kbd> — найти и заменить.</p>
     <ul class="hotkeys-list">
       {#each hotkeys as cmd}
         <li>
@@ -41,6 +42,21 @@
   .hotkeys-dialog {
     width: min(480px, 92vw);
     max-height: 70vh;
+  }
+
+  .hotkeys-note {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--color-muted);
+  }
+
+  .hotkeys-note kbd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-bg);
   }
 
   .hotkeys-list {

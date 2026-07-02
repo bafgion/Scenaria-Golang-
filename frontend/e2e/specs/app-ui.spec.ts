@@ -139,6 +139,26 @@ test('run dialog opens from menu', async ({ page }) => {
   await expect(dialog).toBeHidden()
 })
 
+test('first Ctrl+Enter opens run dialog before options confirmed', async ({ page }) => {
+  await bootApp(page)
+  await createNewScenario(page)
+  await page.keyboard.press('Control+Enter')
+  const dialog = page.getByRole('dialog', { name: 'Запуск сценария' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+  await expect(dialog).toBeHidden()
+})
+
+test('settings reset defaults restores browser field', async ({ page }) => {
+  await bootApp(page)
+  await page.keyboard.press('Control+Comma')
+  const dialog = page.getByRole('dialog', { name: /Настройки/ })
+  await dialog.locator('select').first().selectOption('firefox')
+  await dialog.getByRole('button', { name: 'Сбросить по умолчанию' }).click()
+  await expect(dialog.locator('select').first()).toHaveValue('chromium')
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+})
+
 test('snippet palette lists steps from catalog', async ({ page }) => {
   await bootApp(page)
   await createNewScenario(page)
@@ -335,4 +355,36 @@ test('run history flaky filter shows unstable scenarios', async ({ page }) => {
   await expect(dialog).toBeHidden()
   await openMenuItem(page, 'Вид', 'Результаты')
   await expect(page.locator('.results-panel .flaky-tag').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Запустить 3×' }).first().click()
+  await expect(page.locator('.playing-bar')).toBeHidden({ timeout: 10_000 })
+  await openMenuItem(page, 'Вид', 'Журнал')
+  await expect(page.locator('.panel-body.text-panel')).toContainText('Прогон 3/3', { timeout: 10_000 })
+})
+
+test('new project wizard picks folder and creates project', async ({ page }) => {
+  await bootApp(page, '?e2e=new-project')
+  await openMenuItem(page, 'Проект', 'Новый проект…')
+  const dialog = page.getByRole('dialog', { name: 'Новый проект' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Обзор…' }).click()
+  await expect(dialog.locator('input').first()).toHaveValue('C:/e2e/new-project')
+  await dialog.getByRole('button', { name: 'Создать' }).click()
+  await expect(dialog).toBeHidden({ timeout: 10_000 })
+})
+
+test('run progress mock updates playing bar counter', async ({ page }) => {
+  await bootApp(page, '?e2e=run-progress')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await page.keyboard.press('Control+Enter')
+  await expect(page.locator('.playing-bar .play-progress-text')).toContainText(/\d\/3/, { timeout: 10_000 })
+})
+
+test('results trace viewer button logs success', async ({ page }) => {
+  await bootApp(page, '?e2e=trace-artifacts')
+  await openTestProject(page)
+  await openMenuItem(page, 'Вид', 'Результаты')
+  await page.getByRole('button', { name: 'Trace viewer' }).click()
+  await openMenuItem(page, 'Вид', 'Журнал')
+  await expect(page.locator('.panel-body.text-panel')).toContainText('Trace viewer:', { timeout: 10_000 })
 })

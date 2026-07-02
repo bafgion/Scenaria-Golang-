@@ -13,8 +13,12 @@
   export let onStop: () => void = () => {}
   export let onPicker: () => void = () => {}
   export let onFocusBrowser: () => void = () => {}
+  export let pickerDuringRecording = false
 
-  $: pickerEnabled = (recording && paused) || (!recording && !playing)
+  $: pickerEnabled =
+    pickerDuringRecording
+      ? recording && !playing
+      : (recording && paused) || (!recording && !playing)
   $: pauseEnabled = recording && !playing
   $: stopEnabled = recording || playing
   $: recordEnabled = !recording && !playing

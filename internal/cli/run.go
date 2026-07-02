@@ -40,6 +40,7 @@ type runOptions struct {
 	startStep         int
 	endStep           int
 	navWaitUntil      string
+	continueOnFail    bool
 }
 
 func RunRun(args []string) error {
@@ -129,11 +130,23 @@ func RunRunContext(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	statusIncremental := false
+	if root := paths.InferProjectRoot(opts.targets); root != "" && !opts.dryRun {
+		if store, storeErr := runstatus.Open(root); storeErr == nil {
+			engine := resolveRunEngine("", opts.engine)
+			if len(opts.targets) > 0 {
+				engine = resolveRunEngine(opts.targets[0], opts.engine)
+			}
+			ctx = player.WithRunStatusHook(ctx, store, engine)
+			statusIncremental = true
+		}
+	}
+	ctx = player.WithContinueOnFail(ctx, opts.continueOnFail)
 	result, err := runner.Execute(ctx, plan)
 	if reportErr := writeRunReports(opts, result); reportErr != nil {
 		return reportErr
 	}
-	if !opts.dryRun {
+	if !opts.dryRun && !statusIncremental {
 		recordRunStatus(opts, result)
 	}
 
@@ -366,6 +379,8 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.navWaitUntil = args[i]
+		case "--continue-on-fail":
+			opts.continueOnFail = true
 		default:
 			return runOptions{}, fmt.Errorf("unknown flag for run: %s", arg)
 		}

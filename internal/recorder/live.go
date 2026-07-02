@@ -36,7 +36,7 @@ type LiveOptions struct {
 
 type LiveCallbacks struct {
 	OnCaptureStart  func(resume bool)
-	OnCaptureStop   func()
+	OnCaptureStop   func(reason string)
 	OnPickerRequest func()
 	OnBrowserLost   func()
 	OnStepRecorded  func(index int, line string)

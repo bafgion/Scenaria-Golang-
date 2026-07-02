@@ -15,6 +15,8 @@ describe('matchHotkey', () => {
     expect(matchHotkey(keyEvent({ code: 'KeyF', shiftKey: true, altKey: true }))).toBe('format')
     expect(matchHotkey(keyEvent({ code: 'KeyR', ctrlKey: true, shiftKey: true }))).toBe('record-stop')
     expect(matchHotkey(keyEvent({ code: 'KeyP', altKey: true }))).toBe('record-pause')
+    expect(matchHotkey(keyEvent({ code: 'KeyF', ctrlKey: true }))).toBe('find')
+    expect(matchHotkey(keyEvent({ code: 'KeyH', ctrlKey: true }))).toBe('find-replace')
   })
 })
 

@@ -14,8 +14,9 @@ const (
 	EditorWhitespaceTrailing  = "trailing"
 	EditorWhitespaceAll       = "all"
 
-	EditorThemeDark  = "scenaria-dark"
-	EditorThemeLight = "scenaria-light"
+	EditorThemeDark   = "scenaria-dark"
+	EditorThemeLight  = "scenaria-light"
+	EditorThemeSystem = "system"
 )
 
 type EditorSettings struct {
@@ -143,7 +144,7 @@ func NormalizeEditorSettings(raw EditorSettings) EditorSettings {
 		out.ValidateOnType = raw.ValidateOnType
 	}
 	switch raw.Theme {
-	case EditorThemeDark, EditorThemeLight:
+	case EditorThemeDark, EditorThemeLight, EditorThemeSystem:
 		out.Theme = raw.Theme
 	}
 	if raw.BreadcrumbsEnabled != nil {

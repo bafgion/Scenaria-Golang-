@@ -126,9 +126,13 @@ func (s *Service) liveRecordCallbacks(emit func(string, any)) recorder.LiveCallb
 				emit("record-started", map[string]any{"resume": resume})
 			}
 		},
-		OnCaptureStop: func() {
+		OnCaptureStop: func(reason string) {
 			if emit != nil {
-				emit("record-stopped", nil)
+				payload := map[string]any{"reason": reason}
+				if reason == "idle" && s.recordIdleSeconds > 0 {
+					payload["idleSeconds"] = s.recordIdleSeconds
+				}
+				emit("record-stopped", payload)
 			}
 		},
 		OnPickerRequest: func() {
@@ -266,6 +270,7 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	s.recordCtx = ctx
 	s.recordCancel = cancel
 	s.recordEmit = emit
+	s.recordIdleSeconds = idle
 	s.mu.Unlock()
 
 	clearRecordSession := func() {

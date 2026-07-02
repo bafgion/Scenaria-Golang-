@@ -1286,19 +1286,91 @@ html {
   font-size: 10px;
 }
 
+.playing-bar .play-progress-text {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playing-bar .play-cancel-btn {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-input);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.playing-bar .play-cancel {
+  margin-left: auto;
+  color: var(--color-muted);
+}
+
 .playing-bar .play-progress {
   position: absolute;
   left: 0;
   bottom: 0;
   height: 2px;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, var(--color-success), transparent);
-  animation: play-progress-slide 1.8s ease-in-out infinite;
+  width: calc(var(--run-progress, 0) * 1%);
+  max-width: 100%;
+  background: var(--color-success);
+  transition: width 0.25s ease;
 }
 
-@keyframes play-progress-slide {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(320%); }
+.status-bar .recording-target {
+  color: var(--color-recording);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recording-bar .rec-hint {
+  font-size: 11px;
+  color: var(--color-muted);
+  margin-right: 8px;
+}
+
+.status-bar .run-summary {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-area.dry-run-active {
+  outline: 1px dashed var(--color-muted);
+  outline-offset: -1px;
+}
+
+.status-bar .large-file-banner {
+  color: var(--color-warning, #dcdcaa);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results-table .goto-step {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background: var(--color-input);
+  cursor: pointer;
+}
+
+.welcome .checklist-dismiss {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .editor-area.playing-active {

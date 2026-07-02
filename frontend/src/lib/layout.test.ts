@@ -18,7 +18,7 @@ describe('layout persistence', () => {
     const state = loadLayout()
     expect(state.sidebarVisible).toBe(false)
     expect(state.previewWidth).toBe(420)
-    expect(state.sidebarWidth).toBe(260)
+    expect(state.bottomPanelOpen).toBe(false)
   })
 
   it('resetLayout clears storage and returns defaults', () => {

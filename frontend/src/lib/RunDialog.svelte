@@ -90,8 +90,10 @@
     <label class="check-row"><input type="checkbox" bind:checked={form.trace} disabled={form.dryRun} /> Trace</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.video} disabled={form.dryRun} /> Video</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.html} disabled={form.dryRun} /> HTML-отчёт (.scenaria/report.html)</label>
+    <label class="check-row indent"><input type="checkbox" bind:checked={form.htmlTimestamp} disabled={form.dryRun || !form.html} /> С timestamp в имени (report-YYYYMMDD-HHMM.html)</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.junit} disabled={form.dryRun} /> JUnit (.scenaria/junit.xml)</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.summaryJson} disabled={form.dryRun} /> Summary JSON (.scenaria/summary.json)</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.continueOnFail} disabled={form.dryRun} /> Продолжать при ошибке (не останавливать suite)</label>
     <div class="modal-actions">
       <button type="button" class="primary" on:click={onConfirm}>Запустить</button>
       <button type="button" on:click={onCancel}>Отмена</button>
@@ -131,5 +133,10 @@
     border-color: var(--color-primary);
     color: var(--color-text);
     background: var(--color-selected);
+  }
+
+  .check-row.indent {
+    margin-left: 18px;
+    font-size: 12px;
   }
 </style>

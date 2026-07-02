@@ -2,6 +2,7 @@
   import { gui } from '../../wailsjs/go/models'
 
   export let entry: gui.RunResultEntry | null = null
+  export let onGotoFailedStep: (entry: gui.RunResultEntry) => void = () => {}
 
   function splitPath(path: string): { feature: string; scenario: string } {
     const idx = path.indexOf('::')
@@ -21,6 +22,14 @@
       <dd>{parts.scenario || '—'}</dd>
       <dt>Файл</dt>
       <dd>{parts.feature}</dd>
+      {#if entry.failed_step != null && entry.failed_step >= 0}
+        <dt>Упавший шаг</dt>
+        <dd>
+          <button type="button" class="goto-step" on:click={() => onGotoFailedStep(entry)}>
+            Перейти к шагу {entry.failed_step + 1}
+          </button>
+        </dd>
+      {/if}
       <dt>Сообщение</dt>
       <dd class="msg">{entry.message || '—'}</dd>
     </dl>
@@ -53,6 +62,20 @@
   dd {
     margin: 2px 0 0;
     color: var(--color-text);
+  }
+
+  .goto-step {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: var(--color-input);
+    color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .goto-step:hover {
+    border-color: var(--color-primary);
   }
 
   .msg {

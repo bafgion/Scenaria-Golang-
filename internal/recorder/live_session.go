@@ -132,7 +132,7 @@ func runLiveBrowserSession(
 				if session.CaptureEnabled() {
 					session.EndCapture()
 					if opts.Callbacks.OnCaptureStop != nil {
-						opts.Callbacks.OnCaptureStop()
+						opts.Callbacks.OnCaptureStop("manual")
 					}
 					if opts.Callbacks.OnStepRecorded != nil {
 						continue
@@ -193,7 +193,7 @@ func runLiveBrowserSession(
 			session.captureEnabled.Store(false)
 			session.paused.Store(false)
 			if opts.Callbacks.OnCaptureStop != nil {
-				opts.Callbacks.OnCaptureStop()
+				opts.Callbacks.OnCaptureStop("idle")
 			}
 			if opts.Callbacks.OnStepRecorded != nil {
 				continue

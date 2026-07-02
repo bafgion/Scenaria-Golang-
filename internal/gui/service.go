@@ -1,10 +1,10 @@
 package gui
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
@@ -29,9 +30,10 @@ type Service struct {
 	liveSession  *recorder.LiveSession
 	recordCtx    context.Context
 	recordCancel context.CancelFunc
-	recordEmit   func(string, any)
-	recordGen    uint64
-	runCtx       context.Context
+	recordEmit        func(string, any)
+	recordGen         uint64
+	recordIdleSeconds int
+	runCtx            context.Context
 	runCancel    context.CancelFunc
 	runGen       uint64
 	tempFeatureMu   sync.Mutex
@@ -71,6 +73,7 @@ type RunRequest struct {
 	BaseURL       string            `json:"baseUrl"`
 	StartStep     int               `json:"startStep"`
 	EndStep       int               `json:"endStep"`
+	ContinueOnFail bool             `json:"continueOnFail"`
 }
 
 type ValidateRequest struct {
@@ -151,6 +154,11 @@ type AppSettingsDTO struct {
 	SelectorInputStrategies []string `json:"selectorInputStrategies"`
 	CheckUpdatesOnStartup bool `json:"checkUpdatesOnStartup"`
 	Editor            settings.EditorSettings `json:"editor"`
+	ChecklistDismissed bool   `json:"checklistDismissed"`
+	WelcomePlayedSuccess bool `json:"welcomePlayedSuccess"`
+	StartURL            string `json:"startUrl"`
+	RunDialogConfirmed  bool   `json:"runDialogConfirmed"`
+	PickerDuringRecording bool `json:"pickerDuringRecording"`
 }
 
 type UntitledTabDTO struct {
@@ -409,10 +417,28 @@ func (s *Service) InitProject() (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("open a project folder first")
 	}
+	return s.InitProjectAt(path)
+}
+
+func (s *Service) InitProjectAt(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("project path is required")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("init project: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("project path must be a directory")
+	}
 	return captureCLI(func() error { return cli.RunInit([]string{path}) })
 }
 
-func (s *Service) Run(req RunRequest) RunResult {
+// EventEmitter sends Wails runtime events during long GUI operations.
+type EventEmitter func(name string, payload any)
+
+func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 	defer s.cleanupTempFeatureDirs()
 	path := s.ProjectPath()
 	args := []string{}
@@ -483,6 +509,9 @@ func (s *Service) Run(req RunRequest) RunResult {
 	if req.EndStep >= 0 {
 		args = append(args, "--end-step", fmt.Sprintf("%d", req.EndStep))
 	}
+	if req.ContinueOnFail {
+		args = append(args, "--continue-on-fail")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	if s.runCancel != nil {
@@ -502,7 +531,20 @@ func (s *Service) Run(req RunRequest) RunResult {
 		s.mu.Unlock()
 		cancel()
 	}()
-	out, err := captureCLI(func() error { return cli.RunRunContext(ctx, args) })
+	ctx = player.WithRunProgress(ctx, func(ev player.RunProgressEvent) {
+		if emit != nil {
+			emit("run-progress", ev)
+			if ev.Phase == player.ProgressScenarioDone {
+				emit("run-results-changed", nil)
+			}
+		}
+	})
+	onLine := func(line string) {
+		if emit != nil {
+			emit("run-log-line", map[string]string{"line": line})
+		}
+	}
+	out, err := captureCLIStream(onLine, func() error { return cli.RunRunContext(ctx, args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -681,6 +723,11 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		SelectorInputStrategies: selector.NormalizeInputStrategies(cfg.SelectorInputStrategies),
 		CheckUpdatesOnStartup: settings.CheckUpdatesOnStartupEnabled(cfg),
 		Editor:              settings.NormalizeEditorSettings(cfg.Editor),
+		ChecklistDismissed:  cfg.ChecklistDismissed,
+		WelcomePlayedSuccess: cfg.WelcomePlayedSuccess,
+		StartURL:            strings.TrimSpace(cfg.StartURL),
+		RunDialogConfirmed:  cfg.RunDialogConfirmed,
+		PickerDuringRecording: cfg.PickerDuringRecording,
 	}
 }
 
@@ -722,6 +769,11 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	checkUpdates := dto.CheckUpdatesOnStartup
 	cfg.CheckUpdatesOnStartup = &checkUpdates
 	cfg.Editor = settings.NormalizeEditorSettings(dto.Editor)
+	cfg.ChecklistDismissed = dto.ChecklistDismissed
+	cfg.WelcomePlayedSuccess = dto.WelcomePlayedSuccess
+	cfg.StartURL = strings.TrimSpace(dto.StartURL)
+	cfg.RunDialogConfirmed = dto.RunDialogConfirmed
+	cfg.PickerDuringRecording = dto.PickerDuringRecording
 	if existing != nil {
 		cfg.HTTPAuth = existing.HTTPAuth
 		if len(cfg.RecentProjects) == 0 {
@@ -744,7 +796,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 
 var captureStdoutMu sync.Mutex
 
-func captureCLI(fn func() error) (string, error) {
+func captureCLIStream(onLine func(string), fn func() error) (string, error) {
 	captureStdoutMu.Lock()
 	defer captureStdoutMu.Unlock()
 
@@ -754,13 +806,32 @@ func captureCLI(fn func() error) (string, error) {
 		return "", err
 	}
 	os.Stdout = w
+
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			line := scanner.Text()
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+			if onLine != nil {
+				onLine(line)
+			}
+		}
+	}()
+
 	runErr := fn()
 	_ = w.Close()
 	os.Stdout = old
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
+	<-done
 	_ = r.Close()
 	return buf.String(), runErr
+}
+
+func captureCLI(fn func() error) (string, error) {
+	return captureCLIStream(nil, fn)
 }
 
 func maxInt(a, b int) int {

@@ -126,8 +126,12 @@ func (a *App) InitProject() (string, error) {
 	return a.svc.InitProject()
 }
 
+func (a *App) InitProjectAt(path string) (string, error) {
+	return a.svc.InitProjectAt(path)
+}
+
 func (a *App) Run(req gui.RunRequest) gui.RunResult {
-	return a.svc.Run(req)
+	return a.svc.Run(req, a.emitEvent)
 }
 
 func (a *App) CancelRun() {
@@ -207,8 +211,8 @@ func (a *App) CheckUpdateInfo() (gui.UpdateInfoDTO, error) {
 }
 
 // EventBindingTypes exposes DTOs used only in runtime.EventsEmit so wails generate keeps them in models.ts.
-func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDTO) {
-	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}
+func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDTO, player.RunProgressEvent) {
+	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}, player.RunProgressEvent{}
 }
 
 func (a *App) DownloadUpdate() {
@@ -497,9 +501,17 @@ func (a *App) CloseBrowser()    { a.svc.CloseBrowser() }
 func (a *App) StopRecordingCapture() error {
 	err := a.svc.StopRecordingCapture()
 	if err == nil {
-		runtime.EventsEmit(a.ctx, "record-stopped", nil)
+		runtime.EventsEmit(a.ctx, "record-stopped", map[string]any{"reason": "manual"})
 	}
 	return err
+}
+
+func (a *App) OpenTrace(path string) gui.RunResult {
+	return a.svc.OpenTrace(path)
+}
+
+func (a *App) FailedStepLine(featurePath, scenarioName string, leafIndex int) (int, error) {
+	return a.svc.FailedStepLine(featurePath, scenarioName, leafIndex)
 }
 func (a *App) IsRecordingPaused() bool {
 	return a.svc.IsRecordingPaused()
@@ -595,6 +607,10 @@ func (a *App) OpenFolder(path string) error {
 
 func (a *App) ServeAllure(dir string) gui.RunResult {
 	return a.svc.ServeAllure(dir)
+}
+
+func (a *App) AllureStatus(dir string) gui.AllureStatusDTO {
+	return a.svc.AllureStatus(dir)
 }
 
 func (a *App) OpenHTMLReport(path string) gui.RunResult {

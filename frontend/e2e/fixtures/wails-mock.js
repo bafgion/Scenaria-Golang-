@@ -23,6 +23,8 @@
     openTabs: [],
     untitledTabs: [],
     activeTab: '',
+    runDialogConfirmed: false,
+    pickerDuringRecording: false,
     editor: {
       fontSize: 13,
       fontFamily: '"Cascadia Code", Consolas, monospace',
@@ -68,6 +70,16 @@
   }
 
   let settings = readSettings()
+  const mode = e2eMode()
+  if (mode === 'run-progress' || mode === 'run-stream' || mode === 'run-cancel') {
+    settings = { ...settings, runDialogConfirmed: true }
+  }
+  if (mode === 'update-available') {
+    settings = { ...settings, checkUpdatesOnStartup: true }
+  }
+
+  let runCancelled = false
+  let lastRunRequest = null
 
   const sampleSteps = [
     {
@@ -249,24 +261,106 @@
         name: 'e2e',
       }
     },
-    PickProjectFolder: asyncEmpty,
+    PickProjectFolder: async () => (e2eMode() === 'new-project' ? 'C:/e2e/new-project' : ''),
     PickOpenFile: asyncEmpty,
     PickOpenFiles: async () => {
       if (e2eMode() === 'import-pick') return ['C:/external/sample.feature']
       return []
     },
-    PickSaveFile: asyncEmpty,
-    ReadFeature: async () => 'Функция: smoke\n  Сценарий: тест\n    открыт "https://example.com"',
+    PickSaveFile: async () => {
+      if (e2eMode() === 'save-as') return `${E2E_PROJECT}/saved-as.feature`
+      return ''
+    },
+    ReadFeature: async () => {
+      if (e2eMode() === 'large-file') {
+        const lines = ['Функционал: big', 'Сценарий: one']
+        while (lines.length < 2001) lines.push('\tоткрыт "https://example.com"')
+        return lines.join('\n')
+      }
+      return 'Функция: smoke\n  Сценарий: тест\n    открыт "https://example.com"'
+    },
     SaveFeature: asyncOk,
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
-    Run: async (opts) => ({ output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }),
-    CancelRun: noop,
+    Run: async (opts) => {
+      lastRunRequest = opts
+      if (e2eMode() === 'run-progress') {
+        emitE2E('run-progress', {
+          phase: 'scenario_start',
+          index: 1,
+          total: 3,
+          featurePath: `${E2E_PROJECT}/smoke.feature`,
+          scenario: 'тест',
+        })
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 3, success: true })
+        emitE2E('run-progress', {
+          phase: 'scenario_start',
+          index: 2,
+          total: 3,
+          featurePath: `${E2E_PROJECT}/smoke.feature`,
+          scenario: 'второй',
+        })
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 3, success: true })
+        emitE2E('run-progress', {
+          phase: 'scenario_start',
+          index: 3,
+          total: 3,
+          featurePath: `${E2E_PROJECT}/smoke.feature`,
+          scenario: 'третий',
+        })
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        emitE2E('run-progress', { phase: 'scenario_done', index: 3, total: 3, success: true })
+        return { output: 'ok', error: '' }
+      }
+      if (e2eMode() === 'run-stream') {
+        emitE2E('run-log-line', { line: 'E2E_STREAM_LINE\n' })
+        await new Promise((resolve) => setTimeout(resolve, 80))
+        return { output: 'ok', error: '' }
+      }
+      if (e2eMode() === 'run-cancel') {
+        runCancelled = false
+        for (let i = 0; i < 40; i++) {
+          if (runCancelled) return { output: '', error: 'context canceled' }
+          emitE2E('run-log-line', { line: `progress ${i}\n` })
+          await new Promise((resolve) => setTimeout(resolve, 120))
+        }
+        return { output: 'ok', error: '' }
+      }
+      return { output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }
+    },
+    CancelRun: () => {
+      runCancelled = true
+    },
     Validate: async () => ({ output: 'Проверка завершена.', error: '' }),
     ListTestClients: async () => [],
     ListPlugins: async () => [],
     ListRunResults: async () => (e2eMode() === 'flaky-run' ? flakyRunResults : []),
     FlakyMetrics: async () => (e2eMode() === 'flaky-run' ? flakyMetricsPayload : { scenarios: [], steps: [] }),
-    ProjectArtifacts: async () => ({ allureDir: '', reportHtml: '' }),
+    ProjectArtifacts: async () => {
+      if (e2eMode() === 'flaky-run' || e2eMode() === 'trace-artifacts') {
+        return {
+          tracesDir: `${E2E_PROJECT}/.scenaria/traces`,
+          allureDir: '',
+          htmlReport: '',
+          junitReport: '',
+          summaryJson: '',
+          videosDir: '',
+        }
+      }
+      if (e2eMode() === 'allure-missing') {
+        return {
+          tracesDir: '',
+          allureDir: `${E2E_PROJECT}/.scenaria/allure-results`,
+          htmlReport: '',
+          junitReport: '',
+          summaryJson: '',
+          videosDir: '',
+        }
+      }
+      return { allureDir: '', reportHtml: '' }
+    },
+    OpenTrace: async () => ({ output: 'trace viewer started', error: '' }),
     ScenariaArtifactPath: async (sub) => `${E2E_PROJECT}/.scenaria/${sub}`,
     ParseEditorSteps: async () => {
       if (e2eMode() === 'post-record') {
@@ -279,21 +373,35 @@
       return [{ text: 'открыт "https://example.com"' }]
     },
     InitProject: async () => 'init ok',
+    InitProjectAt: async () => 'init ok',
     CheckUpdate: async () => ({ output: 'Установлена актуальная версия', error: '' }),
-    CheckUpdateInfo: async () => ({
-      currentVersion: '0.0.0-e2e',
-      latestVersion: '0.0.0-e2e',
-      updateAvailable: false,
-      htmlUrl: '',
-      downloadUrl: '',
-      downloadName: '',
-      message: 'Установлена актуальная версия',
-    }),
+    CheckUpdateInfo: async () => {
+      if (e2eMode() === 'update-available') {
+        return {
+          currentVersion: '0.0.0-e2e',
+          latestVersion: '9.9.9',
+          updateAvailable: true,
+          htmlUrl: 'https://example.com/release',
+          downloadUrl: '',
+          downloadName: '',
+          message: 'Доступно обновление',
+        }
+      }
+      return {
+        currentVersion: '0.0.0-e2e',
+        latestVersion: '0.0.0-e2e',
+        updateAvailable: false,
+        htmlUrl: '',
+        downloadUrl: '',
+        downloadName: '',
+        message: 'Установлена актуальная версия',
+      }
+    },
     DownloadUpdate: async () => '',
     OpenExternalURL: asyncOk,
     ValidateBrowser: async () => [],
     ArtifactExists: async () => false,
-    BundledExamplesPath: async () => '',
+    BundledExamplesPath: async () => (e2eMode() === 'examples' ? `${E2E_PROJECT}/examples` : ''),
     ListScenarioTitles: async () => ['тест'],
     AnalyzeScenarioHints: async () => (e2eMode() === 'post-record' ? postRecordHints : []),
     ApplyScenarioHintFix: async (req) => {
@@ -321,7 +429,7 @@
     RunPlugin: asyncOk,
     StartRecord: async () => {
       const mode = e2eMode()
-      if (mode === 'post-record' || mode === 'post-record-diff' || mode === 'record-resume') {
+      if (mode === 'post-record' || mode === 'post-record-diff' || mode === 'record-resume' || mode === 'record-idle') {
         liveRecord.browserOpen = true
         liveRecord.recording = true
         liveRecord.captureEver = true
@@ -334,6 +442,9 @@
             emitE2E('record-step', step)
           }
         })
+        if (mode === 'record-idle') {
+          setTimeout(() => emitE2E('record-stopped', { reason: 'idle', idleSeconds: 30 }), 400)
+        }
       }
     },
     BeginRecordingCapture: async () => {
@@ -418,6 +529,13 @@
     CancelOTP: noop,
     OpenFolder: noop,
     ServeAllure: asyncOk,
+    AllureStatus: async () => {
+      if (e2eMode() === 'allure-missing') {
+        return { installed: false, running: false, resultsDir: `${E2E_PROJECT}/.scenaria/allure-results` }
+      }
+      return { installed: true, running: false, resultsDir: '' }
+    },
+    FailedStepLine: async () => 4,
     OpenHTMLReport: noop,
     RefactorUpdateStartURLs: async (_paths, _url) => ({ changed: 0, output: '' }),
     RefactorNormalizeIndents: async (text) => text,
@@ -452,5 +570,6 @@
   }
 
   window.__e2eEmit = emitE2E
+  window.__e2eLastRunRequest = () => lastRunRequest
   window.go = { wailsapp: { App: app } }
 })()

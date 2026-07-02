@@ -16,14 +16,18 @@
   export let hoverRecord = false
   export let scrollBeforeClick = false
   export let hoverRecordMinMs = 600
+  export let pickerDuringRecording = false
   export let toolbarCompact = false
   export let stepsPanelVisible = true
   export let stepsPanelHeight = 160
   export let checkUpdatesOnStartup = true
   export let selectorClickStrategies: string[] = ['testid', 'id', 'aria', 'contextual', 'text']
   export let selectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  export let navWaitUntil = 'domcontentloaded'
+  export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
 
   export let onSave: () => void
+  export let onApply: (() => void) | null = null
   export let onCancel: () => void
   export let onOpenPlugins: (() => void) | null = null
   export let onOpenVanessa: (() => void) | null = null
@@ -86,8 +90,6 @@
   function moveInputStrategy(index: number, delta: number) {
     selectorInputStrategies = moveStrategy(selectorInputStrategies, index, delta)
   }
-
-  export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
 
   onMount(async () => {
     try {
@@ -155,6 +157,37 @@
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onCancel()
   }
+
+  function resetToDefaults() {
+    browser = 'chromium'
+    headless = false
+    workers = 1
+    slowMo = 0
+    loops = 100
+    navWaitUntil = 'domcontentloaded'
+    filterRecording = false
+    navOnlyRecording = false
+    hoverRecord = false
+    scrollBeforeClick = false
+    hoverRecordMinMs = 600
+    pickerDuringRecording = false
+    toolbarCompact = false
+    stepsPanelVisible = true
+    stepsPanelHeight = 160
+    checkUpdatesOnStartup = true
+    selectorClickStrategies = [...defaultClickStrategies]
+    selectorInputStrategies = [...defaultInputStrategies]
+    editorSettings = { ...DEFAULT_EDITOR_SETTINGS }
+  }
+
+  $: extremeRunWarning =
+    workers >= 8 && slowMo >= 1000
+      ? 'Много воркеров и высокий slow-mo — прогон может быть очень долгим.'
+      : workers >= 12
+        ? 'Большое число воркеров нагружает систему.'
+        : slowMo >= 2000
+          ? 'Очень высокий slow-mo — шаги выполняются с большой паузой.'
+          : ''
 </script>
 
 <svelte:window on:keydown={onKey} />
@@ -257,6 +290,10 @@
             <SettingCard title="Прокрутка перед кликом" description="Перед записью клика прокручивать элемент в видимую область (как при воспроизведении).">
               <input type="checkbox" bind:checked={scrollBeforeClick} />
             </SettingCard>
+
+            <SettingCard title="Picker во время записи" description="Разрешить «Указать элемент» без паузы записи (по умолчанию нужна пауза).">
+              <input type="checkbox" bind:checked={pickerDuringRecording} />
+            </SettingCard>
           </section>
 
           <section class="setting-section">
@@ -278,9 +315,20 @@
                 {/each}
               </div>
             </SettingCard>
+            <SettingCard title="Ожидание навигации (nav-wait-until)" description="Когда считать переход по URL завершённым при шагах «Перейти» и записи.">
+              <select bind:value={navWaitUntil}>
+                <option value="load">load — полная загрузка страницы</option>
+                <option value="domcontentloaded">domcontentloaded — DOM готов (по умолчанию)</option>
+                <option value="networkidle">networkidle — сеть простаивает</option>
+                <option value="commit">commit — первый ответ навигации</option>
+              </select>
+            </SettingCard>
             <SettingCard title="Лимит итераций циклов" description="Максимум повторов для блоков «Повторяю» / «Пока».">
               <input type="number" class="setting-number" bind:value={loops} min={1} max={10000} />
             </SettingCard>
+            {#if extremeRunWarning}
+              <p class="setting-run-warning">{extremeRunWarning}</p>
+            {/if}
           </section>
         {:else if tab === 'selectors'}
           <section class="setting-section">
@@ -351,10 +399,11 @@
             <SettingCard title="Шрифт" description="Моноширинный шрифт редактора.">
               <input type="text" class="setting-text setting-text-mono" bind:value={editorSettings.fontFamily} />
             </SettingCard>
-            <SettingCard title="Тема" description="Тёмная или светлая подсветка Gherkin.">
+            <SettingCard title="Тема" description="Тёмная, светлая или как в системе.">
               <select bind:value={editorSettings.theme}>
                 <option value="scenaria-dark">Тёмная</option>
                 <option value="scenaria-light">Светлая</option>
+                <option value="system">Как в системе</option>
               </select>
             </SettingCard>
             <SettingCard title="Перенос строк" description="Переносить длинные шаги по ширине редактора.">
@@ -493,6 +542,11 @@
     </div>
 
     <footer class="dialog-footer">
+      <button type="button" class="reset-btn" on:click={resetToDefaults}>Сбросить по умолчанию</button>
+      <span class="dialog-footer-spacer"></span>
+      {#if onApply}
+        <button type="button" on:click={() => onApply?.()}>Применить</button>
+      {/if}
       <button type="button" class="primary" on:click={onSave}>OK</button>
       <button type="button" on:click={onCancel}>Отмена</button>
     </footer>
@@ -553,6 +607,26 @@
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 8px;
+  }
+
+  .setting-run-warning {
+    margin: 0 2px 12px;
+    font-size: 12px;
+    color: var(--color-warning, #dcdcaa);
+  }
+
+  .dialog-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dialog-footer-spacer {
+    flex: 1;
+  }
+
+  .reset-btn {
+    font-size: 12px;
   }
 
   .strategy-group-title {

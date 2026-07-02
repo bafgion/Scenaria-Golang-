@@ -47,6 +47,7 @@
   import ValidateDialog from './lib/ValidateDialog.svelte'
   import UpdateCheckDialog from './lib/UpdateCheckDialog.svelte'
   import InitProjectDialog from './lib/InitProjectDialog.svelte'
+  import NewProjectWizardDialog, { type NewProjectWizardResult } from './lib/NewProjectWizardDialog.svelte'
   import ImportFeaturesDialog from './lib/ImportFeaturesDialog.svelte'
   import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
@@ -60,6 +61,7 @@
   } from './lib/sessionTabs'
   import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
+  import { formatLastRunSummary } from './lib/runSummary'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import PostRecordDiffDialog from './lib/PostRecordDiffDialog.svelte'
@@ -70,6 +72,7 @@
   import HttpAuthDialog from './lib/HttpAuthDialog.svelte'
   import PickerStepDialog from './lib/PickerStepDialog.svelte'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
+  import { isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './lib/editorLargeFile'
   import {
     catalogIndentStep,
     clampSidebarWidth,
@@ -120,6 +123,7 @@
     ValidateFeature,
     ListTestClients,
     InitProject,
+    InitProjectAt,
     PickProjectFolder,
     PickSaveFile,
     PickOpenFile,
@@ -157,7 +161,10 @@
     ArtifactExists,
     OpenFolder,
     ServeAllure,
+    AllureStatus,
     OpenHTMLReport,
+    OpenTrace,
+    FailedStepLine,
     RefactorUpdateStartURLs,
     RefactorNormalizeIndents,
     RefactorCollapseBlankLines,
@@ -245,12 +252,14 @@
   let validateScope: 'project' | 'current' = 'project'
   let validateCliLog = ''
   let showUpdateCheck = false
+  let pendingUpdateCheckOnStartup = false
   let updateCheckMessage = ''
   let updateCheckHasUpdate = false
   let updateCheckInfo: gui.UpdateInfoDTO | null = null
   let updateDownloading = false
   let updateProgress: gui.UpdateProgressDTO | null = null
   let showInitProject = false
+  let showNewProjectWizard = false
   let renameFeaturePath = ''
   let exportInputPath = ''
   let showSteps = false
@@ -292,14 +301,19 @@
     message: string
     confirmLabel: string
     danger: boolean
-    resolve: (value: boolean) => void
+    dontAskAgainLabel?: string
+    resolve: (confirmed: boolean, dontAskAgain?: boolean) => void
   } | null = null
+
+  let skipRecordTabSwitchConfirm = false
+  let runningDryRun = false
 
   function askConfirm(opts: {
     title: string
     message: string
     confirmLabel?: string
     danger?: boolean
+    dontAskAgainLabel?: string
   }): Promise<boolean> {
     return new Promise((resolve) => {
       confirmDialog = {
@@ -307,14 +321,18 @@
         message: opts.message,
         confirmLabel: opts.confirmLabel || 'OK',
         danger: opts.danger || false,
-        resolve,
+        dontAskAgainLabel: opts.dontAskAgainLabel,
+        resolve: (confirmed, dontAskAgain) => {
+          if (confirmed && dontAskAgain) skipRecordTabSwitchConfirm = true
+          resolve(confirmed)
+        },
       }
     })
   }
 
-  function closeConfirm(confirmed: boolean) {
+  function closeConfirm(confirmed: boolean, dontAskAgain = false) {
     if (confirmDialog) {
-      confirmDialog.resolve(confirmed)
+      confirmDialog.resolve(confirmed, dontAskAgain)
       confirmDialog = null
     }
   }
@@ -346,6 +364,10 @@
   let recordPaused = false
   let playing = false
   let playingLabel = ''
+  let runProgressCurrent = 0
+  let runProgressTotal = 0
+  let runLogStreaming = false
+  let runCancelling = false
   let stepsMenu: { x: number; y: number; line: number; step: gui.EditorStepRow } | null = null
   let sessionPersistTimer: ReturnType<typeof setTimeout> | null = null
   let draftAutosaveTimer: ReturnType<typeof setInterval> | null = null
@@ -412,6 +434,7 @@
   let settingsCheckUpdatesOnStartup = true
   let settingsSelectorClickStrategies: string[] = ['testid', 'id', 'aria', 'contextual', 'text']
   let settingsSelectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  let settingsNavWaitUntil = 'domcontentloaded'
   let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
   let editorCursorLine = 1
   let stepsPanelTab: 'outline' | 'steps' = DEFAULT_EDITOR_SETTINGS.stepsPanelView
@@ -429,6 +452,7 @@
   let recordStepApplyChain: Promise<void> = Promise.resolve()
   let recordEditorReadyPromise: Promise<void> = Promise.resolve()
   let recordingTargetPath = ''
+  let pauseToggleGuardUntil = 0
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
@@ -449,6 +473,15 @@
 
   const unsubscribers: (() => void)[] = []
 
+  $: if (
+    pendingUpdateCheckOnStartup &&
+    settingsCheckUpdatesOnStartup &&
+    (projectPath || checklistDismissed || welcomePlayedSuccess)
+  ) {
+    pendingUpdateCheckOnStartup = false
+    void checkUpdatesOnStartup()
+  }
+
   $: isWelcome = activeTab === WELCOME_KEY
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
   $: activeTabUnsaved = activeFeatureTab ? tabIsUnsaved(activeFeatureTab) : false
@@ -456,6 +489,15 @@
     stepsPanelTab = editorSettings.stepsPanelView
   }
   $: stepCount = editorSteps.length
+  $: editorLineCount = isWelcome ? 0 : editorText.split(/\r?\n/).length
+  $: showLargeFileBanner = !isWelcome && isLargeFeatureFile(editorLineCount)
+  $: unsavedTabCount = tabs.filter((t) => tabIsUnsaved(t)).length
+  $: lastRunSummary = formatLastRunSummary(lastRun)
+  $: automationActive = playing || vanessaRunning
+  $: pickerToolbarEnabled =
+    pickerDuringRecording
+      ? browserOpen && !playing
+      : (recording && recordPaused) || (browserOpen && !recording && !playing)
   $: batchCount = batchSelected.length
   $: batchSelectedSet = buildBatchSelectedSet(batchSelected)
   $: showRecordingBar = recording && !showRecord
@@ -521,8 +563,23 @@
   )
 
   $: welcomeProjectOpen = !!projectPath
-  $: welcomeRecorded = recording || browserOpen || editorSteps.length > 0 || tabs.length > 0
+  $: welcomeRecorded = recording || browserOpen
   let welcomePlayedSuccess = false
+  let checklistDismissed = false
+  let runDialogConfirmed = false
+  let pickerDuringRecording = false
+  let allureInstalled = true
+  let allureServeRunning = false
+
+  $: stopActionLabel = playing
+    ? 'Стоп тест'
+    : recording
+      ? 'Стоп запись'
+      : browserOpen
+        ? 'Закрыть браузер'
+        : 'Стоп'
+  $: recordingTargetLabel =
+    recording && recordingTargetPath ? basename(recordingTargetPath) : ''
 
   const MIN_SPLASH_MS = 1400
   const SPLASH_FADE_MS = 320
@@ -558,7 +615,7 @@
       applyDevUiMock()
       syncIdleStatus()
       prefetchMonacoEditor()
-      void checkUpdatesOnStartup()
+      void maybeCheckUpdatesOnStartup()
     }
     const startupGuard = window.setTimeout(() => {
       console.error('Startup guard: forcing splash dismiss')
@@ -575,7 +632,6 @@
     sidebarVisible = layout.sidebarVisible
     bottomPanelOpen = layout.bottomPanelOpen
     bottomPanelHeight = layout.bottomPanelHeight
-    sidebarWidth = clampSidebarWidth(layout.sidebarWidth || 260)
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth || 360
 
@@ -667,7 +723,7 @@
           const wasRecording = recording
           applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
           showRecord = false
-          setStatus('● Идёт запись', 'busy')
+          setStatus('Подготовка записи…', 'busy')
           startBrowserWatch()
           recordEditorReadyPromise = (async () => {
             if (!syncOnly) {
@@ -690,12 +746,52 @@
           }
           if (!appendOnly && !syncOnly) {
             appendLog('Запись начата…')
+            setStatus('● Идёт запись', 'busy')
+          } else if (syncOnly) {
+            setStatus('● Идёт запись', 'busy')
           }
         }),
       )
       unsubscribers.push(
-        EventsOn('record-stopped', () => {
-          handleRecordStopped()
+        EventsOn('record-stopped', (payload: { reason?: string; idleSeconds?: number } | null) => {
+          handleRecordStopped(payload ?? undefined)
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('run-log-line', (payload: { line?: string } | string) => {
+          if (!runLogStreaming) return
+          const line = typeof payload === 'string' ? payload : payload?.line
+          if (line) appendLog(line)
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('run-progress', (payload: {
+          phase?: string
+          index?: number
+          total?: number
+          featurePath?: string
+          scenario?: string
+          success?: boolean
+        }) => {
+          if (!playing || !payload) return
+          const total = payload.total ?? runProgressTotal
+          const index = payload.index ?? runProgressCurrent
+          if (total > 0) {
+            runProgressTotal = total
+            runProgressCurrent = index
+          }
+          const name = payload.scenario || (payload.featurePath ? basename(payload.featurePath) : '')
+          if (name && total > 0) {
+            playingLabel = `${name} (${index}/${total})`
+          }
+          if (payload.phase === 'scenario_done') {
+            void refreshRunResults()
+          }
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('run-results-changed', () => {
+          void refreshRunResults()
         }),
       )
       unsubscribers.push(
@@ -809,7 +905,18 @@
     const proj = (s.sessionProject || '').trim()
     if (!proj) return
     try {
-      await openProjectAt(proj)
+      const info = await OpenProject(proj)
+      projectPath = info.path
+      features = info.features || []
+      tags = info.tags || []
+      featureTags = info.featureTags || {}
+      testClients = await ListTestClients().catch(() => [])
+    } catch {
+      appendLog(`Сессия: проект не найден — ${proj}`)
+      setStatus('Проект сессии не найден', 'error')
+      return
+    }
+    try {
       const untitledBodies = untitledContentMap(s.untitledTabs)
       syncUntitledCounterFromPaths([
         ...(s.openTabs || []),
@@ -950,6 +1057,7 @@
     settingsSelectorInputStrategies = s.selectorInputStrategies?.length
       ? [...s.selectorInputStrategies]
       : ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+    settingsNavWaitUntil = s.navWaitUntil || 'domcontentloaded'
     editorSettings = editorSettingsFromDTO(s.editor)
     stepsPanelTab = editorSettings.stepsPanelView
     stepsPanelCollapsed = resolveStepsPanelCollapsed()
@@ -959,6 +1067,11 @@
       slowMo: s.slowMo ?? 0,
       browser: s.browser || 'chromium',
     }
+    checklistDismissed = !!s.checklistDismissed
+    welcomePlayedSuccess = !!s.welcomePlayedSuccess
+    runDialogConfirmed = !!s.runDialogConfirmed
+    pickerDuringRecording = !!s.pickerDuringRecording
+    if (s.startUrl) startURL = s.startUrl
   }
 
   function resolveStepsPanelCollapsed(): boolean {
@@ -972,6 +1085,7 @@
       { id: 'palette', label: 'Палитра команд', group: 'Вид', shortcut: 'Ctrl+Shift+P', run: () => (showCommandPalette = true) },
       { id: 'welcome', label: 'Старт', group: 'Вид', run: () => selectTab(WELCOME_KEY) },
       { id: 'open', label: 'Открыть проект…', group: 'Проект', run: openProjectDialog },
+      { id: 'new-project', label: 'Новый проект…', group: 'Проект', run: openNewProjectWizard },
       { id: 'close-project', label: 'Закрыть проект', group: 'Проект', run: closeProject },
       { id: 'settings', label: 'Настройки…', group: 'Проект', shortcut: 'Ctrl+,', run: openSettings },
       { id: 'init', label: 'Init проекта', group: 'Проект', run: openInitProjectDialog },
@@ -986,6 +1100,7 @@
       { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
       { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
       { id: 'find-replace', label: 'Найти и заменить…', group: 'Сценарий', shortcut: 'Ctrl+H', run: openFindReplace },
+      { id: 'find', label: 'Найти в редакторе', group: 'Сценарий', shortcut: 'Ctrl+F', run: () => monaco?.openFind() },
       { id: 'format', label: 'Форматировать сценарий', group: 'Сценарий', shortcut: 'Shift+Alt+F', run: () => void monaco?.formatDocument() },
       { id: 'goto-symbol', label: 'Перейти к символу…', group: 'Сценарий', shortcut: 'Ctrl+Shift+O', run: () => monaco?.openSymbolOutline() },
       { id: 'project-replace', label: 'Замена по проекту…', group: 'Сценарий', run: () => (showProjectReplace = true) },
@@ -1086,7 +1201,6 @@
     sidebarVisible = layout.sidebarVisible
     bottomPanelOpen = layout.bottomPanelOpen
     bottomPanelHeight = layout.bottomPanelHeight
-    sidebarWidth = clampSidebarWidth(layout.sidebarWidth)
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth
     appendLog('Макет окон сброшен')
@@ -1128,9 +1242,9 @@
     }
   }
 
-  async function runScenarioHintsAutoFix(text: string): Promise<string> {
+  async function runScenarioHintsAutoFix(text: string): Promise<{ text: string; count: number }> {
     if (!editorSettings.scenarioHints || !editorSettings.scenarioHintsAutoFixOnSave) {
-      return text
+      return { text, count: 0 }
     }
     const all = await AnalyzeScenarioHints(text)
     const fixable = filterScenarioHints(all, editorSettings).filter((h) => h.autoFixable)
@@ -1699,17 +1813,38 @@
       return
     }
     await openProjectAt(examples)
+    sidebarVisible = true
+    saveLayout({ sidebarVisible: true })
     selectTab(WELCOME_KEY)
+    appendLog('Выберите сценарий в каталоге слева или нажмите Ctrl+O')
+    setStatus('Примеры открыты — выберите сценарий', 'normal')
   }
 
   async function rerunFailed() {
-    const failed = runResults.filter((e) => !e.success)
-    const paths = [...new Set(failed.map((e) => e.path.split('::')[0]).filter(Boolean))]
-    if (!paths.length) {
+    const failed = [...new Map(runResults.filter((e) => !e.success).map((e) => [e.path, e])).values()]
+    if (!failed.length) {
       appendLog('Нет упавших сценариев для перезапуска')
       return
     }
-    await executeRun({ ...lastRun, dryRun: false }, paths)
+    for (const entry of failed) {
+      await runSingleScenario(entry)
+    }
+  }
+
+  async function runFlakyTriplicate(entry: gui.RunResultEntry) {
+    appendLog(`Запуск 3×: ${entry.path}`)
+    for (let i = 0; i < 3; i++) {
+      appendLog(`Прогон ${i + 1}/3…`)
+      await runSingleScenario(entry)
+    }
+  }
+
+  async function runSingleScenario(entry: gui.RunResultEntry) {
+    const sep = entry.path.indexOf('::')
+    const filePath = sep >= 0 ? entry.path.slice(0, sep) : entry.path
+    const scenario = sep >= 0 ? entry.path.slice(sep + 2) : ''
+    if (!filePath) return
+    await executeRun({ ...lastRun, dryRun: false, scenario }, [filePath])
   }
 
   function toggleBatchFeature(path: string) {
@@ -1791,6 +1926,10 @@
     }
     if (batchSelected.length > 0) {
       void runBatchSelected(dryRun)
+      return
+    }
+    if (!runDialogConfirmed) {
+      openRunDialog(dryRun ? 'Dry-run' : 'Запуск сценария', { dryRun })
       return
     }
     void executeRun({ ...lastRun, dryRun })
@@ -1886,6 +2025,9 @@
         void openFileDialog()
         break
       case 'find':
+        monaco?.openFind()
+        break
+      case 'find-replace':
         openFindReplace()
         break
       case 'steps-help':
@@ -1925,6 +2067,7 @@
     if (shouldIgnoreAppHotkey(e)) return
     const id = matchHotkey(e)
     if (!id) return
+    if (showSettings && (id === 'save' || id === 'settings')) return
     if (id === 'escape') {
       const target = e.target
       if (target instanceof Element && target.closest('.modal-backdrop, .palette-backdrop')) {
@@ -1969,7 +2112,6 @@
       resizingSidebar = false
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
-      saveLayout({ sidebarWidth })
       await persistSettings()
     }
     window.addEventListener('mousemove', onMove)
@@ -2103,6 +2245,7 @@
     } catch {
       projectArtifacts = new gui.ProjectArtifacts()
     }
+    await refreshAllureStatus()
   }
 
   async function refreshEditorSteps() {
@@ -2118,7 +2261,26 @@
     appendLog('Запуск Allure serve…')
     const result = await ServeAllure(path)
     if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
+    if (result.error) {
+      appendLog(`Ошибка: ${result.error}`)
+    } else {
+      allureServeRunning = true
+    }
+    await refreshAllureStatus(path)
+  }
+
+  async function refreshAllureStatus(dir = '') {
+    try {
+      const status = await AllureStatus(dir || projectArtifacts.allureDir || '')
+      allureInstalled = status.installed !== false
+      allureServeRunning = !!status.running
+    } catch {
+      allureInstalled = true
+    }
+  }
+
+  function openAllureInstallHelp() {
+    void OpenExternalURL('https://docs.qameta.io/allure/#_installing_a_commandline')
   }
 
   async function openHtmlReport(path = '') {
@@ -2128,6 +2290,34 @@
       return
     }
     if (result.output) appendLog(`Открыт отчёт: ${result.output.trim()}`)
+  }
+
+  async function openTraceReport(path = '') {
+    const result = await OpenTrace(path)
+    if (result.error) {
+      appendLog(`Ошибка trace viewer: ${result.error}`)
+      return
+    }
+    if (result.output) appendLog(`Trace viewer: ${result.output.trim()}`)
+  }
+
+  async function gotoFailedStep(entry: gui.RunResultEntry) {
+    const idx = entry.path.indexOf('::')
+    const featurePath = idx < 0 ? entry.path : entry.path.slice(0, idx)
+    const scenario = idx < 0 ? '' : entry.path.slice(idx + 2)
+    if (!featurePath) return
+    if (entry.failed_step == null || entry.failed_step < 0) {
+      await loadFeature(featurePath)
+      return
+    }
+    try {
+      const line = await FailedStepLine(featurePath, scenario, entry.failed_step)
+      await loadFeature(featurePath)
+      if (line > 0) gotoEditorLine(line)
+    } catch (e: unknown) {
+      appendLog(`Не удалось перейти к шагу: ${e}`)
+      await loadFeature(featurePath)
+    }
   }
 
   async function openArtifactPath(path: string) {
@@ -2295,11 +2485,17 @@
     if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) {
       return true
     }
+    if (skipRecordTabSwitchConfirm) {
+      recordingTargetPath = normalizeRecordTabPath(path)
+      appendLog(`Цель записи: ${basename(path)}`)
+      return true
+    }
     const ok = await askConfirm({
       title: 'Запись активна',
       message: `Шаги записываются в «${basename(recordingTargetPath)}». Переключить вкладку? Дальнейшие шаги будут записываться в «${basename(path)}».`,
       confirmLabel: 'Переключить',
       danger: true,
+      dontAskAgainLabel: 'Больше не спрашивать',
     })
     if (ok) {
       recordingTargetPath = normalizeRecordTabPath(path)
@@ -2335,8 +2531,8 @@
         }
       }
       welcomeTabVisible = false
-      await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
       activeTab = path
+      await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
       trimTabsMemory()
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
@@ -2362,8 +2558,8 @@
       await rememberFeature(path)
       const recents = await loadRecents()
       recentFeatures = recents.features
-      await applyEditorText(content, { saved: !dirty, switchTab: true, tabPath: path, skipValidate: true })
       activeTab = path
+      await applyEditorText(content, { saved: !dirty, switchTab: true, tabPath: path, skipValidate: true })
       trimTabsMemory()
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
@@ -2408,14 +2604,20 @@
 
   function closeTab(path: string, event?: Event) {
     event?.stopPropagation()
-    if (
-      recording &&
-      !recordPaused &&
-      recordingTargetPath &&
-      isSameRecordTab(path, recordingTargetPath)
-    ) {
-      appendLog('Поставьте запись на паузу перед закрытием целевой вкладки')
-      setStatus('Запись активна', 'busy')
+    if (recording && recordingTargetPath && isSameRecordTab(path, recordingTargetPath)) {
+      void (async () => {
+        const ok = await askConfirm({
+          title: 'Целевая вкладка записи',
+          message: recordPaused
+            ? `«${basename(path)}» — цель записи (на паузе). Закрыть вкладку?`
+            : `Запись идёт в «${basename(path)}». Поставьте на паузу или закройте вкладку осознанно.`,
+          confirmLabel: recordPaused ? 'Закрыть' : 'Закрыть всё равно',
+          danger: true,
+        })
+        if (!ok) return
+        if (!recordPaused) await StopRecordingCapture()
+        finalizeCloseTab(path)
+      })()
       return
     }
     if (path === activeTab && !isWelcome) {
@@ -2479,10 +2681,11 @@
     const picked = await PickSaveFile('Сохранить как', basename(activeTab))
     if (!picked) return
     try {
-      await SaveFeature(picked, editorText)
+      const text = monaco?.getEditorText() ?? editorText
+      await SaveFeature(picked, text)
       const oldPath = activeTab
       tabs = tabs.map((t) =>
-        t.path === oldPath ? { path: picked, content: editorText, dirty: false, draft: undefined } : t,
+        t.path === oldPath ? { path: picked, content: text, dirty: false, draft: undefined } : t,
       )
       activeTab = picked
       await rememberFeature(picked)
@@ -2508,12 +2711,12 @@
         text = monaco?.getEditorText() ?? text
         editorText = text
       }
-      const autoFixed = await runScenarioHintsAutoFix(text)
-      if (autoFixed !== text) {
+      const { text: autoFixed, count: autoFixCount } = await runScenarioHintsAutoFix(text)
+      if (autoFixCount > 0) {
         text = autoFixed
         editorText = text
         await monaco?.setContent(text)
-        appendLog('Применены авто-исправления подсказок сценария')
+        appendLog(`Авто-исправлено подсказок: ${autoFixCount}`)
       }
       await SaveFeature(activeTab, text)
       markActiveTabSaved(text)
@@ -2701,13 +2904,18 @@
     const traceDir = !opts.dryRun && opts.trace ? await scenariaSubdir('traces') : ''
     const videoDir = !opts.dryRun && opts.video ? await scenariaSubdir('videos') : ''
 
-    const htmlPath = opts.html ? await scenariaSubdir('report.html') : ''
+    const htmlPath = opts.html ? await resolveHtmlReportPath(opts) : ''
 
     const junitPath = opts.junit ? await scenariaSubdir('junit.xml') : ''
 
     const summaryJsonPath = opts.summaryJson ? await scenariaSubdir('summary.json') : ''
 
     playing = !opts.dryRun
+    runningDryRun = opts.dryRun
+    runProgressCurrent = 0
+    runProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
+    runCancelling = false
+    runLogStreaming = true
     setStatus('▶ Идёт тест', 'busy')
     const range = partialRunLogSuffix(opts.startStep ?? -1, opts.endStep ?? -1)
     if (targets.length) {
@@ -2739,11 +2947,18 @@
       baseUrl: opts.dryRun ? '' : (opts.baseUrl || '').trim(),
       startStep: opts.startStep ?? -1,
       endStep: opts.endStep ?? -1,
+      continueOnFail: opts.continueOnFail,
       targets: diskTargets,
     })
+    const journalStreamed = runLogStreaming
+    runLogStreaming = false
     playing = false
+    runningDryRun = false
+    runCancelling = false
     playingLabel = ''
-    if (result.output) appendLog(result.output.trimEnd())
+    runProgressCurrent = 0
+    runProgressTotal = 0
+    if (result.output && !journalStreamed) appendLog(result.output.trimEnd())
     if (result.error) {
       if (/context canceled/i.test(result.error)) {
         appendLog('Тест остановлен.')
@@ -2758,10 +2973,12 @@
       appendLog('Завершено.')
       setStatus('Тест завершён', 'success')
       welcomePlayedSuccess = true
+      void persistSettings()
       bottomTab = opts.dryRun ? 'journal' : 'results'
     }
     await refreshRunResults()
     await refreshArtifacts()
+    await refreshAllureStatus()
     if (!result.error && opts.html && htmlPath) {
       try {
         if (await ArtifactExists(htmlPath)) {
@@ -2784,7 +3001,20 @@
     return `${projectPath.replace(/\\/g, '/')}/.scenaria/${sub}`
   }
 
+  async function resolveHtmlReportPath(opts: RunForm): Promise<string> {
+    if (!opts.html) return ''
+    if (opts.htmlTimestamp) {
+      const d = new Date()
+      const pad = (n: number) => String(n).padStart(2, '0')
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
+      return scenariaSubdir(`report-${stamp}.html`)
+    }
+    return scenariaSubdir('report.html')
+  }
+
   function confirmRun() {
+    runDialogConfirmed = true
+    void persistSettings()
     executeRun(runForm)
   }
 
@@ -2861,6 +3091,40 @@
   async function confirmInitProject() {
     showInitProject = false
     await initProject()
+  }
+
+  function openNewProjectWizard() {
+    showNewProjectWizard = true
+  }
+
+  async function confirmNewProjectWizard(opts: NewProjectWizardResult) {
+    showNewProjectWizard = false
+    const normalized = opts.path.trim()
+    if (!normalized) return
+    try {
+      if (opts.initScenaria) {
+        const out = await InitProjectAt(normalized)
+        if (out) appendLog(out.trimEnd())
+      }
+      await openProjectAt(normalized)
+      if (opts.createSample) {
+        const fileName = `${opts.featureFileName.replace(/\.feature$/i, '')}.feature`
+        const featurePath = `${normalized.replace(/\\/g, '/')}/${fileName}`
+        const content = buildFeatureTemplate({
+          title: opts.title,
+          scenario: opts.scenario,
+          startUrl: opts.startUrl,
+        })
+        await SaveFeature(featurePath, content)
+        await loadFeature(featurePath)
+        appendLog(`Создан сценарий: ${fileName}`)
+      }
+      setStatus('Проект создан', 'success')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      appendLog(`Ошибка: ${msg}`)
+      setStatus(msg, 'error')
+    }
   }
 
   async function initProject() {
@@ -3155,6 +3419,15 @@
     }
   }
 
+  async function maybeCheckUpdatesOnStartup() {
+    if (!settingsCheckUpdatesOnStartup) return
+    if (!projectPath && !checklistDismissed && !welcomePlayedSuccess) {
+      pendingUpdateCheckOnStartup = true
+      return
+    }
+    await checkUpdatesOnStartup()
+  }
+
   async function checkUpdates() {
     appendLog('Проверка обновлений…')
     try {
@@ -3305,29 +3578,54 @@
       checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
       selectorClickStrategies: settingsSelectorClickStrategies,
       selectorInputStrategies: settingsSelectorInputStrategies,
+      navWaitUntil: settingsNavWaitUntil,
       editor: editorSettingsToDTO(editorSettings),
+      checklistDismissed,
+      welcomePlayedSuccess,
+      runDialogConfirmed,
+      pickerDuringRecording,
+      startUrl: startURL,
     }),
     )
   }
 
   async function syncRecordingOptions() {
-    if (!recording) return
     try {
-      await UpdateRecordingOptions(
-        filterRecording,
-        navOnlyRecording,
-        hoverRecord,
-        settingsHeadless,
-        settingsScrollBeforeClick,
-        settingsHoverRecordMinMs,
-      )
+      if (recording) {
+        await UpdateRecordingOptions(
+          filterRecording,
+          navOnlyRecording,
+          hoverRecord,
+          settingsHeadless,
+          settingsScrollBeforeClick,
+          settingsHoverRecordMinMs,
+        )
+      }
       await persistSettings()
     } catch {
       /* session may be closing */
     }
   }
 
-  async function applySettings() {
+  async function onRecordingHeadlessChange(e: Event) {
+    const input = e.currentTarget as HTMLInputElement
+    const next = input.checked
+    if (next === settingsHeadless) return
+    if (browserOpen || recording) {
+      input.checked = settingsHeadless
+      const ok = await askConfirm({
+        title: 'Headless',
+        message: 'Переключение режима окна браузера применится к текущей сессии записи (может перезапустить окно). Продолжить?',
+        confirmLabel: 'Применить',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    settingsHeadless = next
+    void syncRecordingOptions()
+  }
+
+  async function applySettingsCore(closeDialog: boolean) {
     editorSettings = { ...editorSettings }
     stepsPanelCollapsed = resolveStepsPanelCollapsed()
     stepsPanelTab = editorSettings.stepsPanelView
@@ -3338,8 +3636,8 @@
       slowMo: settingsSlowMo,
       browser: settingsBrowser,
     }
-    if (recording) await syncRecordingOptions()
-    await persistSettings()
+    if (recording || browserOpen) await syncRecordingOptions()
+    else await persistSettings()
     monaco?.applyEditorSettings(editorSettings)
     if (editorSettings.scenarioHints) {
       await refreshEditorScenarioHints()
@@ -3347,9 +3645,21 @@
       editorScenarioHints = []
     }
     if (editorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
-    settingsDialogBaseline = null
-    showSettings = false
-    appendLog('Настройки сохранены.')
+    if (closeDialog) {
+      settingsDialogBaseline = null
+      showSettings = false
+      appendLog('Настройки сохранены.')
+    } else {
+      appendLog('Настройки применены.')
+    }
+  }
+
+  async function applySettings() {
+    await applySettingsCore(true)
+  }
+
+  async function applySettingsKeepOpen() {
+    await applySettingsCore(false)
   }
 
   function cancelSettings() {
@@ -3374,7 +3684,10 @@
     recordMode = 'live'
     recordAppendTo = ''
     recordTestClient = runForm.testClient || testClientSelection || ''
-    if (projectPath) {
+    if (activeTab && !isWelcome && activeTab.toLowerCase().endsWith('.feature') && !isUntitled(activeTab)) {
+      recordOutput = activeTab.replace(/\\/g, '/')
+      recordAppendTo = recordOutput
+    } else if (projectPath) {
       recordOutput = `${projectPath.replace(/\\/g, '/')}/recorded.feature`
     }
     recordURL = recordStartURL()
@@ -3390,6 +3703,10 @@
   function beginRecord() {
     if (playing) {
       appendLog('Дождитесь завершения теста перед записью')
+      return
+    }
+    if (!projectPath) {
+      appendLog('Сначала откройте проект для записи сценария')
       return
     }
     prepareRecordDialogDefaults()
@@ -3547,15 +3864,21 @@
     await showPostRecordBanner(bannerPath)
   }
 
-  function handleRecordStopped() {
+  function handleRecordStopped(payload?: { reason?: string; idleSeconds?: number }) {
     recording = false
     recordPaused = false
     liveRecordStepLines = {}
     recordingTargetPath = ''
     void maybeShowPostRecordBannerAfterStop()
+    if (payload?.reason === 'idle') {
+      const sec = payload.idleSeconds ?? recordIdle ?? 30
+      appendLog(`Запись остановлена: нет действий ${sec} с`)
+    }
     if (browserOpen) {
-      setStatus('Браузер открыт', 'busy')
-      appendLog('Запись остановлена. Браузер остаётся открытым.')
+      setStatus(payload?.reason === 'idle' ? 'Запись остановлена (таймаут)' : 'Браузер открыт', 'busy')
+      if (payload?.reason !== 'idle') {
+        appendLog('Запись остановлена. Браузер остаётся открытым.')
+      }
     } else {
       syncIdleStatus()
     }
@@ -3586,6 +3909,7 @@
   }
 
   async function toggleRecordPause() {
+    pauseToggleGuardUntil = Date.now() + 900
     if (recordPaused) {
       await ResumeRecording()
       recordPaused = false
@@ -3635,10 +3959,11 @@
       if (!s.browserOpen) return
       const prevRecording = recording
       const prevPaused = recordPaused
+      const guardPause = Date.now() < pauseToggleGuardUntil
       applyBrowserSessionState({
         browserOpen: true,
         recording: s.recording,
-        paused: s.paused,
+        paused: guardPause ? recordPaused : s.paused,
       })
       if (s.recording && !prevRecording) {
         setStatus('● Идёт запись', 'busy')
@@ -3656,6 +3981,8 @@
 
   async function stopRecord() {
     if (playing) {
+      runCancelling = true
+      setStatus('Останавливаем тест…', 'busy')
       appendLog('Остановка теста…')
       await CancelRun()
       return
@@ -3665,6 +3992,10 @@
       return
     }
     if (browserOpen) {
+      if (activeTabUnsaved) {
+        const ok = confirm('Есть несохранённые изменения. Закрыть браузер?')
+        if (!ok) return
+      }
       await CloseBrowser()
     }
   }
@@ -3702,8 +4033,8 @@
     tabs = [...tabs, { path, content, dirty: true }]
     warnManyOpenTabs()
     welcomeTabVisible = false
-    await applyEditorText(content, { switchTab: true, tabPath: path, skipValidate: true })
     activeTab = path
+    await applyEditorText(content, { switchTab: true, tabPath: path, skipValidate: true })
     trimTabsMemory()
     stepsPanelCollapsed = resolveStepsPanelCollapsed()
     scheduleValidateEditor()
@@ -3729,8 +4060,18 @@
   }
 
   function quickStart() {
+    if (!projectPath) {
+      appendLog('Сначала откройте проект — иначе запуск теста будет недоступен')
+      openProjectDialog()
+      return
+    }
     recordURL = startURL
     beginRecord()
+  }
+
+  function dismissWelcomeChecklist() {
+    checklistDismissed = true
+    void persistSettings()
   }
 
   function continueRecord() {
@@ -3784,8 +4125,8 @@
       appendLog('Указать элемент: откройте браузер')
       return
     }
-    if (recording && !recordPaused) {
-      appendLog('Указать элемент: поставьте запись на паузу')
+    if (recording && !recordPaused && !pickerDuringRecording) {
+      appendLog('Указать элемент: поставьте запись на паузу или включите в настройках')
       setStatus('Поставьте запись на паузу', 'busy')
       return
     }
@@ -3864,6 +4205,7 @@
       {#if openMenu === 'project'}
         <div class="menu-dropdown">
           <button class="menu-item" on:click={openExamples}>Открыть примеры сценариев</button>
+          <button class="menu-item" on:click={openNewProjectWizard}>Новый проект…</button>
           <button class="menu-item" on:click={openProjectDialog}>Открыть проект…</button>
           <button class="menu-item" on:click={closeProject} disabled={!projectPath}>Закрыть проект</button>
           <button class="menu-item" on:click={openSettings}>Настройки…<span class="menu-shortcut">Ctrl+,</span></button>
@@ -4153,8 +4495,8 @@
               >
                 {@html toolbarIcons.record()}<span>Запись</span>
               </button>
-              <button class="tool-btn primary" on:click={stopRecord} disabled={!recording && !browserOpen && !playing} title="Остановить запись, тест или браузер">
-                {@html toolbarIcons.stop()}<span>Стоп</span>
+              <button class="tool-btn primary" on:click={stopRecord} disabled={!recording && !browserOpen && !playing} title={stopActionLabel}>
+                {@html toolbarIcons.stop()}<span>{stopActionLabel}</span>
               </button>
               <button
                 class="tool-btn primary primary-run"
@@ -4194,7 +4536,7 @@
               <button class="tool-btn" on:click={() => openValidateDialog(false)} disabled={!projectPath}>
                 {@html toolbarIcons.validate()}<span>Селекторы на странице</span>
               </button>
-              <button class="tool-btn" on:click={pickElement} disabled={(!recording && !browserOpen) || (recording && !recordPaused)} title={recording && !recordPaused ? 'Поставьте запись на паузу' : 'Указать элемент'}>
+              <button class="tool-btn" on:click={pickElement} disabled={!pickerToolbarEnabled} title={recording && !recordPaused && !pickerDuringRecording ? 'Поставьте запись на паузу' : 'Указать элемент'}>
                 {@html toolbarIcons.picker()}<span>Указать элемент</span>
               </button>
               <button class="tool-btn" on:click={quickRecord} disabled={!projectPath || recording}>
@@ -4247,7 +4589,10 @@
               projectOpen={welcomeProjectOpen}
               recorded={welcomeRecorded}
               playedSuccess={welcomePlayedSuccess}
+              checklistDismissed={checklistDismissed}
+              onDismissChecklist={dismissWelcomeChecklist}
               onOpenProject={openProjectDialog}
+              onNewProject={openNewProjectWizard}
               onQuickStart={quickStart}
               onNewScenario={newScenario}
               onOpenFile={openFileDialog}
@@ -4299,18 +4644,27 @@
               <div class="playing-bar" role="status" aria-live="polite">
                 <span class="play-label">▶ Выполняется:</span>
                 <span class="play-target">{playingLabel}</span>
+                {#if runProgressTotal > 1}
+                  <span class="play-progress-text">{runProgressCurrent}/{runProgressTotal}</span>
+                {/if}
                 {#if settingsSlowMo > 0 || lastRun.slowMo > 0}
                   <span class="play-slowmo">slow-mo {(lastRun.slowMo > 0 ? lastRun.slowMo : settingsSlowMo)} мс</span>
                 {/if}
-                <span class="play-progress" aria-hidden="true"></span>
+                {#if runCancelling}
+                  <span class="play-cancel">Останавливаем…</span>
+                {:else}
+                  <button type="button" class="play-cancel-btn" on:click={stopRecord}>Отмена</button>
+                {/if}
+                <span class="play-progress" aria-hidden="true" style="--run-progress: {runProgressTotal > 0 ? (runProgressCurrent / runProgressTotal) * 100 : 0}%"></span>
               </div>
             {/if}
             {#if showRecordingBar}
               <div class="recording-bar">
                 <span class="rec-label">Запись:</span>
+                <span class="rec-hint" title="Отменить последний шаг записи — кнопка в overlay, не Ctrl+Z">«Отменить шаг» ≠ Ctrl+Z</span>
                 <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => { if (filterRecording) navOnlyRecording = false; void syncRecordingOptions() }} /> Только важные</label>
                 <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => { if (navOnlyRecording) filterRecording = false; void syncRecordingOptions() }} /> Только ссылки</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={settingsHeadless} on:change={() => void syncRecordingOptions()} /> Без окна браузера</label>
+                <label class="check-inline"><input type="checkbox" checked={settingsHeadless} on:change={onRecordingHeadlessChange} /> Без окна браузера</label>
                 <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} on:change={() => void syncRecordingOptions()} /> Записывать наведение</label>
               </div>
             {/if}
@@ -4326,11 +4680,11 @@
             </div>
             <div class="editor-row" style="--preview-width: {layoutPreviewWidth}px">
               <div class="editor-main">
-                <div class="editor-area" class:playing-active={playing}>
+                <div class="editor-area" class:playing-active={playing || vanessaRunning} class:dry-run-active={runningDryRun}>
                     <MonacoEditor
                       bind:this={monaco}
                       bind:value={editorText}
-                      readOnly={playing}
+                      readOnly={automationActive}
                       bind:editorSettings
                       scenarioHints={editorScenarioHints}
                       hintActions={monacoHintActions}
@@ -4452,10 +4806,16 @@
           flakyStepByPath={flakyStepByPath}
           artifacts={projectArtifacts}
           onOpenFeature={openFeatureFromHistory}
+          onGotoFailedStep={gotoFailedStep}
           onRerun={rerunFailed}
+          onRunFlaky={runFlakyTriplicate}
           onOpenFolder={openArtifactPath}
           onServeAllure={serveAllureReport}
+          allureInstalled={allureInstalled}
+          allureRunning={allureServeRunning}
+          onOpenAllureInstall={openAllureInstallHelp}
           onOpenHtmlReport={openHtmlReport}
+          onOpenTrace={openTraceReport}
         />
       {:else if bottomTab === 'validate'}
         <ValidatePanel
@@ -4466,7 +4826,7 @@
           onGotoLine={gotoEditorLine}
         />
       {:else}
-        <ErrorPanel entry={lastErrorEntry} />
+        <ErrorPanel entry={lastErrorEntry} onGotoFailedStep={gotoFailedStep} />
       {/if}
     </div>
   </div>
@@ -4482,6 +4842,29 @@
         <span class="led" class:recording={recording} class:playing={playing} class:on={recording || browserOpen || playing}></span>
         Браузер · {recording ? 'запись' : playing ? 'тест' : browserOpen ? 'открыт' : 'закрыт'}
       </div>
+      {#if recordingTargetLabel}
+        <div class="status-segment recording-target" title={recordingTargetPath}>
+          Запись → {recordingTargetLabel}
+        </div>
+      {/if}
+      {#if unsavedTabCount > 1}
+        <div class="status-segment warning" title="Несохранённые вкладки">
+          {unsavedTabCount} несохран.
+        </div>
+      {/if}
+      {#if lastRunSummary && !playing && !runningDryRun}
+        <div class="status-segment muted run-summary" title="Последний запуск (Ctrl+Enter)">
+          Запуск · {lastRunSummary}
+        </div>
+      {/if}
+      {#if runningDryRun}
+        <div class="status-segment muted">Dry-run — редактор доступен</div>
+      {/if}
+      {#if showLargeFileBanner}
+        <div class="status-segment warning large-file-banner" title="Упрощённый режим редактора для больших файлов">
+          ≥{LARGE_FILE_LINE_THRESHOLD} строк · без outline / minimap
+        </div>
+      {/if}
       <div class="status-segment muted">Runner · Playwright</div>
       <div class="status-segment" class:warning={stepStatusError}>{stepStatus}</div>
       <button type="button" class="status-segment clickable" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>
@@ -4640,6 +5023,14 @@
   />
 {/if}
 
+{#if showNewProjectWizard}
+  <NewProjectWizardDialog
+    defaultStartUrl={startURL || 'https://example.com'}
+    onConfirm={confirmNewProjectWizard}
+    onCancel={() => (showNewProjectWizard = false)}
+  />
+{/if}
+
 {#if showInitProject}
   <InitProjectDialog
     {projectPath}
@@ -4713,8 +5104,11 @@
     bind:checkUpdatesOnStartup={settingsCheckUpdatesOnStartup}
     bind:selectorClickStrategies={settingsSelectorClickStrategies}
     bind:selectorInputStrategies={settingsSelectorInputStrategies}
+    bind:navWaitUntil={settingsNavWaitUntil}
+    bind:pickerDuringRecording
     bind:editorSettings
     onSave={applySettings}
+    onApply={applySettingsKeepOpen}
     onCancel={cancelSettings}
     onOpenPlugins={() => {
       showSettings = false
@@ -4890,7 +5284,8 @@
     message={confirmDialog.message}
     confirmLabel={confirmDialog.confirmLabel}
     danger={confirmDialog.danger}
-    onConfirm={() => closeConfirm(true)}
+    dontAskAgainLabel={confirmDialog.dontAskAgainLabel ?? ''}
+    onConfirm={(dontAskAgain) => closeConfirm(true, dontAskAgain)}
     onCancel={() => closeConfirm(false)}
   />
 {/if}
@@ -4905,5 +5300,6 @@
   onStop={stopRecord}
   onPicker={pickElement}
   onFocusBrowser={focusBrowserWindow}
+  pickerDuringRecording={pickerDuringRecording}
 />
 {/if}

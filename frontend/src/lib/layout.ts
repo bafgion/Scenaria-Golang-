@@ -4,7 +4,6 @@ export type LayoutState = {
   bottomPanelHeight: number
   sidebarVisible: boolean
   bottomPanelOpen: boolean
-  sidebarWidth: number
   previewVisible: boolean
   previewWidth: number
 }
@@ -13,7 +12,6 @@ const defaults: LayoutState = {
   bottomPanelHeight: 200,
   sidebarVisible: true,
   bottomPanelOpen: false,
-  sidebarWidth: 260,
   previewVisible: false,
   previewWidth: 360,
 }

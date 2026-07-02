@@ -10,6 +10,7 @@
   export let playedSuccess = false
   export let checklistDismissed = false
   export let onOpenProject: () => void
+  export let onNewProject: () => void = () => {}
   export let onQuickStart: () => void
   export let onNewScenario: () => void
   export let onOpenFile: () => void
@@ -18,6 +19,7 @@
   export let onOpenRecentProject: (path: string) => void
   export let onOpenRecentFeature: (path: string) => void
   export let onChecklistStep: (step: number) => void
+  export let onDismissChecklist: () => void = () => {}
 
   const steps = [
     { id: 1, label: 'Открыть проект' },
@@ -98,6 +100,7 @@
               </div>
             {/each}
           </div>
+          <button type="button" class="checklist-dismiss" on:click={onDismissChecklist}>Скрыть чеклист</button>
         {/if}
 
         <div class="quick-start">
@@ -110,6 +113,7 @@
         <p class="section-heading">Начало работы</p>
         <div class="links">
           <button on:click={onOpenExamples}>Открыть примеры сценариев</button>
+          <button on:click={onNewProject}>Новый проект…</button>
           <button on:click={onOpenProject}>Открыть папку…</button>
           <button on:click={onNewScenario}>Новый сценарий</button>
           <button on:click={onOpenFile}>Открыть файл…</button>

@@ -21,6 +21,7 @@
     toMonacoOptions,
     type EditorSettings,
   } from './editorOptions'
+  import { resolveEditorTheme, subscribeSystemTheme } from './editorTheme'
   import { editorOptionsForLineCount } from './editorLargeFile'
   import type { gui } from '../../wailsjs/go/models'
   import type { editor as MonacoEditor } from 'monaco-editor'
@@ -47,6 +48,7 @@
   let activeTabPath: string | null = null
   let welcomeModel: MonacoEditor.ITextModel | null = null
   let largeFileOptionsTimer: ReturnType<typeof setTimeout> | null = null
+  let unsubscribeSystemTheme: (() => void) | undefined
   const tabModels = new MonacoTabModelStore()
   const tabViewStates = new MonacoTabViewStateStore()
 
@@ -66,7 +68,7 @@
     suppressMarkerSync = false
   }
 
-  function attachModel(model: MonacoEditor.ITextModel) {
+  function attachModel(model: MonacoEditor.ITextModel, opts?: { silent?: boolean }) {
     if (!editor) return
     applyingExternal = true
     suppressMarkerSync = true
@@ -74,7 +76,9 @@
     const modelText = model.getValue()
     if (modelText !== value) {
       value = modelText
-      dispatch('change', modelText)
+      if (!opts?.silent) {
+        dispatch('change', modelText)
+      }
     }
     queueMicrotask(() => {
       finishExternalEdit()
@@ -103,7 +107,7 @@
     return {
       ...toMonacoOptions(editorSettings, monaco),
       language: 'scenaria-feature',
-      theme: editorSettings.theme,
+      theme: resolveEditorTheme(editorSettings.theme),
       readOnly,
       automaticLayout: true,
       scrollBeyondLastLine: false,
@@ -116,8 +120,7 @@
 
   function syncEditorSettings(settings: EditorSettings) {
     if (!editor || !monacoApi) return
-    const theme = settings.theme === 'scenaria-light' ? 'scenaria-light' : 'scenaria-dark'
-    monacoApi.editor.setTheme(theme)
+    monacoApi.editor.setTheme(resolveEditorTheme(settings.theme))
     const lineCount = editor.getModel()?.getLineCount() ?? 0
     editor.updateOptions(editorOptionsForLineCount(settings, monacoApi, lineCount))
     refreshGherkinCodeLens(editor)
@@ -216,6 +219,13 @@
     syncEditorSettings(editorSettings)
   }
 
+  $: {
+    unsubscribeSystemTheme?.()
+    unsubscribeSystemTheme = subscribeSystemTheme(editorSettings.theme, () => {
+      syncEditorSettings(editorSettings)
+    })
+  }
+
   $: if (monacoApi && hintActions) {
     registerHintCodeActions(monacoApi, hintActions)
   }
@@ -235,6 +245,7 @@
   }
 
   onDestroy(() => {
+    unsubscribeSystemTheme?.()
     if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
     if (editor) {
       editor.setModel(null)
@@ -262,7 +273,7 @@
     }
     if (!path) {
       const model = ensureWelcomeModel(text)
-      attachModel(model)
+      attachModel(model, { silent: true })
       if (text !== model.getValue()) {
         void setContent(text).then(() => {
           if (editor) tabViewStates.restore(editor, path)
@@ -275,13 +286,13 @@
     }
     const existing = tabModels.getModel(monacoApi, path)
     if (existing) {
-      attachModel(existing)
+      attachModel(existing, { silent: true })
       syncEditorMarkers()
       tabViewStates.restore(editor, path)
       return
     }
     const model = tabModels.getOrCreate(monacoApi, path, text)
-    attachModel(model)
+    attachModel(model, { silent: true })
     tabViewStates.restore(editor, path)
     syncEditorMarkers()
   }

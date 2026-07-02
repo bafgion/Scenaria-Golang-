@@ -22,7 +22,9 @@ export async function bootApp(page: Page, search = '', opts?: { keepSession?: bo
 
 export async function createNewScenario(page: Page) {
   await openMenuItem(page, 'Сценарий', 'Новый', { exact: true })
-  await expect(page.getByText('novyy-scenariy.feature')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.editor-tab.file .tab-label').filter({ hasText: 'novyy-scenariy' }).first()).toBeVisible({
+    timeout: 10_000,
+  })
 }
 
 export async function openTestProject(page: Page, projectPath = E2E_PROJECT) {
@@ -97,4 +99,30 @@ export async function openMenuItem(page: Page, menu: string, item: string | RegE
 
 export function catalogFeature(page: Page, featureName: string) {
   return page.locator('.catalog-tree').getByRole('button', { name: new RegExp(featureName) })
+}
+
+export async function openJournal(page: Page) {
+  await openMenuItem(page, 'Вид', 'Журнал')
+  await expect(page.locator('.panel-tab.active', { hasText: 'Журнал' })).toBeVisible()
+}
+
+export async function openResults(page: Page) {
+  await openMenuItem(page, 'Вид', 'Результаты')
+  await expect(page.locator('.panel-tab.active', { hasText: 'Результаты' })).toBeVisible()
+}
+
+export async function openSettings(page: Page) {
+  await page.keyboard.press('Control+Comma')
+  await expect(page.getByRole('dialog', { name: /Настройки/ })).toBeVisible()
+}
+
+export async function typeInEditor(page: Page, text: string) {
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type(text)
+}
+
+export function dirtyTabs(page: Page) {
+  return page.locator('.editor-tab.file .tab-label', { hasText: /\*/ })
 }

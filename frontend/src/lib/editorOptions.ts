@@ -17,7 +17,7 @@ export type EditorSettings = {
   formatOnSave: boolean
   stepHover: boolean
   validateOnType: boolean
-  theme: 'scenaria-dark' | 'scenaria-light'
+  theme: 'scenaria-dark' | 'scenaria-light' | 'system'
   breadcrumbs: boolean
   symbolOutline: boolean
   stepsPanelView: 'outline' | 'steps'
@@ -93,7 +93,9 @@ export function editorSettingsFromDTO(raw?: SettingsTypes.EditorSettings | null)
   if (typeof raw.formatOnSave === 'boolean') base.formatOnSave = raw.formatOnSave
   if (typeof raw.stepHoverEnabled === 'boolean') base.stepHover = raw.stepHoverEnabled
   if (typeof raw.validateOnType === 'boolean') base.validateOnType = raw.validateOnType
-  if (raw.theme === 'scenaria-dark' || raw.theme === 'scenaria-light') base.theme = raw.theme
+  if (raw.theme === 'scenaria-dark' || raw.theme === 'scenaria-light' || raw.theme === 'system') {
+    base.theme = raw.theme
+  }
   if (typeof raw.breadcrumbsEnabled === 'boolean') base.breadcrumbs = raw.breadcrumbsEnabled
   if (typeof raw.symbolOutlineEnabled === 'boolean') base.symbolOutline = raw.symbolOutlineEnabled
   if (raw.stepsPanelView === 'outline' || raw.stepsPanelView === 'steps') {

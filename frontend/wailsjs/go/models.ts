@@ -40,7 +40,11 @@ export namespace gui {
 	    selectorInputStrategies: string[];
 	    checkUpdatesOnStartup: boolean;
 	    editor: settings.EditorSettings;
-	
+	    checklistDismissed: boolean;
+	    welcomePlayedSuccess: boolean;
+	    startUrl: string;
+	    runDialogConfirmed: boolean;
+	    pickerDuringRecording: boolean;
 	    static createFrom(source: any = {}) {
 	        return new AppSettingsDTO(source);
 	    }
@@ -72,6 +76,11 @@ export namespace gui {
 	        this.selectorInputStrategies = source["selectorInputStrategies"];
 	        this.checkUpdatesOnStartup = source["checkUpdatesOnStartup"];
 	        this.editor = this.convertValues(source["editor"], settings.EditorSettings);
+	        this.checklistDismissed = source["checklistDismissed"];
+	        this.welcomePlayedSuccess = source["welcomePlayedSuccess"];
+	        this.startUrl = source["startUrl"];
+	        this.runDialogConfirmed = source["runDialogConfirmed"];
+	        this.pickerDuringRecording = source["pickerDuringRecording"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -708,6 +717,7 @@ export namespace gui {
 	    baseUrl: string;
 	    startStep: number;
 	    endStep: number;
+	    continueOnFail: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -736,6 +746,23 @@ export namespace gui {
 	        this.baseUrl = source["baseUrl"];
 	        this.startStep = source["startStep"];
 	        this.endStep = source["endStep"];
+	        this.continueOnFail = source["continueOnFail"];
+	    }
+	}
+	export class AllureStatusDTO {
+	    installed: boolean;
+	    running: boolean;
+	    resultsDir: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AllureStatusDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.running = source["running"];
+	        this.resultsDir = source["resultsDir"];
 	    }
 	}
 	export class RunResult {

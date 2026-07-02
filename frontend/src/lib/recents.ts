@@ -6,7 +6,7 @@ import {
 import { callWailsWithTimeout, wailsReady } from './wailsTimeout'
 
 const KEY = 'scenaria.recents'
-const MAX = 6
+const MAX = 12
 
 export type Recents = {
   projects: string[]

@@ -13,6 +13,8 @@ export type RunForm = {
   html: boolean
   junit: boolean
   summaryJson: boolean
+  htmlTimestamp: boolean
+  continueOnFail: boolean
   workers: number
   slowMo: number
   browser: string
@@ -37,6 +39,8 @@ export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
     html: false,
     junit: false,
     summaryJson: false,
+    htmlTimestamp: false,
+    continueOnFail: false,
     workers: 1,
     slowMo: 0,
     browser: 'chromium',

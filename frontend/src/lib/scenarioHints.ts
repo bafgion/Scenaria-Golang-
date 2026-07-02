@@ -15,14 +15,16 @@ export async function applyAutoFixableScenarioHints(
   text: string,
   hints: gui.ScenarioHintDTO[],
   applyFix: (hint: gui.ScenarioHintDTO, currentText: string) => Promise<string | null>,
-): Promise<string> {
+): Promise<{ text: string; count: number }> {
   let current = text
+  let count = 0
   const pending = hints.filter((h) => h.autoFixable)
   for (const hint of pending) {
     const next = await applyFix(hint, current)
     if (next && next !== current) {
       current = next
+      count++
     }
   }
-  return current
+  return { text: current, count }
 }

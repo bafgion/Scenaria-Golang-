@@ -37,6 +37,11 @@ type AppSettings struct {
 	CheckUpdatesOnStartup *bool  `json:"check_updates_on_startup,omitempty"`
 	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
 	Editor              EditorSettings             `json:"editor,omitempty"`
+	ChecklistDismissed  bool                     `json:"checklist_dismissed,omitempty"`
+	WelcomePlayedSuccess bool                    `json:"welcome_played_success,omitempty"`
+	StartURL            string                   `json:"start_url,omitempty"`
+	RunDialogConfirmed  bool                     `json:"run_dialog_confirmed,omitempty"`
+	PickerDuringRecording bool                   `json:"picker_during_recording,omitempty"`
 }
 
 // UntitledTabSession stores in-memory editor tab state across app restarts.

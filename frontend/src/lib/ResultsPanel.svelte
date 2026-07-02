@@ -8,9 +8,15 @@
   export let artifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
   export let onOpenFeature: (path: string) => void = () => {}
   export let onRerun: () => void = () => {}
+  export let onRunFlaky: (entry: gui.RunResultEntry) => void = () => {}
   export let onOpenFolder: (path: string) => void = () => {}
   export let onServeAllure: (path: string) => void = () => {}
   export let onOpenHtmlReport: (path: string) => void = () => {}
+  export let onOpenTrace: (path: string) => void = () => {}
+  export let onGotoFailedStep: (entry: gui.RunResultEntry) => void = () => {}
+  export let allureInstalled = true
+  export let allureRunning = false
+  export let onOpenAllureInstall: () => void = () => {}
 
   function splitPath(path: string): { feature: string; scenario: string } {
     const idx = path.indexOf('::')
@@ -41,7 +47,11 @@
   <div class="results-toolbar">
     <div class="artifact-btns">
       {#if artifacts.allureDir}
-        <button type="button" on:click={() => onServeAllure(artifacts.allureDir)}>Allure serve</button>
+        {#if allureInstalled}
+          <button type="button" on:click={() => onServeAllure(artifacts.allureDir)}>{allureRunning ? 'Allure снова' : 'Allure serve'}</button>
+        {:else}
+          <button type="button" class="warn-btn" on:click={onOpenAllureInstall}>Allure не найден</button>
+        {/if}
         <button type="button" on:click={() => onOpenFolder(artifacts.allureDir)}>Allure (папка)</button>
       {/if}
       {#if artifacts.htmlReport}
@@ -54,7 +64,8 @@
         <button type="button" on:click={() => onOpenFolder(artifacts.summaryJson)}>Summary JSON</button>
       {/if}
       {#if artifacts.tracesDir}
-        <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>Trace</button>
+        <button type="button" on:click={() => onOpenTrace(artifacts.tracesDir)}>Trace viewer</button>
+        <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>Trace (папка)</button>
       {/if}
       {#if artifacts.videosDir}
         <button type="button" on:click={() => onOpenFolder(artifacts.videosDir)}>Video</button>
@@ -90,13 +101,25 @@
               <div class="scenario-name">{parts.scenario || basename(parts.feature)}</div>
               <div class="feature-name">{basename(parts.feature)}</div>
               {#if flakyStat?.flaky}
-                <div class="flaky-tag">{flakyLabel(flakyStat)}</div>
+                <div class="flaky-row">
+                  <div class="flaky-tag">{flakyLabel(flakyStat)}</div>
+                  <button type="button" class="flaky-rerun" on:click|stopPropagation={() => onRunFlaky(entry)}>
+                    Запустить 3×
+                  </button>
+                </div>
               {/if}
               {#if stepHint}
                 <div class="step-flaky">{stepHint}</div>
               {/if}
             </td>
-            <td class="status">{entry.success ? '✓ OK' : '✗ FAIL'}</td>
+            <td class="status">
+              {entry.success ? '✓ OK' : '✗ FAIL'}
+              {#if !entry.success && entry.failed_step != null && entry.failed_step >= 0}
+                <button type="button" class="goto-step" on:click|stopPropagation={() => onGotoFailedStep(entry)}>
+                  Шаг {entry.failed_step + 1}
+                </button>
+              {/if}
+            </td>
             <td class="msg">{entry.message || '—'}</td>
             <td class="at">{formatAt(entry.at)}</td>
           </tr>
@@ -129,6 +152,10 @@
 
   .rerun {
     margin-left: auto;
+  }
+
+  .warn-btn {
+    color: var(--color-warning, #dcdcaa);
   }
 
   .empty {
@@ -178,7 +205,28 @@
   .flaky-tag {
     font-size: 10px;
     color: var(--color-warning, #d4a017);
+  }
+
+  .flaky-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-top: 2px;
+    flex-wrap: wrap;
+  }
+
+  .flaky-rerun {
+    font-size: 10px;
+    padding: 1px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-input);
+    color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .flaky-rerun:hover {
+    background: var(--color-selected);
   }
 
   .step-flaky {

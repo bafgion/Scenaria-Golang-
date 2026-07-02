@@ -68,6 +68,8 @@ export function ImportJSON(arg1:gui.ImportRequest):Promise<gui.RunResult>;
 
 export function InitProject():Promise<string>;
 
+export function InitProjectAt(arg1:string):Promise<string>;
+
 export function InstallBrowserEngine(arg1:string):Promise<gui.RunResult>;
 
 export function InstallPlugin(arg1:string,arg2:string):Promise<void>;
@@ -101,6 +103,10 @@ export function OpenExternalURL(arg1:string):Promise<void>;
 export function OpenFolder(arg1:string):Promise<void>;
 
 export function OpenHTMLReport(arg1:string):Promise<gui.RunResult>;
+
+export function OpenTrace(arg1:string):Promise<gui.RunResult>;
+
+export function FailedStepLine(arg1:string,arg2:string,arg3:number):Promise<number>;
 
 export function OpenMainWindowChrome():Promise<void>;
 
@@ -187,6 +193,8 @@ export function ScenariaArtifactPath(arg1:string):Promise<string>;
 export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
 export function ServeAllure(arg1:string):Promise<gui.RunResult>;
+
+export function AllureStatus(arg1:string):Promise<gui.AllureStatusDTO>;
 
 export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
 

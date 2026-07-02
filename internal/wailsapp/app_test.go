@@ -57,12 +57,15 @@ func TestDescribeEditorLineBinding(t *testing.T) {
 
 func TestEventBindingTypes(t *testing.T) {
 	app := NewApp()
-	progress, result := app.EventBindingTypes()
+	progress, result, runProgress := app.EventBindingTypes()
 	if progress.Percent != 0 || progress.Message != "" {
 		t.Fatalf("expected zero progress DTO, got %+v", progress)
 	}
 	if result.Error != "" || result.Output != "" || len(result.Cases) != 0 {
 		t.Fatalf("expected zero result DTO, got %+v", result)
+	}
+	if runProgress.Phase != "" || runProgress.Index != 0 || runProgress.Total != 0 {
+		t.Fatalf("expected zero run progress DTO, got %+v", runProgress)
 	}
 }
 

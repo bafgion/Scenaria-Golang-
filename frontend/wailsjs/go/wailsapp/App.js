@@ -134,6 +134,10 @@ export function InitProject() {
   return window['go']['wailsapp']['App']['InitProject']();
 }
 
+export function InitProjectAt(arg1) {
+  return window['go']['wailsapp']['App']['InitProjectAt'](arg1);
+}
+
 export function InstallBrowserEngine(arg1) {
   return window['go']['wailsapp']['App']['InstallBrowserEngine'](arg1);
 }
@@ -200,6 +204,14 @@ export function OpenFolder(arg1) {
 
 export function OpenHTMLReport(arg1) {
   return window['go']['wailsapp']['App']['OpenHTMLReport'](arg1);
+}
+
+export function OpenTrace(arg1) {
+  return window['go']['wailsapp']['App']['OpenTrace'](arg1);
+}
+
+export function FailedStepLine(arg1, arg2, arg3) {
+  return window['go']['wailsapp']['App']['FailedStepLine'](arg1, arg2, arg3);
 }
 
 export function OpenMainWindowChrome() {
@@ -372,6 +384,10 @@ export function SearchSteps(arg1) {
 
 export function ServeAllure(arg1) {
   return window['go']['wailsapp']['App']['ServeAllure'](arg1);
+}
+
+export function AllureStatus(arg1) {
+  return window['go']['wailsapp']['App']['AllureStatus'](arg1);
 }
 
 export function StartRecord(arg1) {

@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.24.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.25.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -18,6 +18,7 @@
 | **P2** | **Cold start + FailedStep + E2E (Фаза 11)** | **done** |
 | **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
 | **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
+| **P0** | **Daily-use QA audit (Фаза 15)** | **in progress** |
 
 ---
 
@@ -226,7 +227,8 @@
 | **0.22.0** | Flaky-run метрики, post-record diff, release CI (Фаза 10) — **master** |
 | **0.23.0** | Monaco lazy load, FailedStep в player, E2E outline/diff (Фаза 11) — **master** |
 | **0.24.0** | Lazy Monaco workers, E2E flaky-run UI (Фаза 12) — **master** |
-| **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13) — **master** |
+| **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13–14) — **master** |
+| **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **planned** |
 
 ---
 
@@ -260,7 +262,9 @@
 
 ## Следующие шаги (вне закрытых фаз)
 
-Опционально:
+**Активно:** следующая фаза после [Фазы 15](#фаза-15--daily-use-qa-audit-v0260) (v0.26.0 — done).
+
+Опционально (backlog):
 
 - Flaky-run E2E с реальным прогоном (не mock)
 - Language workers Monaco (json/css/html) при необходимости
@@ -320,6 +324,181 @@
 ### 14.2 Results panel
 
 - [x] Двойной клик по строке → открыть feature (как в истории запусков)
+
+---
+
+## Фаза 15 — Daily-use QA audit (v0.26.0)
+
+**Статус: done** (v0.26.0).
+
+**Источник:** симуляция ежедневного использования (QA Automation + UX), 6 пользовательских сценариев: onboarding, Monaco, live recording, run, results, settings.
+
+**Оценка до фиксов: 6.8/10**. Цель после фазы: **8/10**.
+
+### Матрица сценариев (до фиксов)
+
+| Сценарий | Интуитивность | Стабильность | Приятность 8h/day |
+|----------|---------------|--------------|-------------------|
+| 1. Onboarding | 6/10 | 7/10 | 5/10 |
+| 2. Monaco | 7.5/10 | 6/10 | 7/10 |
+| 3. Recording | 7/10 | 7.5/10 | 6.5/10 |
+| 4. Run | 5.5/10 | 7/10 | 5/10 |
+| 5. Results | 6/10 | 8/10 | 5.5/10 |
+| 6. Settings | 7/10 | 8/10 | 6.5/10 |
+
+---
+
+### 15.1 P0 — Критические (ежедневные блокеры)
+
+#### Запуск тестов — нет реального прогресса
+
+- [x] **Live run progress:** события из `internal/player` (сценарий / шаг / файл) → Wails events `run-progress`
+- [x] **Playing bar:** числитель/знаменатель (N/M сценариев, текущий файл) + progress bar по `--run-progress`
+- [x] **Журнал:** стрим stdout во время `captureCLIStream` → `run-log-line`
+- [x] **Results panel:** инкрементальное обновление строк во время suite run (как `VanessaMonitorPanel`)
+
+#### Результаты — trace без viewer
+
+- [x] **Trace viewer:** кнопка «Trace viewer» → `playwright show-trace` на последнем ZIP
+- [x] Fallback: подсказка в UI, если `playwright` CLI недоступен
+
+#### Recorder / Stop — перегруженная кнопка
+
+- [x] **Контекстная подпись Stop:** «Стоп тест» / «Стоп запись» / «Закрыть браузер» (toolbar + title)
+- [x] Confirm при закрытии браузера, если есть несохранённый сценарий
+- [x] Hotkey `Ctrl+Shift+R` — то же поведение, что и кнопка (контекст через `stopRecord`)
+
+#### Monaco — race при переключении вкладок
+
+- [x] **Dirty race:** `activeTab` обновлять до `activateTab`
+- [x] **Guard `attachModel`:** silent attach при tab switch (без фантомного `*`)
+
+---
+
+### 15.2 P1 — Onboarding (сценарий 1)
+
+- [x] **`checklistDismissed`:** передать в `WelcomePanel`, persist в `settings.json`, кнопка «Скрыть чеклист»
+- [x] **Шаг 2 чеклиста:** ✓ только при `recording || browserOpen`
+- [x] **`welcomePlayedSuccess`:** persist в settings
+- [x] **`startURL`:** persist в settings
+- [x] **Быстрый старт без проекта:** блок + переход к «Открыть проект»
+- [x] **Запись без проекта:** `beginRecord` требует открытый проект
+- [x] **«Открыть примеры»:** после open — подсказка «выберите сценарий в каталоге» или авто-фокус каталога
+
+---
+
+### 15.3 P1 — Monaco и редактор (сценарий 2)
+
+- [x] **`saveFeatureAs`:** `monaco.getEditorText()`
+- [x] **Failed step → go to line:** `FailedStepLine` + кнопки в Results / Error panel
+- [x] **Large file banner:** status bar / toast при `≥2000` строк («упрощённый режим: без outline/folding/hover»)
+- [x] **Find UX:** в Hotkeys dialog и подсказках — явно Ctrl+F (find) vs Ctrl+H (find+replace); опционально унифицировать
+- [x] **Record undo vs Ctrl+Z:** подсказка в recording bar / F1 — «Отменить шаг» ≠ editor undo
+- [x] **Dirty на неактивных вкладках:** опционально баннер «N несохранённых вкладок» или список в Command Palette
+- [x] **Auto-fix при сохранении:** лог / toast при `runScenarioHintsAutoFix` («исправлено N подсказок»)
+
+---
+
+### 15.4 P1 — Live Recording (сценарий 3)
+
+- [x] **Recording target chip:** в status bar — «Запись → `file.feature`»
+- [x] **Idle timeout toast:** `record-stopped` reason `idle` + баннер в журнале
+- [x] **Output path по умолчанию:** активный таб / `recordingTargetPath`, не `recorded.feature` в корне
+- [x] **Tab switch confirm:** опция «Больше не спрашивать» (session или settings)
+- [x] **Poll vs pause desync:** `syncBrowserStateFromBackend` не перетирать `recordPaused` сразу после user toggle (debounce / ignore stale)
+- [x] **Headless toggle в recording bar:** confirm перед relaunch браузера mid-session
+
+---
+
+### 15.5 P1 — Запуск тестов (сценарий 4)
+
+- [x] **Cancel в playing bar:** кнопка «Отмена» + статус «Останавливаем…»
+- [x] **`runPrimary` / Ctrl+Enter:** summary последних опций в toolbar или status bar (headed, HTML, workers…)
+- [x] **Первый Ctrl+Enter:** опционально открывать RunDialog, если `lastRun` ещё не задан явно
+- [x] **`rerunFailed`:** по полному ключу `path::scenario`, не только `path` (перезапуск одного сценария)
+- [x] **`readOnly` при Vanessa run:** единый флаг «automation active» (`playing || vanessaRunning`)
+
+---
+
+### 15.6 P1 — Settings (сценарий 6)
+
+- [x] **«Сбросить по умолчанию»:** кнопка на вкладке / глобально в SettingsDialog
+- [x] **`navWaitUntil` в UI:** выпадающий список (load / domcontentloaded / networkidle…) — ключ уже в `AppSettings`
+- [x] **`sidebarWidth` drift:** единый owner (только `settings.json` **или** только `localStorage` layout)
+- [x] **Recording bar vs Settings:** после OK в Settings — синхронизировать toggles в recording bar
+- [x] **Валидация workers / slowMo:** предупреждение при экстремальных значениях (16 workers + slowMo 5000)
+
+---
+
+### 15.7 P2 — Polish и согласованность
+
+#### Onboarding / проект
+
+- [x] Session restore: toast при несуществующем `sessionProject` («проект не найден: …»)
+- [x] Max recents: увеличить с 6 или настраиваемо в Settings
+
+#### Monaco
+
+- [x] Dry-run vs real run: единая политика `readOnly` (или явная подпись «dry-run — редактор доступен»)
+- [x] Закрытие вкладки: предупреждение, если tab — `recordingTargetPath` (даже на паузе — опционально)
+
+#### Recording
+
+- [x] `record-started` pre-emit: не показывать «● Идёт запись» до готовности браузера (или spinner)
+- [x] Picker без паузы: advanced setting «разрешить picker во время записи» (default off)
+
+#### Run
+
+- [x] Parallel fail-fast: настройка в RunDialog / Settings (продолжать все / остановить при первом fail)
+- [x] Suite run: имя текущего сценария в playing bar, не только «N сценариев»
+
+#### Results
+
+- [x] Allure: проверка `allure` в PATH + ссылка «Как установить» в Settings / Results
+- [x] `ServeAllure` повторный вызов: показать URL / кнопка «Открыть снова»
+- [x] HTML report: опция сохранять с timestamp (`report-YYYYMMDD-HHMM.html`)
+
+#### Settings
+
+- [x] Кнопка **Apply** без закрытия диалога (OK остаётся)
+- [x] Hotkeys: не перехватывать Ctrl+S при открытом Settings (или явно disabled state)
+
+---
+
+### 15.8 P3 — Nice to have (backlog внутри фазы)
+
+- [x] Мастер «Новый проект» (папка + `.scenaria` + шаблон feature)
+- [x] System theme (follow OS) в editor settings
+- [x] Flaky badge → «Запустить 3×» из Results
+- [x] Update modal: не показывать поверх splash / первого onboarding
+- [x] E2E: settings reset defaults, live progress mock, trace viewer smoke
+- [x] Документ `docs/QA-DAILY-USE.md` — чеклист ручного регресса по 6 сценариям
+
+---
+
+### 15.9 Порядок реализации (рекомендуемый)
+
+| Sprint | Фокус | Ключевые пункты |
+|--------|-------|-----------------|
+| **15.1a** | Run visibility | 15.1 live progress + journal stream |
+| **15.1b** | Debug loop | 15.1 trace viewer + 15.3 failed_step goto line |
+| **15.1c** | Editor trust | 15.1 dirty race + 15.3 saveFeatureAs |
+| **15.2** | Recorder clarity | 15.1 split Stop + 15.4 target chip + idle toast |
+| **15.3** | Onboarding | 15.2 checklist + quick start guard |
+| **15.4** | Settings | 15.6 reset defaults + navWaitUntil + sidebarWidth |
+| **15.5** | Polish | 15.7–15.8 по остатку |
+
+---
+
+### 15.10 Критерии приёмки фазы
+
+- [x] Suite из ≥10 сценариев: виден текущий файл и прогресс N/M в playing bar
+- [x] Упавший прогон: trace открывается из IDE одной кнопкой
+- [x] Переключение 5 вкладок с правками: нет фантомного `*` без редактирования
+- [x] Stop: пользователь понимает, что остановится, без чтения журнала
+- [x] Новый пользователь: «Быстрый старт» не оставляет в ловушке «записал — не могу запустить»
+- [x] Settings: сброс к defaults + `navWaitUntil` в UI
+- [x] E2E: ≥2 новых теста (progress mock, onboarding guard или trace button)
 
 ---
 

@@ -35,10 +35,19 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	logx.Info("run started", "run_id", runID, "scenarios", len(plan.Cases), "workers", workers)
 
 	if workers == 1 || len(plan.Cases) <= 1 {
-		for _, runCase := range plan.Cases {
+		total := len(plan.Cases)
+		var firstErr error
+		for i, runCase := range plan.Cases {
 			if err := ctx.Err(); err != nil {
 				return result, err
 			}
+			emitRunProgress(ctx, RunProgressEvent{
+				Phase:       ProgressScenarioStart,
+				Index:       i + 1,
+				Total:       total,
+				FeaturePath: runCase.FeaturePath,
+				Scenario:    runCase.Name,
+			})
 			runResult, err := r.Executor.ExecuteScenario(ctx, scenarioInputFromCase(runCase))
 			if err != nil {
 				if runResult.Scenario == "" {
@@ -55,14 +64,58 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 					}
 				}
 				result.ScenarioResults = append(result.ScenarioResults, runResult)
-				return result, executionFailure(err, result)
+				recordScenarioRunStatus(ctx, runResult)
+				emitRunProgress(ctx, RunProgressEvent{
+					Phase:       ProgressScenarioDone,
+					Index:       i + 1,
+					Total:       total,
+					FeaturePath: runCase.FeaturePath,
+					Scenario:    runCase.Name,
+					Success:     false,
+					Message:     runResult.Message,
+				})
+				if !ContinueOnFail(ctx) {
+					return result, executionFailure(err, result)
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
 			}
 			if runResult.Status == "failed" {
 				result.ScenarioResults = append(result.ScenarioResults, runResult)
+				recordScenarioRunStatus(ctx, runResult)
+				emitRunProgress(ctx, RunProgressEvent{
+					Phase:       ProgressScenarioDone,
+					Index:       i + 1,
+					Total:       total,
+					FeaturePath: runCase.FeaturePath,
+					Scenario:    runCase.Name,
+					Success:     false,
+					Message:     runResult.Message,
+				})
 				runErr := fmt.Errorf("scenario %q failed: %s", runCase.Name, runResult.Message)
-				return result, executionFailure(runErr, result)
+				if !ContinueOnFail(ctx) {
+					return result, executionFailure(runErr, result)
+				}
+				if firstErr == nil {
+					firstErr = runErr
+				}
+				continue
 			}
 			result.ScenarioResults = append(result.ScenarioResults, runResult)
+			recordScenarioRunStatus(ctx, runResult)
+			emitRunProgress(ctx, RunProgressEvent{
+				Phase:       ProgressScenarioDone,
+				Index:       i + 1,
+				Total:       total,
+				FeaturePath: runCase.FeaturePath,
+				Scenario:    runCase.Name,
+				Success:     true,
+			})
+		}
+		if firstErr != nil {
+			return result, executionFailure(firstErr, result)
 		}
 		return result, nil
 	}
@@ -113,22 +166,43 @@ func (r BrowserRunner) executeParallelWithPool(
 
 			if err := runCtx.Err(); err != nil {
 				mu.Lock()
-				results[i] = ScenarioResult{
+				failed := ScenarioResult{
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
 					Status:      "failed",
 					Message:     err.Error(),
 				}
+				results[i] = failed
+				recordScenarioRunStatus(runCtx, failed)
+				emitRunProgress(runCtx, RunProgressEvent{
+					Phase:       ProgressScenarioDone,
+					Index:       i + 1,
+					Total:       len(plan.Cases),
+					FeaturePath: rc.FeaturePath,
+					Scenario:    rc.Name,
+					Success:     false,
+					Message:     err.Error(),
+				})
 				mu.Unlock()
 				return
 			}
+
+			emitRunProgress(runCtx, RunProgressEvent{
+				Phase:       ProgressScenarioStart,
+				Index:       i + 1,
+				Total:       len(plan.Cases),
+				FeaturePath: rc.FeaturePath,
+				Scenario:    rc.Name,
+			})
 
 			slot, err := pool.acquire(runCtx)
 			if err != nil {
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
-					cancel()
+					if !ContinueOnFail(runCtx) {
+						cancel()
+					}
 				}
 				results[i] = ScenarioResult{
 					FeaturePath: rc.FeaturePath,
@@ -152,7 +226,9 @@ func (r BrowserRunner) executeParallelWithPool(
 					} else {
 						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
 					}
-					cancel()
+					if !ContinueOnFail(runCtx) {
+						cancel()
+					}
 				}
 				if err != nil && runResult.Scenario == "" {
 					runResult = ScenarioResult{
@@ -169,6 +245,16 @@ func (r BrowserRunner) executeParallelWithPool(
 				}
 			}
 			results[i] = runResult
+			recordScenarioRunStatus(runCtx, runResult)
+			emitRunProgress(runCtx, RunProgressEvent{
+				Phase:       ProgressScenarioDone,
+				Index:       i + 1,
+				Total:       len(plan.Cases),
+				FeaturePath: rc.FeaturePath,
+				Scenario:    rc.Name,
+				Success:     !scenarioFailed,
+				Message:     runResult.Message,
+			})
 		}(index, runCase)
 	}
 	wg.Wait()
@@ -212,15 +298,34 @@ func (r BrowserRunner) executeParallel(
 
 			if err := runCtx.Err(); err != nil {
 				mu.Lock()
-				results[i] = ScenarioResult{
+				failed := ScenarioResult{
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
 					Status:      "failed",
 					Message:     err.Error(),
 				}
+				results[i] = failed
+				recordScenarioRunStatus(runCtx, failed)
+				emitRunProgress(runCtx, RunProgressEvent{
+					Phase:       ProgressScenarioDone,
+					Index:       i + 1,
+					Total:       len(plan.Cases),
+					FeaturePath: rc.FeaturePath,
+					Scenario:    rc.Name,
+					Success:     false,
+					Message:     err.Error(),
+				})
 				mu.Unlock()
 				return
 			}
+
+			emitRunProgress(runCtx, RunProgressEvent{
+				Phase:       ProgressScenarioStart,
+				Index:       i + 1,
+				Total:       len(plan.Cases),
+				FeaturePath: rc.FeaturePath,
+				Scenario:    rc.Name,
+			})
 
 			runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
 			mu.Lock()
@@ -233,7 +338,9 @@ func (r BrowserRunner) executeParallel(
 					} else {
 						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
 					}
-					cancel()
+					if !ContinueOnFail(runCtx) {
+						cancel()
+					}
 				}
 				if err != nil {
 					if runResult.Scenario == "" {
@@ -252,6 +359,16 @@ func (r BrowserRunner) executeParallel(
 				}
 			}
 			results[i] = runResult
+			recordScenarioRunStatus(runCtx, runResult)
+			emitRunProgress(runCtx, RunProgressEvent{
+				Phase:       ProgressScenarioDone,
+				Index:       i + 1,
+				Total:       len(plan.Cases),
+				FeaturePath: rc.FeaturePath,
+				Scenario:    rc.Name,
+				Success:     !scenarioFailed,
+				Message:     runResult.Message,
+			})
 		}(index, runCase)
 	}
 	wg.Wait()

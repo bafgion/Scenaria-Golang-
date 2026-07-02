@@ -14,6 +14,7 @@ import (
 var (
 	allureServeMu  sync.Mutex
 	allureServeCmd *exec.Cmd
+	allureServeDir string
 )
 
 func (s *Service) defaultAllureDir() (string, error) {
@@ -42,20 +43,50 @@ func (s *Service) resolveAllureDir(dir string) (string, error) {
 	return dir, nil
 }
 
+func AllureCLIAvailable() bool {
+	_, err := exec.LookPath("allure")
+	return err == nil
+}
+
+type AllureStatusDTO struct {
+	Installed  bool   `json:"installed"`
+	Running    bool   `json:"running"`
+	ResultsDir string `json:"resultsDir"`
+}
+
+func (s *Service) AllureStatus(dir string) AllureStatusDTO {
+	status := AllureStatusDTO{Installed: AllureCLIAvailable()}
+	resultsDir, err := s.resolveAllureDir(dir)
+	if err == nil {
+		status.ResultsDir = resultsDir
+	}
+	allureServeMu.Lock()
+	status.Running = allureServeCmd != nil && allureServeCmd.Process != nil
+	if status.Running && allureServeDir != "" {
+		status.ResultsDir = allureServeDir
+	}
+	allureServeMu.Unlock()
+	return status
+}
+
 func (s *Service) ServeAllure(dir string) RunResult {
 	resultsDir, err := s.resolveAllureDir(dir)
 	if err != nil {
 		return RunResult{Error: err.Error()}
 	}
-	if _, err := exec.LookPath("allure"); err != nil {
+	if !AllureCLIAvailable() {
 		return RunResult{
-			Error: "allure CLI not found in PATH — install from https://docs.qameta.io/allure/",
+			Error: "allure CLI not found in PATH — install from https://docs.qameta.io/allure/#_installing_a_commandline",
 		}
 	}
 	allureServeMu.Lock()
 	if allureServeCmd != nil && allureServeCmd.Process != nil {
+		activeDir := allureServeDir
 		allureServeMu.Unlock()
-		return RunResult{Output: "Allure serve уже запущен\n"}
+		if activeDir == "" {
+			activeDir = resultsDir
+		}
+		return RunResult{Output: fmt.Sprintf("Allure serve уже запущен (%s). Если окно закрыто — нажмите «Allure снова».\n", activeDir)}
 	}
 	cmd := exec.Command("allure", "serve", resultsDir)
 	if err := cmd.Start(); err != nil {
@@ -63,12 +94,14 @@ func (s *Service) ServeAllure(dir string) RunResult {
 		return RunResult{Error: fmt.Sprintf("start allure serve: %v", err)}
 	}
 	allureServeCmd = cmd
+	allureServeDir = resultsDir
 	allureServeMu.Unlock()
 	go func() {
 		_ = cmd.Wait()
 		allureServeMu.Lock()
 		if allureServeCmd == cmd {
 			allureServeCmd = nil
+			allureServeDir = ""
 		}
 		allureServeMu.Unlock()
 	}()
