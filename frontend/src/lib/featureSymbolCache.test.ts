@@ -30,4 +30,14 @@ describe('featureSymbolCache', () => {
     const b = getCachedFeatureSymbols(sample)
     expect(a).toBe(b)
   })
+
+  it('isolates entries per model uri at same version id', () => {
+    clearFeatureSymbolCache()
+    const other = `Функционал: Other\n  Сценарий: B\n    Допустим шаг`
+    const a = getCachedFeatureSymbols(sample, 1, 'inmemory://scenaria/a.feature')
+    const b = getCachedFeatureSymbols(other, 1, 'inmemory://scenaria/b.feature')
+    expect(a).not.toBe(b)
+    expect(a).toEqual(parseFeatureSymbols(sample))
+    expect(b).toEqual(parseFeatureSymbols(other))
+  })
 })

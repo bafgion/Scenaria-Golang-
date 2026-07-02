@@ -9,6 +9,11 @@ export function isLargeFeatureFile(lineCount: number): boolean {
   return lineCount >= LARGE_FILE_LINE_THRESHOLD
 }
 
+/** Language providers that parse the whole file (symbols, folding, hover RPC). */
+export function shouldUseHeavyLanguageFeatures(lineCount: number): boolean {
+  return !isLargeFeatureFile(lineCount)
+}
+
 export function largeFileEditorOverrides(
   lineCount: number,
 ): Partial<MonacoEditor.IEditorOptions> {

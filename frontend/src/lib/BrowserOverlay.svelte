@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { brandOverlayTitle } from './brand'
   import { icons } from './icons'
 
@@ -21,7 +21,39 @@
   $: focusEnabled = recording || playing
 
   let overlay: HTMLDivElement
-  let pos = { x: 0, y: 0 }
+  function defaultPos() {
+    if (typeof window === 'undefined') return { x: 12, y: 12 }
+    const w = 280
+    const h = 80
+    return {
+      x: Math.max(12, window.innerWidth - w - 24),
+      y: Math.max(12, window.innerHeight - h - 24),
+    }
+  }
+
+  let pos = defaultPos()
+  let userMoved = false
+
+  function place() {
+    if (!overlay || userMoved) return
+    const w = overlay.offsetWidth || 280
+    const h = overlay.offsetHeight || 80
+    pos = {
+      x: Math.max(12, window.innerWidth - w - 24),
+      y: Math.max(12, window.innerHeight - h - 24),
+    }
+  }
+
+  $: if (!visible) userMoved = false
+  $: if (visible) void tick().then(() => requestAnimationFrame(place))
+
+  onMount(() => {
+    void tick().then(() => requestAnimationFrame(place))
+    const onResize = () => place()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  })
+
   let dragging = false
   let dragStart = { x: 0, y: 0 }
   let origin = { x: 0, y: 0 }
@@ -34,32 +66,20 @@
       ? '▶ Идёт тест'
       : brandOverlayTitle()
 
-  onMount(() => {
-    const place = () => {
-      if (!overlay) return
-      pos = {
-        x: Math.max(12, window.innerWidth - overlay.offsetWidth - 24),
-        y: 80,
-      }
-    }
-    place()
-    window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
-  })
-
   function onPointerDown(e: PointerEvent) {
     if ((e.target as HTMLElement).closest('button')) return
+    userMoved = true
     dragging = true
     dragStart = { x: e.clientX, y: e.clientY }
     origin = { ...pos }
-    overlay.setPointerCapture(e.pointerId)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
   function releaseDrag(e?: PointerEvent) {
     dragging = false
-    if (!overlay) return
+    if (!e) return
     try {
-      if (e) overlay.releasePointerCapture(e.pointerId)
+      ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
     } catch {
       /* ignore */
     }
@@ -91,13 +111,19 @@
     bind:this={overlay}
     class="browser-overlay"
     style="left: {pos.x}px; top: {pos.y}px"
-    on:pointerdown={onPointerDown}
-    on:pointermove={onPointerMove}
-    on:pointerup={onPointerUp}
-    on:pointercancel={onPointerCancel}
-    on:lostpointercapture={onLostPointerCapture}
   >
-    <p class="title" class:recording class:playing={playing && !recording}>{title}</p>
+    <p
+      class="title"
+      class:recording
+      class:playing={playing && !recording}
+      on:pointerdown={onPointerDown}
+      on:pointermove={onPointerMove}
+      on:pointerup={onPointerUp}
+      on:pointercancel={onPointerCancel}
+      on:lostpointercapture={onLostPointerCapture}
+    >
+      {title}
+    </p>
     <div class="overlay-actions">
       <button type="button" disabled={!recordEnabled} on:click={onRecord}>
         {@html icons.record}<span>Запись</span>
@@ -128,6 +154,7 @@
     position: fixed;
     z-index: 10000;
     min-width: 280px;
+    pointer-events: none;
     background: var(--color-sidebar);
     border: 1px solid var(--color-border);
     border-radius: 6px;
@@ -141,6 +168,15 @@
     font-size: 11px;
     color: var(--color-muted);
     cursor: move;
+    pointer-events: auto;
+  }
+
+  .overlay-actions {
+    pointer-events: auto;
+  }
+
+  .overlay-actions :global(button) {
+    pointer-events: auto;
   }
 
   .title.recording {

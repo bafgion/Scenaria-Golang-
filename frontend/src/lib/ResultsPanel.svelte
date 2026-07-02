@@ -6,6 +6,7 @@
   export let flakyByPath: Map<string, FlakyScenarioStat> = new Map()
   export let flakyStepByPath: Map<string, string> = new Map()
   export let artifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
+  export let onOpenFeature: (path: string) => void = () => {}
   export let onRerun: () => void = () => {}
   export let onOpenFolder: (path: string) => void = () => {}
   export let onServeAllure: (path: string) => void = () => {}
@@ -29,6 +30,10 @@
     } catch {
       return at
     }
+  }
+  function openEntry(entry: gui.RunResultEntry) {
+    const feature = splitPath(entry.path).feature
+    if (feature) onOpenFeature(feature)
   }
 </script>
 
@@ -74,7 +79,13 @@
           {@const parts = splitPath(entry.path)}
           {@const flakyStat = flakyByPath.get(entry.path)}
           {@const stepHint = flakyStepByPath.get(entry.path)}
-          <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky}>
+          <tr
+            class:failed={!entry.success}
+            class:flaky={flakyStat?.flaky}
+            class:clickable={!!parts.feature}
+            on:dblclick={() => openEntry(entry)}
+            title="Двойной клик — открыть feature"
+          >
             <td>
               <div class="scenario-name">{parts.scenario || basename(parts.feature)}</div>
               <div class="feature-name">{basename(parts.feature)}</div>
@@ -146,6 +157,14 @@
     padding: 6px 8px;
     border-bottom: 1px solid var(--color-divider);
     vertical-align: top;
+  }
+
+  tr.clickable {
+    cursor: pointer;
+  }
+
+  tr.clickable:hover td {
+    background: var(--color-list-hover, rgba(255, 255, 255, 0.04));
   }
 
   tr.failed td.status {

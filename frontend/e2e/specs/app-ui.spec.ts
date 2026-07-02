@@ -8,6 +8,7 @@ import {
   openMenuItem,
   openTestProject,
   startRecordingFromDialog,
+  statusMessage,
   stopRecording,
 } from '../helpers/app'
 
@@ -274,6 +275,21 @@ test('live recording inserts steps into editor', async ({ page }) => {
   await page.keyboard.press('Control+Space')
   await expect(page.locator('.monaco-editor .suggest-widget')).toBeVisible({ timeout: 10_000 })
   await expect(page.locator('.monaco-list-row', { hasText: 'нажимаю' }).first()).toBeVisible()
+})
+
+test('Ctrl+S saves feature from editor', async ({ page }) => {
+  await bootApp(page)
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await expect(editorLine(page, 'тест')).toBeVisible({ timeout: 20_000 })
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('    # dirty marker')
+  await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature *' })).toBeVisible()
+  await page.keyboard.press('Control+KeyS')
+  await expect(statusMessage(page)).toHaveText('Сохранено', { timeout: 10_000 })
+  await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature *' })).toHaveCount(0)
 })
 
 test('Ctrl+Shift+O opens symbol outline in editor', async ({ page }) => {

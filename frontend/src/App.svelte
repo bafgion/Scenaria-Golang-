@@ -51,14 +51,14 @@
   import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
-  import { upsertRecordedStepInText } from './lib/recordedStepEditor'
+  import { upsertRecordedStepInText, removeLastRecordedStepFromText } from './lib/recordedStepEditor'
   import { isUntitled, makeUntitledPath, syncUntitledCounterFromPaths, untitledLabel } from './lib/untitled'
   import {
     buildSessionTabsSnapshot,
     sessionTabPathsFromSettings,
     untitledContentMap,
   } from './lib/sessionTabs'
-  import { matchHotkey, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
+  import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
@@ -102,6 +102,7 @@
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
+  import { isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed } from './lib/recordingTarget'
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
@@ -426,6 +427,8 @@
   let lastRecordTarget = ''
   let liveRecordStepLines: Record<number, number> = {}
   let recordStepApplyChain: Promise<void> = Promise.resolve()
+  let recordEditorReadyPromise: Promise<void> = Promise.resolve()
+  let recordingTargetPath = ''
   let pendingCloseTab: string | null = null
 
   let otpEmail = ''
@@ -457,7 +460,7 @@
   $: batchSelectedSet = buildBatchSelectedSet(batchSelected)
   $: showRecordingBar = recording && !showRecord
   $: showPlayingBar = playing
-  $: showBrowserOverlay = false
+  $: showBrowserOverlay = browserOpen || recording || playing
   $: paletteCommands = buildPaletteCommands()
 
   let resizingBottom = false
@@ -661,18 +664,29 @@
           const meta = typeof payload === 'object' && payload !== null ? payload : { append: false, output: payload }
           const appendOnly = meta.append === true
           const syncOnly = meta.sync === true
+          const wasRecording = recording
           applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
           showRecord = false
           setStatus('● Идёт запись', 'busy')
           startBrowserWatch()
-          if (!syncOnly) {
-            liveRecordStepLines = {}
-            if (!appendOnly) {
-              await prepareRecordEditorTab(meta.output || '')
-              postRecordBaselineText = monaco?.getEditorText() ?? editorText
-            } else {
+          recordEditorReadyPromise = (async () => {
+            if (!syncOnly) {
+              if (!appendOnly && !wasRecording) {
+                liveRecordStepLines = {}
+              }
+              if (!appendOnly) {
+                await prepareRecordEditorTab(meta.output || '')
+              }
               postRecordBaselineText = monaco?.getEditorText() ?? editorText
             }
+          })()
+          try {
+            await recordEditorReadyPromise
+          } catch (e: any) {
+            appendLog(`Ошибка подготовки вкладки записи: ${e}`)
+          }
+          if (!syncOnly && activeTab && !isWelcome) {
+            recordingTargetPath = normalizeRecordTabPath(activeTab)
           }
           if (!appendOnly && !syncOnly) {
             appendLog('Запись начата…')
@@ -693,6 +707,20 @@
         EventsOn('record-finished', async (result: gui.RunResult) => {
           stopBrowserWatch()
           handleRecordSessionEnd(result, 'record')
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('record-error', (message: string) => {
+          stopBrowserWatch()
+          recording = false
+          recordPaused = false
+          browserOpen = false
+          showRecord = false
+          liveRecordStepLines = {}
+          recordingTargetPath = ''
+          appendLog(`Ошибка записи: ${message || 'неизвестная ошибка'}`)
+          setStatus('Ошибка записи', 'error')
+          syncIdleStatus()
         }),
       )
       unsubscribers.push(
@@ -741,8 +769,13 @@
     }
     window.addEventListener('keydown', onGlobalKeydown, { capture: true })
     window.addEventListener('click', onDocClick)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void checkActiveTabDiskStale()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
+    unsubscribers.push(() => document.removeEventListener('visibilitychange', onVisibility))
     } catch (err) {
       console.error('Startup failed', err)
     } finally {
@@ -754,6 +787,7 @@
   onDestroy(() => {
     stopVanessaPoll()
     stopBrowserWatch()
+    void teardownDesktopSession()
     applyCatalogFilterDebounced.cancel()
     if (sessionPersistTimer) {
       clearTimeout(sessionPersistTimer)
@@ -967,6 +1001,8 @@
       { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: () => openStepsHelp() },
       { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: () => void openBrowser() },
       { id: 'record', label: 'Запись', group: 'Запись и тест', shortcut: 'Ctrl+R', run: beginRecord },
+      { id: 'record-pause', label: 'Пауза записи', group: 'Запись и тест', shortcut: 'Alt+P', run: () => void toggleRecordPause() },
+      { id: 'record-stop', label: 'Стоп (запись / тест / браузер)', group: 'Запись и тест', shortcut: 'Ctrl+Shift+R', run: () => void stopRecord() },
       { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
       { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
       { id: 'pause', label: 'Пауза', group: 'Запись и тест', run: toggleRecordPause },
@@ -1138,8 +1174,13 @@
     postRecordPath = path
     editorHintsDismissed = new Set()
     try {
-      const content = await ReadFeature(path)
-      postRecordStepCount = (await ParseEditorSteps(content)).length
+      const editorContent = monaco?.getEditorText() ?? editorText
+      if (activeTab === path || isUntitled(path)) {
+        postRecordStepCount = (await ParseEditorSteps(editorContent)).length
+      } else {
+        const content = await ReadFeature(path)
+        postRecordStepCount = (await ParseEditorSteps(content)).length
+      }
     } catch {
       postRecordStepCount = 0
     }
@@ -1472,6 +1513,20 @@
 
   async function openProjectAt(path: string) {
     if (!path) return
+    const switching = !!projectPath && projectPath !== path
+    if (switching && (tabs.length > 0 || browserOpen || recording)) {
+      const dirty = tabs.filter((t) => t.dirty)
+      const ok = await askConfirm({
+        title: 'Открыть другой проект',
+        message: dirty.length
+          ? `Есть ${dirty.length} несохранённых файл(ов). Закрыть текущий проект и открыть новый?`
+          : 'Закрыть текущий проект и открыть новый?',
+        confirmLabel: 'Открыть',
+        danger: dirty.length > 0,
+      })
+      if (!ok) return
+      await resetWorkspaceForProjectSwitch()
+    }
     try {
       const info = await OpenProject(path)
       projectPath = info.path
@@ -1493,6 +1548,51 @@
     }
   }
 
+  async function teardownDesktopSession() {
+    stopBrowserWatch()
+    try {
+      if (recording) {
+        await StopRecordingCapture()
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      await CloseBrowser()
+    } catch {
+      /* ignore */
+    }
+    try {
+      CancelRun()
+    } catch {
+      /* ignore */
+    }
+    recording = false
+    browserOpen = false
+    recordPaused = false
+    liveRecordStepLines = {}
+    recordingTargetPath = ''
+  }
+
+  async function resetWorkspaceForProjectSwitch() {
+    await teardownDesktopSession()
+    for (const t of tabs) {
+      monaco?.releaseTab(t.path)
+    }
+    monaco?.retainTabs([])
+    tabs = []
+    activeTab = WELCOME_KEY
+    welcomeTabVisible = true
+    editorText = ''
+    monaco?.activateTab(null, '')
+    batchSelected = []
+    batchMode = false
+    editorValidationIssues = []
+    postRecordPath = ''
+    postRecordStepCount = 0
+    postRecordBaselineText = ''
+  }
+
   async function closeProject() {
     if (!projectPath) return
     const dirty = tabs.filter((t) => t.dirty)
@@ -1505,6 +1605,7 @@
       })
       if (!ok) return
     }
+    await teardownDesktopSession()
     projectPath = ''
     features = []
     tags = []
@@ -1684,6 +1785,10 @@
   }
 
   function runPrimary(dryRun = false) {
+    if (playing) {
+      appendLog('Тест уже выполняется — дождитесь завершения или нажмите Стоп (Ctrl+Shift+R)')
+      return
+    }
     if (batchSelected.length > 0) {
       void runBatchSelected(dryRun)
       return
@@ -1753,16 +1858,26 @@
         void saveFeatureAs()
         break
       case 'run':
-        if (!isWelcome && (activeTab || projectPath || batchSelected.length > 0)) void runPrimary(false)
+        if (!playing && !isWelcome && (activeTab || projectPath || batchSelected.length > 0)) void runPrimary(false)
         break
       case 'run-current':
-        if (!isWelcome && activeTab) void runCurrentScenario(false)
+        if (!playing && !isWelcome && activeTab) void runCurrentScenario(false)
         break
       case 'browser':
         void openBrowser()
         break
       case 'record':
+        if (recording) {
+          void focusBrowser()
+          break
+        }
         beginRecord()
+        break
+      case 'record-stop':
+        if (recording || playing || browserOpen) void stopRecord()
+        break
+      case 'record-pause':
+        if (recording) void toggleRecordPause()
         break
       case 'new':
         newScenario()
@@ -1813,6 +1928,9 @@
     if (id === 'escape') {
       const target = e.target
       if (target instanceof Element && target.closest('.modal-backdrop, .palette-backdrop')) {
+        return
+      }
+      if (monacoOverlayConsumesEscape()) {
         return
       }
     }
@@ -2122,14 +2240,16 @@
 
   function syncTabContent(tabPath: string) {
     if (!tabPath || tabPath === WELCOME_KEY) return
+    const liveText =
+      tabPath === activeTab && monaco ? (monaco.getEditorText() ?? editorText) : editorText
     tabs = tabs.map((t) => {
       if (t.path !== tabPath) return t
-      const dirty = editorText !== t.content
+      const dirty = liveText !== t.content
       if (!dirty) {
         if (!t.dirty && t.draft === undefined) return t
         return { ...t, dirty: false, draft: undefined }
       }
-      return { ...t, draft: editorText, dirty: true }
+      return { ...t, draft: liveText, dirty: true }
     })
   }
 
@@ -2145,7 +2265,54 @@
     )
   }
 
-  async function loadFeature(path: string) {
+  async function checkActiveTabDiskStale() {
+    if (isWelcome || !activeTab || isUntitled(activeTab) || playing || recording) return
+    const tab = tabs.find((t) => t.path === activeTab)
+    if (!tab || tab.dirty) return
+    const baseline = tab.draft ?? tab.content
+    try {
+      const disk = await ReadFeature(activeTab)
+      if (disk === baseline) return
+      const ok = await askConfirm({
+        title: 'Файл изменён на диске',
+        message: `«${basename(activeTab)}» был изменён вне редактора. Перезагрузить с диска? Несохранённые правки в редакторе будут потеряны.`,
+        confirmLabel: 'Перезагрузить',
+        danger: true,
+      })
+      if (!ok) return
+      tabs = tabs.map((t) =>
+        t.path === activeTab ? { ...t, content: disk, dirty: false, draft: undefined, unloaded: false } : t,
+      )
+      await applyEditorText(disk, { saved: true, switchTab: true, tabPath: activeTab, skipValidate: true })
+      appendLog(`Перезагружен с диска: ${basename(activeTab)}`)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function ensureRecordingTabSwitchAllowed(path: string): Promise<boolean> {
+    if (!recording || !recordingTargetPath) return true
+    if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) {
+      return true
+    }
+    const ok = await askConfirm({
+      title: 'Запись активна',
+      message: `Шаги записываются в «${basename(recordingTargetPath)}». Переключить вкладку? Дальнейшие шаги будут записываться в «${basename(path)}».`,
+      confirmLabel: 'Переключить',
+      danger: true,
+    })
+    if (ok) {
+      recordingTargetPath = normalizeRecordTabPath(path)
+      appendLog(`Цель записи: ${basename(path)}`)
+    }
+    return ok
+  }
+
+  async function loadFeature(path: string, opts?: { skipRecordingGuard?: boolean }) {
+    if (!opts?.skipRecordingGuard) {
+      const allowed = await ensureRecordingTabSwitchAllowed(path)
+      if (!allowed) return
+    }
     const leavingTab = activeTab
     if (leavingTab && !isWelcome && leavingTab !== path) {
       syncTabContent(leavingTab)
@@ -2207,6 +2374,11 @@
 
   function selectTab(path: string) {
     if (path === WELCOME_KEY) {
+      if (recording && !recordPaused) {
+        appendLog('Поставьте запись на паузу, чтобы переключиться на Старт')
+        setStatus('Запись активна', 'busy')
+        return
+      }
       const leavingTab = activeTab
       if (leavingTab && !isWelcome) {
         syncTabContent(leavingTab)
@@ -2236,6 +2408,16 @@
 
   function closeTab(path: string, event?: Event) {
     event?.stopPropagation()
+    if (
+      recording &&
+      !recordPaused &&
+      recordingTargetPath &&
+      isSameRecordTab(path, recordingTargetPath)
+    ) {
+      appendLog('Поставьте запись на паузу перед закрытием целевой вкладки')
+      setStatus('Запись активна', 'busy')
+      return
+    }
     if (path === activeTab && !isWelcome) {
       syncActiveTabContent()
     }
@@ -2487,6 +2669,10 @@
   }
 
   async function executeRun(opts: RunForm, targets: string[] = []) {
+    if (playing) {
+      appendLog('Тест уже выполняется — дождитесь завершения или нажмите Стоп (Ctrl+Shift+R)')
+      return
+    }
     syncActiveTabContent()
 
     let runTargets = targets
@@ -2740,6 +2926,11 @@
   }
 
   function insertStep(template: string) {
+    if (recordingBlocksManualTools()) {
+      appendLog('Поставьте запись на паузу, чтобы вставить шаг')
+      setStatus('Запись активна', 'busy')
+      return
+    }
     const line = template.endsWith('\n') ? template : template + '\n'
     monaco?.insertAtCursor(line)
     showSteps = false
@@ -3197,6 +3388,10 @@
   }
 
   function beginRecord() {
+    if (playing) {
+      appendLog('Дождитесь завершения теста перед записью')
+      return
+    }
     prepareRecordDialogDefaults()
     showRecord = true
   }
@@ -3307,7 +3502,24 @@
     }
   }
 
+  async function syncMonacoAfterMount() {
+    if (!monaco) return
+    if (isWelcome || !activeTab) {
+      await monaco.activateTab(null, editorText)
+      return
+    }
+    const tab = tabs.find((t) => t.path === activeTab)
+    const text = tab ? tabEditorText(tab) : editorText
+    await monaco.activateTab(activeTab, text)
+  }
+
   async function applyLiveRecordedStep(index: number, line: string) {
+    if (!line.trim()) return
+    await recordEditorReadyPromise
+    const targetPath = recordingTargetPath || activeTab
+    if (targetPath && activeTab !== targetPath && !isWelcome) {
+      await loadFeature(targetPath, { skipRecordingGuard: true })
+    }
     if (!line.trim() || isWelcome || !activeTab) return
     recordStepApplyChain = recordStepApplyChain.then(async () => {
       if (!line.trim() || isWelcome || !activeTab) return
@@ -3320,10 +3532,27 @@
     await recordStepApplyChain
   }
 
+  async function maybeShowPostRecordBannerAfterStop() {
+    const path = (
+      recordAppendTo ||
+      lastRecordTarget ||
+      (activeTab && !isWelcome ? activeTab : '')
+    )
+      .trim()
+      .replace(/\\/g, '/')
+    const bannerPath = path && !isUntitled(path) ? path : activeTab && !isWelcome ? activeTab : ''
+    if (!bannerPath) return
+    const current = monaco?.getEditorText() ?? editorText
+    if (!postRecordBaselineText || current === postRecordBaselineText) return
+    await showPostRecordBanner(bannerPath)
+  }
+
   function handleRecordStopped() {
     recording = false
     recordPaused = false
     liveRecordStepLines = {}
+    recordingTargetPath = ''
+    void maybeShowPostRecordBannerAfterStop()
     if (browserOpen) {
       setStatus('Браузер открыт', 'busy')
       appendLog('Запись остановлена. Браузер остаётся открытым.')
@@ -3340,6 +3569,7 @@
     recordPaused = false
     showRecord = false
     liveRecordStepLines = {}
+    recordingTargetPath = ''
     lastRecordTarget = ''
     if (result.output) appendLog(result.output)
     if (result.error) appendLog(`Ошибка записи: ${result.error}`)
@@ -3583,8 +3813,17 @@
 
   async function undoRecordedStep() {
     const ok = await UndoRecordedStep()
-    if (ok) appendLog('Последний записанный шаг отменён')
-    else appendLog('Нечего отменять')
+    if (!ok) {
+      appendLog('Нечего отменять')
+      return
+    }
+    const sourceText = monaco?.getEditorText() ?? editorText
+    const result = removeLastRecordedStepFromText(sourceText, liveRecordStepLines)
+    if (result) {
+      liveRecordStepLines = result.lineByIndex
+      await applyEditorText(result.text, { skipValidate: true })
+    }
+    appendLog('Последний записанный шаг отменён')
   }
 
   function onWelcomeChecklistStep(step: number) {
@@ -4091,12 +4330,13 @@
                     <MonacoEditor
                       bind:this={monaco}
                       bind:value={editorText}
+                      readOnly={playing}
                       bind:editorSettings
                       scenarioHints={editorScenarioHints}
                       hintActions={monacoHintActions}
                       runLensActions={monacoRunLensActions}
                       inlayHintsHandlers={monacoInlayHintsHandlers}
-                      onHotkey={runHotkeyAction}
+                      on:ready={() => void syncMonacoAfterMount()}
                       on:change={(e) => onEditorChange(e.detail)}
                       on:cursorline={(e) => (editorCursorLine = e.detail)}
                     />
@@ -4211,6 +4451,7 @@
           flakyByPath={flakyByPath}
           flakyStepByPath={flakyStepByPath}
           artifacts={projectArtifacts}
+          onOpenFeature={openFeatureFromHistory}
           onRerun={rerunFailed}
           onOpenFolder={openArtifactPath}
           onServeAllure={serveAllureReport}

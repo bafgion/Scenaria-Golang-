@@ -4,6 +4,7 @@ import {
   formatRecordedStepLine,
   pickRecordedStepKeyword,
   rebuildLiveRecordStepLines,
+  removeLastRecordedStepFromText,
   upsertRecordedStepInText,
 } from './recordedStepEditor'
 
@@ -103,5 +104,21 @@ describe('findRecordedStepInsertLine', () => {
 \tИ шаг два
 `
     expect(findRecordedStepInsertLine(text)).toBe(3)
+  })
+})
+
+describe('removeLastRecordedStepFromText', () => {
+  it('removes highest session index and reindexes following lines', () => {
+    const text = `Функционал: X
+Сценарий: Y
+\tДопустим шаг один
+\tИ шаг два
+\tИ шаг три
+`
+    const lineByIndex = { 0: 2, 1: 3, 2: 4 }
+    const result = removeLastRecordedStepFromText(text, lineByIndex)
+    expect(result?.text).toContain('шаг два')
+    expect(result?.text).not.toContain('шаг три')
+    expect(result?.lineByIndex).toEqual({ 0: 2, 1: 3 })
   })
 })

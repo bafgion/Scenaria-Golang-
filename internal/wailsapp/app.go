@@ -33,6 +33,12 @@ func (a *App) Startup(ctx context.Context) {
 	player.SetOTPCancelHook(a.CancelOTP)
 }
 
+// Shutdown tears down in-flight runs and browser sessions when the app exits.
+func (a *App) Shutdown(ctx context.Context) {
+	a.svc.CancelRun()
+	a.svc.CancelRecording()
+}
+
 func (a *App) promptEmailCode(email string) (string, error) {
 	a.otpMu.Lock()
 	a.otpCode = make(chan string, 1)

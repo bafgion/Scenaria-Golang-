@@ -23,15 +23,14 @@
   } from './editorOptions'
   import { editorOptionsForLineCount } from './editorLargeFile'
   import type { gui } from '../../wailsjs/go/models'
-  import type { HotkeyId } from './hotkeys'
   import type { editor as MonacoEditor } from 'monaco-editor'
   import { replaceModelText } from './editorTextSync'
   import { MonacoTabModelStore } from './monacoTabModels'
   import { MonacoTabViewStateStore } from './monacoTabViewState'
 
   export let value = ''
+  export let readOnly = false
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
-  export let onHotkey: ((id: HotkeyId) => void) | null = null
   export let hintActions: HintActionHandlers | null = null
   export let runLensActions: RunCodeLensHandlers | null = null
   export let inlayHintsHandlers: InlayHintsHandlers | null = null
@@ -51,7 +50,7 @@
   const tabModels = new MonacoTabModelStore()
   const tabViewStates = new MonacoTabViewStateStore()
 
-  const dispatch = createEventDispatcher<{ change: string; cursorline: number }>()
+  const dispatch = createEventDispatcher<{ change: string; cursorline: number; ready: void }>()
 
   function ensureWelcomeModel(text: string): MonacoEditor.ITextModel {
     if (!monacoApi) throw new Error('monaco not ready')
@@ -105,6 +104,7 @@
       ...toMonacoOptions(editorSettings, monaco),
       language: 'scenaria-feature',
       theme: editorSettings.theme,
+      readOnly,
       automaticLayout: true,
       scrollBeyondLastLine: false,
       padding: { top: 8 },
@@ -190,14 +190,9 @@
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.Period, () => {
       editor?.trigger('keyboard', 'editor.action.quickFix', {})
     })
-    editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyH, () => {
-      openFindReplace()
-    })
+    // Ctrl+H, Shift+Alt+F, Ctrl+Shift+O — app-hotkey в App.onGlobalKeydown (capture).
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyF, () => {
       openFind()
-    })
-    editor.addCommand(KeyMod.Shift | KeyMod.Alt | KeyCode.KeyF, () => {
-      void formatDocument()
     })
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyZ, () => {
       editor?.trigger('keyboard', 'undo', {})
@@ -208,32 +203,14 @@
     editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyY, () => {
       editor?.trigger('keyboard', 'redo', {})
     })
-    editor.addCommand(KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyO, () => {
-      openSymbolOutline()
-    })
 
     applyScenarioHintMarkers()
-
-    if (onHotkey) {
-      const bindings: Array<[number, HotkeyId]> = [
-        [KeyMod.CtrlCmd | KeyCode.KeyS, 'save'],
-        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyS, 'save-as'],
-        [KeyMod.CtrlCmd | KeyCode.Enter, 'run'],
-        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter, 'run-current'],
-        [KeyMod.CtrlCmd | KeyCode.KeyB, 'browser'],
-        [KeyMod.CtrlCmd | KeyCode.KeyR, 'record'],
-        [KeyMod.CtrlCmd | KeyCode.KeyN, 'new'],
-        [KeyMod.CtrlCmd | KeyCode.KeyO, 'open'],
-        [KeyMod.CtrlCmd | KeyCode.Comma, 'settings'],
-        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyP, 'palette'],
-        [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Space, 'snippets'],
-        [KeyMod.CtrlCmd | KeyCode.Backquote, 'journal'],
-      ]
-      for (const [keybinding, id] of bindings) {
-        editor.addCommand(keybinding, () => onHotkey?.(id))
-      }
-    }
+    dispatch('ready')
   })
+
+  $: if (editor) {
+    editor.updateOptions({ readOnly })
+  }
 
   $: if (editor && monacoApi) {
     syncEditorSettings(editorSettings)
@@ -259,6 +236,9 @@
 
   onDestroy(() => {
     if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
+    if (editor) {
+      editor.setModel(null)
+    }
     if (monacoApi) {
       tabModels.releaseAll(monacoApi)
     }
@@ -365,6 +345,7 @@
   }
 
   export function insertAtCursor(text: string) {
+    if (readOnly) return
     if (!editor) {
       value += (value && !value.endsWith('\n') ? '\n' : '') + text
       return

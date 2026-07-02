@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import type { StepHelpEntry } from './stepTypes'
+import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { formatStepHoverMarkdown, hasStepHelp } from './stepHelpContent'
 
 export type StepHoverFetcher = (line: string) => Promise<StepHelpEntry | null>
@@ -18,7 +19,7 @@ export function registerGherkinStepHover(monaco: typeof Monaco, fetchStep: StepH
 
   monaco.languages.registerHoverProvider('scenaria-feature', {
     provideHover: async (model, position) => {
-      if (!hoverEnabled()) return null
+      if (!hoverEnabled() || !shouldUseHeavyLanguageFeatures(model.getLineCount())) return null
 
       const lineNumber = position.lineNumber
       const line = model.getLineContent(lineNumber)

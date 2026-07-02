@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor'
+import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { getCachedFeatureSymbols } from './featureSymbolCache'
 
 export type FeatureSymbolKind =
@@ -258,9 +259,12 @@ export function toMonacoDocumentSymbols(
   text: string,
   monaco: typeof Monaco,
   versionId?: number,
+  modelKey?: string,
 ): Monaco.languages.DocumentSymbol[] {
   const lines = text.split('\n')
-  return getCachedFeatureSymbols(text, versionId).map((node) => toDocumentSymbol(node, lines, monaco))
+  return getCachedFeatureSymbols(text, versionId, modelKey).map((node) =>
+    toDocumentSymbol(node, lines, monaco),
+  )
 }
 
 let documentSymbolsRegistered = false
@@ -273,7 +277,15 @@ export function registerGherkinDocumentSymbols(monaco: typeof Monaco) {
 
   monaco.languages.registerDocumentSymbolProvider('scenaria-feature', {
     provideDocumentSymbols(model) {
-      return toMonacoDocumentSymbols(model.getValue(), monaco, model.getVersionId())
+      if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
+        return []
+      }
+      return toMonacoDocumentSymbols(
+        model.getValue(),
+        monaco,
+        model.getVersionId(),
+        model.uri.toString(),
+      )
     },
   })
 }

@@ -10,9 +10,12 @@ function hashText(text: string): string {
   return `${text.length}:${hash}`
 }
 
-function cacheKey(text: string, versionId?: number | null): string {
+function cacheKey(text: string, versionId?: number | null, modelKey?: string | null): string {
+  if (versionId != null && modelKey) {
+    return `${modelKey}:v:${versionId}`
+  }
   if (versionId != null) {
-    return `v:${versionId}`
+    return `v:${versionId}:${hashText(text)}`
   }
   return `t:${hashText(text)}`
 }
@@ -28,9 +31,13 @@ function remember(key: string, symbols: FeatureSymbol[]): FeatureSymbol[] {
   return symbols
 }
 
-/** Parsed feature structure with LRU cache (Monaco model version or text hash). */
-export function getCachedFeatureSymbols(text: string, versionId?: number | null): FeatureSymbol[] {
-  const key = cacheKey(text, versionId)
+/** Parsed feature structure with LRU cache (Monaco model URI + version or text hash). */
+export function getCachedFeatureSymbols(
+  text: string,
+  versionId?: number | null,
+  modelKey?: string | null,
+): FeatureSymbol[] {
+  const key = cacheKey(text, versionId, modelKey)
   const hit = symbolCache.get(key)
   if (hit) {
     return hit

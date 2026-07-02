@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
+import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { monacoColumnToRuneIndex, runeIndexToMonacoColumn, runeSlice } from './editorColumns'
 import {
   completionFilterText,
@@ -39,6 +40,9 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
   monaco.languages.registerCompletionItemProvider('scenaria-feature', {
     triggerCharacters: [' ', '"', "'", '.', '@'],
     provideCompletionItems: async (model, position) => {
+      if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
+        return { suggestions: [] }
+      }
       const line = model.getLineContent(position.lineNumber)
       const runeColumn = monacoColumnToRuneIndex(line, position.column - 1)
       let result: gui.StepCompletionsDTO

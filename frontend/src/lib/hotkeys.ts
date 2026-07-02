@@ -16,6 +16,8 @@ export type HotkeyId =
   | 'journal'
   | 'format'
   | 'goto-symbol'
+  | 'record-stop'
+  | 'record-pause'
   | 'escape'
 
 function hasMod(e: KeyboardEvent): boolean {
@@ -25,6 +27,7 @@ function hasMod(e: KeyboardEvent): boolean {
 export function matchHotkey(e: KeyboardEvent): HotkeyId | null {
   if (hasMod(e) && e.shiftKey && e.code === 'KeyS') return 'save-as'
   if (hasMod(e) && !e.shiftKey && e.code === 'KeyS') return 'save'
+  if (hasMod(e) && e.shiftKey && e.code === 'KeyR') return 'record-stop'
   if (hasMod(e) && e.shiftKey && e.code === 'Enter') return 'run-current'
   if (hasMod(e) && !e.shiftKey && e.code === 'Enter') return 'run'
   if (hasMod(e) && e.code === 'KeyB') return 'browser'
@@ -40,17 +43,20 @@ export function matchHotkey(e: KeyboardEvent): HotkeyId | null {
   if (hasMod(e) && e.shiftKey && e.code === 'KeyP') return 'palette'
   if (hasMod(e) && e.shiftKey && e.code === 'Space') return 'snippets'
   if (hasMod(e) && e.code === 'Backquote') return 'journal'
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyP') return 'record-pause'
   if (e.code === 'Escape') return 'escape'
   return null
 }
 
-export function shouldIgnoreAppHotkey(e: KeyboardEvent): boolean {
-  const hotkey = matchHotkey(e)
-  // F1 обрабатываем глобально (в т.ч. из Monaco) — иначе не доходит до справки.
-  if (hotkey === 'steps-help' || hotkey === 'hotkeys') {
-    return false
-  }
+/** True when a Monaco overlay (find, suggest, quick input) should handle Escape first. */
+export function monacoOverlayConsumesEscape(): boolean {
+  return !!document.querySelector(
+    '.monaco-wrap .find-widget.visible, .monaco-wrap .suggest-widget.visible, .monaco-wrap .quick-input-widget.visible',
+  )
+}
 
+/** Пропускает только поля ввода вне редактора. Все app-hotkey — в App.onGlobalKeydown (capture). */
+export function shouldIgnoreAppHotkey(e: KeyboardEvent): boolean {
   const target = e.target
   if (!(target instanceof Element)) return false
 
@@ -63,11 +69,6 @@ export function shouldIgnoreAppHotkey(e: KeyboardEvent): boolean {
   }
 
   if (target.closest('input, textarea, select') && !target.closest('.monaco-wrap')) {
-    return true
-  }
-
-  // В редакторе сочетания обрабатывает Monaco addCommand — иначе срабатывает дважды.
-  if (target.closest('.monaco-wrap')) {
     return true
   }
 

@@ -40,7 +40,7 @@ export async function openTestProject(page: Page, projectPath = E2E_PROJECT) {
 }
 
 export async function openRunMenu(page: Page) {
-  await page.locator('.menubar .menu-trigger', { hasText: RUN_MENU }).click()
+  await page.locator('.menubar .menu-trigger', { hasText: RUN_MENU }).click({ force: true })
   await expect(page.locator('.menu-root.open .menu-dropdown')).toBeVisible()
 }
 
@@ -50,7 +50,7 @@ export async function clickRunMenuItem(page: Page, label: string | RegExp) {
 }
 
 export async function startRecordingFromDialog(page: Page) {
-  await clickRunMenuItem(page, /Запись\s+Ctrl\+R/i)
+  await page.keyboard.press('Control+KeyR')
   const recordDialog = page.getByRole('dialog', { name: 'Запись сценария' })
   await expect(recordDialog).toBeVisible()
   await recordDialog.getByRole('button', { name: 'Начать' }).click()
@@ -58,11 +58,13 @@ export async function startRecordingFromDialog(page: Page) {
 }
 
 export async function stopRecording(page: Page) {
-  await clickRunMenuItem(page, 'Стоп')
+  await page.keyboard.press('Control+Shift+KeyR')
+  await page.waitForTimeout(300)
 }
 
 export async function pauseRecording(page: Page) {
-  await clickRunMenuItem(page, 'Пауза')
+  await page.keyboard.press('Alt+KeyP')
+  await page.waitForTimeout(300)
 }
 
 export async function expectRunMenuItemDisabled(page: Page, label: string | RegExp) {

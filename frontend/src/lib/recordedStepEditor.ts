@@ -149,3 +149,31 @@ export function upsertRecordedStepInText(
 
   return { text: lines.join('\n'), lineByIndex: adjusted }
 }
+
+/** Remove the last live-recorded step line (highest session index). */
+export function removeLastRecordedStepFromText(
+  text: string,
+  lineByIndex: Record<number, number>,
+): { text: string; lineByIndex: Record<number, number> } | null {
+  const indices = Object.keys(lineByIndex)
+    .map((key) => Number(key))
+    .filter((index) => Number.isFinite(index))
+  if (indices.length === 0) return null
+
+  const lastIndex = Math.max(...indices)
+  const lineNo = lineByIndex[lastIndex]
+  if (lineNo === undefined || lineNo < 0) return null
+
+  const lines = text.split('\n')
+  if (lineNo >= lines.length) return null
+
+  lines.splice(lineNo, 1)
+  const nextMap: Record<number, number> = {}
+  for (const [key, mappedLine] of Object.entries(lineByIndex)) {
+    const idx = Number(key)
+    if (idx === lastIndex) continue
+    nextMap[idx] = mappedLine > lineNo ? mappedLine - 1 : mappedLine
+  }
+
+  return { text: lines.join('\n'), lineByIndex: nextMap }
+}

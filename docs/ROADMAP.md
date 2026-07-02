@@ -17,6 +17,7 @@
 | **P2** | **Flaky-run + post-record diff (Фаза 10)** | **done** |
 | **P2** | **Cold start + FailedStep + E2E (Фаза 11)** | **done** |
 | **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
+| **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
 
 ---
 
@@ -225,6 +226,7 @@
 | **0.22.0** | Flaky-run метрики, post-record diff, release CI (Фаза 10) — **master** |
 | **0.23.0** | Monaco lazy load, FailedStep в player, E2E outline/diff (Фаза 11) — **master** |
 | **0.24.0** | Lazy Monaco workers, E2E flaky-run UI (Фаза 12) — **master** |
+| **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13) — **master** |
 
 ---
 
@@ -262,6 +264,62 @@
 
 - Flaky-run E2E с реальным прогоном (не mock)
 - Language workers Monaco (json/css/html) при необходимости
+
+---
+
+## Фаза 13 — GUI reliability audit (2026)
+
+**Статус: done** (v0.25.0).
+
+Цель: закрыть критические пробелы GUI-аудита (Monaco session restore, recorder lifecycle, Wails shutdown, hotkeys).
+
+Оценка до фиксов: **6.5/10**. Цель после фазы: **8/10**.
+
+### 13.1 P0 — Критические
+
+- [x] **Session restore:** синхронизация `activateTab` после mount Monaco (`editor ready`)
+- [x] **`record-error`:** подписка во frontend + сброс UI
+- [x] **Undo записи:** откат строки в Monaco + `liveRecordStepLines`
+- [x] **Recorder race:** `record-step` ждёт `prepareRecordEditorTab`; не сбрасывать map при duplicate `record-started`
+- [x] **Wails shutdown:** `OnShutdown` → `CancelRun` + `CloseBrowser`
+- [x] **Frontend teardown:** `onDestroy` / `closeProject` / смена проекта
+- [x] **Escape:** не перехватывать при открытых Monaco overlays (find/suggest/quick input)
+
+### 13.2 P1 — Usability
+
+- [x] **Post-record banner:** после `record-stopped` (browse→record path)
+- [x] **Banner step count:** из редактора, не только с диска
+- [x] **`featureSymbolCache`:** ключ с URI модели (нет коллизий между вкладками)
+- [x] **`BrowserOverlay`:** показывать при `browserOpen || recording || playing`
+- [x] **Hotkey Ctrl+R:** не открывать диалог при активной записи (focus browser)
+- [x] **`syncTabContent`:** `monaco.getEditorText()` для активной вкладки
+- [x] **Смена проекта:** confirm + reset tabs/browser при `openProjectAt` на другой path
+- [x] **Monaco dispose:** `setModel(null)` перед `releaseAll`
+
+### 13.3 P2 — Масштабирование и polish
+
+- [x] Lock editor during `playing` (`readOnly` в Monaco)
+- [x] Re-entry guard для `executeRun` / `runPrimary`
+- [x] File reload prompt при возврате в окно (`visibilitychange` + `ReadFeature`)
+- [x] Large file: gate symbols, folding, hover, completions, code lens ≥2000 строк
+- [x] Hotkeys: `Alt+P` пауза записи, `Ctrl+Shift+R` стоп (запись / тест / браузер)
+
+---
+
+## Фаза 14 — Recorder UX polish (v0.25.0)
+
+**Статус: done**.
+
+### 14.1 Целевая вкладка записи
+
+- [x] `recordingTargetPath` фиксируется при `record-started`
+- [x] Предупреждение при переключении вкладки во время записи (confirm + смена цели)
+- [x] Блокировка «Старт» и закрытия целевой вкладки без паузы
+- [x] `applyLiveRecordedStep` возвращает фокус на целевую вкладку
+
+### 14.2 Results panel
+
+- [x] Двойной клик по строке → открыть feature (как в истории запусков)
 
 ---
 

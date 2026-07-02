@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor'
+import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { getCachedFeatureSymbols } from './featureSymbolCache'
 import type { FeatureSymbol } from './gherkinDocumentSymbols'
 import { scenarioAtLine } from './scenarioAtLine'
@@ -70,9 +71,13 @@ function walkSymbols(text: string, nodes: FeatureSymbol[], out: RunCodeLensItem[
 }
 
 /** Collects run code lens rows for a feature file (testable without Monaco). */
-export function collectRunCodeLenses(text: string, versionId?: number | null): RunCodeLensItem[] {
+export function collectRunCodeLenses(
+  text: string,
+  versionId?: number | null,
+  modelKey?: string | null,
+): RunCodeLensItem[] {
   const out: RunCodeLensItem[] = []
-  walkSymbols(text, getCachedFeatureSymbols(text, versionId), out)
+  walkSymbols(text, getCachedFeatureSymbols(text, versionId, modelKey), out)
   return out
 }
 
@@ -103,10 +108,12 @@ export function registerGherkinCodeLens(monacoInstance: typeof Monaco, handlers:
 
   monacoInstance.languages.registerCodeLensProvider('scenaria-feature', {
     provideCodeLenses(model) {
-      if (!activeHandlers?.isEnabled()) {
+      if (!activeHandlers?.isEnabled() || !shouldUseHeavyLanguageFeatures(model.getLineCount())) {
         return { lenses: [], dispose: () => {} }
       }
-      const lenses = toMonacoLenses(collectRunCodeLenses(model.getValue(), model.getVersionId()))
+      const lenses = toMonacoLenses(
+        collectRunCodeLenses(model.getValue(), model.getVersionId(), model.uri.toString()),
+      )
       return { lenses, dispose: () => {} }
     },
     resolveCodeLens(model, codeLens) {

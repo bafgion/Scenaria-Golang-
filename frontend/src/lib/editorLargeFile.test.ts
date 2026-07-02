@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_EDITOR_SETTINGS } from './editorOptions'
-import { editorOptionsForLineCount, isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './editorLargeFile'
+import { editorOptionsForLineCount, isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD, shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 
 describe('editorLargeFile', () => {
   it('detects large files by line threshold', () => {
     expect(isLargeFeatureFile(LARGE_FILE_LINE_THRESHOLD - 1)).toBe(false)
     expect(isLargeFeatureFile(LARGE_FILE_LINE_THRESHOLD)).toBe(true)
+    expect(shouldUseHeavyLanguageFeatures(LARGE_FILE_LINE_THRESHOLD - 1)).toBe(true)
+    expect(shouldUseHeavyLanguageFeatures(LARGE_FILE_LINE_THRESHOLD)).toBe(false)
   })
 
   it('disables heavy features for large files', () => {
