@@ -7,6 +7,7 @@
   export let recording = false
   export let playing = false
   export let paused = false
+  export let browserOpen = false
 
   export let onRecord: () => void = () => {}
   export let onPause: () => void = () => {}
@@ -22,7 +23,7 @@
   $: pauseEnabled = recording && !playing
   $: stopEnabled = recording || playing
   $: recordEnabled = !recording && !playing
-  $: focusEnabled = recording || playing
+  $: focusEnabled = browserOpen || recording
 
   let overlay: HTMLDivElement
   function defaultPos() {
@@ -156,7 +157,7 @@
 <style>
   .browser-overlay {
     position: fixed;
-    z-index: 10000;
+    z-index: var(--z-browser-overlay);
     min-width: 280px;
     pointer-events: none;
     background: var(--color-sidebar);

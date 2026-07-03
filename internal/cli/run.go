@@ -449,6 +449,7 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 				HTTPCredentials:   httpCreds,
 				MaxLoopIterations: opts.maxLoopIterations,
 				NavWaitUntil:      navWait,
+				CloseAfterRun:     true,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil

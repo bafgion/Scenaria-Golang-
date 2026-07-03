@@ -33,7 +33,7 @@ func TestDryRunnerExecute(t *testing.T) {
 	if result.Mode != "dry-run" || result.Files != 1 || result.Scenarios != 1 || result.Steps != 3 {
 		t.Fatalf("unexpected run result: %+v", result)
 	}
-	if len(result.ScenarioResults) != 1 || result.ScenarioResults[0].Status != "skipped" {
+	if len(result.ScenarioResults) != 1 || result.ScenarioResults[0].Status != "dry-run" {
 		t.Fatalf("unexpected scenario dry-run results: %+v", result.ScenarioResults)
 	}
 }

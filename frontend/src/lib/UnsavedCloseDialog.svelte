@@ -15,7 +15,7 @@
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="modal-backdrop" role="presentation" on:click={onCancel}>
+<div class="modal-backdrop modal-layer-top" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal unsaved-close" role="dialog" aria-modal="true" aria-label="Несохранённые изменения" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Несохранённые изменения</h3>

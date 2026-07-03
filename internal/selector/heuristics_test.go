@@ -36,7 +36,7 @@ func TestBuildFromElementPriority(t *testing.T) {
 	if got := BuildFromElement(ElementInfo{Tag: "input", TestID: "login-email"}); got != `[data-testid="login-email"]` {
 		t.Fatalf("unexpected testid selector: %q", got)
 	}
-	if got := BuildFromElement(ElementInfo{Tag: "button", Text: "Войти"}); got != `text="Войти"` {
+	if got := BuildFromElement(ElementInfo{Tag: "button", Text: "Войти"}); got != `button:has-text("Войти")` {
 		t.Fatalf("unexpected text selector: %q", got)
 	}
 	if got := BuildFromElement(ElementInfo{Tag: "button", Title: "Остановить запись"}); got != `[title="Остановить запись"]` {

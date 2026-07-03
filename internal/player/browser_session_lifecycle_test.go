@@ -10,3 +10,11 @@ func TestBrowserSessionCloseIsIdempotent(t *testing.T) {
 		t.Fatal("expected session to be closed")
 	}
 }
+
+func TestExternalSessionCloseDetachesWithoutClosing(t *testing.T) {
+	session := &browserSession{external: true}
+	session.closeLocked(true)
+	if !session.closed {
+		t.Fatal("expected external session to be marked closed")
+	}
+}

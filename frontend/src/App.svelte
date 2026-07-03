@@ -63,6 +63,17 @@
   import { defaultRunForm, type RunForm } from './lib/runTypes'
   import { formatLastRunSummary } from './lib/runSummary'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
+  import {
+    buildSyntheticRunError,
+    filterRunResultsSince,
+    pickLastRunError,
+    remapRunResultPaths,
+    resolveStaleRunScenario,
+  } from './lib/runResults'
+  import {
+    materializeRunTargetPaths,
+    resolveLogicalRunTarget,
+  } from './lib/runTargets'
   import PostRecordBanner from './lib/PostRecordBanner.svelte'
   import PostRecordDiffDialog from './lib/PostRecordDiffDialog.svelte'
   import type { HintActionHandlers } from './lib/gherkinHintActions'
@@ -71,6 +82,9 @@
   import UnsavedCloseDialog from './lib/UnsavedCloseDialog.svelte'
   import HttpAuthDialog from './lib/HttpAuthDialog.svelte'
   import PickerStepDialog from './lib/PickerStepDialog.svelte'
+  import OnboardingTour from './lib/onboarding/OnboardingTour.svelte'
+  import { ONBOARDING_TOUR_VERSION } from './lib/onboarding/tourSteps'
+  import type { TourContext } from './lib/onboarding/tourState'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
   import { isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './lib/editorLargeFile'
   import {
@@ -349,6 +363,7 @@
   let postRecordStepCount = 0
   let postRecordBaselineText = ''
   let showPostRecordDiff = false
+  let recordStepPickerOpen = false
   let flakyMetrics: gui.FlakyMetricsDTO | null = null
   let editorScenarioHints: gui.ScenarioHintDTO[] = []
   let editorHintsDismissed = new Set<string>()
@@ -432,8 +447,8 @@
   let settingsHoverRecordMinMs = 600
   let settingsLoops = 100
   let settingsCheckUpdatesOnStartup = true
-  let settingsSelectorClickStrategies: string[] = ['testid', 'id', 'aria', 'contextual', 'text']
-  let settingsSelectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  let settingsSelectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
+  let settingsSelectorInputStrategies: string[] = ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
   let settingsNavWaitUntil = 'domcontentloaded'
   let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
   let editorCursorLine = 1
@@ -464,6 +479,8 @@
   let recentFeatures: string[] = []
   let runResults: gui.RunResultEntry[] = []
   let lastErrorEntry: gui.RunResultEntry | null = null
+  let lastRunSince: string | null = null
+  let lastRunBatchResults: gui.RunResultEntry[] = []
   $: flakyByPath = flakyScenarioMap(flakyMetrics)
   $: flakyStepByPath = flakyStepHints(flakyMetrics)
   let editorSteps: EditorStepRow[] = []
@@ -473,11 +490,7 @@
 
   const unsubscribers: (() => void)[] = []
 
-  $: if (
-    pendingUpdateCheckOnStartup &&
-    settingsCheckUpdatesOnStartup &&
-    (projectPath || checklistDismissed || welcomePlayedSuccess)
-  ) {
+  $: if (pendingUpdateCheckOnStartup && settingsCheckUpdatesOnStartup && projectPath) {
     pendingUpdateCheckOnStartup = false
     void checkUpdatesOnStartup()
   }
@@ -502,7 +515,74 @@
   $: batchSelectedSet = buildBatchSelectedSet(batchSelected)
   $: showRecordingBar = recording && !showRecord
   $: showPlayingBar = playing
-  $: showBrowserOverlay = browserOpen || recording || playing
+  $: anyAppDialogOpen =
+    !!confirmDialog ||
+    !!pendingCloseTab ||
+    showRun ||
+    showVanessaRun ||
+    showPluginRun ||
+    showTestClient ||
+    showStepsHelp ||
+    showSteps ||
+    showVanessaSettings ||
+    showExport ||
+    showRefactorUrl ||
+    showOpenProject ||
+    showRenameFeature ||
+    showMoveFeature ||
+    showValidate ||
+    showNewProjectWizard ||
+    showInitProject ||
+    showUpdateCheck ||
+    showDuplicateFeature ||
+    showImportFeatures ||
+    showImport ||
+    showSettings ||
+    showCommandPalette ||
+    showSnippetPalette ||
+    showRecord ||
+    showOtp ||
+    showAbout ||
+    showHotkeys ||
+    showPlugins ||
+    showRunHistory ||
+    (showPostRecordDiff && !!postRecordPath) ||
+    showProjectReplace ||
+    showHttpAuth ||
+    showPickerStep
+  $: onboardingTourContext = {
+    projectPath,
+    featuresCount: features.length,
+    isWelcome,
+    activeTab,
+    welcomeKey: WELCOME_KEY,
+    validateDone: onboardingValidateDone,
+    dryRunDone: onboardingDryRunDone,
+    bottomPanelOpen,
+    bottomTab,
+  } satisfies TourContext
+  $: onboardingTourActive = showOnboardingTour && !anyAppDialogOpen
+  $: if (typeof document !== 'undefined') {
+    document.body.classList.toggle('onboarding-tour-active', onboardingTourActive)
+  }
+  $: if (showOnboardingTour && isWelcome && projectPath && features.length > 0) {
+    onboardingValidateDone = false
+    onboardingDryRunDone = false
+  }
+  let onboardingTourStepId = 'welcome'
+  $: onboardingElevateMenubar =
+    showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')
+  $: onboardingElevateSidebar = showOnboardingTour && onboardingTourStepId === 'pick-feature'
+  $: onboardingElevateWelcome =
+    showOnboardingTour && (onboardingTourStepId === 'welcome' || onboardingTourStepId === 'open-examples')
+  $: onboardingElevateBottom = showOnboardingTour && onboardingTourStepId === 'journal'
+  $: if (showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
+    openMenu = 'run'
+  }
+  $: if (showOnboardingTour && openMenu === 'run' && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
+    void tick().then(() => onboardingTour?.relayout())
+  }
+  $: showBrowserOverlay = (browserOpen || recording || playing) && !anyAppDialogOpen
   $: paletteCommands = buildPaletteCommands()
 
   let resizingBottom = false
@@ -535,6 +615,13 @@
 
   $: activeFeaturePath = activeTab !== WELCOME_KEY ? activeTab : ''
 
+  $: resultsPanelEntries =
+    lastRunBatchResults.length > 0
+      ? lastRunBatchResults
+      : lastRunSince
+        ? filterRunResultsSince(runResults, lastRunSince)
+        : runResults
+
   $: runByPath = buildRunByPathMap(runResults)
 
   $: tagsByPath = (() => {
@@ -566,6 +653,12 @@
   $: welcomeRecorded = recording || browserOpen
   let welcomePlayedSuccess = false
   let checklistDismissed = false
+  let onboardingCompleted = false
+  let onboardingDismissed = false
+  let onboardingValidateDone = false
+  let onboardingDryRunDone = false
+  let showOnboardingTour = false
+  let onboardingTour: OnboardingTour
   let runDialogConfirmed = false
   let pickerDuringRecording = false
   let allureInstalled = true
@@ -602,6 +695,90 @@
     setSplashDocumentState(false)
     await openMainWindow()
     appReady = true
+    if (shouldAutoStartOnboarding()) {
+      sidebarVisible = true
+      onboardingTourStepId = 'welcome'
+      showOnboardingTour = true
+    }
+  }
+
+  function shouldAutoStartOnboarding(): boolean {
+    return !onboardingCompleted && !onboardingDismissed
+  }
+
+  async function completeOnboarding() {
+    showOnboardingTour = false
+    onboardingCompleted = true
+    onboardingDismissed = false
+    await persistSettings()
+    void maybeCheckUpdatesOnStartup()
+  }
+
+  async function dismissOnboarding() {
+    showOnboardingTour = false
+    onboardingDismissed = true
+    await persistSettings()
+    void maybeCheckUpdatesOnStartup()
+  }
+
+  function restartOnboardingTour() {
+    onboardingValidateDone = false
+    onboardingDryRunDone = false
+    onboardingTourStepId = ''
+    sidebarVisible = true
+    saveLayout({ sidebarVisible: true })
+    void resetWorkspaceForOnboarding().then(() => {
+      onboardingTourStepId = 'welcome'
+      showOnboardingTour = true
+      onboardingTour?.restart()
+    })
+  }
+
+  async function resetWorkspaceForOnboarding() {
+    if (projectPath) {
+      try {
+        await teardownDesktopSession()
+      } catch {
+        /* offline */
+      }
+      projectPath = ''
+      features = []
+      tags = []
+      featureTags = {}
+    }
+    for (const t of tabs) {
+      monaco?.releaseTab(t.path)
+    }
+    monaco?.retainTabs([])
+    tabs = []
+    activeTab = WELCOME_KEY
+    welcomeTabVisible = true
+    editorText = ''
+    monaco?.activateTab(null, '')
+    batchSelected = []
+    batchMode = false
+    editorValidationIssues = []
+    clearEditorValidation()
+    openMenu = ''
+    bottomPanelOpen = false
+    saveLayout({ bottomPanelOpen: false })
+  }
+
+  function onOnboardingStepChange(e: CustomEvent<{ index: number; id: string }>) {
+    const { id } = e.detail
+    onboardingTourStepId = id
+    if (id === 'open-examples' || id === 'pick-feature') {
+      sidebarVisible = true
+      saveLayout({ sidebarVisible: true })
+    }
+    if (id === 'validate' || id === 'dry-run') {
+      void tick().then(() => tick().then(() => onboardingTour?.relayout()))
+    }
+    if (id === 'journal') {
+      bottomPanelOpen = true
+      saveLayout({ bottomPanelOpen: true })
+      void tick().then(() => onboardingTour?.relayout())
+    }
   }
 
   onMount(async () => {
@@ -661,7 +838,9 @@
       }
       if (settings.recentProjects?.length) recentProjects = settings.recentProjects
       if (settings.recentFeatures?.length) recentFeatures = settings.recentFeatures
-      await restoreWorkspaceSession(settings)
+      if (!shouldAutoStartOnboarding()) {
+        await restoreWorkspaceSession(settings)
+      }
     }
 
     draftAutosaveTimer = setInterval(() => void autosaveDirtyDrafts(), 30_000)
@@ -861,14 +1040,19 @@
     unsubscribers.push(() => window.removeEventListener('resize', onResize))
 
     const onDocClick = () => {
+      if (showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
+        return
+      }
       openMenu = null
     }
+    window.addEventListener('keydown', onModalEscapeCapture, { capture: true })
     window.addEventListener('keydown', onGlobalKeydown, { capture: true })
     window.addEventListener('click', onDocClick)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') void checkActiveTabDiskStale()
     }
     document.addEventListener('visibilitychange', onVisibility)
+    unsubscribers.push(() => window.removeEventListener('keydown', onModalEscapeCapture, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
     unsubscribers.push(() => document.removeEventListener('visibilitychange', onVisibility))
@@ -881,6 +1065,9 @@
   })
 
   onDestroy(() => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('onboarding-tour-active')
+    }
     stopVanessaPoll()
     stopBrowserWatch()
     void teardownDesktopSession()
@@ -1053,7 +1240,7 @@
     settingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup !== false
     settingsSelectorClickStrategies = s.selectorClickStrategies?.length
       ? [...s.selectorClickStrategies]
-      : ['testid', 'id', 'aria', 'contextual', 'text']
+      : ['text', 'contextual', 'aria', 'title', 'testid', 'id']
     settingsSelectorInputStrategies = s.selectorInputStrategies?.length
       ? [...s.selectorInputStrategies]
       : ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
@@ -1069,14 +1256,19 @@
     }
     checklistDismissed = !!s.checklistDismissed
     welcomePlayedSuccess = !!s.welcomePlayedSuccess
+    onboardingCompleted = !!s.onboardingCompleted
+    onboardingDismissed = !!s.onboardingDismissed
+    if (!onboardingCompleted && s.onboardingVersion !== ONBOARDING_TOUR_VERSION) {
+      onboardingCompleted = false
+      onboardingDismissed = false
+    }
     runDialogConfirmed = !!s.runDialogConfirmed
     pickerDuringRecording = !!s.pickerDuringRecording
     if (s.startUrl) startURL = s.startUrl
   }
 
   function resolveStepsPanelCollapsed(): boolean {
-    if (!stepsPanelVisible) return true
-    return editorSettings.symbolOutline && editorSettings.stepsPanelView === 'outline'
+    return !stepsPanelVisible
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
@@ -1325,7 +1517,13 @@
   async function postRecordValidate() {
     if (!postRecordPath) return
     if (activeTab !== postRecordPath) await loadFeature(postRecordPath)
-    await validateProject(false)
+    const resolved = resolveLogicalRunTarget(postRecordPath, tabs, activeTab)
+    const targets = await materializeRunTargets([resolved])
+    if (!targets.length) {
+      appendLog('Не удалось подготовить сценарий для проверки после записи')
+      return
+    }
+    await validateProject(false, settingsBrowser || 'chromium', targets)
     bottomTab = 'validate'
   }
 
@@ -1349,6 +1547,26 @@
     duplicateFeaturePath = ''
     if (!path) return
     try {
+      if (isUntitled(path)) {
+        const tab = tabs.find((t) => t.path === path)
+        const text =
+          path === activeTab
+            ? (monaco?.getEditorText() ?? editorText)
+            : tab
+              ? tabEditorText(tab)
+              : ''
+        if (!text || !projectPath) {
+          appendLog('Сначала сохраните сценарий или откройте проект')
+          return
+        }
+        const name = newName.trim().replace(/\.feature$/i, '') || 'copy'
+        const target = `${projectPath.replace(/\\/g, '/')}/${name}.feature`
+        await SaveFeature(target, text)
+        await refreshProject()
+        await loadFeature(target)
+        appendLog(`Создана копия: ${name}.feature`)
+        return
+      }
       const target = await DuplicateFeature(path, newName)
       await refreshProject()
       await loadFeature(target)
@@ -1607,11 +1825,50 @@
   async function refreshRunResults() {
     try {
       runResults = await ListRunResults(50)
-      lastErrorEntry = runResults.find((e) => !e.success) || null
       flakyMetrics = await FlakyMetrics(200)
     } catch {
       runResults = []
       flakyMetrics = null
+    }
+  }
+
+  function runResultFeaturePath(targetPath: string): string {
+    if (isUntitled(targetPath)) return untitledLabel(targetPath)
+    return targetPath
+  }
+
+  function finalizeRunPanels(
+    runSince: string,
+    diskTargets: string[],
+    runTargets: string[],
+    cliError = '',
+    runner = 'playwright',
+    scenario = '',
+  ) {
+    lastRunSince = runSince
+    const batch = remapRunResultPaths(
+      filterRunResultsSince(runResults, runSince),
+      diskTargets,
+      runTargets,
+    )
+    lastRunBatchResults = batch
+    lastErrorEntry = pickLastRunError(batch)
+    if (!lastErrorEntry && cliError && !/context canceled/i.test(cliError)) {
+      const featurePath =
+        runTargets.length === 1
+          ? runResultFeaturePath(runTargets[0])
+          : diskTargets.length === 1
+            ? diskTargets[0]
+            : 'запуск'
+      lastErrorEntry = buildSyntheticRunError({
+        featurePath,
+        scenario: scenario || undefined,
+        message: cliError,
+        runner,
+      })
+    }
+    if (lastRunBatchResults.length === 0 && lastErrorEntry) {
+      lastRunBatchResults = [lastErrorEntry]
     }
   }
 
@@ -1622,7 +1879,13 @@
 
   async function openFeatureFromHistory(path: string) {
     showRunHistory = false
-    await loadFeature(path)
+    const feature = path.includes('::') ? path.slice(0, path.indexOf('::')) : path
+    const resolved = resolveLogicalRunTarget(feature, tabs, activeTab)
+    if (isUntitled(resolved) && tabs.some((t) => t.path === resolved)) {
+      await loadFeature(resolved)
+      return
+    }
+    await loadFeature(resolved)
   }
 
   async function openProjectAt(path: string) {
@@ -1821,7 +2084,8 @@
   }
 
   async function rerunFailed() {
-    const failed = [...new Map(runResults.filter((e) => !e.success).map((e) => [e.path, e])).values()]
+    const source = lastRunBatchResults.length > 0 ? lastRunBatchResults : runResults
+    const failed = [...new Map(source.filter((e) => !e.success).map((e) => [e.path, e])).values()]
     if (!failed.length) {
       appendLog('Нет упавших сценариев для перезапуска')
       return
@@ -1841,9 +2105,11 @@
 
   async function runSingleScenario(entry: gui.RunResultEntry) {
     const sep = entry.path.indexOf('::')
-    const filePath = sep >= 0 ? entry.path.slice(0, sep) : entry.path
+    const rawPath = sep >= 0 ? entry.path.slice(0, sep) : entry.path
     const scenario = sep >= 0 ? entry.path.slice(sep + 2) : ''
+    const filePath = resolveLogicalRunTarget(rawPath, tabs, activeTab)
     if (!filePath) return
+    if (activeTab !== filePath) await loadFeature(filePath)
     await executeRun({ ...lastRun, dryRun: false, scenario }, [filePath])
   }
 
@@ -1885,24 +2151,12 @@
   }
 
   async function materializeRunTargets(paths: string[]): Promise<string[]> {
-    const diskTargets: string[] = []
-    for (const path of paths) {
-      const tab = tabs.find((t) => t.path === path)
-      if (!tab) {
-        if (!isUntitled(path)) diskTargets.push(path)
-        continue
-      }
-      if (isUntitled(path) || tab.dirty) {
-        let content = path === activeTab ? editorText : tabEditorText(tab)
-        if (!content && tabNeedsDiskReload(tab)) {
-          content = await ReadFeature(path)
-        }
-        diskTargets.push(await WriteTempFeature(content))
-      } else {
-        diskTargets.push(path)
-      }
-    }
-    return diskTargets
+    syncActiveTabContent()
+    const liveActive = monaco?.getEditorText() ?? editorText
+    return materializeRunTargetPaths(paths, tabs, activeTab, editorText, liveActive, {
+      writeTempFeature: WriteTempFeature,
+      readFeature: ReadFeature,
+    })
   }
 
   async function runBatchSelected(dryRun = false) {
@@ -2061,6 +2315,81 @@
         if (showSnippetPalette) showSnippetPalette = false
         break
     }
+  }
+
+  function onModalEscapeCapture(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return
+
+    const dismiss = (fn: () => void) => {
+      fn()
+      e.stopImmediatePropagation()
+      e.preventDefault()
+    }
+
+    if (confirmDialog) return dismiss(() => closeConfirm(false))
+    if (showHttpAuth) return dismiss(closeHttpAuthDialog)
+    if (showPickerStep) return dismiss(() => { showPickerStep = false })
+
+    const inModal = e.target instanceof Element && e.target.closest('.modal-backdrop, .palette-backdrop')
+    if (!inModal && monacoOverlayConsumesEscape()) return
+
+    if (pendingCloseTab) return dismiss(cancelCloseTab)
+    if (showOtp) return dismiss(cancelOtp)
+    if (showPluginRun) return dismiss(() => { showPluginRun = false })
+    if (showCommandPalette) return dismiss(() => { showCommandPalette = false })
+    if (showSnippetPalette) return dismiss(() => { showSnippetPalette = false })
+    if (recordStepPickerOpen) return
+    if (showRecord) return dismiss(() => { showRecord = false })
+    if (showSteps) return dismiss(() => { showSteps = false })
+    if (showProjectReplace) return dismiss(() => { showProjectReplace = false })
+    if (showRunHistory) return dismiss(() => { showRunHistory = false })
+    if (showPostRecordDiff && postRecordPath) return dismiss(() => { showPostRecordDiff = false })
+    if (showHotkeys) return dismiss(() => { showHotkeys = false })
+    if (showPlugins) return dismiss(() => { showPlugins = false })
+    if (showAbout) return dismiss(() => { showAbout = false })
+    if (showUpdateCheck && !updateDownloading) return dismiss(() => { showUpdateCheck = false })
+    if (showImportFeatures) return dismiss(() => { showImportFeatures = false })
+    if (showImport) return dismiss(() => { showImport = false })
+    if (showDuplicateFeature) {
+      return dismiss(() => {
+        showDuplicateFeature = false
+        duplicateFeaturePath = ''
+      })
+    }
+    if (showInitProject) return dismiss(() => { showInitProject = false })
+    if (showNewProjectWizard) return dismiss(() => { showNewProjectWizard = false })
+    if (showValidate) return dismiss(() => { showValidate = false })
+    if (showMoveFeature) {
+      return dismiss(() => {
+        showMoveFeature = false
+        moveFeaturePath = ''
+      })
+    }
+    if (showRenameFeature) {
+      return dismiss(() => {
+        showRenameFeature = false
+        renameFeaturePath = ''
+      })
+    }
+    if (showOpenProject) return dismiss(() => { showOpenProject = false })
+    if (showRefactorUrl) return dismiss(() => { showRefactorUrl = false })
+    if (showExport) return dismiss(() => { showExport = false })
+    if (showVanessaSettings) return dismiss(() => { showVanessaSettings = false })
+    if (showStepsHelp) {
+      return dismiss(() => {
+        showStepsHelp = false
+        stepsHelpQuery = ''
+      })
+    }
+    if (showTestClient) {
+      return dismiss(() => {
+        showTestClient = false
+        testClientSuggestName = ''
+      })
+    }
+    if (showVanessaRun) return dismiss(() => { showVanessaRun = false })
+    if (showRun) return dismiss(() => { showRun = false })
+    if (showSettings) return dismiss(cancelSettings)
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
@@ -2301,11 +2630,32 @@
     if (result.output) appendLog(`Trace viewer: ${result.output.trim()}`)
   }
 
+  function resolveRunResultFeaturePath(featurePath: string): string {
+    return resolveLogicalRunTarget(featurePath, tabs, activeTab)
+  }
+
   async function gotoFailedStep(entry: gui.RunResultEntry) {
     const idx = entry.path.indexOf('::')
-    const featurePath = idx < 0 ? entry.path : entry.path.slice(0, idx)
+    const rawFeaturePath = idx < 0 ? entry.path : entry.path.slice(0, idx)
     const scenario = idx < 0 ? '' : entry.path.slice(idx + 2)
+    const featurePath = resolveRunResultFeaturePath(rawFeaturePath)
     if (!featurePath) return
+    if (featurePath === activeTab && isUntitled(featurePath)) {
+      if (entry.failed_step != null && entry.failed_step >= 0) {
+        try {
+          const temp = await WriteTempFeature(editorText)
+          const line = await FailedStepLine(temp, scenario, entry.failed_step)
+          if (line > 0) gotoEditorLine(line)
+        } catch {
+          const lineMatch = entry.message?.match(/line\s+(\d+)/i)
+          if (lineMatch) gotoEditorLine(Number(lineMatch[1]))
+        }
+      } else {
+        const lineMatch = entry.message?.match(/line\s+(\d+)/i)
+        if (lineMatch) gotoEditorLine(Number(lineMatch[1]))
+      }
+      return
+    }
     if (entry.failed_step == null || entry.failed_step < 0) {
       await loadFeature(featurePath)
       return
@@ -2580,6 +2930,7 @@
         syncTabContent(leavingTab)
       }
       void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
+      clearEditorValidation()
       welcomeTabVisible = true
       activeTab = WELCOME_KEY
       trimTabsMemory()
@@ -2644,8 +2995,7 @@
         welcomeTabVisible = true
         activeTab = WELCOME_KEY
         void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
-        stepStatus = '0 шагов'
-        stepStatusError = false
+        clearEditorValidation()
       }
     }
     schedulePersistSession()
@@ -2749,7 +3099,21 @@
     }, delayMs)
   }
 
+  function clearEditorValidation() {
+    editorValidationIssues = []
+    stepStatusError = false
+    stepStatus = '0 шагов'
+    monaco?.setMarkers([])
+    if (statusMessage === 'Ошибка в сценарии') {
+      setStatus('', 'normal')
+    }
+  }
+
   async function validateEditor() {
+    if (isWelcome || !activeTab || activeTab === WELCOME_KEY) {
+      clearEditorValidation()
+      return
+    }
     const generation = ++validateGeneration
     const tabAtStart = activeTab
     const textAtStart = editorText
@@ -2794,14 +3158,16 @@
   }
 
   function validatePanelDisplayIssues(): gui.ValidationIssue[] {
-    return validatePanelIssues.length > 0 ? validatePanelIssues : editorValidationIssues
+    if (validatePanelIssues.length > 0) return validatePanelIssues
+    if (isWelcome) return []
+    return editorValidationIssues
   }
 
   async function onEditorChange(text: string) {
     editorText = text
     syncActiveTabContent()
     schedulePersistSession()
-    if (editorSettings.validateOnType) {
+    if (editorSettings.validateOnType && !isWelcome) {
       scheduleValidateEditor()
     }
   }
@@ -2882,13 +3248,33 @@
     if (runTargets.length === 0 && activeTab && !isWelcome) {
       runTargets = [activeTab]
     }
+    if (runTargets.length === 0 && isWelcome) {
+      const featureTabs = tabs.filter((t) => t.path !== WELCOME_KEY)
+      if (featureTabs.length === 1) {
+        runTargets = [featureTabs[0].path]
+      }
+    }
     if (runTargets.length === 0 && !projectPath) {
       appendLog('Откройте сценарий для запуска')
       return
     }
 
     const diskTargets = runTargets.length ? await materializeRunTargets(runTargets) : []
-    lastRun = { ...opts }
+    if (runTargets.length > 0 && diskTargets.length === 0) {
+      appendLog('Не удалось подготовить файл(ы) для запуска')
+      setStatus('Ошибка запуска', 'error')
+      return
+    }
+
+    let runOpts = opts
+    if (runTargets.length === 1 && runTargets[0] === activeTab && !isWelcome) {
+      runOpts = {
+        ...opts,
+        scenario: resolveStaleRunScenario(opts.scenario || '', editorText, cursorScenarioName()),
+      }
+    }
+
+    lastRun = { ...runOpts }
     showRun = false
     bottomPanelOpen = true
     bottomTab = 'journal'
@@ -2898,56 +3284,58 @@
         ? `${runTargets.length} сценариев`
         : runTargets.length === 1
           ? featureTabLabel(runTargets[0])
-          : opts.scenario || opts.tag || 'тест'
+          : runOpts.scenario || runOpts.tag || 'тест'
 
-    const allureDir = opts.allure ? await scenariaSubdir('allure-results') : ''
-    const traceDir = !opts.dryRun && opts.trace ? await scenariaSubdir('traces') : ''
-    const videoDir = !opts.dryRun && opts.video ? await scenariaSubdir('videos') : ''
+    const allureDir = runOpts.allure ? await scenariaSubdir('allure-results') : ''
+    const traceDir = !runOpts.dryRun && runOpts.trace ? await scenariaSubdir('traces') : ''
+    const videoDir = !runOpts.dryRun && runOpts.video ? await scenariaSubdir('videos') : ''
 
-    const htmlPath = opts.html ? await resolveHtmlReportPath(opts) : ''
+    const htmlPath = runOpts.html ? await resolveHtmlReportPath(runOpts) : ''
 
-    const junitPath = opts.junit ? await scenariaSubdir('junit.xml') : ''
+    const junitPath = runOpts.junit ? await scenariaSubdir('junit.xml') : ''
 
-    const summaryJsonPath = opts.summaryJson ? await scenariaSubdir('summary.json') : ''
+    const summaryJsonPath = runOpts.summaryJson ? await scenariaSubdir('summary.json') : ''
 
-    playing = !opts.dryRun
-    runningDryRun = opts.dryRun
+    playing = !runOpts.dryRun
+    runningDryRun = runOpts.dryRun
     runProgressCurrent = 0
     runProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
     runCancelling = false
     runLogStreaming = true
     setStatus('▶ Идёт тест', 'busy')
-    const range = partialRunLogSuffix(opts.startStep ?? -1, opts.endStep ?? -1)
+    const range = partialRunLogSuffix(runOpts.startStep ?? -1, runOpts.endStep ?? -1)
     if (targets.length) {
       appendLog(`Запуск ${targets.length} сценариев${range}…`)
-    } else if (opts.dryRun) {
+    } else if (runOpts.dryRun) {
       appendLog(`Dry-run${range}…`)
     } else {
       appendLog(`Запуск Playwright${range}…`)
     }
 
+    const runSince = new Date().toISOString()
+
     const result = await Run({
-      tag: opts.tag,
-      scenario: opts.scenario || '',
-      testClient: opts.testClient,
-      vars: parseVars(opts.vars),
-      dryRun: opts.dryRun,
-      headed: opts.headed,
-      engine: opts.dryRun ? '' : opts.engine,
-      installPlaywright: opts.installPW,
+      tag: runOpts.tag,
+      scenario: runOpts.scenario || '',
+      testClient: runOpts.testClient,
+      vars: parseVars(runOpts.vars),
+      dryRun: runOpts.dryRun,
+      headed: runOpts.headed,
+      engine: runOpts.dryRun ? '' : runOpts.engine,
+      installPlaywright: runOpts.installPW,
       allureDir,
       traceDir,
       videoDir,
       htmlPath,
       junitPath,
       summaryJson: summaryJsonPath,
-      browser: opts.dryRun ? '' : opts.browser || settingsBrowser || 'chromium',
-      workers: opts.workers || settingsWorkers || 1,
-      slowMo: opts.dryRun ? 0 : (opts.slowMo > 0 ? opts.slowMo : settingsSlowMo),
-      baseUrl: opts.dryRun ? '' : (opts.baseUrl || '').trim(),
-      startStep: opts.startStep ?? -1,
-      endStep: opts.endStep ?? -1,
-      continueOnFail: opts.continueOnFail,
+      browser: runOpts.dryRun ? '' : runOpts.browser || settingsBrowser || 'chromium',
+      workers: runOpts.workers || settingsWorkers || 1,
+      slowMo: runOpts.dryRun ? 0 : (runOpts.slowMo > 0 ? runOpts.slowMo : settingsSlowMo),
+      baseUrl: runOpts.dryRun ? '' : (runOpts.baseUrl || '').trim(),
+      startStep: runOpts.startStep ?? -1,
+      endStep: runOpts.endStep ?? -1,
+      continueOnFail: runOpts.continueOnFail,
       targets: diskTargets,
     })
     const journalStreamed = runLogStreaming
@@ -2973,13 +3361,49 @@
       appendLog('Завершено.')
       setStatus('Тест завершён', 'success')
       welcomePlayedSuccess = true
+      if (showOnboardingTour && runOpts.dryRun) {
+        onboardingDryRunDone = true
+      }
       void persistSettings()
-      bottomTab = opts.dryRun ? 'journal' : 'results'
+      bottomTab = runOpts.dryRun ? 'journal' : 'results'
     }
     await refreshRunResults()
+    if (result.entries?.length) {
+      lastRunSince = runSince
+      lastRunBatchResults = remapRunResultPaths(result.entries, diskTargets, runTargets)
+      lastErrorEntry = pickLastRunError(lastRunBatchResults)
+      if (
+        !lastErrorEntry &&
+        result.error &&
+        !/context canceled/i.test(result.error)
+      ) {
+        const featurePath =
+          runTargets.length === 1
+            ? runResultFeaturePath(runTargets[0])
+            : diskTargets.length === 1
+              ? diskTargets[0]
+              : 'запуск'
+        lastErrorEntry = buildSyntheticRunError({
+          featurePath,
+          scenario: runOpts.scenario || cursorScenarioName() || undefined,
+          message: result.error,
+          runner: runOpts.dryRun ? 'dry-run' : runOpts.engine || 'playwright',
+        })
+        lastRunBatchResults = [...lastRunBatchResults, lastErrorEntry]
+      }
+    } else {
+      finalizeRunPanels(
+        runSince,
+        diskTargets,
+        runTargets,
+        result.error || '',
+        runOpts.dryRun ? 'dry-run' : runOpts.engine || 'playwright',
+        runOpts.scenario || cursorScenarioName(),
+      )
+    }
     await refreshArtifacts()
     await refreshAllureStatus()
-    if (!result.error && opts.html && htmlPath) {
+    if (!result.error && runOpts.html && htmlPath) {
       try {
         if (await ArtifactExists(htmlPath)) {
           await openHtmlReport(htmlPath)
@@ -3064,6 +3488,9 @@
       } else {
         appendLog('Проверка завершена.')
         setStatus('Проверка завершена', 'success')
+        if (showOnboardingTour && !browser) {
+          onboardingValidateDone = true
+        }
       }
     }
     if (!isWelcome && activeTab) await validateEditor()
@@ -3079,7 +3506,15 @@
 
   async function confirmValidate(payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) {
     showValidate = false
-    const targets = payload.scope === 'current' && activeTab && !isWelcome ? [activeTab] : []
+    let targets: string[] = []
+    if (payload.scope === 'current' && activeTab && !isWelcome) {
+      targets = await materializeRunTargets([activeTab])
+      if (targets.length === 0) {
+        appendLog('Не удалось подготовить текущий сценарий для проверки')
+        setStatus('Ошибка проверки', 'error')
+        return
+      }
+    }
     await validateProject(!payload.syntaxOnly, payload.browser, targets)
   }
 
@@ -3273,7 +3708,7 @@
   }
 
   function focusBrowserWindow() {
-    focusBrowser()
+    void focusBrowser()
   }
 
   function openExportDialog() {
@@ -3421,7 +3856,7 @@
 
   async function maybeCheckUpdatesOnStartup() {
     if (!settingsCheckUpdatesOnStartup) return
-    if (!projectPath && !checklistDismissed && !welcomePlayedSuccess) {
+    if (!projectPath) {
       pendingUpdateCheckOnStartup = true
       return
     }
@@ -3550,11 +3985,10 @@
     showSettings = true
   }
 
-  async function persistSettings() {
+  function buildCurrentSettingsDTO(): gui.AppSettingsDTO {
     syncActiveTabContent()
     const sessionTabs = buildSessionTabsSnapshot(tabs, activeTab, editorText, WELCOME_KEY)
-    await SaveSettings(
-      gui.AppSettingsDTO.createFrom({
+    return gui.AppSettingsDTO.createFrom({
       browser: settingsBrowser,
       headless: settingsHeadless,
       parallelWorkers: settingsWorkers,
@@ -3582,11 +4016,17 @@
       editor: editorSettingsToDTO(editorSettings),
       checklistDismissed,
       welcomePlayedSuccess,
+      onboardingCompleted,
+      onboardingDismissed,
+      onboardingVersion: ONBOARDING_TOUR_VERSION,
       runDialogConfirmed,
       pickerDuringRecording,
       startUrl: startURL,
-    }),
-    )
+    })
+  }
+
+  async function persistSettings() {
+    await SaveSettings(buildCurrentSettingsDTO())
   }
 
   async function syncRecordingOptions() {
@@ -3627,8 +4067,9 @@
 
   async function applySettingsCore(closeDialog: boolean) {
     editorSettings = { ...editorSettings }
-    stepsPanelCollapsed = resolveStepsPanelCollapsed()
     stepsPanelTab = editorSettings.stepsPanelView
+    if (!stepsPanelVisible) stepsPanelCollapsed = true
+    else if (stepsPanelCollapsed && stepsPanelVisible) stepsPanelCollapsed = false
     setStepHoverEnabled(() => editorSettings.stepHover)
     lastRun = {
       ...lastRun,
@@ -3645,21 +4086,29 @@
       editorScenarioHints = []
     }
     if (editorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
+    const saved = buildCurrentSettingsDTO()
     if (closeDialog) {
       settingsDialogBaseline = null
       showSettings = false
       appendLog('Настройки сохранены.')
-    } else {
-      appendLog('Настройки применены.')
+      return saved
     }
+    settingsDialogBaseline = saved
+    return saved
   }
 
   async function applySettings() {
     await applySettingsCore(true)
   }
 
-  async function applySettingsKeepOpen() {
+  async function applySettingsKeepOpen(): Promise<string> {
     await applySettingsCore(false)
+    let message = 'Настройки применены и сохранены.'
+    if (browserOpen) {
+      message += ' Порядок селекторов для записи — после перезапуска браузера.'
+    }
+    appendLog(message)
+    return message
   }
 
   function cancelSettings() {
@@ -3680,10 +4129,12 @@
     })
   }
 
-  function prepareRecordDialogDefaults() {
+  function prepareRecordDialogDefaults(options?: { inheritTestClient?: boolean }) {
     recordMode = 'live'
     recordAppendTo = ''
-    recordTestClient = runForm.testClient || testClientSelection || ''
+    recordTestClient = options?.inheritTestClient
+      ? (runForm.testClient || testClientSelection || '')
+      : ''
     if (activeTab && !isWelcome && activeTab.toLowerCase().endsWith('.feature') && !isUntitled(activeTab)) {
       recordOutput = activeTab.replace(/\\/g, '/')
       recordAppendTo = recordOutput
@@ -3709,7 +4160,7 @@
       appendLog('Сначала откройте проект для записи сценария')
       return
     }
-    prepareRecordDialogDefaults()
+    prepareRecordDialogDefaults({ inheritTestClient: true })
     showRecord = true
   }
 
@@ -3722,7 +4173,7 @@
       await focusBrowser()
       return
     }
-    prepareRecordDialogDefaults()
+    prepareRecordDialogDefaults({ inheritTestClient: false })
     recordURL = recordStartURL()
     showRecord = false
     if (recordURL) {
@@ -3739,7 +4190,7 @@
       navOnlyRecording,
       hoverRecord,
       appendTo: recordAppendTo,
-      testClient: recordTestClient,
+      testClient: '',
       featureName: recordFeatureName,
       scenarioName: recordScenarioName,
     })
@@ -4098,11 +4549,17 @@
   }
 
   async function focusBrowser() {
+    if (!browserOpen && !recording) {
+      appendLog('Браузер не открыт')
+      return
+    }
     try {
       await FocusBrowser()
       appendLog('Окно браузера выведено на передний план')
-    } catch (e: any) {
-      appendLog(`Показать браузер: ${e}`)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      appendLog(`Показать браузер: ${msg}`)
+      setStatus('Не удалось показать браузер', 'error')
     }
   }
 
@@ -4118,6 +4575,10 @@
   function openHttpAuthDialog() {
     httpAuthHost = hostFromURL(recordURL || startURL)
     showHttpAuth = true
+  }
+
+  function closeHttpAuthDialog() {
+    showHttpAuth = false
   }
 
   async function pickElement() {
@@ -4199,7 +4660,7 @@
 {:else}
 <div class="ide" class:panel-open={bottomPanelOpen}>
   <!-- Menu bar (Python: Проект / Сценарий / Запись и тест / Вид / Справка) -->
-  <div class="menubar" role="menubar">
+  <div class="menubar" class:onboarding-elevated={onboardingElevateMenubar} role="menubar">
     <div class="menu-root" class:open={openMenu === 'project'}>
       <button class="menu-trigger" on:click={(e) => toggleMenu('project', e)}>Проект</button>
       {#if openMenu === 'project'}
@@ -4254,10 +4715,10 @@
       {/if}
     </div>
 
-    <div class="menu-root" class:open={openMenu === 'run'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('run', e)}>Запись и тест</button>
+    <div class="menu-root" class:open={openMenu === 'run'} data-tour="menu-run">
+      <button class="menu-trigger" data-tour="menu-run-trigger" on:click={(e) => toggleMenu('run', e)}>Запись и тест</button>
       {#if openMenu === 'run'}
-        <div class="menu-dropdown">
+        <div class="menu-dropdown" data-tour="menu-run-dropdown">
           <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
           <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
           <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>Запись из шагов…</button>
@@ -4291,7 +4752,7 @@
           <button class="menu-item" on:click={() => openRunDialog('Запуск с тегом', {})} disabled={isWelcome && !projectPath}>
             Запустить сценарии с тегом…
           </button>
-          <button class="menu-item" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>Dry-run</button>
+          <button class="menu-item" data-tour="menu-dry-run" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>Dry-run</button>
           <button
             class="menu-item"
             on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
@@ -4300,7 +4761,7 @@
             Playwright…
           </button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => openValidateDialog(true)} disabled={!projectPath}>Проверить…</button>
+          <button class="menu-item" data-tour="menu-validate" on:click={() => openValidateDialog(true)} disabled={!projectPath}>Проверить…</button>
           <button class="menu-item" on:click={() => openValidateDialog(false)} disabled={!projectPath}>Проверить в браузере…</button>
           <div class="menu-sep"></div>
           {#if hasVanessaPlugin()}
@@ -4374,6 +4835,8 @@
       <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>Справка</button>
       {#if openMenu === 'help'}
         <div class="menu-dropdown">
+          <button class="menu-item" on:click={restartOnboardingTour}>Обучение…</button>
+          <div class="menu-sep"></div>
           <button class="menu-item" on:click={() => openStepsHelp()}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
           <button class="menu-item" on:click={() => (showHotkeys = true)}>Горячие клавиши<span class="menu-shortcut">Shift+F1</span></button>
           <button class="menu-item" on:click={checkUpdates}>Проверить обновления…</button>
@@ -4413,7 +4876,7 @@
 
       <!-- Explorer -->
       {#if sidebarVisible}
-        <div class="sidebar-column" style="width: {layoutSidebarWidth + 4}px">
+        <div class="sidebar-column" class:onboarding-elevated={onboardingElevateSidebar} style="width: {layoutSidebarWidth + 4}px">
         <aside class="explorer" style="width: {layoutSidebarWidth}px">
           <div class="explorer-header">
             <p class="zone-title">СЦЕНАРИИ</p>
@@ -4445,7 +4908,7 @@
               <p class="batch-selection">Выбрано для запуска: {batchCount}</p>
             {/if}
           </div>
-          <div class="catalog catalog-panel">
+          <div class="catalog catalog-panel" data-tour="catalog-tree">
             {#if catalogViewState.showEmptyMessage}
               <CatalogEmptyState
                 title={catalogViewState.emptyTitle || ''}
@@ -4530,7 +4993,7 @@
                 {@html toolbarIcons.pause()}<span>Пауза</span>
               </button>
               <span class="toolbar-sep" aria-hidden="true"></span>
-              <button class="tool-btn" on:click={focusBrowser} disabled={!recording && !browserOpen && !playing}>
+              <button class="tool-btn" on:click={() => void focusBrowser()} disabled={!browserOpen && !recording}>
                 {@html toolbarIcons.browserFocus()}<span>Показать браузер</span>
               </button>
               <button class="tool-btn" on:click={() => openValidateDialog(false)} disabled={!projectPath}>
@@ -4583,6 +5046,7 @@
         <div class="editor-stack">
           {#if isWelcome}
             <WelcomePanel
+              tourElevated={onboardingElevateWelcome}
               bind:startURL
               {recentProjects}
               {recentFeatures}
@@ -4603,7 +5067,7 @@
               onChecklistStep={onWelcomeChecklistStep}
             />
           {/if}
-          <div class="feature-workspace" class:hidden={isWelcome}>
+          <div class="feature-workspace" class:hidden={isWelcome} data-tour="editor-workspace">
             {#if postRecordPath}
               <PostRecordBanner
                 path={postRecordPath}
@@ -4698,8 +5162,15 @@
                 {#if stepsPanelVisible}
                 <div class="splitter-h" role="separator" on:mousedown={startResizeSteps}></div>
                 <div class="steps-panel" class:collapsed={stepsPanelCollapsed} style="max-height: {stepsPanelCollapsed ? 24 : stepsPanelHeight}px">
-                  <div class="steps-header">
-                    <button on:click={() => (stepsPanelCollapsed = !stepsPanelCollapsed)}>
+                  <div
+                    class="steps-header"
+                    title="Панель под редактором: дерево сценария или таблица шагов. Развернуть — стрелка слева."
+                  >
+                    <button
+                      type="button"
+                      aria-label={stepsPanelCollapsed ? 'Развернуть панель шагов' : 'Свернуть панель шагов'}
+                      on:click={() => (stepsPanelCollapsed = !stepsPanelCollapsed)}
+                    >
                       {#if stepsPanelCollapsed}{@html icons.chevronRight}{:else}{@html icons.chevronDown}{/if}
                     </button>
                     {#if editorSettings.symbolOutline}
@@ -4787,11 +5258,11 @@
   </div>
 
   <!-- Bottom panel -->
-  <div class="bottom-dock" class:collapsed={!bottomPanelOpen}>
+  <div class="bottom-dock" class:collapsed={!bottomPanelOpen} class:onboarding-elevated={onboardingElevateBottom}>
     <div class="splitter-h bottom-splitter" role="separator" on:mousedown={startResizeBottom}></div>
     <div class="bottom-panel" style="--panel-height: {bottomPanelHeight}px">
     <div class="panel-tabs">
-      <button class="panel-tab" class:active={bottomTab === 'journal'} on:click={() => (bottomTab = 'journal')}>Журнал</button>
+      <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>Журнал</button>
       <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (bottomTab = 'results')}>Результаты</button>
       <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (bottomTab = 'validate')}>Проверка</button>
       <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (bottomTab = 'error')}>Ошибка</button>
@@ -4801,7 +5272,7 @@
         {logText || 'Журнал…'}
       {:else if bottomTab === 'results'}
         <ResultsPanel
-          entries={runResults}
+          entries={resultsPanelEntries}
           flakyByPath={flakyByPath}
           flakyStepByPath={flakyStepByPath}
           artifacts={projectArtifacts}
@@ -4877,6 +5348,15 @@
   </footer>
 </div>
 
+<OnboardingTour
+  bind:this={onboardingTour}
+  active={onboardingTourActive}
+  context={onboardingTourContext}
+  on:skip={dismissOnboarding}
+  on:complete={completeOnboarding}
+  on:stepChange={onOnboardingStepChange}
+/>
+
 {#if showRun}
   <RunDialog
     title={runDialogTitle}
@@ -4910,20 +5390,6 @@
     scenarios={vanessaDialogScenarios}
     onConfirm={confirmVanessaRun}
     onCancel={() => (showVanessaRun = false)}
-  />
-{/if}
-
-{#if showPluginRun}
-  <PluginRunDialog
-    pluginName={pluginRunName}
-    pluginTitle={pluginRunTitle(pluginRunName)}
-    bind:tag={pluginRunTag}
-    bind:scenario={pluginRunScenario}
-    bind:dryRun={pluginRunDry}
-    scenarios={pluginRunScenarios}
-    {tags}
-    onConfirm={confirmPluginRun}
-    onCancel={() => (showPluginRun = false)}
   />
 {/if}
 
@@ -5133,6 +5599,7 @@
 {#if showRecord}
   <RecordDialog
     bind:mode={recordMode}
+    bind:stepPickerOpen={recordStepPickerOpen}
     bind:url={recordURL}
     bind:output={recordOutput}
     bind:featureName={recordFeatureName}
@@ -5154,6 +5621,7 @@
     onStop={stopRecord}
     onSaveBaseline={saveBaselineRecord}
     onClose={() => (showRecord = false)}
+    childModalOpen={showHttpAuth}
   />
 {/if}
 
@@ -5180,6 +5648,7 @@
 
 {#if showPlugins}
   <PluginsDialog
+    childModalOpen={showPluginRun}
     onClose={() => {
       showPlugins = false
       void refreshInstalledPlugins()
@@ -5187,6 +5656,20 @@
     onRunPlugin={(name, dry) => openPluginRun(name, dry)}
     onAskConfirm={(message) =>
       askConfirm({ title: 'Подтверждение', message, confirmLabel: 'Удалить', danger: true })}
+  />
+{/if}
+
+{#if showPluginRun}
+  <PluginRunDialog
+    pluginName={pluginRunName}
+    pluginTitle={pluginRunTitle(pluginRunName)}
+    bind:tag={pluginRunTag}
+    bind:scenario={pluginRunScenario}
+    bind:dryRun={pluginRunDry}
+    scenarios={pluginRunScenarios}
+    {tags}
+    onConfirm={confirmPluginRun}
+    onCancel={() => (showPluginRun = false)}
   />
 {/if}
 
@@ -5222,7 +5705,7 @@
 {/if}
 
 {#if showHttpAuth}
-  <HttpAuthDialog initialHost={httpAuthHost} onClose={() => (showHttpAuth = false)} />
+  <HttpAuthDialog initialHost={httpAuthHost} onCancel={closeHttpAuthDialog} />
 {/if}
 
 {#if showPickerStep}
@@ -5292,6 +5775,7 @@
 
 <BrowserOverlay
   visible={showBrowserOverlay}
+  browserOpen={browserOpen}
   {recording}
   {playing}
   paused={recordPaused}

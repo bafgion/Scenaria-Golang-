@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "test:e2e:journeys": "playwright test -c e2e/playwright.config.ts e2e/specs/user-journeys.spec.ts",
+    "test:e2e:qa": "playwright test -c e2e/playwright.config.ts e2e/specs/qa-daily-use.spec.ts",
+    "test:e2e:desktop": "playwright test -c e2e/playwright.desktop.config.ts",
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {

@@ -179,8 +179,21 @@ func TestNormalizeUpgradesFragileClickToTextSelector(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 step, got %+v", out)
 	}
-	if out[0].Selector != `text="Сохранить"` {
+	if out[0].Selector != `button:has-text("Сохранить")` {
 		t.Fatalf("selector: %q", out[0].Selector)
+	}
+}
+
+func TestUpgradeClickSelectorKeepsGoodHasTextDespiteContext(t *testing.T) {
+	step := RecordedStep{
+		Action:   "click",
+		Selector: `button:has-text("Добавить в корзину")`,
+		Text:     "Добавить в корзину",
+		Context:  "Товар успешно добавленПерейти в корзину",
+	}
+	got := upgradeClickSelector(step)
+	if got.Selector != `button:has-text("Добавить в корзину")` {
+		t.Fatalf("got %q", got.Selector)
 	}
 }
 

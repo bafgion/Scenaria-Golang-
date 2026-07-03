@@ -199,6 +199,20 @@ test('plugins dialog opens from menu when project is open', async ({ page }) => 
   await expect(dialog).toBeHidden()
 })
 
+test('http auth dialog closes over record dialog', async ({ page }) => {
+  await bootApp(page)
+  await openTestProject(page)
+  await page.keyboard.press('Control+KeyR')
+  const recordDialog = page.getByRole('dialog', { name: 'Запись сценария' })
+  await expect(recordDialog).toBeVisible()
+  await recordDialog.getByRole('button', { name: 'HTTP Auth…' }).click()
+  const authDialog = page.getByRole('dialog', { name: 'HTTP авторизация' })
+  await expect(authDialog).toBeVisible()
+  await authDialog.getByRole('button', { name: 'Закрыть' }).click()
+  await expect(authDialog).toBeHidden()
+  await expect(recordDialog).toBeVisible()
+})
+
 test('catalog lists project feature after open', async ({ page }) => {
   await bootApp(page)
   await openTestProject(page)

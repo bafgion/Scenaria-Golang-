@@ -13,10 +13,10 @@ Scenaria использует движок Playwright. В шагах селек�
 | **aria / role** | `role=button[name="Войти"]` | Доступность, кнопки и ссылки |
 | **label** | `label=Email` | Поля ввода с `<label>` |
 | **placeholder** | `[placeholder="Поиск…"]` | Поля без label |
-| **text** | `text="Каталог"` | Видимый текст (лучше, чем `:has-text` в CSS) |
+| **text** | `button:has-text("Каталог")` | Видимый текст с уточнением тега (как в Python-рекордере) |
 
-Для кликов: `testid → id → aria → title → contextual → text`.  
-Для полей: `testid → id → label → placeholder → aria → name`.
+Для кликов: `text (tag:has-text) → contextual → aria → title → testid → id` — сначала короткий селектор по тексту, цепочка `>>` только если на странице несколько одинаковых подписей.  
+Для полей: `label → placeholder → aria → name → testid → id`.
 
 ## Цепочки (`>>`)
 

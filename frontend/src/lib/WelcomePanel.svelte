@@ -20,6 +20,7 @@
   export let onOpenRecentFeature: (path: string) => void
   export let onChecklistStep: (step: number) => void
   export let onDismissChecklist: () => void = () => {}
+  export let tourElevated = false
 
   const steps = [
     { id: 1, label: 'Открыть проект' },
@@ -71,14 +72,14 @@
   }
 </script>
 
-<div class="welcome">
+<div class="welcome" class:onboarding-elevated={tourElevated}>
   <div class="welcome-scroll" bind:this={scrollEl}>
     <div class="welcome-scroll-body" bind:this={bodyEl}>
-      <div class="welcome-card" bind:this={cardEl}>
+      <div class="welcome-card" bind:this={cardEl} data-tour="welcome-card">
         <h1>{BRAND_NAME}</h1>
 
         {#if !checklistDismissed}
-          <div class="checklist">
+          <div class="checklist" data-tour="welcome-checklist">
             {#each steps as step, index}
               {@const done = doneFlags[index]}
               {@const current = index === activeIndex && !done}
@@ -112,7 +113,7 @@
 
         <p class="section-heading">Начало работы</p>
         <div class="links">
-          <button on:click={onOpenExamples}>Открыть примеры сценариев</button>
+          <button data-tour="welcome-examples" on:click={onOpenExamples}>Открыть примеры сценариев</button>
           <button on:click={onNewProject}>Новый проект…</button>
           <button on:click={onOpenProject}>Открыть папку…</button>
           <button on:click={onNewScenario}>Новый сценарий</button>

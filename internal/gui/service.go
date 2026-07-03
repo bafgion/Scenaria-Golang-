@@ -13,7 +13,6 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
-	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
@@ -101,8 +100,9 @@ type PluginRunRequest struct {
 }
 
 type RunResult struct {
-	Output string `json:"output"`
-	Error  string `json:"error"`
+	Output   string           `json:"output"`
+	Error    string           `json:"error"`
+	Entries  []RunResultEntry `json:"entries,omitempty"`
 }
 
 type StepCatalogEntry struct {
@@ -156,6 +156,9 @@ type AppSettingsDTO struct {
 	Editor            settings.EditorSettings `json:"editor"`
 	ChecklistDismissed bool   `json:"checklistDismissed"`
 	WelcomePlayedSuccess bool `json:"welcomePlayedSuccess"`
+	OnboardingCompleted bool  `json:"onboardingCompleted"`
+	OnboardingDismissed bool  `json:"onboardingDismissed"`
+	OnboardingVersion   int   `json:"onboardingVersion"`
 	StartURL            string `json:"startUrl"`
 	RunDialogConfirmed  bool   `json:"runDialogConfirmed"`
 	PickerDuringRecording bool `json:"pickerDuringRecording"`
@@ -440,78 +443,10 @@ type EventEmitter func(name string, payload any)
 
 func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 	defer s.cleanupTempFeatureDirs()
-	path := s.ProjectPath()
-	args := []string{}
-	if len(req.Targets) > 0 {
-		args = append(args, req.Targets...)
-	} else if path != "" {
-		args = append(args, path)
-	} else {
+	if len(req.Targets) == 0 && s.ProjectPath() == "" {
 		return RunResult{Error: "нет файлов для запуска — откройте сценарий или проект"}
 	}
-	if req.DryRun {
-		args = append(args, "--dry-run")
-	}
-	if req.Tag != "" {
-		args = append(args, "--tag", req.Tag)
-	}
-	if req.Scenario != "" {
-		args = append(args, "--scenario", req.Scenario)
-	}
-	if req.TestClient != "" {
-		args = append(args, "--test-client", req.TestClient)
-	}
-	for key, value := range req.Vars {
-		args = append(args, "--var", key+"="+value)
-	}
-	if req.Engine != "" {
-		args = append(args, "--engine", req.Engine)
-	}
-	if req.Headed {
-		args = append(args, "--headed")
-	}
-	if req.InstallPW {
-		args = append(args, "--install-playwright")
-	}
-	if req.AllureDir != "" {
-		args = append(args, "--allure", req.AllureDir)
-	}
-	if req.TraceDir != "" {
-		args = append(args, "--trace", req.TraceDir)
-	}
-	if req.VideoDir != "" {
-		args = append(args, "--video", req.VideoDir)
-	}
-	if req.HTMLPath != "" {
-		args = append(args, "--html", req.HTMLPath)
-	}
-	if req.JUnitPath != "" {
-		args = append(args, "--junit", req.JUnitPath)
-	}
-	if req.SummaryJSON != "" {
-		args = append(args, "--summary-json", req.SummaryJSON)
-	}
-	if req.Browser != "" && !req.DryRun {
-		args = append(args, "--browser", req.Browser)
-	}
-	if req.Workers > 0 {
-		args = append(args, "--workers", fmt.Sprintf("%d", req.Workers))
-	}
-	if req.SlowMo > 0 && !req.DryRun {
-		args = append(args, "--slow-mo", fmt.Sprintf("%d", req.SlowMo))
-	}
-	if req.BaseURL != "" && !req.DryRun {
-		args = append(args, "--base-url", req.BaseURL)
-	}
-	if req.StartStep >= 0 {
-		args = append(args, "--start-step", fmt.Sprintf("%d", req.StartStep))
-	}
-	if req.EndStep >= 0 {
-		args = append(args, "--end-step", fmt.Sprintf("%d", req.EndStep))
-	}
-	if req.ContinueOnFail {
-		args = append(args, "--continue-on-fail")
-	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	if s.runCancel != nil {
@@ -531,24 +466,14 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 		s.mu.Unlock()
 		cancel()
 	}()
-	ctx = player.WithRunProgress(ctx, func(ev player.RunProgressEvent) {
-		if emit != nil {
-			emit("run-progress", ev)
-			if ev.Phase == player.ProgressScenarioDone {
-				emit("run-results-changed", nil)
-			}
-		}
-	})
-	onLine := func(line string) {
-		if emit != nil {
-			emit("run-log-line", map[string]string{"line": line})
-		}
-	}
-	out, err := captureCLIStream(onLine, func() error { return cli.RunRunContext(ctx, args) })
+
+	result, err := s.runInProcess(ctx, req, emit)
+	out := s.formatRunOutput(result, err)
+	entries := scenarioResultsToEntries(result.ScenarioResults, resolveGUIEngine(req, req.Targets))
 	if err != nil {
-		return RunResult{Output: out, Error: err.Error()}
+		return RunResult{Output: out, Error: err.Error(), Entries: entries}
 	}
-	return RunResult{Output: out}
+	return RunResult{Output: out, Entries: entries}
 }
 
 // CancelRun aborts an in-progress GUI scenario run.
@@ -725,6 +650,9 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		Editor:              settings.NormalizeEditorSettings(cfg.Editor),
 		ChecklistDismissed:  cfg.ChecklistDismissed,
 		WelcomePlayedSuccess: cfg.WelcomePlayedSuccess,
+		OnboardingCompleted:  cfg.OnboardingCompleted,
+		OnboardingDismissed:  cfg.OnboardingDismissed,
+		OnboardingVersion:    cfg.OnboardingVersion,
 		StartURL:            strings.TrimSpace(cfg.StartURL),
 		RunDialogConfirmed:  cfg.RunDialogConfirmed,
 		PickerDuringRecording: cfg.PickerDuringRecording,
@@ -771,6 +699,9 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	cfg.Editor = settings.NormalizeEditorSettings(dto.Editor)
 	cfg.ChecklistDismissed = dto.ChecklistDismissed
 	cfg.WelcomePlayedSuccess = dto.WelcomePlayedSuccess
+	cfg.OnboardingCompleted = dto.OnboardingCompleted
+	cfg.OnboardingDismissed = dto.OnboardingDismissed
+	cfg.OnboardingVersion = dto.OnboardingVersion
 	cfg.StartURL = strings.TrimSpace(dto.StartURL)
 	cfg.RunDialogConfirmed = dto.RunDialogConfirmed
 	cfg.PickerDuringRecording = dto.PickerDuringRecording

@@ -81,7 +81,14 @@ func BuildFromElement(el ElementInfo) string {
 		return fmt.Sprintf(`text=%q`, label)
 	}
 	if text := strings.TrimSpace(el.Text); text != "" && len([]rune(text)) <= 80 {
-		return fmt.Sprintf(`text=%q`, text)
+		tag := strings.ToLower(strings.TrimSpace(el.Tag))
+		if tag == "" || tag == "*" {
+			tag = "button"
+		}
+		if tag == "a" || tag == "button" || tag == "div" || tag == "span" || tag == "li" {
+			return fmt.Sprintf(`%s:has-text(%q)`, tag, text)
+		}
+		return fmt.Sprintf(`button:has-text(%q)`, text)
 	}
 	if placeholder := strings.TrimSpace(el.Placeholder); placeholder != "" {
 		return fmt.Sprintf(`%s[placeholder=%q]`, tag, placeholder)

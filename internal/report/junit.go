@@ -51,7 +51,7 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 		case "failed", "broken":
 			suite.Failures++
 			tc.Failure = &junitFailure{Message: scenario.Message}
-		case "skipped":
+		case "skipped", "dry-run":
 			suite.Skipped++
 			tc.Skipped = &junitSkipped{Message: scenario.Message}
 		}

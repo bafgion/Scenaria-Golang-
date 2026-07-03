@@ -13,11 +13,22 @@ function withFreshSessionQuery(search: string): string {
   return path.includes('?') ? `${path}&__fresh=1` : `${path}?__fresh=1`
 }
 
-export async function bootApp(page: Page, search = '', opts?: { keepSession?: boolean }) {
+export async function dismissTourIfVisible(page: Page): Promise<void> {
+  const skip = page.getByRole('button', { name: 'Пропустить обучение' })
+  if (await skip.isVisible().catch(() => false)) {
+    await skip.click()
+    await expect(skip).toBeHidden({ timeout: 10_000 })
+  }
+}
+
+export async function bootApp(page: Page, search = '', opts?: { keepSession?: boolean; withTour?: boolean }) {
   await page.addInitScript({ path: mockPath })
   const url = opts?.keepSession ? (search.startsWith('/') ? search : `/${search}`) : withFreshSessionQuery(search)
   await page.goto(url)
   await expect(page.locator('.ide')).toBeVisible({ timeout: 20_000 })
+  if (!opts?.withTour) {
+    await dismissTourIfVisible(page)
+  }
 }
 
 export async function createNewScenario(page: Page) {
@@ -121,6 +132,47 @@ export async function typeInEditor(page: Page, text: string) {
   await page.keyboard.press('End')
   await page.keyboard.press('Enter')
   await page.keyboard.type(text)
+}
+
+export async function openRecordDialog(page: Page) {
+  await page.keyboard.press('Control+KeyR')
+  const dialog = page.getByRole('dialog', { name: 'Запись сценария' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+export async function confirmRunFromDialog(page: Page, opts?: { dryRun?: boolean; continueOnFail?: boolean }) {
+  const dialog = page.getByRole('dialog', { name: 'Запуск сценария' })
+  await expect(dialog).toBeVisible()
+  if (opts?.dryRun) {
+    await dialog.locator('label.check-row', { hasText: 'Dry-run' }).locator('input').check()
+  }
+  if (opts?.continueOnFail) {
+    await dialog.locator('label.check-row', { hasText: 'Продолжать при ошибке' }).locator('input').check()
+  }
+  await dialog.getByRole('button', { name: 'Запустить' }).click()
+  await expect(dialog).toBeHidden({ timeout: 10_000 })
+}
+
+/** First Ctrl+Enter may open RunDialog; confirms if needed. */
+export async function runCurrentScenario(page: Page, opts?: { dryRun?: boolean }) {
+  await page.keyboard.press('Control+Enter')
+  const dialog = page.getByRole('dialog', { name: 'Запуск сценария' })
+  if (await dialog.isVisible().catch(() => false)) {
+    await confirmRunFromDialog(page, opts)
+  }
+}
+
+export async function saveScenario(page: Page) {
+  await page.keyboard.press('Control+KeyS')
+}
+
+export async function focusBrowserFromToolbar(page: Page) {
+  await page.getByRole('button', { name: 'Показать браузер' }).click()
+}
+
+export function journalPanel(page: Page) {
+  return page.locator('.panel-body.text-panel')
 }
 
 export function dirtyTabs(page: Page) {

@@ -90,8 +90,8 @@ func SummarizePlan(plan ExecutionPlan) (files int, scenarios int, steps int, res
 		results = append(results, ScenarioResult{
 			FeaturePath: runCase.FeaturePath,
 			Scenario:    runCase.Name,
-			Status:      "skipped",
-			Message:     "dry-run mode",
+			Status:      "dry-run",
+			Message:     "шаги не выполнялись — только проверка плана",
 		})
 	}
 	return len(seenFiles), len(plan.Cases), steps, results

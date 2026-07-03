@@ -28,10 +28,14 @@
     steps: string[]
   }) => void = () => {}
   export let onClose: () => void = () => {}
+  export let childModalOpen = false
+  /** Synced to parent for nested «Вставить шаг» picker. */
+  export let stepPickerOpen = false
 
   let steps: string[] = []
   let newStep = ''
   let showStepPicker = false
+  $: stepPickerOpen = showStepPicker
   let baselineInitUrl = ''
 
   $: if (mode === 'baseline' && url !== baselineInitUrl) {
@@ -82,7 +86,14 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && !showStepPicker) onClose()
+    if (e.key === 'Escape' && !showStepPicker && !childModalOpen) {
+      e.stopPropagation()
+      onClose()
+    }
+  }
+
+  function onBackdropClose() {
+    if (!childModalOpen) onClose()
   }
 </script>
 
@@ -98,7 +109,7 @@
   />
 {:else}
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="modal-backdrop" role="presentation" on:click={onClose}>
+  <div class="modal-backdrop" role="presentation" on:click={onBackdropClose}>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal wide record-dialog" role="dialog" aria-modal="true" aria-label="Запись сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="tabs" role="tablist">

@@ -4,7 +4,7 @@
   import { gui } from '../../wailsjs/go/models'
 
   export let initialHost = ''
-  export let onClose: () => void = () => {}
+  export let onCancel: () => void
 
   let host = ''
   let username = ''
@@ -13,18 +13,20 @@
   let busy = false
   let message = ''
 
-  onMount(async () => {
+  onMount(() => {
     host = initialHost
-    await refreshHosts()
-    if (host) await loadHost(host)
+    void refreshHosts().then(() => {
+      if (host) void loadHost(host)
+    })
   })
 
   async function refreshHosts() {
-    hosts = await ListHTTPAuthHosts().catch(() => [])
+    const listed = await ListHTTPAuthHosts().catch(() => [] as string[])
+    hosts = listed ?? []
   }
 
   function onHostSelect(e: Event) {
-    loadHost((e.currentTarget as HTMLSelectElement).value)
+    void loadHost((e.currentTarget as HTMLSelectElement).value)
   }
 
   async function loadHost(value: string) {
@@ -70,17 +72,24 @@
     }
   }
 
+  function closeDialog() {
+    onCancel()
+  }
+
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      closeDialog()
+    }
   }
 </script>
 
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="palette-backdrop" role="presentation" on:click={onClose}>
+<div class="modal-backdrop modal-layer-top" role="presentation" on:click={closeDialog}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette http-auth" role="dialog" aria-modal="true" aria-label="HTTP авторизация" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="modal http-auth" role="dialog" aria-modal="true" aria-label="HTTP авторизация" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>HTTP Basic Auth</h3>
     <p class="hint">Логин и пароль сохраняются для хоста и применяются при записи и запуске.</p>
     {#if hosts.length}
@@ -97,12 +106,12 @@
     <label>Логин <input bind:value={username} autocomplete="username" /></label>
     <label>Пароль <input type="password" bind:value={password} autocomplete="current-password" /></label>
     {#if message}<p class="message">{message}</p>{/if}
-    <div class="actions">
+    <div class="modal-actions">
       <button type="button" class="primary" disabled={busy || !host.trim() || !username.trim()} on:click={save}>
         Сохранить
       </button>
       <button type="button" disabled={busy || !host.trim()} on:click={remove}>Удалить</button>
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={closeDialog}>Закрыть</button>
     </div>
   </div>
 </div>
@@ -125,12 +134,5 @@
     gap: 4px;
     margin-bottom: 10px;
     font-size: 12px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    flex-wrap: wrap;
   }
 </style>

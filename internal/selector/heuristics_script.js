@@ -26,10 +26,26 @@
   }
 
   function hasTextSelector(el, text) {
-    const normalized = String(text || visibleText(el) || '').trim();
+    return clickHasTextSelector(el, text);
+  }
+
+  function clickTagFor(target) {
+    if (!target || target.nodeType !== 1) return 'button';
+    const tag = (target.tagName || '').toLowerCase();
+    const role = (target.getAttribute('role') || '').toLowerCase();
+    if (tag === 'a' || role === 'link') return 'a';
+    if (tag === 'button' || ['button', 'menuitem', 'tab'].includes(role)) return 'button';
+    if (tag === 'div' || tag === 'span' || tag === 'li') return tag;
+    return tag || 'button';
+  }
+
+  function clickHasTextSelector(el, textOverride) {
+    const normalized = String(textOverride || visibleText(el) || '').trim();
     if (!normalized || normalized.length < 2 || normalized.length > 80) return null;
     const escaped = normalized.replace(/"/g, '\\"');
-    return `text="${escaped}"`;
+    const target = clickableAncestor(el) || el;
+    const tag = clickTagFor(target);
+    return `${tag}:has-text("${escaped}")`;
   }
 
   function clickableAncestor(el) {
@@ -85,8 +101,8 @@
   function strategyOrder(kind) {
     const cfg = window.__scenariaSelectorOrder || {};
     const defaults = kind === 'input'
-      ? ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
-      : ['testid', 'id', 'aria', 'title', 'contextual', 'text'];
+      ? ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
+      : ['text', 'contextual', 'aria', 'title', 'testid', 'id'];
     const order = cfg[kind];
     return Array.isArray(order) && order.length ? order : defaults;
   }
@@ -112,7 +128,7 @@
         return buildContextualClickSelector(target);
       },
       text() {
-        return hasTextSelector(target, '');
+        return clickHasTextSelector(target, '');
       },
     };
   }
@@ -166,23 +182,27 @@
     return tag === 'HEADER' ? 'header' : 'nav';
   }
 
-  function scopedTextSelector(scopeTag, text) {
+  function scopedTextSelector(scopeTag, text, el) {
     const normalized = String(text || '').trim();
     if (!normalized || normalized.length < 2 || normalized.length > 80) return null;
     const escaped = normalized.replace(/"/g, '\\"');
+    const innerTag = el ? clickTagFor(clickableAncestor(el) || el) : 'button';
     if (scopeTag) {
-      return `${scopeTag} >> text="${escaped}"`;
+      return `${scopeTag} >> ${innerTag}:has-text("${escaped}")`;
     }
-    return `text="${escaped}"`;
+    return `${innerTag}:has-text("${escaped}")`;
   }
 
   function buildMenuTriggerSelector(trigger) {
     if (!trigger || trigger.nodeType !== 1) return null;
     const text = visibleText(trigger).trim();
     if (!text) return buildClickSelector(trigger);
+    if (countMatchingClickables(trigger.ownerDocument, text) <= 1) {
+      return clickHasTextSelector(trigger, text) || buildClickSelector(trigger);
+    }
     const scopeTag = navScopeTag(trigger);
     if (scopeTag) {
-      return scopedTextSelector(scopeTag, text);
+      return scopedTextSelector(scopeTag, text, trigger);
     }
     return buildClickSelector(trigger);
   }
@@ -204,7 +224,7 @@
     if (countMatchingClickables(target.ownerDocument, label) <= 1) return null;
     const scopeTag = navScopeTag(target);
     if (scopeTag) {
-      return scopedTextSelector(scopeTag, label);
+      return scopedTextSelector(scopeTag, label, target);
     }
     let node = target.parentElement;
     for (let depth = 0; node && depth < 8; depth++) {
@@ -212,7 +232,9 @@
       if (caption.length >= 6 && caption.length <= 40 && caption !== label) {
         const escapedCaption = caption.replace(/"/g, '\\"');
         const escapedLabel = label.replace(/"/g, '\\"');
-        return `text="${escapedCaption}" >> text="${escapedLabel}"`;
+        const parentTag = (node.tagName || 'div').toLowerCase();
+        const clickTag = clickTagFor(target);
+        return `${parentTag}:has-text("${escapedCaption}") >> ${clickTag}:has-text("${escapedLabel}")`;
       }
       node = node.parentElement;
     }
@@ -283,6 +305,8 @@
     visibleText,
     labelTextForControl,
     hasTextSelector,
+    clickHasTextSelector,
+    clickTagFor,
     clickableAncestor,
     findCanvas,
     buildCanvasSelector,

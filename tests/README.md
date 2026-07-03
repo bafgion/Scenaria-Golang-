@@ -18,7 +18,7 @@
 
 | **Go integration (браузер)** | `internal/recorder/live_integration_test.go`, `internal/player/browser_action_integration_test.go`, `internal/selector/*_integration_test.go` | `go test -tags=integration ./internal/recorder/... ./internal/player/... ./internal/selector/...` | Живая запись Playwright; player: goto, click, fill, hover, select, check, assert, scroll, generators |
 
-| **Desktop smoke (WebView2)** | `internal/wailsapp/desktop_smoke_test.go` | `go test -tags=desktop ./internal/wailsapp/...` | `scenaria-gui.exe` запускается и не падает N секунд |
+| **Desktop smoke (WebView2)** | `scripts/desktop-smoke.ps1`, `frontend/e2e/specs/desktop-smoke.spec.ts` | `./scripts/desktop-smoke.ps1` или `go test -tags=desktop ./internal/wailsapp/...` | 22 теста: реальный `scenaria-gui.exe` + CDP — примеры, проверка, настройки, палитры, экспорт, плагины, HTTP Auth, несохранённые вкладки |
 
 | **Frontend unit** | `frontend/src/**/*.test.ts` | `cd frontend && npm test` | hotkeys, catalogTree, stepSearch, featureTemplate, gherkinCompletions, gherkinHintActions |
 
@@ -98,15 +98,15 @@ go test -tags=integration ./internal/recorder/...
 
 
 
-# Desktop smoke (нужен собранный scenaria-gui.exe)
+# Desktop smoke (нужен собранный scenaria-gui.exe + WebView2)
 
 wails build -platform windows/amd64
 
-go test -tags=desktop ./internal/wailsapp/...
-
-# или напрямую:
-
 ./scripts/desktop-smoke.ps1
+
+# или Go-обёртка (тот же скрипт):
+
+go test -tags=desktop ./internal/wailsapp/...
 
 
 
@@ -150,6 +150,6 @@ npm run test:e2e
 
 - **Playwright** (`frontend/e2e/`) — `wails-mock.js` подставляет `window.go` до загрузки в `vite preview`. Быстро, без WebView2.
 
-- **Desktop smoke** — реальный `scenaria-gui.exe` (WebView2). Проверяет, что бинарник стартует; не заменяет Playwright по покрытию UI.
+- **Desktop smoke** — реальный `scenaria-gui.exe` (WebView2) + Playwright over CDP (`:9333`). Проверяет UI без mock: примеры, проверка, настройки, модалки. Не заменяет mock E2E по полноте чеклиста.
 
 

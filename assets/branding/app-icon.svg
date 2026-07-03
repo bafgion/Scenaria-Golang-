@@ -18,6 +18,5 @@
   />
   <rect x="332" y="124" width="56" height="56" rx="16" fill="#e8e8e8"/>
   <rect x="148" y="148" width="64" height="64" rx="18" fill="#9cdc8a"/>
-  <circle cx="180" cy="180" r="40" fill="#9cdc8a" opacity="0.22"/>
   <rect x="124" y="340" width="56" height="56" rx="16" fill="#ff6b6b"/>
 </svg>

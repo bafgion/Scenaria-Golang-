@@ -73,7 +73,11 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	if err != nil {
 		return ScenarioResult{}, fmt.Errorf("start playwright: %w", err)
 	}
-	defer stopPW()
+	defer func() {
+		if e.options.CloseAfterRun {
+			stopPW()
+		}
+	}()
 
 	session, err := newBrowserSession(pw, e.options)
 	if err != nil {
@@ -81,7 +85,9 @@ func (e *PlaywrightExecutor) executeWithSession(ctx context.Context, input Scena
 	}
 	stopWatch := session.watchContext(ctx)
 	defer stopWatch()
-	defer session.close()
+	if e.options.CloseAfterRun {
+		defer session.close()
+	}
 
 	return e.runScenarioOnSession(ctx, session, input, run)
 }

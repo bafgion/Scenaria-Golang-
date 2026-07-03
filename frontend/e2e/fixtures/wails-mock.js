@@ -25,6 +25,9 @@
     activeTab: '',
     runDialogConfirmed: false,
     pickerDuringRecording: false,
+    onboardingCompleted: false,
+    onboardingDismissed: false,
+    onboardingVersion: 0,
     editor: {
       fontSize: 13,
       fontFamily: '"Cascadia Code", Consolas, monospace',
@@ -199,6 +202,8 @@
     ],
   }
 
+  let focusBrowserCalls = 0
+
   const app = {
     Version: async () => 'e2e-test',
     LoadSettings: async () => ({ ...settings }),
@@ -334,7 +339,10 @@
     },
     Validate: async () => ({ output: 'Проверка завершена.', error: '' }),
     ListTestClients: async () => [],
-    ListPlugins: async () => [],
+    ListPlugins: async () =>
+      e2eMode() === 'with-plugins'
+        ? [{ name: 'demo', description: 'Demo plugin', runnable: true, id: 'demo', source: 'local' }]
+        : [],
     ListRunResults: async () => (e2eMode() === 'flaky-run' ? flakyRunResults : []),
     FlakyMetrics: async () => (e2eMode() === 'flaky-run' ? flakyMetricsPayload : { scenarios: [], steps: [] }),
     ProjectArtifacts: async () => {
@@ -401,7 +409,7 @@
     OpenExternalURL: asyncOk,
     ValidateBrowser: async () => [],
     ArtifactExists: async () => false,
-    BundledExamplesPath: async () => (e2eMode() === 'examples' ? `${E2E_PROJECT}/examples` : ''),
+    BundledExamplesPath: async () => `${E2E_PROJECT}/examples`,
     ListScenarioTitles: async () => ['тест'],
     AnalyzeScenarioHints: async () => (e2eMode() === 'post-record' ? postRecordHints : []),
     ApplyScenarioHintFix: async (req) => {
@@ -427,6 +435,12 @@
     RenameFeature: asyncOk,
     Export: async (opts) => ({ output: `exported to ${opts?.output || ''}`, error: '' }),
     RunPlugin: asyncOk,
+    OpenBrowser: async () => {
+      liveRecord.browserOpen = true
+      liveRecord.recording = false
+      liveRecord.paused = false
+      emitE2E('browser-opened', '')
+    },
     StartRecord: async () => {
       const mode = e2eMode()
       if (mode === 'post-record' || mode === 'post-record-diff' || mode === 'record-resume' || mode === 'record-idle') {
@@ -455,9 +469,20 @@
         emitE2E('record-started', { append: true, sync: true })
         return
       }
+      const mode = e2eMode()
       liveRecord.captureEver = true
       liveRecord.recording = true
       liveRecord.paused = false
+      if (mode === 'record-resume') {
+        liveRecord.steps = [...resumeRecordSteps]
+        emitE2E('record-started', { append: true, resume: true })
+        queueMicrotask(() => {
+          for (const step of liveRecord.steps) {
+            emitE2E('record-step', step)
+          }
+        })
+        return
+      }
       liveRecord.steps = []
       emitE2E('record-started', { append: true })
     },
@@ -520,7 +545,9 @@
       liveRecord.steps = []
       emitE2E('record-stopped', null)
     },
-    FocusBrowser: noop,
+    FocusBrowser: async () => {
+      focusBrowserCalls += 1
+    },
     UndoRecordedStep: asyncOk,
     UpdateRecordingOptions: noop,
     PickSelector: asyncEmpty,
@@ -549,6 +576,9 @@
     InstallPlugin: asyncOk,
     IsRecordingPaused: async () => liveRecord.paused,
     HTTPAuthForHost: async () => null,
+    ListHTTPAuthHosts: async () => [],
+    SaveHTTPAuth: asyncOk,
+    RemoveHTTPAuth: asyncOk,
     DeleteTestClient: asyncOk,
     CaptureBrowserSession: async (name) => `captured ${name}`,
   }
@@ -571,5 +601,6 @@
 
   window.__e2eEmit = emitE2E
   window.__e2eLastRunRequest = () => lastRunRequest
+  window.__e2eFocusBrowserCalls = () => focusBrowserCalls
   window.go = { wailsapp: { App: app } }
 })()

@@ -26,6 +26,7 @@ const htmlTemplate = `<!DOCTYPE html>
     .passed { color: #0a7a2f; }
     .failed { color: #b00020; }
     .skipped { color: #666; }
+    .dry-run { color: #007acc; }
   </style>
 </head>
 <body>

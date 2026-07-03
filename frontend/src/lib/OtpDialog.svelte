@@ -17,8 +17,7 @@
 
 <svelte:window on:keydown={onKey} />
 
-<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-<div class="modal-backdrop" role="presentation">
+<div class="modal-backdrop modal-layer-top" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal" role="dialog" aria-modal="true" aria-label="Код из почты" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Код из почты</h3>

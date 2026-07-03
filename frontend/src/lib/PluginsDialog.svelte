@@ -5,6 +5,7 @@
 
   export let onClose: () => void = () => {}
   export let onRunPlugin: (name: string, dryRun: boolean) => void = () => {}
+  export let childModalOpen = false
   export let onAskConfirm: (message: string) => Promise<boolean> = (message) =>
     Promise.resolve(window.confirm(message))
 
@@ -71,12 +72,15 @@
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose()
   }
+  function onBackdropClose() {
+    if (!childModalOpen) onClose()
+  }
 </script>
 
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="modal-backdrop" role="presentation" on:click={onClose}>
+<div class="modal-backdrop" role="presentation" on:click={onBackdropClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal wide tall plugins-dialog" role="dialog" aria-modal="true" aria-label="Плагины" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Плагины проекта</h3>

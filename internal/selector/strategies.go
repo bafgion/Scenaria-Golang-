@@ -3,8 +3,8 @@ package selector
 import "strings"
 
 var (
-	DefaultClickStrategies = []string{"testid", "id", "aria", "title", "contextual", "text"}
-	DefaultInputStrategies = []string{"testid", "id", "label", "placeholder", "aria", "name"}
+	DefaultClickStrategies = []string{"text", "contextual", "aria", "title", "testid", "id"}
+	DefaultInputStrategies = []string{"label", "placeholder", "aria", "name", "testid", "id"}
 )
 
 var allowedClickStrategies = map[string]struct{}{

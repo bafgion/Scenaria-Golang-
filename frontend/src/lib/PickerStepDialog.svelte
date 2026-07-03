@@ -37,7 +37,7 @@
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="palette-backdrop" role="presentation" on:click={onClose}>
+<div class="palette-backdrop modal-layer-top" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="palette picker-step" role="dialog" aria-modal="true" aria-label="Шаг для элемента" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Элемент выбран — укажите шаг</h3>

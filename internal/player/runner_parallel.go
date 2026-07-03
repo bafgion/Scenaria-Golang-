@@ -35,6 +35,9 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	logx.Info("run started", "run_id", runID, "scenarios", len(plan.Cases), "workers", workers)
 
 	if workers == 1 || len(plan.Cases) <= 1 {
+		if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok {
+			return r.executeSequentialSession(ctx, result, pwExec, plan, nil)
+		}
 		total := len(plan.Cases)
 		var firstErr error
 		for i, runCase := range plan.Cases {
@@ -379,6 +382,192 @@ func (r BrowserRunner) executeParallel(
 	}
 	if err := ctx.Err(); err != nil {
 		return result, executionFailure(err, result)
+	}
+	return result, nil
+}
+
+func (r BrowserRunner) executeSequentialPlaywright(
+	ctx context.Context,
+	result ExecutionResult,
+	exec *PlaywrightExecutor,
+	plan ExecutionPlan,
+) (ExecutionResult, error) {
+	return r.executeSequentialSession(ctx, result, exec, plan, nil)
+}
+
+// ExecuteSequentialAttached runs scenarios on an already open browser page (IDE live session).
+func (r BrowserRunner) ExecuteSequentialAttached(
+	ctx context.Context,
+	exec *PlaywrightExecutor,
+	plan ExecutionPlan,
+	session *browserSession,
+) (ExecutionResult, error) {
+	files, scenarios, steps, _ := SummarizePlan(plan)
+	result := ExecutionResult{
+		Mode:      "browser",
+		Files:     files,
+		Scenarios: scenarios,
+		Steps:     steps,
+	}
+	return r.executeSequentialSession(ctx, result, exec, plan, session)
+}
+
+func (r BrowserRunner) executeSequentialSession(
+	ctx context.Context,
+	result ExecutionResult,
+	exec *PlaywrightExecutor,
+	plan ExecutionPlan,
+	attached *browserSession,
+) (ExecutionResult, error) {
+	if attached == nil {
+		if exec.options.AutoInstall {
+			if err := paths.EnsurePlaywrightEngine(exec.options.BrowserName); err != nil {
+				return result, fmt.Errorf("playwright install failed: %w", err)
+			}
+		} else {
+			paths.ConfigurePlaywrightBrowsersForEngine(exec.options.BrowserName)
+		}
+	}
+
+	total := len(plan.Cases)
+	var firstErr error
+	session := attached
+	var stopPW func()
+
+	openSession := func() error {
+		if session != nil && session.alive() {
+			return nil
+		}
+		if attached != nil {
+			return fmt.Errorf("браузер не открыт")
+		}
+		if stopPW != nil {
+			stopPW()
+			stopPW = nil
+		}
+		pw, stop, err := startPlaywright(ctx)
+		if err != nil {
+			return fmt.Errorf("start playwright: %w", err)
+		}
+		stopPW = stop
+		next, err := newBrowserSession(pw, exec.options)
+		if err != nil {
+			stopPW()
+			stopPW = nil
+			return err
+		}
+		session = next
+		return nil
+	}
+	defer func() {
+		if attached == nil && exec.options.CloseAfterRun && session != nil {
+			session.close()
+		}
+		if stopPW != nil && exec.options.CloseAfterRun {
+			stopPW()
+		}
+	}()
+
+	if session == nil {
+		if err := openSession(); err != nil {
+			return result, err
+		}
+	}
+
+	for i, runCase := range plan.Cases {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
+		emitRunProgress(ctx, RunProgressEvent{
+			Phase:       ProgressScenarioStart,
+			Index:       i + 1,
+			Total:       total,
+			FeaturePath: runCase.FeaturePath,
+			Scenario:    runCase.Name,
+		})
+
+		if session == nil || !session.alive() {
+			if session != nil && session.external {
+				runResult := ScenarioResult{
+					FeaturePath: runCase.FeaturePath,
+					Scenario:    runCase.Name,
+					Status:      "failed",
+					Message:     "браузер закрыт — откройте браузер или уберите шаг «закрываю браузер»",
+				}
+				result.ScenarioResults = append(result.ScenarioResults, runResult)
+				recordScenarioRunStatus(ctx, runResult)
+				emitRunProgress(ctx, RunProgressEvent{
+					Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+					FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+				})
+				err := fmt.Errorf("scenario %q failed: %s", runCase.Name, runResult.Message)
+				if !ContinueOnFail(ctx) {
+					return result, executionFailure(err, result)
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if err := openSession(); err != nil {
+				return result, err
+			}
+		}
+
+		runResult, err := exec.ExecuteScenarioOnSession(ctx, session, scenarioInputFromCase(runCase))
+		if err != nil {
+			if runResult.Scenario == "" {
+				runResult = ScenarioResult{
+					FeaturePath: runCase.FeaturePath,
+					Scenario:    runCase.Name,
+					Status:      "failed",
+					Message:     err.Error(),
+				}
+			} else if runResult.Status == "" {
+				runResult.Status = "failed"
+				if runResult.Message == "" {
+					runResult.Message = err.Error()
+				}
+			}
+			result.ScenarioResults = append(result.ScenarioResults, runResult)
+			recordScenarioRunStatus(ctx, runResult)
+			emitRunProgress(ctx, RunProgressEvent{
+				Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+				FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+			})
+			if !ContinueOnFail(ctx) {
+				return result, executionFailure(err, result)
+			}
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if runResult.Status == "failed" {
+			result.ScenarioResults = append(result.ScenarioResults, runResult)
+			recordScenarioRunStatus(ctx, runResult)
+			emitRunProgress(ctx, RunProgressEvent{
+				Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+				FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+			})
+			runErr := fmt.Errorf("scenario %q failed: %s", runCase.Name, runResult.Message)
+			if !ContinueOnFail(ctx) {
+				return result, executionFailure(runErr, result)
+			}
+			if firstErr == nil {
+				firstErr = runErr
+			}
+			continue
+		}
+		result.ScenarioResults = append(result.ScenarioResults, runResult)
+		recordScenarioRunStatus(ctx, runResult)
+		emitRunProgress(ctx, RunProgressEvent{
+			Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+			FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: true,
+		})
+	}
+	if firstErr != nil {
+		return result, executionFailure(firstErr, result)
 	}
 	return result, nil
 }

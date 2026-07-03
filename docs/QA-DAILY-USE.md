@@ -93,9 +93,14 @@
 
 **Файл:** `frontend/e2e/specs/qa-daily-use.spec.ts` — 32 теста, по одному на пункт чеклиста.
 
+**Сквозные сценарии (user journeys):** `frontend/e2e/specs/user-journeys.spec.ts` — 11 тестов, цепочки «как в реальной работе».
+
 Запуск:
 
 ```bash
+cd frontend && npm run test:e2e              # все E2E (~80 тестов)
+cd frontend && npm run test:e2e:journeys     # только user journeys (быстрый локальный прогон)
+cd frontend && npm run test:e2e:qa             # только чеклист QA-DAILY-USE
 cd frontend && npm run test:e2e -- e2e/specs/qa-daily-use.spec.ts
 ```
 
@@ -103,14 +108,64 @@ cd frontend && npm run test:e2e -- e2e/specs/qa-daily-use.spec.ts
 
 | Пункт | E2E | Примечание |
 |-------|-----|------------|
-| 1.1–1.6 | ✅ | UI onboarding, wizard, update defer |
+| 1.1–1.6 | ✅ | UI onboarding, wizard, update defer; **интерактивный тур** — `onboarding-tour.spec.ts` |
 | 2.1–2.5 | ✅ / частично | 2.3 — выбор «Как в системе», не проверка OS theme |
 | 3.1–3.5 | ✅ | mock `post-record`, `record-idle` |
 | 4.1–4.6 | ✅ | mock `run-progress`, `run-stream`, `run-cancel` |
 | 5.1–5.5 | ✅ | mock `flaky-run`, `trace-artifacts`, `allure-missing` |
 | 6.1–6.5 | ✅ | Settings dialog |
 
-### Что остаётся ручным / desktop-smoke
+### User journeys (сквозные сценарии)
+
+| Сценарий | Что эмулирует |
+|----------|----------------|
+| Знакомство с примерами | Примеры → smoke → проверка → dry-run |
+| Новый проект | Мастер → правка → Ctrl+S → проверка |
+| Live-запись | HTTP Auth → запись → стоп; confirm при смене вкладки |
+| Прогон suite | Playing bar N/M, журнал, отмена прогона |
+| Разбор падения | Шаг ошибки → flaky 3× → Trace viewer |
+| Браузер и фокус | Открыть → «Показать браузер» → закрыть |
+| Настройки | Apply без закрытия, Ctrl+S не трогает сценарий |
+| Плагины | Список → «Запуск…» → отмена |
+| Модалки | Escape закрывает только верхний диалог |
+
+### Desktop smoke (Windows + WebView2)
+
+**Скрипт:** `scripts/desktop-smoke.ps1` — запускает `scenaria-gui.exe` с CDP `:9333`, проверяет живость процесса и гоняет Playwright против реального WebView2.
+
+**Спеки:** `frontend/e2e/specs/desktop-smoke.spec.ts` (22 теста) и `frontend/e2e/specs/desktop-tour-onboarding.spec.ts` (тур до шагов 5–6). Без wails-mock.
+
+```powershell
+# Сборка + полный smoke (процесс + UI)
+./scripts/desktop-smoke.ps1
+
+# Только проверка процесса (без Playwright UI)
+./scripts/desktop-smoke.ps1 -SkipUI
+
+# UI-тесты, если приложение уже запущено с CDP (SCENARIA_DESKTOP_SMOKE=1)
+$env:SCENARIA_DESKTOP_SMOKE = "1"
+$env:SCENARIA_DESKTOP_SMOKE_PORT = "9333"
+.\build\bin\scenaria-gui.exe
+cd frontend && npm run test:e2e:desktop
+
+# Go-обёртка
+go test -tags=desktop ./internal/wailsapp/...
+```
+
+| Desktop smoke | E2E mock |
+|---------------|----------|
+| Реальный Wails + WebView2 | vite preview + wails-mock.js |
+| Примеры с диска `examples/` | `?e2e=examples` |
+| Диалоги, палитры, настройки, экспорт, плагины | Полный чеклист QA + mock-прогоны |
+| Проверка сценария (реальный backend) | Dry-run / run-progress / flaky-run |
+
+**Перенесено из mock E2E (22 теста):** загрузка, примеры/каталог, проверка, настройки (6.1/6.3/6.4), палитра команд, справка F1, горячие клавиши, журнал Ctrl+`, новый сценарий, сниппеты, RunDialog, экспорт-превью, несохранённая вкладка, плагины, «О программе», запись + HTTP Auth.
+
+**Обучалка (тур):** `frontend/e2e/specs/onboarding-tour.spec.ts` — первый запуск, пропуск, шаг 5 (подсветка «Проверить…», z-index). Desktop: `desktop-tour-onboarding.spec.ts` через CDP. Шкала слоёв: `--z-onboarding-*` в `style.css`, тест `layers.test.ts`. Повтор: «Справка → Обучение…».
+
+**Пока только mock** (нужны `?e2e=…`, эмуляция прогона, нативные диалоги или длинный run): live-запись, post-record diff, import/export на диск, dry-run completion, flaky 3×, trace viewer, new-project wizard, missing-browser, session restore после reload, Monaco Ctrl+Shift+O, Ctrl+S на реальный проект.
+
+### Что остаётся ручным
 
 | Область | Почему не E2E |
 |---------|----------------|

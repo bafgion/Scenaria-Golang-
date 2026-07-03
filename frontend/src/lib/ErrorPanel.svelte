@@ -13,7 +13,7 @@
 
 <div class="error-panel">
   {#if !entry}
-    <p class="empty">Нет ошибок последнего прогона</p>
+    <p class="empty">Нет ошибок в последнем запуске</p>
   {:else}
     <h4>Ошибка теста</h4>
     {@const parts = splitPath(entry.path)}

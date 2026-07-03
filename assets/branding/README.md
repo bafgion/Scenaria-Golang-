@@ -14,6 +14,8 @@ Preview PNG variants (512×512, for `.ico` conversion):
 
 `app.ico` — иконка exe (генерация: `python scripts/generate_app_icon.py`).
 
+Скрипт «сплющивает» прозрачность на непрозрачный фон `#252526`, чтобы на рабочем столе Windows иконка не выглядела полупрозрачной.
+
 ## Сборка `.ico` для Windows
 
 ```powershell

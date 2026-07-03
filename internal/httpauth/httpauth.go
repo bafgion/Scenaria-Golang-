@@ -150,7 +150,7 @@ func CredentialsForHost(host string, cfg *settings.AppSettings) (username, passw
 
 func ListHosts(cfg *settings.AppSettings) []string {
 	if cfg == nil || len(cfg.HTTPAuth) == 0 {
-		return nil
+		return []string{}
 	}
 	out := make([]string, 0, len(cfg.HTTPAuth))
 	for host, entry := range cfg.HTTPAuth {

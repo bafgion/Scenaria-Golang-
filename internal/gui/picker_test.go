@@ -18,8 +18,21 @@ func TestPickerStepChoicesIncludeClickAndRaw(t *testing.T) {
 
 func TestPickerStepChoicesEscapeQuotes(t *testing.T) {
 	choices := PickerStepChoices(`input[name="email"]`, "Допустим")
-	if choices[0].StepBody != `нажимаю 'input[name="email"]'` {
-		t.Fatalf("got %q", choices[0].StepBody)
+	want := `нажимаю "input[name=\"email\"]"`
+	if choices[0].StepBody != want {
+		t.Fatalf("got %q want %q", choices[0].StepBody, want)
+	}
+}
+
+func TestPickerStepChoicesEscapeHasTextSelector(t *testing.T) {
+	choices := PickerStepChoices(`a:has-text("Одежда")`, "И")
+	want := `  И навожу "a:has-text(\"Одежда\")"`
+	hover := choices[2]
+	if hover.Label != "Наведение" {
+		t.Fatalf("choice: %+v", hover)
+	}
+	if hover.Preview != want {
+		t.Fatalf("preview %q want %q", hover.Preview, want)
 	}
 }
 

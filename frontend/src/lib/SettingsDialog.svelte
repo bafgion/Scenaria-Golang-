@@ -21,13 +21,13 @@
   export let stepsPanelVisible = true
   export let stepsPanelHeight = 160
   export let checkUpdatesOnStartup = true
-  export let selectorClickStrategies: string[] = ['testid', 'id', 'aria', 'contextual', 'text']
+  export let selectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   export let selectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
   export let navWaitUntil = 'domcontentloaded'
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
 
   export let onSave: () => void
-  export let onApply: (() => void) | null = null
+  export let onApply: (() => void | Promise<void | string>) | null = null
   export let onCancel: () => void
   export let onOpenPlugins: (() => void) | null = null
   export let onOpenVanessa: (() => void) | null = null
@@ -41,6 +41,28 @@
   let browserStatus: gui.BrowserInstallStatusDTO | null = null
   let browserInstallBusy = false
   let browserInstallProgress = ''
+  let applyBusy = false
+  let applyNotice = ''
+  let applyNoticeTimer: ReturnType<typeof setTimeout> | null = null
+
+  async function handleApply() {
+    if (!onApply || applyBusy) return
+    applyBusy = true
+    applyNotice = ''
+    try {
+      const result = await onApply()
+      applyNotice = typeof result === 'string' && result.trim() ? result.trim() : 'Настройки применены и сохранены.'
+      if (applyNoticeTimer) clearTimeout(applyNoticeTimer)
+      applyNoticeTimer = setTimeout(() => {
+        applyNotice = ''
+        applyNoticeTimer = null
+      }, 5000)
+    } catch (err) {
+      applyNotice = `Ошибка: ${err instanceof Error ? err.message : String(err)}`
+    } finally {
+      applyBusy = false
+    }
+  }
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'record', label: 'Запись и браузер' },
@@ -56,8 +78,8 @@
     [250, 'Медленно'],
     [500, 'Учебный'],
   ]
-  const defaultClickStrategies = ['testid', 'id', 'aria', 'contextual', 'text']
-  const defaultInputStrategies = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  const defaultClickStrategies = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
+  const defaultInputStrategies = ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
 
   const strategyLabels: Record<string, string> = {
     testid: 'data-testid',
@@ -543,9 +565,14 @@
 
     <footer class="dialog-footer">
       <button type="button" class="reset-btn" on:click={resetToDefaults}>Сбросить по умолчанию</button>
+      {#if applyNotice}
+        <span class="apply-notice" role="status">{applyNotice}</span>
+      {/if}
       <span class="dialog-footer-spacer"></span>
       {#if onApply}
-        <button type="button" on:click={() => onApply?.()}>Применить</button>
+        <button type="button" class:applied={!!applyNotice && !applyBusy} disabled={applyBusy} on:click={handleApply}>
+          {applyBusy ? 'Применяю…' : applyNotice ? 'Применено' : 'Применить'}
+        </button>
       {/if}
       <button type="button" class="primary" on:click={onSave}>OK</button>
       <button type="button" on:click={onCancel}>Отмена</button>
@@ -623,6 +650,18 @@
 
   .dialog-footer-spacer {
     flex: 1;
+  }
+
+  .apply-notice {
+    max-width: min(420px, 42vw);
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--color-success, #4ec9b0);
+  }
+
+  .dialog-footer button.applied:not(:disabled) {
+    color: var(--color-success, #4ec9b0);
+    border-color: var(--color-success, #4ec9b0);
   }
 
   .reset-btn {

@@ -228,19 +228,19 @@ func upgradeClickSelector(step RecordedStep) RecordedStep {
 	if strings.Contains(strings.ToLower(step.Selector), "canvas") {
 		return step
 	}
+	if !selectorIsFragile(step.Selector) && step.Selector != "" {
+		return step
+	}
 	ctx := strings.TrimSpace(step.Context)
 	label := strings.TrimSpace(step.Text)
 	if len(label) >= 2 && len(ctx) >= 6 {
-		step.Selector = contextualButtonSelector(ctx, label)
-		return step
-	}
-	if !selectorIsFragile(step.Selector) && step.Selector != "" {
+		step.Selector = ContextualClickSelector(ctx, label)
 		return step
 	}
 	if len(label) < 2 {
 		return step
 	}
-	step.Selector = `text="` + escapeSelectorText(label) + `"`
+	step.Selector = ClickHasTextSelector(label, "button")
 	return step
 }
 
@@ -311,14 +311,9 @@ func bestCanvasSelector(step RecordedStep) string {
 	return "canvas"
 }
 
-func contextualButtonSelector(context, label string) string {
-	if len(context) > 80 {
-		context = context[:60]
-	}
-	if len(label) > 60 {
-		label = label[:40]
-	}
-	return `text="` + escapeSelectorText(context) + `" >> text="` + escapeSelectorText(label) + `"`
+func escapeSelectorText(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	return strings.ReplaceAll(s, `"`, `\"`)
 }
 
 func selectorIsFragile(selector string) bool {
@@ -326,7 +321,19 @@ func selectorIsFragile(selector string) bool {
 	if strings.Contains(lower, "nth-of-type") {
 		return true
 	}
-	return regexp.MustCompile(`>\s*input\s*$`).MatchString(lower)
+	if regexp.MustCompile(`>\s*input\s*$`).MatchString(lower) {
+		return true
+	}
+	if strings.Contains(lower, "nth-child") {
+		return true
+	}
+	if m := regexp.MustCompile(`#([^\s\[]+)`).FindStringSubmatch(selector); len(m) > 1 && isUnstableSelectorValue(m[1]) {
+		return true
+	}
+	if m := regexp.MustCompile(`\[data-testid="([^"]+)"\]`).FindStringSubmatch(selector); len(m) > 1 && isUnstableSelectorValue(m[1]) {
+		return true
+	}
+	return false
 }
 
 func isGenericPlaceholder(selector string) bool {
@@ -368,9 +375,4 @@ func checkboxAction(checked bool) string {
 		return "check"
 	}
 	return "uncheck"
-}
-
-func escapeSelectorText(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	return strings.ReplaceAll(s, `"`, `\"`)
 }

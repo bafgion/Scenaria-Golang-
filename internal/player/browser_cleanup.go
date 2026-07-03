@@ -20,7 +20,7 @@ func (s *browserSession) watchContext(ctx context.Context) func() {
 		case <-ctx.Done():
 			once.Do(func() {
 				logx.Debug("closing browser session after context cancellation")
-				s.close()
+				s.closeLocked(false)
 			})
 		case <-done:
 		}
@@ -28,7 +28,7 @@ func (s *browserSession) watchContext(ctx context.Context) func() {
 	return func() { close(done) }
 }
 
-// startPlaywright runs Playwright and stops it when ctx is cancelled or stop() is called.
+// startPlaywright runs Playwright; callers invoke the returned stop() when done (see CloseAfterRun).
 func startPlaywright(ctx context.Context) (*playwright.Playwright, func(), error) {
 	pw, err := playwright.Run()
 	if err != nil {
@@ -40,20 +40,6 @@ func startPlaywright(ctx context.Context) (*playwright.Playwright, func(), error
 			closeBrowserResource("playwright", pw.Stop)
 		})
 	}
-	if ctx != nil {
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-ctx.Done():
-				logx.Debug("stopping playwright after context cancellation")
-				stop()
-			case <-done:
-			}
-		}()
-		return pw, func() {
-			close(done)
-			stop()
-		}, nil
-	}
+	_ = ctx // lifecycle: callers stop Playwright explicitly (see CloseAfterRun).
 	return pw, stop, nil
 }

@@ -132,7 +132,7 @@ func mapStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "passed", "pass", "ok":
 		return "passed"
-	case "skipped", "skip":
+	case "skipped", "skip", "dry-run":
 		return "skipped"
 	case "broken":
 		return "broken"

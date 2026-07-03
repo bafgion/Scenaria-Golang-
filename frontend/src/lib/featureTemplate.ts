@@ -28,6 +28,5 @@ export function buildFeatureTemplate(opts: FeatureTemplateOptions): string {
 ${STEP}Допустим открыт "${url}"
 ${STEP}Тогда вижу "h1"
 ${STEP}И проверяю текст "Example Domain" в "h1"
-${STEP}И закрываю браузер
 `
 }

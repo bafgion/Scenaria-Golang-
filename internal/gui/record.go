@@ -103,6 +103,7 @@ func (s *Service) ImportJSON(req ImportRequest) RunResult {
 }
 
 func (s *Service) OpenBrowser(req OpenBrowserRequest, emit func(string, any)) RunResult {
+	req.TestClient = ""
 	return s.RecordLive(RecordRequest{
 		URL:              req.URL,
 		Output:           req.Output,

@@ -11,6 +11,7 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
+	"github.com/bafgion/scenaria-golang/internal/winfocus"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
@@ -262,6 +263,16 @@ func (s *LiveSession) BrowserAlive() bool {
 	return !page.IsClosed()
 }
 
+func (s *LiveSession) ActivePage() (playwright.Page, bool) {
+	s.mu.Lock()
+	page := s.page
+	s.mu.Unlock()
+	if page == nil || page.IsClosed() {
+		return nil, false
+	}
+	return page, true
+}
+
 func (s *LiveSession) Bind(page playwright.Page, steps *[]RecordedStep) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -281,10 +292,7 @@ func (s *LiveSession) FocusBrowser() error {
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
-	if page == nil {
-		return fmt.Errorf("браузер не открыт")
-	}
-	return page.BringToFront()
+	return winfocus.BringPageToFront(page)
 }
 
 func (s *LiveSession) ApplyRecorderConfig(filterImportant, navOnly, hoverRecord bool) error {

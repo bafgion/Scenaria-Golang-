@@ -84,11 +84,15 @@ func (s *Service) PickSelector() PickSelectorResult {
 }
 
 func quotePickerSelector(value string) string {
-	value = strings.TrimSpace(value)
-	if strings.Contains(value, `"`) {
-		return "'" + value + "'"
-	}
-	return `"` + value + `"`
+	return `"` + escapePickerArg(strings.TrimSpace(value)) + `"`
+}
+
+func escapePickerArg(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	return s
 }
 
 func formatPickerStep(keyword, body string) string {

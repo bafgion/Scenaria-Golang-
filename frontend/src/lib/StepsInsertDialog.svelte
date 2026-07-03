@@ -38,14 +38,17 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape') {
+      e.stopImmediatePropagation()
+      onClose()
+    }
   }
 </script>
 
 <svelte:window on:keydown={onKey} />
 
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-<div class="modal-backdrop" role="presentation" on:click={onClose}>
+<div class="modal-backdrop modal-layer-top" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Вставить шаг" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>Вставить шаг</h3>

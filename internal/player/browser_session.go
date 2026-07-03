@@ -28,6 +28,7 @@ type PlaywrightExecutorOptions struct {
 	MaxLoopIterations int
 	NavWaitUntil      string
 	PromptEmailCode   EmailCodePrompter
+	CloseAfterRun     bool
 }
 
 type PlaywrightExecutor struct {
@@ -38,15 +39,20 @@ func NewPlaywrightExecutor(options PlaywrightExecutorOptions) *PlaywrightExecuto
 	return &PlaywrightExecutor{options: options}
 }
 
+func (e *PlaywrightExecutor) NavWaitUntil() string {
+	return e.options.NavWaitUntil
+}
+
 type browserSession struct {
-	mu           sync.Mutex
-	browser      playwright.Browser
-	context      playwright.BrowserContext
-	page         playwright.Page
-	closed       bool
-	traceEnabled bool
-	traceStopped bool
-	videoEnabled bool
+	mu            sync.Mutex
+	browser       playwright.Browser
+	context       playwright.BrowserContext
+	page          playwright.Page
+	closed        bool
+	external      bool
+	traceEnabled  bool
+	traceStopped  bool
+	videoEnabled  bool
 	videoRetained bool
 	navWaitUntil  *playwright.WaitUntilState
 }
@@ -101,14 +107,51 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 	return session, nil
 }
 
-func (s *browserSession) close() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closeLocked()
+// AttachToPage wraps an existing Playwright page (IDE live browser). The session is not closed
+// automatically unless the scenario runs «закрываю браузер» or CloseAfterRun is set on the executor.
+func AttachToPage(page playwright.Page, navWaitUntil string) (*browserSession, error) {
+	if page == nil || page.IsClosed() {
+		return nil, fmt.Errorf("browser page is not available")
+	}
+	bctx := page.Context()
+	if bctx == nil {
+		return nil, fmt.Errorf("browser context is not available")
+	}
+	nav, err := ParseNavWaitUntil(navWaitUntil)
+	if err != nil {
+		return nil, err
+	}
+	return &browserSession{
+		browser:      bctx.Browser(),
+		context:      bctx,
+		page:         page,
+		external:     true,
+		navWaitUntil: nav,
+	}, nil
 }
 
-func (s *browserSession) closeLocked() {
+func (s *browserSession) alive() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.closed && s.page != nil && !s.page.IsClosed()
+}
+
+func (s *browserSession) close() {
+	s.closeLocked(false)
+}
+
+func (s *browserSession) closeLocked(force bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s == nil || s.closed {
+		return
+	}
+	// IDE live browser: detach the test runner without closing the user's window.
+	if s.external {
+		s.closed = true
 		return
 	}
 	if s.traceEnabled && !s.traceStopped && s.context != nil {
@@ -459,7 +502,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "close-browser":
-		session.closeLocked()
+		session.closeLocked(true)
 		return nil
 	case "remember-text":
 		if runCtx == nil {

@@ -25,6 +25,20 @@ func TestStoreAndResolveHostCredentials(t *testing.T) {
 	}
 }
 
+func TestListHostsEmptyNotNil(t *testing.T) {
+	hosts := ListHosts(nil)
+	if hosts == nil {
+		t.Fatal("expected non-nil empty slice")
+	}
+	if len(hosts) != 0 {
+		t.Fatalf("len=%d", len(hosts))
+	}
+	hosts = ListHosts(&settings.AppSettings{})
+	if hosts == nil {
+		t.Fatal("expected non-nil empty slice for empty settings")
+	}
+}
+
 func TestApplyURLCredentials(t *testing.T) {
 	cfg := &settings.AppSettings{}
 	clean := ApplyURLCredentials(`https://bob:123@site.test/`, cfg)

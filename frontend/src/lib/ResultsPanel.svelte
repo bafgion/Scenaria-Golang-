@@ -1,6 +1,7 @@
 <script lang="ts">
   import { gui } from '../../wailsjs/go/models'
   import { flakyLabel, type FlakyScenarioStat } from './flakyMetrics'
+  import { isUntitled, untitledLabel } from './untitled'
 
   export let entries: gui.RunResultEntry[] = []
   export let flakyByPath: Map<string, FlakyScenarioStat> = new Map()
@@ -27,6 +28,11 @@
   function basename(p: string): string {
     const parts = p.replace(/\\/g, '/').split('/')
     return parts[parts.length - 1] || p
+  }
+
+  function featureDisplayName(path: string): string {
+    if (isUntitled(path)) return untitledLabel(path)
+    return basename(path)
   }
 
   function formatAt(at: string): string {
@@ -99,7 +105,7 @@
           >
             <td>
               <div class="scenario-name">{parts.scenario || basename(parts.feature)}</div>
-              <div class="feature-name">{basename(parts.feature)}</div>
+              <div class="feature-name">{featureDisplayName(parts.feature)}</div>
               {#if flakyStat?.flaky}
                 <div class="flaky-row">
                   <div class="flaky-tag">{flakyLabel(flakyStat)}</div>

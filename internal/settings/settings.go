@@ -39,6 +39,9 @@ type AppSettings struct {
 	Editor              EditorSettings             `json:"editor,omitempty"`
 	ChecklistDismissed  bool                     `json:"checklist_dismissed,omitempty"`
 	WelcomePlayedSuccess bool                    `json:"welcome_played_success,omitempty"`
+	OnboardingCompleted  bool                     `json:"onboarding_completed,omitempty"`
+	OnboardingDismissed  bool                     `json:"onboarding_dismissed,omitempty"`
+	OnboardingVersion    int                      `json:"onboarding_version,omitempty"`
 	StartURL            string                   `json:"start_url,omitempty"`
 	RunDialogConfirmed  bool                     `json:"run_dialog_confirmed,omitempty"`
 	PickerDuringRecording bool                   `json:"picker_during_recording,omitempty"`

@@ -35,6 +35,24 @@
   --tab-height: 22px;
   --action-bar-min: 56px;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+  /*
+   * Z-index scale (bottom → top). Use only these tokens for new UI.
+   * Context menu < shell < browser < modals < onboarding < splash
+   */
+  --z-context-menu: 1400;
+  --z-menubar: 2200;
+  --z-menu-dropdown: 2201;
+  --z-browser-overlay: 2400;
+  --z-modal: 2500;
+  --z-modal-top: 2600;
+  --z-modal-confirm: 2700;
+  --z-onboarding-dim: 2750;
+  --z-onboarding-block: 2751;
+  --z-onboarding-target: 2810;
+  --z-onboarding-ring: 2815;
+  --z-onboarding-card: 2820;
+  --z-splash: 3000;
 }
 
 * {
@@ -213,7 +231,7 @@ html {
   padding: 0 4px;
   user-select: none;
   position: relative;
-  z-index: 2200;
+  z-index: var(--z-menubar);
 }
 
 .menu-root {
@@ -242,7 +260,7 @@ html {
   background: var(--color-sidebar);
   border: 1px solid var(--color-border);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  z-index: 2201;
+  z-index: var(--z-menu-dropdown);
   padding: 4px 0;
   overflow: hidden;
 }
@@ -285,13 +303,50 @@ html {
 .palette-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2500;
+  z-index: var(--z-modal);
   background: rgba(0, 0, 0, 0.62);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 8vh 16px 16px;
   box-sizing: border-box;
+}
+
+.palette-backdrop.modal-layer-top {
+  z-index: var(--z-modal-top);
+}
+
+.modal-backdrop.modal-layer-top {
+  z-index: var(--z-modal-top);
+}
+
+.palette-backdrop.modal-layer-confirm,
+.modal-backdrop.modal-layer-confirm {
+  z-index: var(--z-modal-confirm);
+}
+
+/* —— Onboarding tour: interactive targets above dimming overlay —— */
+body.onboarding-tour-active .onboarding-elevated {
+  position: relative;
+  z-index: var(--z-onboarding-target);
+  pointer-events: auto;
+}
+
+body.onboarding-tour-active .menubar.onboarding-elevated {
+  overflow: visible;
+}
+
+body.onboarding-tour-active .menu-item.onboarding-target {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+  background: var(--color-selected);
+}
+
+body.onboarding-tour-active .onboarding-target {
+  position: relative;
+  z-index: calc(var(--z-onboarding-target) + 1);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  border-radius: 4px;
 }
 
 .palette-backdrop > .palette {
@@ -1647,7 +1702,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2500;
+  z-index: var(--z-modal);
   padding: 24px 16px;
   box-sizing: border-box;
 }
@@ -2327,7 +2382,7 @@ html {
 .context-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1400;
+  z-index: var(--z-context-menu);
 }
 
 .context-menu {

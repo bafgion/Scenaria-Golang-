@@ -90,4 +90,4 @@ jobs:
           wails build -platform windows/amd64 -skipbindings
       - name: Desktop smoke
         shell: pwsh
-        run: ./scripts/desktop-smoke.ps1
+        run: ./scripts/desktop-smoke.ps1 -SkipBuild

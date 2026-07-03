@@ -26,7 +26,8 @@ func TestDesktopSmokeScenariaGUI(t *testing.T) {
 	if _, err := os.Stat(exe); err != nil {
 		t.Skipf("scenaria-gui.exe not built (%s); run wails build first", exe)
 	}
-	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-ExePath", exe)
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+		"-ExePath", exe, "-StartupTimeoutSec", "120")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
