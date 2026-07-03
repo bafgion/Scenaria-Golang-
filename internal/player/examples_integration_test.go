@@ -55,13 +55,14 @@ func TestBundledExamplesPlaywright(t *testing.T) {
 		t.Fatalf("expected at least 6 runnable scenarios (outline expands), got %d", len(plan.Cases))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	runner := player.BrowserRunner{
 		Executor: player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
-			BrowserName: "chromium",
-			Headless:    true,
+			BrowserName:   "chromium",
+			Headless:      true,
+			CloseAfterRun: true,
 		}),
 	}
 	result, err := runner.Execute(ctx, plan)

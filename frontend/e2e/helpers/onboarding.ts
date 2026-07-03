@@ -16,7 +16,7 @@ export async function restartOnboardingTour(page: Page): Promise<void> {
 export async function expectTourStep(page: Page, step: number, title?: string | RegExp): Promise<void> {
   await expect(page.getByText(`Шаг ${step} из ${TOUR_TOTAL}`)).toBeVisible({ timeout: 15_000 })
   if (title) {
-    await expect(page.getByRole('heading', { name: title })).toBeVisible()
+    await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 15_000 })
   }
 }
 

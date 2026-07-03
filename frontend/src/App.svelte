@@ -776,6 +776,7 @@
     }
     if (id === 'journal') {
       bottomPanelOpen = true
+      bottomTab = 'journal'
       saveLayout({ bottomPanelOpen: true })
       void tick().then(() => onboardingTour?.relayout())
     }
