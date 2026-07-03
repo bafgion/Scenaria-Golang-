@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import type { gui } from '../../wailsjs/go/models'
   import { BRAND_NAME } from './brand'
 
@@ -14,8 +15,10 @@
   export let onDownload: () => void = () => {}
   export let onApply: () => void = () => {}
 
+  $: tr = createTranslator($locale)
+
   $: progressPercent = Math.max(0, Math.min(100, Number(progress?.percent ?? 0)))
-  $: progressLabel = progress?.message || (downloading ? 'Обновление…' : '')
+  $: progressLabel = progress?.message || (downloading ? tr('dialogs.update.updating') : '')
   $: progressIndeterminate = downloading && progressPercent <= 0 && (!progress?.stage || progress.stage === 'download')
 
   function onKey(e: KeyboardEvent) {
@@ -28,13 +31,13 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={() => !downloading && onClose()}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal update-dialog" role="dialog" aria-modal="true" aria-label="Обновления" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Обновления {BRAND_NAME}</h3>
-    <p class="version">Текущая версия: {info?.currentVersion || currentVersion || '—'}</p>
+  <div class="modal update-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.update.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.update.title', { brand: BRAND_NAME })}</h3>
+    <p class="version">{tr('dialogs.update.currentVersion', { version: info?.currentVersion || currentVersion || tr('dialogs.common.notFound') })}</p>
     {#if hasUpdate}
-      <p class="update-available">Доступна версия {info?.latestVersion || 'новее'}</p>
+      <p class="update-available">{tr('dialogs.update.available', { version: info?.latestVersion || tr('dialogs.update.availableFallback') })}</p>
     {:else}
-      <p class="up-to-date">Установлена актуальная версия</p>
+      <p class="up-to-date">{tr('dialogs.update.upToDate')}</p>
     {/if}
     {#if downloading && progressLabel}
       <div class="progress-block" aria-live="polite">
@@ -49,19 +52,19 @@
     {/if}
     <div class="modal-actions">
       {#if hasUpdate && info?.htmlUrl}
-        <button type="button" disabled={downloading} on:click={onOpenRelease}>Страница релиза</button>
+        <button type="button" disabled={downloading} on:click={onOpenRelease}>{tr('dialogs.update.releasePage')}</button>
       {/if}
       {#if hasUpdate && canAutoApply && info?.downloadUrl}
         <button type="button" class="primary" disabled={downloading} on:click={onApply}>
-          {downloading ? 'Обновление…' : 'Установить обновление'}
+          {downloading ? tr('dialogs.update.updating') : tr('dialogs.update.install')}
         </button>
       {/if}
       {#if hasUpdate && info?.downloadUrl}
         <button type="button" disabled={downloading} on:click={onDownload}>
-          {downloading ? 'Скачивание…' : 'Скачать вручную'}
+          {downloading ? tr('dialogs.update.downloading') : tr('dialogs.update.download')}
         </button>
       {/if}
-      <button type="button" disabled={downloading} on:click={onClose}>Закрыть</button>
+      <button type="button" disabled={downloading} on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

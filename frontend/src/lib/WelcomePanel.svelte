@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { BRAND_NAME } from './brand'
+  import { createTranslator, locale } from './i18n'
 
   export let startURL = 'https://site.com'
   export let recentProjects: string[] = []
@@ -22,10 +23,12 @@
   export let onDismissChecklist: () => void = () => {}
   export let tourElevated = false
 
-  const steps = [
-    { id: 1, label: 'Открыть проект' },
-    { id: 2, label: 'Записать сценарий' },
-    { id: 3, label: 'Запустить тест' },
+  $: tr = createTranslator($locale)
+
+  $: steps = [
+    { id: 1, label: tr('welcome.checklist.openProject') },
+    { id: 2, label: tr('welcome.checklist.record') },
+    { id: 3, label: tr('welcome.checklist.runTest') },
   ]
 
   $: doneFlags = [projectOpen, recorded, playedSuccess]
@@ -101,28 +104,28 @@
               </div>
             {/each}
           </div>
-          <button type="button" class="checklist-dismiss" on:click={onDismissChecklist}>Скрыть чеклист</button>
+          <button type="button" class="checklist-dismiss" on:click={onDismissChecklist}>{tr('welcome.checklist.hide')}</button>
         {/if}
 
         <div class="quick-start">
           <input bind:value={startURL} placeholder="https://site.com" />
-          <button class="primary" on:click={onQuickStart} title="Открыть браузер и начать запись">
-            Быстрый старт
+          <button class="primary" on:click={onQuickStart} title={tr('welcome.quickStartTitle')}>
+            {tr('welcome.quickStart')}
           </button>
         </div>
 
-        <p class="section-heading">Начало работы</p>
+        <p class="section-heading">{tr('welcome.gettingStarted')}</p>
         <div class="links">
-          <button data-tour="welcome-examples" on:click={onOpenExamples}>Открыть примеры сценариев</button>
-          <button on:click={onNewProject}>Новый проект…</button>
-          <button on:click={onOpenProject}>Открыть папку…</button>
-          <button on:click={onNewScenario}>Новый сценарий</button>
-          <button on:click={onOpenFile}>Открыть файл…</button>
-          <button on:click={onInsertTemplate}>Вставить шаблон сценария</button>
+          <button data-tour="welcome-examples" on:click={onOpenExamples}>{tr('welcome.openExamples')}</button>
+          <button on:click={onNewProject}>{tr('welcome.newProject')}</button>
+          <button on:click={onOpenProject}>{tr('welcome.openFolder')}</button>
+          <button on:click={onNewScenario}>{tr('welcome.newScenario')}</button>
+          <button on:click={onOpenFile}>{tr('welcome.openFile')}</button>
+          <button on:click={onInsertTemplate}>{tr('welcome.insertTemplate')}</button>
         </div>
 
         {#if recentFeatures.length > 0}
-          <p class="recent-heading">Недавние файлы</p>
+          <p class="recent-heading">{tr('welcome.recentFiles')}</p>
           <div class="links">
             {#each recentFeatures as path}
               <button on:click={() => onOpenRecentFeature(path)} title={path}>{featureName(path)}</button>
@@ -131,7 +134,7 @@
         {/if}
 
         {#if recentProjects.length > 0}
-          <p class="recent-heading">Недавние проекты</p>
+          <p class="recent-heading">{tr('welcome.recentProjects')}</p>
           <div class="links">
             {#each recentProjects as path}
               <button on:click={() => onOpenRecentProject(path)} title={path}>{projectName(path)}</button>
@@ -194,112 +197,120 @@
 
   .welcome-card {
     width: min(520px, 100%);
-    min-width: 280px;
-    padding: 24px 28px;
-    background: #252526;
-    border: 1px solid var(--color-divider);
+    padding: 32px;
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    box-sizing: border-box;
+    background: var(--color-panel);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
   h1 {
-    margin: 0;
-    font-size: 24px;
-    font-weight: 300;
-    letter-spacing: 0.01em;
-    color: var(--color-text);
+    margin: 0 0 20px;
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
   }
 
   .checklist {
-    margin: 4px 0 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    margin-bottom: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-bg);
   }
 
   .checklist-row {
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 4px 0;
     font-size: 13px;
-    line-height: 1.6;
-    color: var(--color-text);
   }
 
   .checklist-row.done {
-    color: var(--color-success);
+    color: var(--color-muted);
+    text-decoration: line-through;
   }
 
-  .checklist-row .muted {
-    color: var(--color-muted);
+  .checklist-row.current {
+    font-weight: 600;
   }
 
   .checklist-icon {
-    width: 14px;
-    flex-shrink: 0;
+    width: 16px;
     text-align: center;
-  }
-
-  .checklist-icon.done {
-    color: var(--color-success);
-  }
-
-  .checklist-icon.current {
-    color: var(--color-text);
+    flex-shrink: 0;
   }
 
   .checklist-icon.muted {
     color: var(--color-muted);
   }
 
-  .checklist-link {
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-text);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    text-align: left;
+  .checklist-icon.done {
+    color: var(--color-success, #2e7d32);
   }
 
-  .checklist-link:hover {
-    color: var(--color-primary);
+  .checklist-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-link, #0066cc);
+    cursor: pointer;
+    text-align: left;
     text-decoration: underline;
   }
 
-  .section-heading {
-    margin: 8px 0 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text);
+  .checklist-dismiss {
+    margin: 0 0 16px;
+    padding: 0;
+    background: none;
+    border: none;
+    font-size: 12px;
+    color: var(--color-muted);
+    cursor: pointer;
+    text-decoration: underline;
   }
 
+  .quick-start {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .quick-start input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .section-heading,
   .recent-heading {
-    margin: 12px 0 0;
-    font-size: 13px;
+    margin: 16px 0 8px;
+    font-size: 12px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--color-muted);
+  }
+
+  .section-heading {
+    margin-top: 0;
   }
 
   .links {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    margin-top: 2px;
+    gap: 4px;
   }
 
   .links button {
+    justify-content: flex-start;
     text-align: left;
-    padding: 4px 0;
-    border: none;
-    background: transparent;
-    color: var(--color-primary);
+    padding: 6px 8px;
     font-size: 13px;
-    cursor: pointer;
   }
 
-  .links button:hover {
-    text-decoration: underline;
+  .muted {
+    color: var(--color-muted);
   }
 </style>

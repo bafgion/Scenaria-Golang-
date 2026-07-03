@@ -1,12 +1,16 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import type { PaletteCommand } from './paletteTypes'
 
   export let commands: PaletteCommand[] = []
   export let onClose: () => void = () => {}
 
+  $: tr = createTranslator($locale)
+  $: sortLocale = $locale === 'en' ? 'en' : 'ru'
+
   $: hotkeys = commands
     .filter((c) => c.shortcut)
-    .sort((a, b) => a.group.localeCompare(b.group, 'ru') || a.label.localeCompare(b.label, 'ru'))
+    .sort((a, b) => a.group.localeCompare(b.group, sortLocale) || a.label.localeCompare(b.label, sortLocale))
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -21,9 +25,9 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide hotkeys-dialog" role="dialog" aria-modal="true" aria-label="Горячие клавиши" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Горячие клавиши</h3>
-    <p class="hotkeys-note">В редакторе: <kbd>Ctrl+F</kbd> — найти, <kbd>Ctrl+H</kbd> — найти и заменить.</p>
+  <div class="modal wide hotkeys-dialog" role="dialog" aria-modal="true" aria-label={tr('menus.hotkeys')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('menus.hotkeys')}</h3>
+    <p class="hotkeys-note">{tr('settings.hotkeysEditorNote')}</p>
     <ul class="hotkeys-list">
       {#each hotkeys as cmd}
         <li>
@@ -33,7 +37,7 @@
       {/each}
     </ul>
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={onClose}>OK</button>
+      <button type="button" class="primary" on:click={onClose}>{tr('common.ok')}</button>
     </div>
   </div>
 </div>
@@ -50,46 +54,32 @@
     color: var(--color-muted);
   }
 
-  .hotkeys-note kbd {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 1px 4px;
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    background: var(--color-bg);
-  }
-
   .hotkeys-list {
     list-style: none;
-    margin: 0;
+    margin: 0 0 16px;
     padding: 0;
-    overflow: auto;
-    flex: 1;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    background: var(--color-bg);
+    max-height: 50vh;
+    overflow-y: auto;
   }
 
-  li {
+  .hotkeys-list li {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--color-divider);
-    font-size: 12px;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13px;
   }
 
-  li:last-child {
-    border-bottom: none;
+  .hotkeys-list .label {
+    flex: 1;
+    min-width: 0;
   }
 
-  .label {
-    color: var(--color-text);
-  }
-
-  .shortcut {
-    color: var(--color-muted);
+  .hotkeys-list .shortcut {
     font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-muted);
     white-space: nowrap;
   }
 </style>

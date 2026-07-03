@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { ListVanessaRunDirs, ReadVanessaSettingsJSON } from '../../wailsjs/go/wailsapp/App'
 
   export let dryRun = false
@@ -21,6 +22,8 @@
   export let scenarios: string[] = []
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let runDirs: string[] = []
   let loadingDirs = false
@@ -69,9 +72,9 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Запуск Vanessa" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Vanessa {dryRun ? '(dry-run)' : ''}</h3>
-    <label>Тег <input bind:value={tag} placeholder="@smoke" /></label>
+  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label={tr('dialogs.vanessa.run.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{dryRun ? tr('dialogs.vanessa.run.titleDryRun') : tr('dialogs.vanessa.run.title')}</h3>
+    <label>{tr('dialogs.vanessa.run.tag')} <input bind:value={tag} placeholder={tr('dialogs.vanessa.run.tagPlaceholder')} /></label>
     {#if tags.length > 0}
       <div class="tag-chips">
         {#each tags as t}
@@ -79,8 +82,8 @@
         {/each}
       </div>
     {/if}
-    <label>Исключить теги (через запятую) <input bind:value={excludeTags} placeholder="@wip, @draft" /></label>
-    <label>Имя сценария <input bind:value={scenario} placeholder="Необязательно" list="vanessa-scenario-list" /></label>
+    <label>{tr('dialogs.vanessa.run.excludeTags')} <input bind:value={excludeTags} placeholder={tr('dialogs.vanessa.run.excludeTagsPlaceholder')} /></label>
+    <label>{tr('dialogs.vanessa.run.scenario')} <input bind:value={scenario} placeholder={tr('dialogs.vanessa.run.scenarioPlaceholder')} list="vanessa-scenario-list" /></label>
     {#if scenarios.length > 0}
       <datalist id="vanessa-scenario-list">
         {#each scenarios as name}
@@ -94,42 +97,42 @@
       </div>
     {/if}
     <label>
-      Перезапуск упавших (run-dir)
+      {tr('dialogs.vanessa.run.rerunFailed')}
       <select bind:value={rerunFailedRunDir} disabled={loadingDirs || runDirs.length === 0}>
-        <option value="">(не использовать)</option>
+        <option value="">{tr('dialogs.vanessa.run.rerunNone')}</option>
         {#each runDirs as dir}
           <option value={dir}>{shortDir(dir)}</option>
         {/each}
       </select>
     </label>
     {#if runDirs.length === 0 && !loadingDirs}
-      <p class="hint">Нет каталогов run-* — сначала выполните обычный запуск Vanessa.</p>
+      <p class="hint">{tr('dialogs.vanessa.run.noRunDirs')}</p>
     {/if}
     <label class="check-row">
       <input type="checkbox" bind:checked={installEpf} />
-      Установить/обновить EPF (--epf-install)
+      {tr('dialogs.vanessa.run.installEpf')}
     </label>
     {#if installEpf}
-      <label>URL EPF (необязательно) <input bind:value={epfUrl} placeholder="https://…/vanessa-automation.epf" /></label>
-      <label>Путь назначения EPF <input bind:value={epfDest} placeholder="C:\vanessa\vanessa-automation.epf" /></label>
+      <label>{tr('dialogs.vanessa.run.epfUrl')} <input bind:value={epfUrl} placeholder={tr('dialogs.vanessa.run.epfUrlPlaceholder')} /></label>
+      <label>{tr('dialogs.vanessa.run.epfDest')} <input bind:value={epfDest} placeholder={tr('dialogs.vanessa.run.epfDestPlaceholder')} /></label>
     {/if}
     <button type="button" class="advanced-toggle" on:click={() => (showAdvanced = !showAdvanced)}>
-      {showAdvanced ? '▼' : '▶'} Параметры 1C и пути
+      {showAdvanced ? tr('dialogs.vanessa.run.advancedExpanded') : tr('dialogs.vanessa.run.advancedCollapsed')}
     </button>
     {#if showAdvanced}
-      <label>Платформа 1C (--platform-exe) <input bind:value={platformExe} placeholder="C:\Program Files\1cv8\bin\1cv8.exe" /></label>
-      <label>EPF (--epf) <input bind:value={epfPath} placeholder="C:\vanessa\vanessa-automation.epf" /></label>
-      <label>Строка подключения IB (--ib) <input bind:value={ibConnection} placeholder='Srvr="localhost";Ref="base";' /></label>
-      <label class="check-row"><input type="checkbox" bind:checked={reportAllure} /> Allure-отчёт (--allure)</label>
-      <label>Папка сценариев (--dir) <input bind:value={vaDir} placeholder="features\smoke" /></label>
-      <label>Файлы сценариев (--files) <input bind:value={vaFiles} placeholder="a.feature,b.feature" /></label>
-      <p class="hint">Пустые поля берутся из <code>.scenaria/vanessa.json</code>. Без --dir/--files запускается весь проект.</p>
+      <label>{tr('dialogs.vanessa.run.platformExe')} <input bind:value={platformExe} placeholder={tr('dialogs.vanessa.run.platformExePlaceholder')} /></label>
+      <label>{tr('dialogs.vanessa.run.epfPath')} <input bind:value={epfPath} placeholder={tr('dialogs.vanessa.run.epfPathPlaceholder')} /></label>
+      <label>{tr('dialogs.vanessa.run.ibConnection')} <input bind:value={ibConnection} placeholder={tr('dialogs.vanessa.run.ibConnectionPlaceholder')} /></label>
+      <label class="check-row"><input type="checkbox" bind:checked={reportAllure} /> {tr('dialogs.vanessa.run.reportAllure')}</label>
+      <label>{tr('dialogs.vanessa.run.vaDir')} <input bind:value={vaDir} placeholder={tr('dialogs.vanessa.run.vaDirPlaceholder')} /></label>
+      <label>{tr('dialogs.vanessa.run.vaFiles')} <input bind:value={vaFiles} placeholder={tr('dialogs.vanessa.run.vaFilesPlaceholder')} /></label>
+      <p class="hint">{tr('dialogs.vanessa.run.advancedHint')}</p>
     {:else}
-      <p class="hint">По умолчанию — настройки из <code>.scenaria/vanessa.json</code>.</p>
+      <p class="hint">{tr('dialogs.vanessa.run.defaultHint')}</p>
     {/if}
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={onConfirm}>{dryRun ? 'Dry-run' : 'Запустить'}</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" on:click={onConfirm}>{dryRun ? tr('dialogs.vanessa.run.dryRun') : tr('dialogs.vanessa.run.start')}</button>
+      <button type="button" on:click={onCancel}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

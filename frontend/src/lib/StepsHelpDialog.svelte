@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
   import type { StepHelpEntry } from './stepTypes'
@@ -35,6 +36,8 @@
   export let onClose: () => void = () => {}
   export let onInsert: ((template: string) => void) | null = null
   export let initialQuery = ''
+
+  $: tr = createTranslator($locale)
 
   let query = ''
   let entries: StepHelpEntry[] = []
@@ -108,40 +111,38 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette steps-help" role="dialog" aria-modal="true" aria-label="Справка по шагам" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Справка по шагам</h3>
+  <div class="palette steps-help" role="dialog" aria-modal="true" aria-label={tr('dialogs.steps.help.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.steps.help.title')}</h3>
     <input
       bind:this={searchInput}
       class="search"
       bind:value={query}
-      placeholder="Поиск по шаблону, категории или описанию… (params — наборы параметров)"
+      placeholder={tr('dialogs.steps.help.searchPlaceholder')}
       on:input={onQueryInput}
     />
     <details class="params-help" open={!query.trim() || query.toLowerCase().includes('param')}>
-      <summary>Наборы параметров (.params.json)</summary>
+      <summary>{tr('dialogs.steps.help.paramsSummary')}</summary>
       <p>
-        Для сценариев-шаблонов без таблицы «Примеры» положите рядом с <code>имя.feature</code> файл
-        <code>имя.params.json</code>:
+        {tr('dialogs.steps.help.paramsIntro')}
       </p>
       <pre class="params-example">{`{
   "scenarios": {
-    "Название сценария": [
+    "${tr('dialogs.steps.help.paramsExampleScenario')}": [
       { "url": "/catalog", "title": "Items" },
       { "url": "/offers", "title": "Offers" }
     ]
   }
 }`}</pre>
       <p class="params-note">
-        Ключи совпадают с плейсхолдерами в шагах (<code>&lt;url&gt;</code>). Если в feature уже есть таблица
-        «Примеры», используется она. При запуске runner разворачивает каждую строку в отдельный прогон.
+        {tr('dialogs.steps.help.paramsNote')}
       </p>
     </details>
     <div class="body">
       <ul class="list">
         {#if loading}
-          <li class="empty">Загрузка…</li>
+          <li class="empty">{tr('dialogs.common.loading')}</li>
         {:else if filtered.length === 0}
-          <li class="empty">Шаги не найдены</li>
+          <li class="empty">{tr('dialogs.steps.help.notFound')}</li>
         {:else}
           {#each filtered as entry, i}
             <li>
@@ -167,28 +168,28 @@
           {/if}
           {#if current.parameters?.length}
             <section class="detail-block">
-              <div class="block-title">Параметры</div>
+              <div class="block-title">{tr('dialogs.steps.help.parameters')}</div>
               {#each current.parameters as param}
                 <p class="param-line">{param}</p>
               {/each}
             </section>
           {/if}
           <section class="detail-block">
-            <div class="block-title">Пример</div>
+            <div class="block-title">{tr('dialogs.steps.help.example')}</div>
             <pre class="detail-example">{detailExample(current)}</pre>
           </section>
           {#if onInsert}
             <button type="button" class="primary insert-action" on:click={() => { onInsert(current.template); onClose() }}>
-              Вставить в редактор
+              {tr('dialogs.steps.help.insertToEditor')}
             </button>
           {/if}
         {:else}
-          <p class="empty">Выберите шаг из списка</p>
+          <p class="empty">{tr('dialogs.steps.help.selectStep')}</p>
         {/if}
       </div>
     </div>
     <div class="actions">
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

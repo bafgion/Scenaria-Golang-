@@ -1,114 +1,65 @@
 # Scenaria (Go)
 
-**Scenaria Go** is the primary product: CLI + Wails IDE for RU Gherkin scenarios, Playwright runner, recorder, Vanessa, and plugins.
+**Scenaria Go** — CLI + Wails IDE for Russian Gherkin scenarios, Playwright runner, live recorder, Vanessa Automation, and plugins.
 
-Legacy **Python/Qt Scenaria is discontinued**. Compatibility is via `.feature` / `.scenaria` files and optional **export to Python** (`scenaria export --format python`).
+Legacy **Python/Qt Scenaria is discontinued**. Compatibility: `.feature` / `.scenaria` files and optional export to Python (`scenaria export --format python`).
 
-## Current state
+## Documentation
 
-**v0.15** on `master` — Wails IDE, Allure, trace/video on failure.
+| Language | Guide |
+|----------|-------|
+| **English** | [docs/en/index.md](docs/en/index.md) |
+| **Русский** | [docs/ru/index.md](docs/ru/index.md) |
+| **Full index** | [docs/README.md](docs/README.md) |
 
-- Full step DSL, Playwright runner, recorder, Vanessa, portable CLI + **Wails GUI** (`scenaria-gui.exe`)
-- Allure (`--allure`), trace/video (`--trace`, `--video`) with failure attachments
-- `go test ./...` passes
+Current release: **v0.27.0** — [downloads](https://github.com/bafgion/Scenaria-Golang-/releases).
 
-See `docs/FUNCTIONAL_PARITY_MATRIX.md` and `docs/ROADMAP.md`.
+## Quick start (Windows)
 
-## Desktop (Wails — recommended)
+1. Download **Scenaria-Setup.exe** or **Scenaria-Portable.zip** from [Releases](https://github.com/bafgion/Scenaria-Golang-/releases)
+2. Run `scenaria-gui.exe` → **Start** → **Open example scenarios**
+3. Open `01-pervaya-proverka.feature` → **Run test** (Ctrl+Enter)
+
+## Desktop development
 
 Requires [Node.js](https://nodejs.org/) and [Wails CLI](https://wails.io/docs/gettingstarted/installation):
 
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 cd frontend && npm install && npm run build && cd ..
-wails dev          # hot-reload (Monaco editor)
-wails build        # scenaria-gui.exe
+wails dev
+wails build
 ```
 
-Editor: **Monaco** with custom `scenaria-feature` syntax (Gherkin RU, tags, TestClient).
-
-## Project goals
-
-1. Deliver a self-contained Go toolchain (CLI + Wails IDE).
-2. Keep compatibility for existing scenario and settings files.
-3. Provide a globally installable CLI command (`scenaria`).
-4. Support export to Python/TypeScript for external test runners when needed.
-
-## Local development
-
-```bash
-go test ./...
-go run ./cmd/scenaria --help
-```
-
-## Current CLI capabilities
-
-```bash
-# validate feature files
-go run ./cmd/scenaria validate ./path/to/features
-
-# initialize project scaffold
-go run ./cmd/scenaria init .
-
-# check for updates
-go run ./cmd/scenaria update --check
-
-# run (default engine: playwright from project.json or auto)
-go run ./cmd/scenaria run ./examples --dry-run
-
-# generate JUnit, HTML, and Allure reports
-go run ./cmd/scenaria run ./path/to/features --dry-run --junit junit.xml --html report.html --allure ./allure-results
-
-# Playwright trace/video on failure (opt-in)
-go run ./cmd/scenaria run ./examples --trace ./traces --video ./videos --allure ./allure-results
-
-# run with Playwright engine
-go run ./cmd/scenaria run ./examples/01-pervaya-proverka.feature --engine playwright --install-playwright --headed
-
-# filter by tag, pass variables
-go run ./cmd/scenaria run ./examples --tag smoke --var BASE=https://example.com
-
-# desktop GUI (Wails)
-make gui-wails
-
-# export scenario to JSON / feature / Playwright
-go run ./cmd/scenaria export ./path/to/login.feature --output login.json --format json
-go run ./cmd/scenaria export ./path/to/login.feature --output login.spec.ts --format ts --base-url https://example.com
-
-# bootstrap a recorded scenario file from CLI
-go run ./cmd/scenaria record --output recorded.feature --feature "Логин" --scenario "Успех" --step "открываю \"https://example.com\""
-
-# validate with browser (selectors must be visible)
-go run ./cmd/scenaria validate ./examples --browser --base-url https://example.com
-
-# live record from browser
-go run ./cmd/scenaria record --live --url https://example.com --output recorded.feature --idle 30
-
-# Vanessa Automation (1C)
-go run ./cmd/scenaria va run --project . --dry-run
-
-# portable / installer Windows build (bundles Chromium + Wails IDE)
-make build-portable    # dist/Scenaria-Portable.zip
-make build-installer   # dist/Scenaria-Setup.exe (Inno Setup, adds scenaria to PATH)
-make build-release     # both artifacts + dist/latest.json
-# dist/Scenaria/: scenaria.exe, scenaria-gui.exe, browsers/, Start-GUI.bat
-```
-
-## Install CLI as a global command
+## CLI (essentials)
 
 ```bash
 go install ./cmd/scenaria
+scenaria init .
+scenaria validate ./examples
+scenaria run ./examples --dry-run
+scenaria run ./examples --tag smoke --headed --install-playwright
 ```
 
-With a hosted module path:
+Full reference: [docs/en/cli/reference.md](docs/en/cli/reference.md) | [RU](docs/ru/cli/reference.md).
+
+## Build release artifacts
+
+```powershell
+./scripts/build-release.ps1
+# dist/Scenaria-Portable.zip, dist/Scenaria-Setup.exe
+```
+
+## Contributing
 
 ```bash
-go install <module-path>/cmd/scenaria@latest
+go test ./internal/... ./cmd/...
+cd frontend && npm test && npm run test:e2e
 ```
 
-See details in `docs/CLI_GLOBAL_INSTALL.md`.
+See [docs/en/contributing/development.md](docs/en/contributing/development.md).
 
-## Migration documentation
+## Internal
 
-- `docs/MIGRATION_PLAN.md` — staged migration roadmap.
-- `docs/FUNCTIONAL_PARITY_MATRIX.md` — feature coverage (Go primary).
+- [Roadmap](docs/internal/ROADMAP.md) (engineering, RU)
+- [QA checklist](docs/internal/QA-DAILY-USE.md) (RU)

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { flattenFeatureSymbols } from './gherkinDocumentSymbols'
   import { getCachedFeatureSymbols } from './featureSymbolCache'
 
@@ -6,13 +7,14 @@
   export let currentLine = 1
   export let onGoto: (line: number) => void = () => {}
 
+  $: tr = createTranslator($locale)
   $: rows = flattenFeatureSymbols(getCachedFeatureSymbols(text))
 </script>
 
 {#if rows.length === 0}
-  <p class="feature-outline-empty">Нет структуры сценария</p>
+  <p class="feature-outline-empty">{tr('editor.outlineEmpty')}</p>
 {:else}
-  <ul class="feature-outline" role="tree" aria-label="Структура сценария">
+  <ul class="feature-outline" role="tree" aria-label={tr('editor.stepsPanel.outline')}>
     {#each rows as row (row.kind + row.line + row.name)}
       <li
         role="treeitem"

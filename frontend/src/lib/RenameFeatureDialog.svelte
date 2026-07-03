@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
+
   export let currentPath = ''
   export let onConfirm: (newName: string) => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   function basename(path: string): string {
     const parts = path.replace(/\\/g, '/').split('/')
@@ -28,16 +32,16 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Переименовать сценарий" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Переименовать сценарий</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={tr('dialogs.feature.rename.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.feature.rename.title')}</h3>
     <label>
-      Новое имя файла
-      <input bind:value={name} placeholder="scenario-name" />
+      {tr('dialogs.feature.rename.newName')}
+      <input bind:value={name} placeholder={tr('dialogs.feature.rename.newNamePlaceholder')} />
     </label>
-    <p class="hint">Расширение .feature добавится автоматически.</p>
+    <p class="hint">{tr('dialogs.feature.rename.hint')}</p>
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={submit} disabled={!name.trim()}>Переименовать</button>
-      <button type="button" on:click={onClose}>Отмена</button>
+      <button type="button" class="primary" on:click={submit} disabled={!name.trim()}>{tr('dialogs.feature.rename.confirm')}</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

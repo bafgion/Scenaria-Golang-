@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import {
     ReadTestClientJSON,
     SaveTestClientJSON,
@@ -18,6 +19,8 @@
   export let onLog: (message: string) => void = () => {}
   export let onAskConfirm: (message: string) => Promise<boolean> = (message) =>
     Promise.resolve(window.confirm(message))
+
+  $: tr = createTranslator($locale)
 
   let editorName = ''
   let jsonText = ''
@@ -77,7 +80,7 @@
       onClientsChange(testClients)
       isNew = false
       selectedName = name
-      onLog(`TestClient сохранён: ${name}`)
+      onLog(tr('dialogs.testClient.saved', { name }))
     } catch (e: any) {
       error = String(e)
     } finally {
@@ -108,7 +111,7 @@
 
   async function deleteClient() {
     if (!selectedName || isNew) return
-    if (!(await onAskConfirm(`Удалить TestClient «${selectedName}»?`))) return
+    if (!(await onAskConfirm(tr('dialogs.testClient.confirmDelete', { name: selectedName })))) return
     busy = true
     error = ''
     try {
@@ -122,7 +125,7 @@
         jsonText = ''
         isNew = false
       }
-      onLog(`TestClient удалён`)
+      onLog(tr('dialogs.testClient.deleted'))
     } catch (e: any) {
       error = String(e)
     } finally {
@@ -150,10 +153,10 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide tall test-client-dialog" role="dialog" aria-modal="true" aria-label="TestClient" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>TestClient</h3>
+  <div class="modal wide tall test-client-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.testClient.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.testClient.title')}</h3>
     <p class="hint capture-hint">
-      Профиль с cookies и localStorage для повторного запуска с той же сессией. Откройте браузер, войдите на сайт, затем нажмите «Захватить из браузера».
+      {tr('dialogs.testClient.hint')}
     </p>
     <div class="test-client-body">
       <div class="client-list">
@@ -167,17 +170,17 @@
             {client}
           </button>
         {:else}
-          <p class="hint empty-hint">Нет файлов в .scenaria/test_clients/</p>
+          <p class="hint empty-hint">{tr('dialogs.testClient.empty')}</p>
         {/each}
-        <button type="button" class="client-item new-btn" class:active={isNew} on:click={startNew}>+ Новый…</button>
+        <button type="button" class="client-item new-btn" class:active={isNew} on:click={startNew}>{tr('dialogs.testClient.new')}</button>
       </div>
       <div class="client-editor">
         <label>
-          Имя файла
-          <input bind:value={editorName} disabled={!isNew && Boolean(selectedName)} placeholder="client_name" />
+          {tr('dialogs.testClient.fileName')}
+          <input bind:value={editorName} disabled={!isNew && Boolean(selectedName)} placeholder={tr('dialogs.testClient.fileNamePlaceholder')} />
         </label>
         <label class="json-label">
-          JSON
+          {tr('dialogs.testClient.json')}
           <textarea bind:value={jsonText} spellcheck="false"></textarea>
         </label>
         {#if error}
@@ -186,13 +189,13 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={captureFromBrowser} disabled={!canCapture} title={browserOpen ? '' : 'Сначала откройте браузер (Ctrl+B)'}>
-        Захватить из браузера
+      <button type="button" class="primary" on:click={captureFromBrowser} disabled={!canCapture} title={browserOpen ? '' : tr('dialogs.testClient.captureTitle')}>
+        {tr('dialogs.testClient.capture')}
       </button>
-      <button type="button" class="primary" on:click={saveClient} disabled={!canSave}>Сохранить</button>
-      <button type="button" on:click={deleteClient} disabled={!selectedName || isNew || busy}>Удалить</button>
-      <button type="button" class="primary" on:click={() => onUse(selectedName)} disabled={!canUse}>Использовать при запуске</button>
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" class="primary" on:click={saveClient} disabled={!canSave}>{tr('dialogs.common.save')}</button>
+      <button type="button" on:click={deleteClient} disabled={!selectedName || isNew || busy}>{tr('dialogs.common.delete')}</button>
+      <button type="button" class="primary" on:click={() => onUse(selectedName)} disabled={!canUse}>{tr('dialogs.testClient.useOnRun')}</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

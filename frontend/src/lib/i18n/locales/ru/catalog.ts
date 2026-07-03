@@ -1,0 +1,32 @@
+export const catalog = {
+  title: 'СЦЕНАРИИ',
+  searchPlaceholder: 'Поиск, @тег или tag:smoke',
+  newScenario: 'Новый сценарий',
+  batchMode: 'Выбор',
+  batchSelected: 'Выбрано для запуска: {count}',
+  outputPanel: 'Панель вывода',
+  root: '(корень)',
+  context: {
+    run: 'Запустить',
+    open: 'Открыть',
+    duplicate: 'Дублировать',
+    rename: 'Переименовать…',
+    move: 'Переместить…',
+    reveal: 'Показать в проводнике',
+    delete: 'Удалить',
+  },
+  folder: {
+    runAll: 'Запустить все .feature ({count})',
+    dryRun: 'Dry-run папки',
+    selectBatch: 'Выбрать для пакетного запуска',
+  },
+  lastRun: {
+    noData: 'Последний прогон: нет данных',
+    summary: 'Последний прогон: {status}',
+    success: 'успех',
+    failure: 'ошибка',
+    time: 'Время: {at}',
+    runner: 'Runner: {runner}',
+    message: 'Сообщение: {message}',
+  },
+} as const

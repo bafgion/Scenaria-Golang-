@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { gui } from '../../wailsjs/go/models'
   import { flakyLabel, type FlakyScenarioStat } from './flakyMetrics'
   import { isUntitled, untitledLabel } from './untitled'
@@ -18,6 +19,8 @@
   export let allureInstalled = true
   export let allureRunning = false
   export let onOpenAllureInstall: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   function splitPath(path: string): { feature: string; scenario: string } {
     const idx = path.indexOf('::')
@@ -54,14 +57,14 @@
     <div class="artifact-btns">
       {#if artifacts.allureDir}
         {#if allureInstalled}
-          <button type="button" on:click={() => onServeAllure(artifacts.allureDir)}>{allureRunning ? 'Allure снова' : 'Allure serve'}</button>
+          <button type="button" on:click={() => onServeAllure(artifacts.allureDir)}>{allureRunning ? tr('results.allureAgain') : tr('results.allureServe')}</button>
         {:else}
-          <button type="button" class="warn-btn" on:click={onOpenAllureInstall}>Allure не найден</button>
+          <button type="button" class="warn-btn" on:click={onOpenAllureInstall}>{tr('results.allureNotFound')}</button>
         {/if}
-        <button type="button" on:click={() => onOpenFolder(artifacts.allureDir)}>Allure (папка)</button>
+        <button type="button" on:click={() => onOpenFolder(artifacts.allureDir)}>{tr('results.allureFolder')}</button>
       {/if}
       {#if artifacts.htmlReport}
-        <button type="button" on:click={() => onOpenHtmlReport(artifacts.htmlReport)}>HTML-отчёт</button>
+        <button type="button" on:click={() => onOpenHtmlReport(artifacts.htmlReport)}>{tr('results.htmlReport')}</button>
       {/if}
       {#if artifacts.junitReport}
         <button type="button" on:click={() => onOpenFolder(artifacts.junitReport)}>JUnit</button>
@@ -70,25 +73,25 @@
         <button type="button" on:click={() => onOpenFolder(artifacts.summaryJson)}>Summary JSON</button>
       {/if}
       {#if artifacts.tracesDir}
-        <button type="button" on:click={() => onOpenTrace(artifacts.tracesDir)}>Trace viewer</button>
-        <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>Trace (папка)</button>
+        <button type="button" on:click={() => onOpenTrace(artifacts.tracesDir)}>{tr('results.traceViewer')}</button>
+        <button type="button" on:click={() => onOpenFolder(artifacts.tracesDir)}>{tr('results.traceFolder')}</button>
       {/if}
       {#if artifacts.videosDir}
         <button type="button" on:click={() => onOpenFolder(artifacts.videosDir)}>Video</button>
       {/if}
     </div>
-    <button type="button" class="rerun" on:click={onRerun}>Перезапустить упавшие</button>
+    <button type="button" class="rerun" on:click={onRerun}>{tr('results.rerunFailed')}</button>
   </div>
   {#if entries.length === 0}
-    <p class="empty">Результаты прогона появятся здесь после запуска тестов</p>
+    <p class="empty">{tr('results.empty')}</p>
   {:else}
     <table class="results-table">
       <thead>
         <tr>
-          <th>Сценарий</th>
-          <th>Результат</th>
-          <th>Сообщение</th>
-          <th>Время</th>
+          <th>{tr('results.col.scenario')}</th>
+          <th>{tr('results.col.result')}</th>
+          <th>{tr('results.col.message')}</th>
+          <th>{tr('results.col.time')}</th>
         </tr>
       </thead>
       <tbody>
@@ -101,7 +104,7 @@
             class:flaky={flakyStat?.flaky}
             class:clickable={!!parts.feature}
             on:dblclick={() => openEntry(entry)}
-            title="Двойной клик — открыть feature"
+            title={tr('results.dblClickHint')}
           >
             <td>
               <div class="scenario-name">{parts.scenario || basename(parts.feature)}</div>
@@ -110,7 +113,7 @@
                 <div class="flaky-row">
                   <div class="flaky-tag">{flakyLabel(flakyStat)}</div>
                   <button type="button" class="flaky-rerun" on:click|stopPropagation={() => onRunFlaky(entry)}>
-                    Запустить 3×
+                    {tr('results.run3x')}
                   </button>
                 </div>
               {/if}
@@ -122,11 +125,11 @@
               {entry.success ? '✓ OK' : '✗ FAIL'}
               {#if !entry.success && entry.failed_step != null && entry.failed_step >= 0}
                 <button type="button" class="goto-step" on:click|stopPropagation={() => onGotoFailedStep(entry)}>
-                  Шаг {entry.failed_step + 1}
+                  {tr('results.gotoStep', { n: entry.failed_step + 1 })}
                 </button>
               {/if}
             </td>
-            <td class="msg">{entry.message || '—'}</td>
+            <td class="msg">{entry.message || tr('dialogs.common.notFound')}</td>
             <td class="at">{formatAt(entry.at)}</td>
           </tr>
         {/each}

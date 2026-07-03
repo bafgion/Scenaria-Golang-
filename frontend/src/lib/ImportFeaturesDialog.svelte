@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { PickOpenFile, PickOpenFiles } from '../../wailsjs/go/wailsapp/App'
 
   export let destDirs: string[] = []
@@ -6,6 +7,8 @@
   export let busy = false
   export let onImport: (payload: { destDir: string; paths: string[] }) => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let paths: string[] = []
   let error = ''
@@ -18,16 +21,16 @@
   function dirLabel(path: string): string {
     const norm = path.replace(/\\/g, '/')
     const parts = norm.split('/').filter(Boolean)
-    return parts.length ? parts[parts.length - 1] : norm || '(корень)'
+    return parts.length ? parts[parts.length - 1] : tr('dialogs.feature.move.root')
   }
 
   async function addFiles() {
     error = ''
-    const picked = await PickOpenFiles('Импорт .feature')
+    const picked = await PickOpenFiles(tr('dialogs.import.features.pickFilesTitle'))
     if (!picked?.length) return
     const valid = picked.filter((p) => p.toLowerCase().endsWith('.feature'))
     if (valid.length === 0) {
-      error = 'Выберите файлы .feature'
+      error = tr('dialogs.import.features.errorPickFeatures')
       return
     }
     const merged = [...paths]
@@ -39,10 +42,10 @@
 
   async function addFile() {
     error = ''
-    const picked = await PickOpenFile('Импорт .feature')
+    const picked = await PickOpenFile(tr('dialogs.import.features.pickFileTitle'))
     if (!picked) return
     if (!picked.toLowerCase().endsWith('.feature')) {
-      error = 'Выберите файл .feature'
+      error = tr('dialogs.import.features.errorPickFeature')
       return
     }
     if (!paths.includes(picked)) paths = [...paths, picked]
@@ -54,7 +57,7 @@
 
   function confirm() {
     if (!destDir || paths.length === 0) {
-      error = 'Укажите папку и хотя бы один файл'
+      error = tr('dialogs.import.features.errorDestAndFiles')
       return
     }
     onImport({ destDir, paths })
@@ -70,11 +73,11 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide import-features-dialog" role="dialog" aria-modal="true" aria-label="Импорт feature" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Импорт .feature в проект</h3>
-    <p class="hint">Копирует внешние сценарии в папку проекта (аналог drag-and-drop на каталог).</p>
+  <div class="modal wide import-features-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.import.features.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.import.features.title')}</h3>
+    <p class="hint">{tr('dialogs.import.features.hint')}</p>
     <label>
-      Папка назначения
+      {tr('dialogs.import.features.destDir')}
       <select bind:value={destDir} disabled={busy}>
         {#each destDirs as dir}
           <option value={dir}>{dirLabel(dir)}</option>
@@ -82,15 +85,15 @@
       </select>
     </label>
     <div class="files-header">
-      <span>Файлы ({paths.length})</span>
+      <span>{tr('dialogs.import.features.files', { count: paths.length })}</span>
       <div class="file-actions">
-        <button type="button" disabled={busy} on:click={addFiles}>Добавить файлы…</button>
-        <button type="button" disabled={busy} on:click={addFile}>Добавить файл…</button>
+        <button type="button" disabled={busy} on:click={addFiles}>{tr('dialogs.import.features.addFiles')}</button>
+        <button type="button" disabled={busy} on:click={addFile}>{tr('dialogs.import.features.addFile')}</button>
       </div>
     </div>
     <ul class="file-list">
       {#if paths.length === 0}
-        <li class="empty">Нет выбранных файлов</li>
+        <li class="empty">{tr('dialogs.import.features.noFiles')}</li>
       {:else}
         {#each paths as path, index}
           <li>
@@ -102,8 +105,8 @@
     </ul>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="modal-actions">
-      <button type="button" class="primary" disabled={busy || !paths.length || !destDir} on:click={confirm}>Импортировать</button>
-      <button type="button" disabled={busy} on:click={onClose}>Отмена</button>
+      <button type="button" class="primary" disabled={busy || !paths.length || !destDir} on:click={confirm}>{tr('dialogs.import.features.confirm')}</button>
+      <button type="button" disabled={busy} on:click={onClose}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

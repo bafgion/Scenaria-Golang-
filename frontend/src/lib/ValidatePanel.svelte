@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { gui } from '../../wailsjs/go/models'
 
   export let issues: gui.ValidationIssue[] = []
@@ -7,16 +8,18 @@
   export let activeLine = 0
   export let onGotoLine: (line: number) => void = () => {}
 
+  $: tr = createTranslator($locale)
+
   function statusLabel(status: string | undefined): string {
     switch (status) {
       case 'found':
-        return 'найден'
+        return tr('results.validate.found')
       case 'missing':
-        return 'нет'
+        return tr('results.validate.missing')
       case 'warning':
-        return 'внимание'
+        return tr('results.validate.warning')
       default:
-        return status || '—'
+        return status || tr('dialogs.common.notFound')
     }
   }
 </script>
@@ -26,15 +29,15 @@
     <pre class="cli-log">{cliLog}</pre>
   {/if}
   {#if issues.length === 0}
-    <p class="empty">{hint || 'Ошибок в шагах сценария нет'}</p>
+    <p class="empty">{hint || tr('results.validate.empty')}</p>
   {:else}
     <table class="validate-table">
       <thead>
         <tr>
-          <th>Строка</th>
-          <th>Статус</th>
-          <th>Селектор</th>
-          <th>Сообщение</th>
+          <th>{tr('results.validate.line')}</th>
+          <th>{tr('results.validate.status')}</th>
+          <th>{tr('results.validate.selector')}</th>
+          <th>{tr('results.validate.message')}</th>
         </tr>
       </thead>
       <tbody>
@@ -44,7 +47,7 @@
               <button type="button" class="line-btn" on:click={() => onGotoLine(issue.line)}>{issue.line}</button>
             </td>
             <td><span class="status-badge" class:found={issue.status === 'found'} class:warning={issue.status === 'warning'} class:missing={issue.status === 'missing' || !issue.status}>{statusLabel(issue.status)}</span></td>
-            <td class="selector">{issue.selector || '—'}</td>
+            <td class="selector">{issue.selector || tr('dialogs.common.notFound')}</td>
             <td class="msg">{issue.message}</td>
           </tr>
         {/each}

@@ -2,11 +2,12 @@ import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
 import {
   findHintForMarker,
-  HINT_MARKER_SOURCE,
   HINT_QUICK_FIX_KIND,
+  hintMarkerSource,
   rangeTouchesMarker,
 } from './gherkinHintActionsHelpers'
 import { EDITOR_MARKER_OWNER } from './gherkinEditorMarkers'
+import { t } from './i18n'
 
 export { findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActionsHelpers'
 
@@ -48,10 +49,11 @@ export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers:
 
         const hints = activeHandlers?.getHints() ?? []
         const actions: Monaco.languages.CodeAction[] = []
+        const hintSource = hintMarkerSource()
 
         const markers = api.editor
           .getModelMarkers({ resource: model.uri })
-          .filter((m) => m.owner === EDITOR_MARKER_OWNER && m.source === HINT_MARKER_SOURCE)
+          .filter((m) => m.owner === EDITOR_MARKER_OWNER && m.source === hintSource)
 
         for (const marker of markers) {
           if (!rangeTouchesMarker(range, marker)) continue
@@ -72,7 +74,7 @@ export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers:
 
           if (hint.autoFixable) {
             actions.push({
-              title: `Исправить: ${hint.title}`,
+              title: t('editor.hint.fix', { title: hint.title }),
               kind: HINT_QUICK_FIX_KIND,
               diagnostics: [diagnostic],
               isPreferred: true,
@@ -84,13 +86,14 @@ export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers:
             })
           }
 
+          const dismissTitle = t('editor.hint.ignore')
           actions.push({
-            title: 'Игнорировать подсказку',
+            title: dismissTitle,
             kind: HINT_QUICK_FIX_KIND,
             diagnostics: [diagnostic],
             command: {
               id: 'scenaria.hint.dismiss',
-              title: 'Игнорировать подсказку',
+              title: dismissTitle,
               arguments: [hint.id, hint.stepIndex],
             },
           })

@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { gui } from '../../wailsjs/go/models'
 
   export let snapshot: gui.VanessaRunSnapshotDTO = new gui.VanessaRunSnapshotDTO()
   export let running = false
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   function basename(path: string): string {
     const parts = (path || '').replace(/\\/g, '/').split('/')
@@ -18,23 +21,23 @@
 
 <div class="vanessa-monitor" role="status">
   <div class="head">
-    <strong>Vanessa {running ? '— выполняется' : '— завершено'}</strong>
+    <strong>{running ? tr('dialogs.vanessa.monitor.running') : tr('dialogs.vanessa.monitor.done')}</strong>
     <button type="button" class="close" on:click={onClose}>×</button>
   </div>
   {#if snapshot.runDir}
-    <p class="meta">Каталог: {basename(snapshot.runDir)}</p>
+    <p class="meta">{tr('dialogs.vanessa.monitor.runDir', { name: basename(snapshot.runDir) })}</p>
   {/if}
   {#if snapshot.currentScenario}
-    <p class="current">Сейчас: {snapshot.currentScenario}</p>
+    <p class="current">{tr('dialogs.vanessa.monitor.current', { name: snapshot.currentScenario })}</p>
   {/if}
   <div class="progress-wrap">
     <div class="progress-bar" style="width: {progress}%"></div>
   </div>
-  <p class="counts">{snapshot.completedCases} / {snapshot.totalPlanned} сценариев</p>
+  <p class="counts">{tr('dialogs.vanessa.monitor.counts', { completed: snapshot.completedCases, total: snapshot.totalPlanned })}</p>
   {#if snapshot.cases.length > 0}
     <table>
       <thead>
-        <tr><th>Сценарий</th><th>Результат</th></tr>
+        <tr><th>{tr('dialogs.vanessa.monitor.colScenario')}</th><th>{tr('dialogs.vanessa.monitor.colResult')}</th></tr>
       </thead>
       <tbody>
         {#each snapshot.cases as item}
@@ -46,9 +49,9 @@
       </tbody>
     </table>
   {:else if running}
-    <p class="empty">Ожидание JUnit…</p>
+    <p class="empty">{tr('dialogs.vanessa.monitor.waitingJUnit')}</p>
   {:else}
-    <p class="empty">Нет данных JUnit</p>
+    <p class="empty">{tr('dialogs.vanessa.monitor.noJUnit')}</p>
   {/if}
 </div>
 

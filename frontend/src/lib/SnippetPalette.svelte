@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
   import type { SnippetEntry } from './stepTypes'
 
   export let onClose: () => void
   export let onInsert: (template: string) => void
+
+  $: tr = createTranslator($locale)
 
   let query = ''
   let entries: SnippetEntry[] = []
@@ -76,19 +79,19 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette snippet-palette" role="dialog" aria-modal="true" aria-label="Палитра сниппетов" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="palette snippet-palette" role="dialog" aria-modal="true" aria-label={tr('dialogs.steps.snippetPalette.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <input
       class="palette-input"
       bind:value={query}
-      placeholder="Поиск шага…"
+      placeholder={tr('dialogs.steps.snippetPalette.searchPlaceholder')}
       on:input={onQueryInput}
       autofocus
     />
     <ul class="palette-list snippet-grid">
       {#if loading}
-        <li class="empty">Загрузка…</li>
+        <li class="empty">{tr('dialogs.common.loading')}</li>
       {:else if filtered.length === 0}
-        <li class="empty">Шаги не найдены</li>
+        <li class="empty">{tr('dialogs.steps.snippetPalette.notFound')}</li>
       {:else}
         {#each filtered as entry, i}
           <li>

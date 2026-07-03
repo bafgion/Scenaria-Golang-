@@ -1,0 +1,20 @@
+export const welcome = {
+  checklist: {
+    openProject: 'Open project',
+    record: 'Record a scenario',
+    runTest: 'Run a test',
+    hide: 'Hide checklist',
+  },
+  quickStart: 'Quick start',
+  quickStartTitle: 'Open browser and start recording',
+  gettingStarted: 'Getting started',
+  openExamples: 'Open example scenarios',
+  newProject: 'New project…',
+  openFolder: 'Open folder…',
+  newScenario: 'New scenario',
+  openFile: 'Open file…',
+  insertTemplate: 'Insert template',
+  recentProjects: 'Recent projects',
+  recentFiles: 'Recent files',
+  empty: 'Nothing yet',
+} as const

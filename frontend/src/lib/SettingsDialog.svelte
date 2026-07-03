@@ -5,6 +5,7 @@
   import { BRAND_NAME } from './brand'
   import SettingCard from './SettingCard.svelte'
   import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from './editorOptions'
+  import { createTranslator, locale, setLocale, type Locale } from './i18n'
 
   export let browser = 'chromium'
   export let headless = false
@@ -21,6 +22,7 @@
   export let stepsPanelVisible = true
   export let stepsPanelHeight = 160
   export let checkUpdatesOnStartup = true
+  export let uiLocale: Locale = 'ru'
   export let selectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   export let selectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
   export let navWaitUntil = 'domcontentloaded'
@@ -45,55 +47,61 @@
   let applyNotice = ''
   let applyNoticeTimer: ReturnType<typeof setTimeout> | null = null
 
+  $: tr = createTranslator($locale)
+
+  $: tabs = [
+    { id: 'record' as TabId, label: tr('settings.tabs.record') },
+    { id: 'selectors' as TabId, label: tr('settings.tabs.selectors') },
+    { id: 'plugins' as TabId, label: tr('settings.tabs.plugins') },
+    { id: 'editor' as TabId, label: tr('settings.tabs.editor') },
+    { id: 'ui' as TabId, label: tr('settings.tabs.ui') },
+  ]
+
+  function onUiLocaleChange() {
+    setLocale(uiLocale)
+  }
+
   async function handleApply() {
     if (!onApply || applyBusy) return
     applyBusy = true
     applyNotice = ''
     try {
       const result = await onApply()
-      applyNotice = typeof result === 'string' && result.trim() ? result.trim() : 'Настройки применены и сохранены.'
+      applyNotice = typeof result === 'string' && result.trim() ? result.trim() : tr('common.settingsApplied')
       if (applyNoticeTimer) clearTimeout(applyNoticeTimer)
       applyNoticeTimer = setTimeout(() => {
         applyNotice = ''
         applyNoticeTimer = null
       }, 5000)
     } catch (err) {
-      applyNotice = `Ошибка: ${err instanceof Error ? err.message : String(err)}`
+      applyNotice = `${tr('common.error')}: ${err instanceof Error ? err.message : String(err)}`
     } finally {
       applyBusy = false
     }
   }
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'record', label: 'Запись и браузер' },
-    { id: 'selectors', label: 'Селекторы' },
-    { id: 'plugins', label: 'Плагины' },
-    { id: 'editor', label: 'Редактор' },
-    { id: 'ui', label: 'Интерфейс' },
-  ]
-
-  const slowMoPresets: [number, string][] = [
-    [0, 'Быстро'],
-    [100, 'Норма'],
-    [250, 'Медленно'],
-    [500, 'Учебный'],
-  ]
+  $: slowMoPresets = [
+    [0, tr('settings.slowMo.fast')],
+    [100, tr('settings.slowMo.normal')],
+    [250, tr('settings.slowMo.slow')],
+    [500, tr('settings.slowMo.tutorial')],
+  ] as [number, string][]
   const defaultClickStrategies = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   const defaultInputStrategies = ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
 
-  const strategyLabels: Record<string, string> = {
+  const strategyTechnicalLabels: Record<string, string> = {
     testid: 'data-testid',
     id: 'ID (#)',
     aria: 'aria-label',
-    contextual: 'Контекстный has-text',
-    text: 'has-text по тексту',
     label: 'label:has-text',
     placeholder: 'placeholder',
     name: 'name',
   }
 
   function labelForStrategy(key: string): string {
-    return strategyLabels[key] || key
+    if (key === 'contextual') return tr('settings.strategies.contextual')
+    if (key === 'text') return tr('settings.strategies.text')
+    return strategyTechnicalLabels[key] || key
   }
 
   function moveStrategy(list: string[], index: number, delta: number): string[] {
@@ -141,7 +149,7 @@
   async function installBrowserEngine() {
     if (browserInstallBusy) return
     browserInstallBusy = true
-    browserInstallProgress = `Установка ${browserStatus?.label || browser}…`
+    browserInstallProgress = tr('settings.browser.installing', { engine: browserStatus?.label || browser })
     try {
       const result = await InstallBrowserEngine(browser)
       if (result.output) {
@@ -150,11 +158,11 @@
       }
       if (result.error) {
         browserInstallProgress = result.error
-        onInstallLog?.(`Ошибка: ${result.error}`)
+        onInstallLog?.(`${tr('settings.browser.error')}: ${result.error}`)
       }
     } catch (e: any) {
       browserInstallProgress = String(e)
-      onInstallLog?.(`Ошибка: ${e}`)
+      onInstallLog?.(`${tr('settings.browser.error')}: ${e}`)
     } finally {
       browserInstallBusy = false
       await refreshBrowserEngineStatus()
@@ -169,11 +177,11 @@
     const q = search.trim().toLowerCase()
     if (!q) return
     const compact = q.replace(/\s+/g, '')
-    if (/запис|браузер|headless|chromium|playwright/.test(compact)) tab = 'record'
-    else if (/селектор|testid|css|стратег/.test(compact)) tab = 'selectors'
-    else if (/плагин|vanessa|runner/.test(compact)) tab = 'plugins'
-    else if (/редактор|monaco|шрифт|миникарт|перенос|tab|fold|sticky|подсказк|hint|сценари/.test(compact)) tab = 'editor'
-    else if (/интерфейс|панел|toolbar|шаг|обновлен/.test(compact)) tab = 'ui'
+    if (/запис|record|браузер|browser|headless|chromium|playwright/.test(compact)) tab = 'record'
+    else if (/селектор|selector|testid|css|стратег|strateg/.test(compact)) tab = 'selectors'
+    else if (/плагин|plugin|vanessa|runner/.test(compact)) tab = 'plugins'
+    else if (/редактор|editor|monaco|шрифт|font|миникарт|minimap|перенос|wrap|tab|fold|sticky|подсказк|hint|сценари|scenario/.test(compact)) tab = 'editor'
+    else if (/интерфейс|interface|ui|панел|panel|toolbar|шаг|step|обновлен|update/.test(compact)) tab = 'ui'
   }
 
   function onKey(e: KeyboardEvent) {
@@ -194,6 +202,8 @@
     hoverRecordMinMs = 600
     pickerDuringRecording = false
     toolbarCompact = false
+    uiLocale = 'ru'
+    setLocale('ru')
     stepsPanelVisible = true
     stepsPanelHeight = 160
     checkUpdatesOnStartup = true
@@ -204,11 +214,11 @@
 
   $: extremeRunWarning =
     workers >= 8 && slowMo >= 1000
-      ? 'Много воркеров и высокий slow-mo — прогон может быть очень долгим.'
+      ? tr('settings.warnings.manyWorkers')
       : workers >= 12
-        ? 'Большое число воркеров нагружает систему.'
+        ? tr('settings.warnings.highWorkers')
         : slowMo >= 2000
-          ? 'Очень высокий slow-mo — шаги выполняются с большой паузой.'
+          ? tr('settings.warnings.highSlowMo')
           : ''
 </script>
 
@@ -217,13 +227,13 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="app-dialog" role="dialog" aria-modal="true" aria-label="Настройки — {BRAND_NAME}" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+  <div class="app-dialog" role="dialog" aria-modal="true" aria-label="{tr('settings.title')} — {BRAND_NAME}" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <header class="dialog-search-bar">
-      <input bind:value={search} placeholder="Поиск настроек" on:input={onSearch} />
+      <input bind:value={search} placeholder={tr('settings.searchPlaceholder')} on:input={onSearch} />
     </header>
 
     <div class="dialog-body">
-      <nav class="dialog-sidebar" aria-label="Разделы настроек">
+      <nav class="dialog-sidebar" aria-label={tr('settings.sectionsNav')}>
         {#each tabs as t}
           <button type="button" class:active={tab === t.id} on:click={() => pickTab(t.id)}>{t.label}</button>
         {/each}
@@ -232,14 +242,14 @@
       <div class="dialog-content">
         {#if tab === 'record'}
           <section class="setting-section">
-            <h4 class="setting-section-title">Браузер</h4>
-            <p class="setting-section-desc">Поведение окна и сессии при записи и прогоне Playwright.</p>
+            <h4 class="setting-section-title">{tr('settings.sections.browser.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.browser.desc')}</p>
 
-            <SettingCard title="Без окна браузера" description="Headless — окно не показывается при записи и запуске.">
+            <SettingCard title={tr('settings.cards.headless.title')} description={tr('settings.cards.headless.description')}>
               <input type="checkbox" bind:checked={headless} />
             </SettingCard>
 
-            <SettingCard title="Движок браузера" description="Playwright: chromium, firefox или webkit.">
+            <SettingCard title={tr('settings.cards.browserEngine.title')} description={tr('settings.cards.browserEngine.description')}>
               <select bind:value={browser} on:change={onBrowserChange} disabled={browserInstallBusy}>
                 <option value="chromium">Chromium</option>
                 <option value="firefox">Firefox</option>
@@ -255,13 +265,13 @@
               >
                 {#if browserStatus}
                   {#if browserStatus.installed}
-                    {browserStatus.label}: установлен
+                    {tr('settings.browser.installed', { label: browserStatus.label })}
                     <span class="detail">{browserStatus.detail}</span>
                   {:else}
-                    {browserStatus.label}: не установлен — нужна загрузка перед записью и прогоном.
+                    {tr('settings.browser.notInstalled', { label: browserStatus.label })}
                   {/if}
                 {:else}
-                  Проверка движка…
+                  {tr('settings.browser.checking')}
                 {/if}
               </p>
               <button
@@ -270,7 +280,11 @@
                 on:click={installBrowserEngine}
                 disabled={browserInstallBusy}
               >
-                {browserInstallBusy ? 'Установка…' : browserStatus?.installed ? 'Переустановить' : 'Установить движок'}
+                {browserInstallBusy
+                  ? tr('settings.browser.installingBtn')
+                  : browserStatus?.installed
+                    ? tr('settings.browser.reinstall')
+                    : tr('settings.browser.installEngine')}
               </button>
             </div>
             {#if browserInstallProgress}
@@ -279,10 +293,10 @@
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Запись шагов</h4>
-            <p class="setting-section-desc">Фильтры при записи действий в браузере.</p>
+            <h4 class="setting-section-title">{tr('settings.sections.recording.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.recording.desc')}</p>
 
-            <SettingCard title="Только важные" description="Пропускать второстепенные события при записи.">
+            <SettingCard title={tr('settings.cards.importantOnly.title')} description={tr('settings.cards.importantOnly.description')}>
               <input
                 type="checkbox"
                 bind:checked={filterRecording}
@@ -290,7 +304,7 @@
               />
             </SettingCard>
 
-            <SettingCard title="Только ссылки" description="Записывать переходы по ссылкам, без кликов по элементам.">
+            <SettingCard title={tr('settings.cards.linksOnly.title')} description={tr('settings.cards.linksOnly.description')}>
               <input
                 type="checkbox"
                 bind:checked={navOnlyRecording}
@@ -298,38 +312,38 @@
               />
             </SettingCard>
 
-            <SettingCard title="Записывать наведение" description="Добавлять шаги при наведении курсора на элементы.">
+            <SettingCard title={tr('settings.cards.hoverRecord.title')} description={tr('settings.cards.hoverRecord.description')}>
               <input type="checkbox" bind:checked={hoverRecord} />
             </SettingCard>
 
-            <SettingCard title="Минимальное наведение" description="Сколько миллисекунд курсор должен оставаться на элементе перед записью hover.">
+            <SettingCard title={tr('settings.cards.hoverMin.title')} description={tr('settings.cards.hoverMin.description')}>
               <span class="num-with-unit">
                 <input type="number" class="setting-number" bind:value={hoverRecordMinMs} min={100} max={5000} step={50} />
-                <span>мс</span>
+                <span>{tr('settings.units.ms')}</span>
               </span>
             </SettingCard>
 
-            <SettingCard title="Прокрутка перед кликом" description="Перед записью клика прокручивать элемент в видимую область (как при воспроизведении).">
+            <SettingCard title={tr('settings.cards.scrollBeforeClick.title')} description={tr('settings.cards.scrollBeforeClick.description')}>
               <input type="checkbox" bind:checked={scrollBeforeClick} />
             </SettingCard>
 
-            <SettingCard title="Picker во время записи" description="Разрешить «Указать элемент» без паузы записи (по умолчанию нужна пауза).">
+            <SettingCard title={tr('settings.cards.pickerDuringRecording.title')} description={tr('settings.cards.pickerDuringRecording.description')}>
               <input type="checkbox" bind:checked={pickerDuringRecording} />
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Запуск</h4>
-            <SettingCard title="Параллельные воркеры" description="Число одновременных браузерных сессий при пакетном запуске.">
+            <h4 class="setting-section-title">{tr('settings.sections.run.title')}</h4>
+            <SettingCard title={tr('settings.cards.workers.title')} description={tr('settings.cards.workers.description')}>
               <span class="num-with-unit">
                 <input type="number" class="setting-number" bind:value={workers} min={1} max={16} />
-                <span>шт.</span>
+                <span>{tr('settings.units.pcs')}</span>
               </span>
             </SettingCard>
-            <SettingCard title="Скорость выполнения (slow-mo)" description="Пауза между действиями Playwright в миллисекундах. 0 — максимально быстро; 100–300 — удобно наблюдать шаги в браузере.">
+            <SettingCard title={tr('settings.cards.slowMo.title')} description={tr('settings.cards.slowMo.description')}>
               <span class="num-with-unit">
                 <input type="number" class="setting-number" bind:value={slowMo} min={0} max={5000} step={50} />
-                <span>мс</span>
+                <span>{tr('settings.units.ms')}</span>
               </span>
               <div class="slowmo-presets">
                 {#each slowMoPresets as [ms, label]}
@@ -337,15 +351,15 @@
                 {/each}
               </div>
             </SettingCard>
-            <SettingCard title="Ожидание навигации (nav-wait-until)" description="Когда считать переход по URL завершённым при шагах «Перейти» и записи.">
+            <SettingCard title={tr('settings.cards.navWait.title')} description={tr('settings.cards.navWait.description')}>
               <select bind:value={navWaitUntil}>
-                <option value="load">load — полная загрузка страницы</option>
-                <option value="domcontentloaded">domcontentloaded — DOM готов (по умолчанию)</option>
-                <option value="networkidle">networkidle — сеть простаивает</option>
-                <option value="commit">commit — первый ответ навигации</option>
+                <option value="load">{tr('settings.navWait.load')}</option>
+                <option value="domcontentloaded">{tr('settings.navWait.domcontentloaded')}</option>
+                <option value="networkidle">{tr('settings.navWait.networkidle')}</option>
+                <option value="commit">{tr('settings.navWait.commit')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Лимит итераций циклов" description="Максимум повторов для блоков «Повторяю» / «Пока».">
+            <SettingCard title={tr('settings.cards.loops.title')} description={tr('settings.cards.loops.description')}>
               <input type="number" class="setting-number" bind:value={loops} min={1} max={10000} />
             </SettingCard>
             {#if extremeRunWarning}
@@ -354,208 +368,219 @@
           </section>
         {:else if tab === 'selectors'}
           <section class="setting-section">
-            <h4 class="setting-section-title">Приоритет стратегий</h4>
+            <h4 class="setting-section-title">{tr('settings.sections.selectors.title')}</h4>
             <p class="setting-section-desc">
-              При записи и подборе селектора {BRAND_NAME} перебирает стратегии сверху вниз. Более стабильные — выше.
+              {tr('settings.sections.selectors.desc', { brand: BRAND_NAME })}
             </p>
-            <h5 class="strategy-group-title">Клики и кнопки</h5>
+            <h5 class="strategy-group-title">{tr('settings.strategies.clicksTitle')}</h5>
             <ul class="selector-list editable">
               {#each selectorClickStrategies as key, i}
                 <li>
                   <span class="strategy-name">{labelForStrategy(key)}</span>
                   <span class="strategy-actions">
-                    <button type="button" class="btn-compact" title="Выше" disabled={i === 0} on:click={() => moveClickStrategy(i, -1)}>↑</button>
-                    <button type="button" class="btn-compact" title="Ниже" disabled={i === selectorClickStrategies.length - 1} on:click={() => moveClickStrategy(i, 1)}>↓</button>
+                    <button type="button" class="btn-compact" title={tr('settings.strategies.moveUp')} disabled={i === 0} on:click={() => moveClickStrategy(i, -1)}>↑</button>
+                    <button type="button" class="btn-compact" title={tr('settings.strategies.moveDown')} disabled={i === selectorClickStrategies.length - 1} on:click={() => moveClickStrategy(i, 1)}>↓</button>
                   </span>
                 </li>
               {/each}
             </ul>
-            <button type="button" class="dialog-link-btn" on:click={() => (selectorClickStrategies = [...defaultClickStrategies])}>Сбросить клики</button>
-            <h5 class="strategy-group-title">Поля ввода</h5>
+            <button type="button" class="dialog-link-btn" on:click={() => (selectorClickStrategies = [...defaultClickStrategies])}>{tr('settings.strategies.resetClicks')}</button>
+            <h5 class="strategy-group-title">{tr('settings.strategies.inputsTitle')}</h5>
             <ul class="selector-list editable">
               {#each selectorInputStrategies as key, i}
                 <li>
                   <span class="strategy-name">{labelForStrategy(key)}</span>
                   <span class="strategy-actions">
-                    <button type="button" class="btn-compact" title="Выше" disabled={i === 0} on:click={() => moveInputStrategy(i, -1)}>↑</button>
-                    <button type="button" class="btn-compact" title="Ниже" disabled={i === selectorInputStrategies.length - 1} on:click={() => moveInputStrategy(i, 1)}>↓</button>
+                    <button type="button" class="btn-compact" title={tr('settings.strategies.moveUp')} disabled={i === 0} on:click={() => moveInputStrategy(i, -1)}>↑</button>
+                    <button type="button" class="btn-compact" title={tr('settings.strategies.moveDown')} disabled={i === selectorInputStrategies.length - 1} on:click={() => moveInputStrategy(i, 1)}>↓</button>
                   </span>
                 </li>
               {/each}
             </ul>
-            <button type="button" class="dialog-link-btn" on:click={() => (selectorInputStrategies = [...defaultInputStrategies])}>Сбросить поля</button>
+            <button type="button" class="dialog-link-btn" on:click={() => (selectorInputStrategies = [...defaultInputStrategies])}>{tr('settings.strategies.resetInputs')}</button>
           </section>
         {:else if tab === 'plugins'}
           <section class="setting-section">
-            <h4 class="setting-section-title">Runner'ы и add-on'ы</h4>
+            <h4 class="setting-section-title">{tr('settings.sections.plugins.title')}</h4>
             <p class="setting-section-desc">
-              Плагины устанавливаются в <code>addons/&lt;имя&gt;/</code> и регистрируются в <code>.scenaria/plugins.json</code>.
+              {tr('settings.sections.plugins.desc')}
             </p>
             <div class="plugin-list">
               <div class="plugin-row">
-                <span>Playwright</span>
-                <span class="status ok">встроен</span>
+                <span>{tr('settings.plugins.playwright')}</span>
+                <span class="status ok">{tr('settings.plugins.builtIn')}</span>
               </div>
               <div class="plugin-row">
-                <span>Vanessa Automation</span>
+                <span>{tr('settings.plugins.vanessa')}</span>
                 <span class="status" class:ok={vanessaEntry} class:warn={!vanessaEntry}>
-                  {vanessaEntry ? 'установлен' : 'недоступен'}
+                  {vanessaEntry ? tr('settings.plugins.installed') : tr('settings.plugins.unavailable')}
                 </span>
               </div>
             </div>
             {#if onOpenVanessa}
-              <button type="button" class="dialog-link-btn" on:click={onOpenVanessa}>Настройки Vanessa…</button>
+              <button type="button" class="dialog-link-btn" on:click={onOpenVanessa}>{tr('settings.vanessaSettings')}</button>
             {/if}
             {#if onOpenPlugins}
-              <button type="button" class="dialog-link-btn" on:click={onOpenPlugins}>Управление плагинами…</button>
+              <button type="button" class="dialog-link-btn" on:click={onOpenPlugins}>{tr('settings.managePlugins')}</button>
             {/if}
-            <p class="hint">ZIP-плагины: <code>scenaria plugins install …</code> или диалог «Управление плагинами».</p>
+            <p class="hint">{tr('settings.plugins.zipHint')}</p>
           </section>
         {:else if tab === 'editor'}
           <section class="setting-section">
-            <h4 class="setting-section-title">Шрифт и отображение</h4>
-            <p class="setting-section-desc">Параметры Monaco-редактора сценариев.</p>
-            <SettingCard title="Размер шрифта" description="От 8 до 32 px.">
+            <h4 class="setting-section-title">{tr('settings.sections.editorFont.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.editorFont.desc')}</p>
+            <SettingCard title={tr('settings.cards.fontSize.title')} description={tr('settings.cards.fontSize.description')}>
               <input type="number" class="setting-number" bind:value={editorSettings.fontSize} min={8} max={32} />
             </SettingCard>
-            <SettingCard title="Шрифт" description="Моноширинный шрифт редактора.">
+            <SettingCard title={tr('settings.cards.fontFamily.title')} description={tr('settings.cards.fontFamily.description')}>
               <input type="text" class="setting-text setting-text-mono" bind:value={editorSettings.fontFamily} />
             </SettingCard>
-            <SettingCard title="Тема" description="Тёмная, светлая или как в системе.">
+            <SettingCard title={tr('settings.cards.theme.title')} description={tr('settings.cards.theme.description')}>
               <select bind:value={editorSettings.theme}>
-                <option value="scenaria-dark">Тёмная</option>
-                <option value="scenaria-light">Светлая</option>
-                <option value="system">Как в системе</option>
+                <option value="scenaria-dark">{tr('settings.editor.themeDark')}</option>
+                <option value="scenaria-light">{tr('settings.editor.themeLight')}</option>
+                <option value="system">{tr('settings.editor.themeSystem')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Перенос строк" description="Переносить длинные шаги по ширине редактора.">
+            <SettingCard title={tr('settings.cards.wordWrap.title')} description={tr('settings.cards.wordWrap.description')}>
               <select bind:value={editorSettings.wordWrap}>
-                <option value="on">Включён</option>
-                <option value="off">Выключен</option>
+                <option value="on">{tr('settings.editor.wordWrapOn')}</option>
+                <option value="off">{tr('settings.editor.wordWrapOff')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Миникарта" description="Обзорная карта кода справа.">
+            <SettingCard title={tr('settings.cards.minimap.title')} description={tr('settings.cards.minimap.description')}>
               <input type="checkbox" bind:checked={editorSettings.minimap} />
             </SettingCard>
-            <SettingCard title="Номера строк" description="Отображение номеров строк в gutter.">
+            <SettingCard title={tr('settings.cards.lineNumbers.title')} description={tr('settings.cards.lineNumbers.description')}>
               <select bind:value={editorSettings.lineNumbers}>
-                <option value="on">Обычные</option>
-                <option value="relative">Относительные</option>
-                <option value="off">Скрыть</option>
+                <option value="on">{tr('settings.editor.lineNumbersOn')}</option>
+                <option value="relative">{tr('settings.editor.lineNumbersRelative')}</option>
+                <option value="off">{tr('settings.editor.lineNumbersOff')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Пробелы" description="Когда показывать невидимые символы.">
+            <SettingCard title={tr('settings.cards.renderWhitespace.title')} description={tr('settings.cards.renderWhitespace.description')}>
               <select bind:value={editorSettings.renderWhitespace}>
-                <option value="none">Не показывать</option>
-                <option value="boundary">На границах слов</option>
-                <option value="selection">В выделении</option>
-                <option value="trailing">В конце строк</option>
-                <option value="all">Всегда</option>
+                <option value="none">{tr('settings.editor.whitespaceNone')}</option>
+                <option value="boundary">{tr('settings.editor.whitespaceBoundary')}</option>
+                <option value="selection">{tr('settings.editor.whitespaceSelection')}</option>
+                <option value="trailing">{tr('settings.editor.whitespaceTrailing')}</option>
+                <option value="all">{tr('settings.editor.whitespaceAll')}</option>
               </select>
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Ввод и поведение</h4>
-            <SettingCard title="Размер табуляции" description="Ширина отступа Tab в пробелах.">
+            <h4 class="setting-section-title">{tr('settings.sections.editorInput.title')}</h4>
+            <SettingCard title={tr('settings.cards.tabSize.title')} description={tr('settings.cards.tabSize.description')}>
               <input type="number" class="setting-number" bind:value={editorSettings.tabSize} min={1} max={8} />
             </SettingCard>
-            <SettingCard title="Пробелы вместо Tab" description="Вставлять пробелы при нажатии Tab.">
+            <SettingCard title={tr('settings.cards.insertSpaces.title')} description={tr('settings.cards.insertSpaces.description')}>
               <input type="checkbox" bind:checked={editorSettings.insertSpaces} />
             </SettingCard>
-            <SettingCard title="Складывание блоков" description="Сворачивать блоки «Если» / «Повторяю».">
+            <SettingCard title={tr('settings.cards.folding.title')} description={tr('settings.cards.folding.description')}>
               <input type="checkbox" bind:checked={editorSettings.folding} />
             </SettingCard>
-            <SettingCard title="Sticky scroll" description="Закреплять заголовки сценариев при прокрутке.">
+            <SettingCard title={tr('settings.cards.stickyScroll.title')} description={tr('settings.cards.stickyScroll.description')}>
               <input type="checkbox" bind:checked={editorSettings.stickyScroll} />
             </SettingCard>
-            <SettingCard title="Авто-закрытие кавычек" description="Поведение при вводе кавычек.">
+            <SettingCard title={tr('settings.cards.autoClosingQuotes.title')} description={tr('settings.cards.autoClosingQuotes.description')}>
               <select bind:value={editorSettings.autoClosingQuotes}>
-                <option value="languageDefined">По языку</option>
-                <option value="always">Всегда</option>
-                <option value="beforeWhitespace">Перед пробелом</option>
-                <option value="never">Никогда</option>
+                <option value="languageDefined">{tr('settings.editor.autoQuotesLanguage')}</option>
+                <option value="always">{tr('settings.editor.autoQuotesAlways')}</option>
+                <option value="beforeWhitespace">{tr('settings.editor.autoQuotesBeforeWhitespace')}</option>
+                <option value="never">{tr('settings.editor.autoQuotesNever')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Форматировать при сохранении" description="Нормализовать отступы и убрать лишние пустые строки между шагами при Ctrl+S.">
+            <SettingCard title={tr('settings.cards.formatOnSave.title')} description={tr('settings.cards.formatOnSave.description')}>
               <input type="checkbox" bind:checked={editorSettings.formatOnSave} />
             </SettingCard>
-            <SettingCard title="Подсказки при наведении" description="Показывать справку по шагу при hover в редакторе.">
+            <SettingCard title={tr('settings.cards.stepHover.title')} description={tr('settings.cards.stepHover.description')}>
               <input type="checkbox" bind:checked={editorSettings.stepHover} />
             </SettingCard>
-            <SettingCard title="Проверка при вводе" description="Валидировать сценарий с задержкой при редактировании.">
+            <SettingCard title={tr('settings.cards.validateOnType.title')} description={tr('settings.cards.validateOnType.description')}>
               <input type="checkbox" bind:checked={editorSettings.validateOnType} />
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Навигация</h4>
-            <p class="setting-section-desc">Структура feature-файла в breadcrumbs и панели шагов.</p>
-            <SettingCard title="Breadcrumbs" description="Цепочка заголовков над редактором (Функционал → Сценарий → шаг).">
+            <h4 class="setting-section-title">{tr('settings.sections.editorNavigation.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.editorNavigation.desc')}</p>
+            <SettingCard title={tr('settings.cards.breadcrumbs.title')} description={tr('settings.cards.breadcrumbs.description')}>
               <input type="checkbox" bind:checked={editorSettings.breadcrumbs} />
             </SettingCard>
-            <SettingCard title="Структура в панели шагов" description="Вкладка «Структура» с деревом сценария и переходом по клику.">
+            <SettingCard title={tr('settings.cards.symbolOutline.title')} description={tr('settings.cards.symbolOutline.description')}>
               <input type="checkbox" bind:checked={editorSettings.symbolOutline} />
             </SettingCard>
-            <SettingCard title="Вкладка панели по умолчанию" description="Что показывать под редактором при открытии сценария.">
+            <SettingCard title={tr('settings.cards.stepsPanelView.title')} description={tr('settings.cards.stepsPanelView.description')}>
               <select bind:value={editorSettings.stepsPanelView}>
-                <option value="outline">Структура</option>
-                <option value="steps">Таблица шагов</option>
+                <option value="outline">{tr('settings.editor.stepsPanelOutline')}</option>
+                <option value="steps">{tr('settings.editor.stepsPanelSteps')}</option>
               </select>
             </SettingCard>
-            <SettingCard title="Code Lens для запуска" description="Кнопки «▶ Запустить» над сценариями и шагами в редакторе.">
+            <SettingCard title={tr('settings.cards.codeLens.title')} description={tr('settings.cards.codeLens.description')}>
               <input type="checkbox" bind:checked={editorSettings.codeLens} />
             </SettingCard>
-            <SettingCard title="Inlay hints" description="Серые подсказки справа от шага: click → selector, fill → значение.">
+            <SettingCard title={tr('settings.cards.inlayHints.title')} description={tr('settings.cards.inlayHints.description')}>
               <input type="checkbox" bind:checked={editorSettings.inlayHints} />
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Подсказки сценария</h4>
-            <p class="setting-section-desc">Эвристики качества шагов в редакторе (маркеры и quick fix).</p>
-            <SettingCard title="Показывать подсказки" description="Маркеры warning/info в редакторе и панели «Проверка».">
+            <h4 class="setting-section-title">{tr('settings.sections.editorHints.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.editorHints.desc')}</p>
+            <SettingCard title={tr('settings.cards.scenarioHints.title')} description={tr('settings.cards.scenarioHints.description')}>
               <input type="checkbox" bind:checked={editorSettings.scenarioHints} />
             </SettingCard>
-            <SettingCard title="После записи" description="Анализировать сценарий сразу после остановки записи.">
+            <SettingCard title={tr('settings.cards.scenarioHintsAfterRecord.title')} description={tr('settings.cards.scenarioHintsAfterRecord.description')}>
               <input type="checkbox" bind:checked={editorSettings.scenarioHintsAfterRecord} disabled={!editorSettings.scenarioHints} />
             </SettingCard>
-            <SettingCard title="Предупреждения" description="Подсказки уровня warning (хрупкие селекторы, дубли).">
+            <SettingCard title={tr('settings.cards.scenarioHintsShowWarning.title')} description={tr('settings.cards.scenarioHintsShowWarning.description')}>
               <input type="checkbox" bind:checked={editorSettings.scenarioHintsShowWarning} disabled={!editorSettings.scenarioHints} />
             </SettingCard>
-            <SettingCard title="Информация" description="Подсказки уровня info (улучшения без критичных рисков).">
+            <SettingCard title={tr('settings.cards.scenarioHintsShowInfo.title')} description={tr('settings.cards.scenarioHintsShowInfo.description')}>
               <input type="checkbox" bind:checked={editorSettings.scenarioHintsShowInfo} disabled={!editorSettings.scenarioHints} />
             </SettingCard>
-            <SettingCard title="Авто-исправление при сохранении" description="Применять autoFixable подсказки при Ctrl+S.">
+            <SettingCard title={tr('settings.cards.scenarioHintsAutoFixOnSave.title')} description={tr('settings.cards.scenarioHintsAutoFixOnSave.description')}>
               <input type="checkbox" bind:checked={editorSettings.scenarioHintsAutoFixOnSave} disabled={!editorSettings.scenarioHints} />
             </SettingCard>
           </section>
         {:else}
           <section class="setting-section">
-            <h4 class="setting-section-title">Панель инструментов</h4>
-            <p class="setting-section-desc">Внешний вид верхней панели действий.</p>
-            <SettingCard title="Компактная панель" description="Меньше подписей на кнопках — только иконки.">
+            <h4 class="setting-section-title">{tr('settings.sections.uiLanguage.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.uiLanguage.desc')}</p>
+            <SettingCard title={tr('settings.uiLocale')} description="">
+              <select bind:value={uiLocale} on:change={onUiLocaleChange}>
+                <option value="ru">{tr('settings.uiLocaleRu')}</option>
+                <option value="en">{tr('settings.uiLocaleEn')}</option>
+              </select>
+            </SettingCard>
+          </section>
+
+          <section class="setting-section">
+            <h4 class="setting-section-title">{tr('settings.sections.toolbar.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.toolbar.desc')}</p>
+            <SettingCard title={tr('settings.cards.toolbarCompact.title')} description={tr('settings.cards.toolbarCompact.description')}>
               <input type="checkbox" bind:checked={toolbarCompact} />
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Панель шагов</h4>
-            <p class="setting-section-desc">Список распознанных шагов под редактором сценария.</p>
-            <SettingCard title="Показывать панель шагов" description="Отображать разбор шагов Gherkin под редактором.">
+            <h4 class="setting-section-title">{tr('settings.sections.stepsPanel.title')}</h4>
+            <p class="setting-section-desc">{tr('settings.sections.stepsPanel.desc')}</p>
+            <SettingCard title={tr('settings.cards.stepsPanelVisible.title')} description={tr('settings.cards.stepsPanelVisible.description')}>
               <input type="checkbox" bind:checked={stepsPanelVisible} />
             </SettingCard>
-            <SettingCard title="Высота панели" description="Высота области со списком шагов в пикселях.">
+            <SettingCard title={tr('settings.cards.stepsPanelHeight.title')} description={tr('settings.cards.stepsPanelHeight.description')}>
               <span class="num-with-unit">
                 <input type="number" class="setting-number" bind:value={stepsPanelHeight} min={80} max={480} />
-                <span>px</span>
+                <span>{tr('settings.units.px')}</span>
               </span>
             </SettingCard>
           </section>
 
           <section class="setting-section">
-            <h4 class="setting-section-title">Обновления</h4>
-            <SettingCard title="Проверять при запуске" description="Искать новую версию {BRAND_NAME} при старте IDE.">
+            <h4 class="setting-section-title">{tr('settings.sections.updates.title')}</h4>
+            <SettingCard title={tr('settings.cards.checkUpdates.title')} description={tr('settings.cards.checkUpdates.description', { brand: BRAND_NAME })}>
               <input type="checkbox" bind:checked={checkUpdatesOnStartup} />
             </SettingCard>
           </section>
@@ -564,28 +589,23 @@
     </div>
 
     <footer class="dialog-footer">
-      <button type="button" class="reset-btn" on:click={resetToDefaults}>Сбросить по умолчанию</button>
+      <button type="button" class="reset-btn" on:click={resetToDefaults}>{tr('settings.resetDefaults')}</button>
       {#if applyNotice}
         <span class="apply-notice" role="status">{applyNotice}</span>
       {/if}
       <span class="dialog-footer-spacer"></span>
       {#if onApply}
         <button type="button" class:applied={!!applyNotice && !applyBusy} disabled={applyBusy} on:click={handleApply}>
-          {applyBusy ? 'Применяю…' : applyNotice ? 'Применено' : 'Применить'}
+          {applyBusy ? tr('settings.applyBusy') : applyNotice ? tr('settings.applyDone') : tr('settings.apply')}
         </button>
       {/if}
-      <button type="button" class="primary" on:click={onSave}>OK</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" on:click={onSave}>{tr('settings.ok')}</button>
+      <button type="button" on:click={onCancel}>{tr('settings.cancel')}</button>
     </footer>
   </div>
 </div>
 
 <style>
-  code {
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-
   .browser-install-row {
     display: flex;
     gap: 10px;

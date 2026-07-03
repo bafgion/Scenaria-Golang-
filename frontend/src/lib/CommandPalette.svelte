@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import type { PaletteCommand } from './paletteTypes'
 
   export let commands: PaletteCommand[] = []
   export let onClose: () => void
+
+  $: tr = createTranslator($locale)
 
   let query = ''
   let selected = 0
@@ -45,8 +48,8 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette command-palette" role="dialog" aria-modal="true" aria-label="Палитра команд" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <input class="palette-input" bind:value={query} placeholder="Введите команду…" autofocus />
+  <div class="palette command-palette" role="dialog" aria-modal="true" aria-label={tr('palette.commands.palette')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <input class="palette-input" bind:value={query} placeholder={tr('palette.searchPlaceholder')} autofocus />
     <ul class="palette-list">
       {#each filtered as cmd, i}
         <li>
@@ -57,7 +60,7 @@
           </button>
         </li>
       {:else}
-        <li class="empty">Команды не найдены</li>
+        <li class="empty">{tr('palette.empty')}</li>
       {/each}
     </ul>
   </div>

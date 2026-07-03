@@ -1,11 +1,17 @@
 <script lang="ts">
-  export let title = 'Подтверждение'
+  import { createTranslator, locale } from './i18n'
+
+  export let title = ''
   export let message = ''
-  export let confirmLabel = 'OK'
+  export let confirmLabel = ''
   export let danger = false
   export let dontAskAgainLabel = ''
   export let onConfirm: (dontAskAgain?: boolean) => void = () => {}
   export let onCancel: () => void = () => {}
+
+  $: tr = createTranslator($locale)
+  $: dialogTitle = title || tr('common.confirm')
+  $: dialogConfirmLabel = confirmLabel || tr('common.ok')
 
   let dontAskAgain = false
 
@@ -20,8 +26,8 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop modal-layer-confirm" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal confirm-dialog" role="alertdialog" aria-modal="true" aria-label={title} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>{title}</h3>
+  <div class="modal confirm-dialog" role="alertdialog" aria-modal="true" aria-label={dialogTitle} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{dialogTitle}</h3>
     <p class="message">{message}</p>
     {#if dontAskAgainLabel}
       <label class="dont-ask">
@@ -30,8 +36,8 @@
       </label>
     {/if}
     <div class="modal-actions">
-      <button type="button" class="primary" class:danger on:click={() => onConfirm(dontAskAgain)}>{confirmLabel}</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" class:danger on:click={() => onConfirm(dontAskAgain)}>{dialogConfirmLabel}</button>
+      <button type="button" on:click={onCancel}>{tr('common.cancel')}</button>
     </div>
   </div>
 </div>

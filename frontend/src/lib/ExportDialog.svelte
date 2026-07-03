@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import {
     Export,
     PreviewExport,
@@ -12,6 +13,8 @@
   export let featureText = ''
   export let onClose: () => void = () => {}
   export let onLog: (message: string) => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   const exportExtensions: Record<string, string> = {
     json: '.json',
@@ -80,7 +83,7 @@
 
   async function browseOutput() {
     const ext = exportExtensions[format] || '.json'
-    const picked = await PickSaveFile('Экспорт сценария', `export${ext}`)
+    const picked = await PickSaveFile(tr('dialogs.export.pickSaveTitle'), `export${ext}`)
     if (picked) {
       outputPath = picked
       await checkOutputExists()
@@ -94,7 +97,7 @@
   async function confirmExport() {
     if (!inputPath || !outputPath.trim() || busy) return
     if (outputExists && !forceOverwrite) {
-      previewError = 'Файл уже существует — включите перезапись или выберите другой путь'
+      previewError = tr('dialogs.export.fileExistsError')
       return
     }
     busy = true
@@ -109,15 +112,15 @@
       })
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
-        onLog(`Ошибка: ${result.error}`)
+        onLog(`${tr('dialogs.export.errorPrefix')} ${result.error}`)
         previewError = result.error
         return
       }
-      onLog(`Экспортировано: ${outputPath}`)
+      onLog(tr('dialogs.export.exported', { path: outputPath }))
       onClose()
     } catch (e: any) {
       previewError = String(e)
-      onLog(`Ошибка: ${e}`)
+      onLog(`${tr('dialogs.export.errorPrefix')} ${e}`)
     } finally {
       busy = false
     }
@@ -139,58 +142,58 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette export-dialog" role="dialog" aria-modal="true" aria-label="Экспорт сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Экспорт сценария</h3>
-    <p class="hint">Источник: <code>{basename(inputPath)}</code></p>
+  <div class="palette export-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.export.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.export.title')}</h3>
+    <p class="hint">{tr('dialogs.export.source')} <code>{basename(inputPath)}</code></p>
 
     {#if preview}
       <div class="preview-summary">
         {#if preview.scenarioTitle}
-          <span>«{preview.scenarioTitle}»</span>
+          <span>{tr('dialogs.export.scenarioTitle', { title: preview.scenarioTitle })}</span>
         {/if}
-        <span>{preview.stepCount} шаг(ов)</span>
+        <span>{tr('dialogs.export.stepCount', { count: preview.stepCount })}</span>
       </div>
     {/if}
 
-    <label>Формат
+    <label>{tr('dialogs.export.format')}
       <select bind:value={format} on:change={onFormatChange} disabled={busy}>
-        <option value="json">JSON</option>
-        <option value="feature">Gherkin (.feature)</option>
-        <option value="ts">TypeScript</option>
-        <option value="python">Python</option>
+        <option value="json">{tr('dialogs.export.formatJson')}</option>
+        <option value="feature">{tr('dialogs.export.formatFeature')}</option>
+        <option value="ts">{tr('dialogs.export.formatTs')}</option>
+        <option value="python">{tr('dialogs.export.formatPython')}</option>
       </select>
     </label>
 
-    <label>Файл
+    <label>{tr('dialogs.export.file')}
       <div class="input-row">
         <input bind:value={outputPath} on:blur={onOutputPathInput} disabled={busy} />
-        <button type="button" on:click={browseOutput} disabled={busy}>Обзор…</button>
+        <button type="button" on:click={browseOutput} disabled={busy}>{tr('dialogs.common.browse')}</button>
       </div>
     </label>
 
     {#if outputExists}
       <label class="overwrite">
         <input type="checkbox" bind:checked={forceOverwrite} disabled={busy} />
-        Перезаписать существующий файл
+        {tr('dialogs.export.overwrite')}
       </label>
     {/if}
 
-    <label>Base URL
-      <input bind:value={baseURL} placeholder="https://example.com" disabled={busy} />
+    <label>{tr('dialogs.export.baseUrl')}
+      <input bind:value={baseURL} placeholder={tr('dialogs.export.baseUrlPlaceholder')} disabled={busy} />
     </label>
     {#if baseURLWarning}
-      <p class="warning">Для TypeScript и Python рекомендуется указать Base URL.</p>
+      <p class="warning">{tr('dialogs.export.baseUrlWarning')}</p>
     {/if}
 
     {#if preview && preview.issues.length > 0}
       <div class="issues">
-        <strong>Ошибки в сценарии ({preview.issues.length})</strong>
+        <strong>{tr('dialogs.export.issues', { count: preview.issues.length })}</strong>
         <ul>
           {#each preview.issues.slice(0, 8) as issue}
-            <li>стр. {issue.line}: {issue.message}</li>
+            <li>{tr('dialogs.export.issueLine', { line: issue.line, message: issue.message })}</li>
           {/each}
           {#if preview.issues.length > 8}
-            <li>…и ещё {preview.issues.length - 8}</li>
+            <li>{tr('dialogs.export.andMore', { count: preview.issues.length - 8 })}</li>
           {/if}
         </ul>
       </div>
@@ -198,13 +201,13 @@
 
     {#if preview && preview.hints.length > 0}
       <div class="hints">
-        <strong>Рекомендации ({preview.hints.length})</strong>
+        <strong>{tr('dialogs.export.hints', { count: preview.hints.length })}</strong>
         <ul>
           {#each preview.hints.slice(0, 5) as hint}
             <li class={hintSeverityClass(hint.severity)}>{hint.title}</li>
           {/each}
           {#if preview.hints.length > 5}
-            <li>…и ещё {preview.hints.length - 5}</li>
+            <li>{tr('dialogs.export.andMore', { count: preview.hints.length - 5 })}</li>
           {/if}
         </ul>
       </div>
@@ -214,9 +217,9 @@
 
     <div class="actions">
       <button type="button" class="primary" disabled={!canExport} on:click={confirmExport}>
-        {busy ? 'Экспорт…' : 'Экспорт'}
+        {busy ? tr('dialogs.export.exporting') : tr('dialogs.export.confirm')}
       </button>
-      <button type="button" on:click={onClose} disabled={busy}>Отмена</button>
+      <button type="button" on:click={onClose} disabled={busy}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

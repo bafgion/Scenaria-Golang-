@@ -1,8 +1,12 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
+
   export let initialPath = ''
   export let recentProjects: string[] = []
   export let onConfirm: (path: string) => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let path = initialPath
 
@@ -29,24 +33,24 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Открыть проект" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Открыть проект</h3>
-    <p class="hint">Укажите папку с .feature сценариями (если диалог выбора папки недоступен).</p>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={tr('dialogs.project.open.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.project.open.title')}</h3>
+    <p class="hint">{tr('dialogs.project.open.hint')}</p>
     <label>
-      Путь к папке
-      <input bind:value={path} placeholder="C:\Projects\my-scenarios" />
+      {tr('dialogs.project.open.path')}
+      <input bind:value={path} placeholder={tr('dialogs.project.open.pathPlaceholder')} />
     </label>
     {#if recentProjects.length > 0}
       <div class="recents">
-        <p class="recents-title">Недавние проекты</p>
+        <p class="recents-title">{tr('dialogs.project.open.recents')}</p>
         {#each recentProjects.slice(0, 8) as project}
           <button type="button" class="recent-item" on:click={() => pickRecent(project)}>{project}</button>
         {/each}
       </div>
     {/if}
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={submit} disabled={!path.trim()}>Открыть</button>
-      <button type="button" on:click={onClose}>Отмена</button>
+      <button type="button" class="primary" on:click={submit} disabled={!path.trim()}>{tr('dialogs.project.open.open')}</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

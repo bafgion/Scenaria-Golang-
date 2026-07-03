@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import type { gui } from '../../wailsjs/go/models'
 
   export let selector = ''
@@ -6,15 +8,18 @@
   export let onInsert: (text: string) => void = () => {}
   export let onClose: () => void = () => {}
 
+  $: tr = createTranslator($locale)
+
   let selected = 0
 
-  $: preview = choices[selected]?.preview || '—'
+  $: preview = choices[selected]?.preview || tr('dialogs.common.notFound')
   $: description = choices[selected]?.description || ''
+  $: selectorOnlyLabel = tr('dialogs.pickerStep.selectorOnly')
 
   function confirm() {
     const choice = choices[selected]
     if (!choice) return
-    if (choice.label === 'Только селектор') {
+    if (choice.label === selectorOnlyLabel) {
       onInsert(choice.preview)
     } else {
       onInsert((choice.preview.endsWith('\n') ? choice.preview : choice.preview + '\n'))
@@ -39,8 +44,8 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop modal-layer-top" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette picker-step" role="dialog" aria-modal="true" aria-label="Шаг для элемента" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Элемент выбран — укажите шаг</h3>
+  <div class="palette picker-step" role="dialog" aria-modal="true" aria-label={tr('dialogs.pickerStep.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.pickerStep.title')}</h3>
     <p class="selector-preview" title={selector}>{selector.length > 120 ? selector.slice(0, 117) + '…' : selector}</p>
     <div class="picker-body">
       <ul class="choice-list">
@@ -53,14 +58,14 @@
         {/each}
       </ul>
       <div class="preview-pane">
-        <div class="caption">Пример в сценарии</div>
+        <div class="caption">{tr('dialogs.pickerStep.scenarioExample')}</div>
         <pre>{preview}</pre>
         <p class="hint">{description}</p>
       </div>
     </div>
     <div class="actions">
-      <button type="button" class="primary" on:click={confirm}>Вставить</button>
-      <button type="button" on:click={onClose}>Отмена</button>
+      <button type="button" class="primary" on:click={confirm}>{tr('dialogs.pickerStep.insert')}</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

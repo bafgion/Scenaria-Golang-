@@ -1,13 +1,17 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import type { RunForm } from './runTypes'
 
-  export let title = 'Запуск сценария'
+  export let title = ''
   export let form: RunForm
   export let testClients: string[] = []
   export let tags: string[] = []
   export let scenarios: string[] = []
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
+
+  $: tr = createTranslator($locale)
+  $: dialogTitle = title || tr('dialogs.run.title')
 
   function pickTag(tag: string) {
     form = { ...form, tag }
@@ -23,10 +27,10 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide run-dialog" role="dialog" aria-modal="true" aria-label={title} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>{title}</h3>
-    <label>Тег <input bind:value={form.tag} placeholder="@smoke" /></label>
-    <label>Сценарий (опционально) <input bind:value={form.scenario} placeholder="Название сценария" list="run-scenario-list" /></label>
+  <div class="modal wide run-dialog" role="dialog" aria-modal="true" aria-label={dialogTitle} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{dialogTitle}</h3>
+    <label>{tr('dialogs.run.tag')} <input bind:value={form.tag} placeholder={tr('dialogs.run.tagPlaceholder')} /></label>
+    <label>{tr('dialogs.run.scenarioOptional')} <input bind:value={form.scenario} placeholder={tr('dialogs.run.scenarioPlaceholder')} list="run-scenario-list" /></label>
     {#if scenarios.length > 0}
       <datalist id="run-scenario-list">
         {#each scenarios as name}
@@ -46,22 +50,22 @@
         {/each}
       </div>
     {/if}
-    <label>TestClient
+    <label>{tr('dialogs.run.testClient')}
       <select bind:value={form.testClient}>
-        <option value="">(из feature / не задан)</option>
+        <option value="">{tr('dialogs.run.testClientDefault')}</option>
         {#each testClients as client}
           <option value={client}>{client}</option>
         {/each}
       </select>
     </label>
     <div class="row-2">
-      <label>Движок
+      <label>{tr('dialogs.run.engine')}
         <select bind:value={form.engine} disabled={form.dryRun}>
           <option value="playwright">playwright</option>
           <option value="stub">stub</option>
         </select>
       </label>
-      <label>Браузер
+      <label>{tr('dialogs.run.browser')}
         <select bind:value={form.browser} disabled={form.dryRun}>
           <option value="chromium">chromium</option>
           <option value="firefox">firefox</option>
@@ -70,33 +74,33 @@
       </label>
     </div>
     <div class="row-2">
-      <label>Параллельные воркеры
+      <label>{tr('dialogs.run.workers')}
         <input id="run-workers" type="number" bind:value={form.workers} min={1} max={16} disabled={form.dryRun} />
       </label>
-      <label>Slow-mo (мс)
+      <label>{tr('dialogs.run.slowMo')}
         <input id="run-slowmo" type="number" bind:value={form.slowMo} min={0} step={50} disabled={form.dryRun} />
       </label>
     </div>
-    <label>Переменные (NAME=VALUE)
-      <textarea bind:value={form.vars} placeholder="BASE_URL=https://example.com"></textarea>
+    <label>{tr('dialogs.run.vars')}
+      <textarea bind:value={form.vars} placeholder={tr('dialogs.run.varsPlaceholder')}></textarea>
     </label>
-    <label>Base URL (переопределение)
-      <input bind:value={form.baseUrl} placeholder="https://example.com" disabled={form.dryRun} />
+    <label>{tr('dialogs.run.baseUrl')}
+      <input bind:value={form.baseUrl} placeholder={tr('dialogs.run.baseUrlPlaceholder')} disabled={form.dryRun} />
     </label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.dryRun} /> Dry-run (без браузера)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.headed} disabled={form.dryRun} /> Headed (видимый браузер)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.installPW} disabled={form.dryRun} /> Установить Playwright при необходимости</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.allure} disabled={form.dryRun} /> Allure (.scenaria/allure-results)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.trace} disabled={form.dryRun} /> Trace</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.video} disabled={form.dryRun} /> Video</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.html} disabled={form.dryRun} /> HTML-отчёт (.scenaria/report.html)</label>
-    <label class="check-row indent"><input type="checkbox" bind:checked={form.htmlTimestamp} disabled={form.dryRun || !form.html} /> С timestamp в имени (report-YYYYMMDD-HHMM.html)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.junit} disabled={form.dryRun} /> JUnit (.scenaria/junit.xml)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.summaryJson} disabled={form.dryRun} /> Summary JSON (.scenaria/summary.json)</label>
-    <label class="check-row"><input type="checkbox" bind:checked={form.continueOnFail} disabled={form.dryRun} /> Продолжать при ошибке (не останавливать suite)</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.dryRun} /> {tr('dialogs.run.dryRun')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.headed} disabled={form.dryRun} /> {tr('dialogs.run.headed')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.installPW} disabled={form.dryRun} /> {tr('dialogs.run.installPw')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.allure} disabled={form.dryRun} /> {tr('dialogs.run.allure')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.trace} disabled={form.dryRun} /> {tr('dialogs.run.trace')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.video} disabled={form.dryRun} /> {tr('dialogs.run.video')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.html} disabled={form.dryRun} /> {tr('dialogs.run.html')}</label>
+    <label class="check-row indent"><input type="checkbox" bind:checked={form.htmlTimestamp} disabled={form.dryRun || !form.html} /> {tr('dialogs.run.htmlTimestamp')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.junit} disabled={form.dryRun} /> {tr('dialogs.run.junit')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.summaryJson} disabled={form.dryRun} /> {tr('dialogs.run.summaryJson')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.continueOnFail} disabled={form.dryRun} /> {tr('dialogs.run.continueOnFail')}</label>
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={onConfirm}>Запустить</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" on:click={onConfirm}>{tr('dialogs.run.start')}</button>
+      <button type="button" on:click={onCancel}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

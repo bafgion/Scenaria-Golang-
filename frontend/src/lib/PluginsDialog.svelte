@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { ListPlugins, InstallPlugin, UninstallPlugin } from '../../wailsjs/go/wailsapp/App'
   import type { gui } from '../../wailsjs/go/models'
 
@@ -8,6 +9,8 @@
   export let childModalOpen = false
   export let onAskConfirm: (message: string) => Promise<boolean> = (message) =>
     Promise.resolve(window.confirm(message))
+
+  $: tr = createTranslator($locale)
 
   let entries: gui.PluginEntryDTO[] = []
   let name = 'vanessa'
@@ -35,7 +38,7 @@
 
   async function install() {
     if (!name.trim() || !source.trim()) {
-      error = 'Укажите имя и источник (URL или путь к .zip)'
+      error = tr('dialogs.plugins.errorNameSource')
       return
     }
     busy = true
@@ -52,7 +55,7 @@
   }
 
   async function uninstall(entry: gui.PluginEntryDTO) {
-    if (!(await onAskConfirm(`Удалить плагин «${entry.name}» из манифеста?`))) return
+    if (!(await onAskConfirm(tr('dialogs.plugins.confirmUninstall', { name: entry.name })))) return
     busy = true
     error = ''
     try {
@@ -82,18 +85,18 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onBackdropClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide tall plugins-dialog" role="dialog" aria-modal="true" aria-label="Плагины" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Плагины проекта</h3>
-    <p class="hint">Плагины устанавливаются в <code>addons/&lt;имя&gt;/</code> и регистрируются в <code>.scenaria/plugins.json</code>.</p>
+  <div class="modal wide tall plugins-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.plugins.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.plugins.title')}</h3>
+    <p class="hint">{tr('dialogs.plugins.hint')}</p>
 
     {#if loading}
-      <p class="empty">Загрузка…</p>
+      <p class="empty">{tr('dialogs.common.loading')}</p>
     {:else if entries.length === 0}
-      <p class="empty">Нет установленных плагинов</p>
+      <p class="empty">{tr('dialogs.plugins.empty')}</p>
     {:else}
       <table>
         <thead>
-          <tr><th>Имя</th><th>Источник</th><th></th></tr>
+          <tr><th>{tr('dialogs.plugins.colName')}</th><th>{tr('dialogs.plugins.colSource')}</th><th></th></tr>
         </thead>
         <tbody>
           {#each entries as entry}
@@ -103,7 +106,7 @@
                 {#if entry.description}<div class="meta">{entry.description}</div>{/if}
               </td>
               <td class="source" title={entry.source}>{entry.source}</td>
-              <td><button type="button" class="danger" disabled={busy} on:click={() => uninstall(entry)}>Удалить</button></td>
+              <td><button type="button" class="danger" disabled={busy} on:click={() => uninstall(entry)}>{tr('dialogs.plugins.uninstall')}</button></td>
             </tr>
           {/each}
         </tbody>
@@ -111,22 +114,22 @@
     {/if}
 
     <div class="install-form">
-      <label>Имя <input bind:value={name} placeholder="vanessa" disabled={busy} /></label>
-      <label>Источник (URL или .zip)
-        <input bind:value={source} placeholder="https://…/plugin.zip" disabled={busy} />
+      <label>{tr('dialogs.plugins.name')} <input bind:value={name} placeholder={tr('dialogs.plugins.namePlaceholder')} disabled={busy} /></label>
+      <label>{tr('dialogs.plugins.source')}
+        <input bind:value={source} placeholder={tr('dialogs.plugins.sourcePlaceholder')} disabled={busy} />
       </label>
-      <button type="button" class="primary" disabled={busy} on:click={install}>Установить</button>
+      <button type="button" class="primary" disabled={busy} on:click={install}>{tr('dialogs.plugins.install')}</button>
     </div>
 
     {#each runnablePluginEntries as entry (entry.name)}
       <div class="runners">
         <span>{pluginTitle(entry)}:</span>
         {#if entry.vanessa}
-          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>Dry-run</button>
-          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>{tr('dialogs.plugins.dryRun')}</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>{tr('dialogs.plugins.run')}</button>
         {:else}
-          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>Dry-run…</button>
-          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>Запуск…</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, true) }}>{tr('dialogs.plugins.dryRunEllipsis')}</button>
+          <button type="button" disabled={busy} on:click={() => { onClose(); onRunPlugin(entry.name, false) }}>{tr('dialogs.plugins.runEllipsis')}</button>
         {/if}
       </div>
     {/each}
@@ -134,7 +137,7 @@
     {#if error}<p class="error">{error}</p>{/if}
 
     <div class="modal-actions">
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

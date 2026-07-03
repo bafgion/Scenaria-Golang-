@@ -1,4 +1,5 @@
 import type { gui } from '../../wailsjs/go/models'
+import { t } from './i18n'
 
 export type FlakyScenarioStat = {
   flaky: boolean
@@ -32,7 +33,10 @@ export function flakyLabel(stat: FlakyScenarioStat | undefined): string {
 export function flakyStepHints(metrics: gui.FlakyMetricsDTO | null | undefined): Map<string, string> {
   const map = new Map<string, string>()
   for (const item of metrics?.steps ?? []) {
-    map.set(item.path, `шаг ${item.step + 1} — ${item.failures} падений`)
+    map.set(
+      item.path,
+      t('editor.flakyStep', { step: item.step + 1, failures: item.failures }),
+    )
   }
   return map
 }

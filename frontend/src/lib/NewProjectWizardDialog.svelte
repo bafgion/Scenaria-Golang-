@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { PickProjectFolder } from '../../wailsjs/go/wailsapp/App'
   import { slugifyFileName } from './featureTemplate'
 
@@ -18,14 +19,20 @@
   export let onConfirm: (result: NewProjectWizardResult) => void = () => {}
   export let onCancel: () => void = () => {}
 
+  $: tr = createTranslator($locale)
+
   let path = ''
   let initScenaria = true
   let createSample = true
-  let title = 'Примеры для новичков'
-  let scenario = 'Первая проверка страницы'
+  let title = ''
+  let scenario = ''
   let startUrl = defaultStartUrl
   let featureFileName = 'smoke'
 
+  $: titleDefault = tr('dialogs.project.newWizard.titleDefault')
+  $: scenarioDefault = tr('dialogs.project.newWizard.scenarioDefault')
+  $: if ($locale && !title) title = titleDefault
+  $: if ($locale && !scenario) scenario = scenarioDefault
   $: featureFileName = slugifyFileName(title) || 'smoke'
 
   function submit() {
@@ -35,8 +42,8 @@
       path: value,
       initScenaria,
       createSample,
-      title: title.trim() || 'Примеры для новичков',
-      scenario: scenario.trim() || 'Первая проверка страницы',
+      title: title.trim() || titleDefault,
+      scenario: scenario.trim() || scenarioDefault,
       featureFileName,
       startUrl: startUrl.trim() || defaultStartUrl,
     })
@@ -62,54 +69,54 @@
     class="modal wizard-dialog"
     role="dialog"
     aria-modal="true"
-    aria-label="Новый проект"
+    aria-label={tr('dialogs.project.newWizard.ariaLabel')}
     tabindex="-1"
     on:click|stopPropagation
     on:keydown|stopPropagation
   >
-    <h3>Новый проект</h3>
-    <p class="hint">Выберите папку проекта. Можно создать каталог <code>.scenaria/</code> и первый сценарий.</p>
+    <h3>{tr('dialogs.project.newWizard.title')}</h3>
+    <p class="hint">{tr('dialogs.project.newWizard.hint')}</p>
 
     <label>
-      Папка проекта
+      {tr('dialogs.project.newWizard.folder')}
       <div class="path-row">
-        <input bind:value={path} placeholder="C:\Projects\my-scenarios" />
-        <button type="button" on:click={pickFolder}>Обзор…</button>
+        <input bind:value={path} placeholder={tr('dialogs.project.newWizard.folderPlaceholder')} />
+        <button type="button" on:click={pickFolder}>{tr('dialogs.common.browse')}</button>
       </div>
     </label>
 
     <label class="checkbox-row">
       <input type="checkbox" bind:checked={initScenaria} />
-      Создать <code>.scenaria/</code> (Init проекта)
+      {tr('dialogs.project.newWizard.initScenaria')}
     </label>
 
     <label class="checkbox-row">
       <input type="checkbox" bind:checked={createSample} />
-      Создать шаблон сценария
+      {tr('dialogs.project.newWizard.createSample')}
     </label>
 
     {#if createSample}
       <label>
-        Название feature
+        {tr('dialogs.project.newWizard.featureTitle')}
         <input bind:value={title} />
       </label>
       <label>
-        Имя файла
+        {tr('dialogs.project.newWizard.fileName')}
         <input value="{featureFileName}.feature" readonly class="readonly" />
       </label>
       <label>
-        Сценарий
+        {tr('dialogs.project.newWizard.scenario')}
         <input bind:value={scenario} />
       </label>
       <label>
-        Стартовый URL
-        <input bind:value={startUrl} placeholder="https://example.com" />
+        {tr('dialogs.project.newWizard.startUrl')}
+        <input bind:value={startUrl} placeholder={tr('dialogs.project.newWizard.startUrlPlaceholder')} />
       </label>
     {/if}
 
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={submit} disabled={!path.trim()}>Создать</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" on:click={submit} disabled={!path.trim()}>{tr('dialogs.project.newWizard.create')}</button>
+      <button type="button" on:click={onCancel}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import type { gui } from '../../wailsjs/go/models'
   import { flakyLabel, isFlakyPath, type FlakyScenarioStat } from './flakyMetrics'
 
@@ -8,6 +9,8 @@
   export let onOpenFeature: (path: string) => void = () => {}
   export let onRerunFailed: () => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let filter = 'all'
   let query = ''
@@ -55,29 +58,29 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="palette run-history" role="dialog" aria-modal="true" aria-label="История запусков" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>История запусков</h3>
+  <div class="palette run-history" role="dialog" aria-modal="true" aria-label={tr('dialogs.runHistory.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.runHistory.title')}</h3>
     <div class="toolbar">
-      <input class="search" bind:value={query} placeholder="Поиск по сценарию или сообщению…" />
+      <input class="search" bind:value={query} placeholder={tr('dialogs.runHistory.searchPlaceholder')} />
       <select bind:value={filter}>
-        <option value="all">Все</option>
-        <option value="failed">Только упавшие</option>
-        <option value="passed">Только успешные</option>
-        <option value="flaky">Flaky</option>
+        <option value="all">{tr('dialogs.runHistory.filterAll')}</option>
+        <option value="failed">{tr('dialogs.runHistory.filterFailed')}</option>
+        <option value="passed">{tr('dialogs.runHistory.filterPassed')}</option>
+        <option value="flaky">{tr('dialogs.runHistory.filterFlaky')}</option>
       </select>
-      <button type="button" on:click={onRerunFailed}>Перезапустить упавшие</button>
+      <button type="button" on:click={onRerunFailed}>{tr('dialogs.runHistory.rerunFailed')}</button>
     </div>
     {#if filtered.length === 0}
-      <p class="empty">Нет записей для отображения</p>
+      <p class="empty">{tr('dialogs.runHistory.empty')}</p>
     {:else}
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Сценарий</th>
-              <th>Результат</th>
-              <th>Сообщение</th>
-              <th>Время</th>
+              <th>{tr('dialogs.runHistory.colScenario')}</th>
+              <th>{tr('dialogs.runHistory.colResult')}</th>
+              <th>{tr('dialogs.runHistory.colMessage')}</th>
+              <th>{tr('dialogs.runHistory.colTime')}</th>
             </tr>
           </thead>
           <tbody>
@@ -85,7 +88,7 @@
               {@const parts = splitPath(entry.path)}
               {@const flakyStat = flakyByPath.get(entry.path)}
               {@const stepHint = flakyStepByPath.get(entry.path)}
-              <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky} on:dblclick={() => openEntry(entry)} title="Двойной клик — открыть feature">
+              <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky} on:dblclick={() => openEntry(entry)} title={tr('dialogs.runHistory.openFeatureTitle')}>
                 <td>
                   <div class="scenario">{parts.scenario || basename(parts.feature)}</div>
                   <div class="feature">{basename(parts.feature)}</div>
@@ -96,8 +99,8 @@
                     <div class="step-flaky">{stepHint}</div>
                   {/if}
                 </td>
-                <td>{entry.success ? 'OK' : 'FAIL'}</td>
-                <td class="msg">{entry.message || '—'}</td>
+                <td>{entry.success ? tr('dialogs.runHistory.resultOk') : tr('dialogs.runHistory.resultFail')}</td>
+                <td class="msg">{entry.message || tr('dialogs.common.notFound')}</td>
                 <td class="at">{formatAt(entry.at)}</td>
               </tr>
             {/each}
@@ -106,7 +109,7 @@
       </div>
     {/if}
     <div class="actions">
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

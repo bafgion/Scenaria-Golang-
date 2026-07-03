@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
+
   export let path = ''
   export let stepCount = 0
   export let onValidate: () => void = () => {}
   export let onSave: () => void = () => {}
   export let onShowDiff: () => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   function basename(p: string): string {
     const parts = p.replace(/\\/g, '/').split('/')
@@ -15,14 +19,14 @@
 <div class="post-record-banner" role="status">
   <div class="top">
     <div class="summary">
-      Записано шагов: {stepCount} — {basename(path)}
-      <span class="hint-note">Подсказки — в редакторе (лампочка / Ctrl+.)</span>
+      {tr('dialogs.postRecord.banner.summary', { stepCount, fileName: basename(path) })}
+      <span class="hint-note">{tr('dialogs.postRecord.banner.hint')}</span>
     </div>
     <div class="banner-actions">
-      <button type="button" on:click={onShowDiff}>Сравнить</button>
-      <button type="button" class="primary" on:click={onValidate}>Проверить</button>
-      <button type="button" on:click={onSave}>Сохранить</button>
-      <button type="button" class="dismiss" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={onShowDiff}>{tr('dialogs.postRecord.banner.compare')}</button>
+      <button type="button" class="primary" on:click={onValidate}>{tr('dialogs.postRecord.banner.validate')}</button>
+      <button type="button" on:click={onSave}>{tr('dialogs.common.save')}</button>
+      <button type="button" class="dismiss" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

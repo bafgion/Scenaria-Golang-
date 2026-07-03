@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
+
   export let initialUrl = 'https://example.com'
   export let onConfirm: (url: string) => void = () => {}
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let url = initialUrl
 
@@ -23,16 +27,16 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Обновить стартовый URL" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Обновить стартовый URL</h3>
-    <p class="hint">Заменяет URL во всех шагах «открыт» в текущем файле.</p>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={tr('dialogs.feature.refactorUrl.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.feature.refactorUrl.title')}</h3>
+    <p class="hint">{tr('dialogs.feature.refactorUrl.hint')}</p>
     <label>
-      Новый URL
-      <input bind:value={url} placeholder="https://example.com" />
+      {tr('dialogs.feature.refactorUrl.newUrl')}
+      <input bind:value={url} placeholder={tr('dialogs.feature.refactorUrl.newUrlPlaceholder')} />
     </label>
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={submit} disabled={!url.trim()}>Применить</button>
-      <button type="button" on:click={onClose}>Отмена</button>
+      <button type="button" class="primary" on:click={submit} disabled={!url.trim()}>{tr('dialogs.common.apply')}</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

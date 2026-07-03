@@ -1,3 +1,5 @@
+import { t } from './i18n'
+
 let untitledCounter = 0
 
 export const UNTITLED_PREFIX = '__untitled__:'
@@ -8,7 +10,7 @@ export function isUntitled(path: string): boolean {
 
 export function makeUntitledPath(displayName: string): string {
   untitledCounter += 1
-  const trimmed = displayName.trim() || 'Без названия.feature'
+  const trimmed = displayName.trim() || t('common.untitledDefault')
   const name = trimmed.toLowerCase().endsWith('.feature') ? trimmed : `${trimmed}.feature`
   return `${UNTITLED_PREFIX}${untitledCounter}/${name}`
 }

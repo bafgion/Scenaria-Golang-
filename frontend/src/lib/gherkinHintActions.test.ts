@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActionsHelpers'
+import { hintMarkerSource, findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActionsHelpers'
 import type { gui } from '../../wailsjs/go/models'
 
 const hint: gui.ScenarioHintDTO = {
@@ -40,7 +40,7 @@ describe('gherkinHintActions helpers', () => {
 
   it('findHintForMarker matches source line and id', () => {
     const marker = {
-      source: 'Подсказка',
+      source: hintMarkerSource(),
       code: 'menu_hover',
       startLineNumber: 3,
       endLineNumber: 3,
@@ -49,7 +49,7 @@ describe('gherkinHintActions helpers', () => {
     }
     expect(findHintForMarker([hint], marker as never)).toEqual(hint)
     expect(
-      findHintForMarker([hint], { ...marker, source: 'Другое' } as never),
+      findHintForMarker([hint], { ...marker, source: 'other' } as never),
     ).toBeUndefined()
   })
 })

@@ -1,5 +1,7 @@
 /** Catalog tree — parity with Python app/mvc/models/catalog_model.py */
 
+import { t } from './i18n'
+
 export type RowKind = 'root' | 'dir' | 'file'
 export type EmptyKind = 'no_project' | 'missing' | 'no_files' | 'no_match'
 
@@ -241,8 +243,8 @@ export function buildCatalogViewStateFromBase(
   if (!root) {
     return {
       tree: null,
-      emptyTitle: 'Проект не открыт',
-      emptyHint: 'Откройте папку с .feature сценариями.\nПроект → Открыть проект…',
+      emptyTitle: t('dialogs.catalog.empty.noProject.title'),
+      emptyHint: t('dialogs.catalog.empty.noProject.hint'),
       emptyKind: 'no_project',
       expandAll: false,
       showEmptyMessage: true,
@@ -251,8 +253,8 @@ export function buildCatalogViewStateFromBase(
   if (!rootExists || !baseTree) {
     return {
       tree: null,
-      emptyTitle: 'Папка не найдена',
-      emptyHint: `Путь недоступен:\n${root}\n\nВыберите другой проект.`,
+      emptyTitle: t('dialogs.catalog.empty.missing.title'),
+      emptyHint: t('dialogs.catalog.empty.missing.hint', { path: root }),
       emptyKind: 'missing',
       expandAll: false,
       showEmptyMessage: true,
@@ -268,8 +270,8 @@ export function buildCatalogViewStateFromBase(
   if (totalFiles === 0) {
     return {
       tree,
-      emptyTitle: 'Нет сценариев',
-      emptyHint: `В «${basename(root)}» пока нет .feature файлов.\nНажмите + или Сценарий → Новый.\nДля пакетного запуска: режим «Выбор» или Ctrl+клик по файлу.`,
+      emptyTitle: t('dialogs.catalog.empty.noFiles.title'),
+      emptyHint: t('dialogs.catalog.empty.noFiles.hint', { folder: basename(root) }),
       emptyKind: 'no_files',
       expandAll: false,
       showEmptyMessage: true,
@@ -281,8 +283,8 @@ export function buildCatalogViewStateFromBase(
     if (tag && !query) {
       return {
         tree,
-        emptyTitle: 'Нет сценариев с тегом',
-        emptyHint: `Тег «@${tag}» не найден ни в одном сценарии.\nОчистите поле поиска.`,
+        emptyTitle: t('dialogs.catalog.empty.noMatchTag.title'),
+        emptyHint: t('dialogs.catalog.empty.noMatchTag.hint', { tag }),
         emptyKind: 'no_match',
         expandAll: true,
         showEmptyMessage: true,
@@ -290,8 +292,8 @@ export function buildCatalogViewStateFromBase(
     }
     return {
       tree,
-      emptyTitle: 'Ничего не найдено',
-      emptyHint: `Запрос «${trimmed}» не дал результатов.\nОчистите поле поиска.`,
+      emptyTitle: t('dialogs.catalog.empty.noMatchQuery.title'),
+      emptyHint: t('dialogs.catalog.empty.noMatchQuery.hint', { query: trimmed }),
       emptyKind: 'no_match',
       expandAll: true,
       showEmptyMessage: true,
@@ -319,8 +321,8 @@ export function buildCatalogViewState(
   if (!root) {
     return {
       tree: null,
-      emptyTitle: 'Проект не открыт',
-      emptyHint: 'Откройте папку с .feature сценариями.\nПроект → Открыть проект…',
+      emptyTitle: t('dialogs.catalog.empty.noProject.title'),
+      emptyHint: t('dialogs.catalog.empty.noProject.hint'),
       emptyKind: 'no_project',
       expandAll: false,
       showEmptyMessage: true,
@@ -329,8 +331,8 @@ export function buildCatalogViewState(
   if (!rootExists) {
     return {
       tree: null,
-      emptyTitle: 'Папка не найдена',
-      emptyHint: `Путь недоступен:\n${root}\n\nВыберите другой проект.`,
+      emptyTitle: t('dialogs.catalog.empty.missing.title'),
+      emptyHint: t('dialogs.catalog.empty.missing.hint', { path: root }),
       emptyKind: 'missing',
       expandAll: false,
       showEmptyMessage: true,
@@ -346,8 +348,8 @@ export function buildCatalogViewState(
   if (totalFiles === 0) {
     return {
       tree,
-      emptyTitle: 'Нет сценариев',
-      emptyHint: `В «${basename(root)}» пока нет .feature файлов.\nНажмите + или Сценарий → Новый.\nДля пакетного запуска: режим «Выбор» или Ctrl+клик по файлу.`,
+      emptyTitle: t('dialogs.catalog.empty.noFiles.title'),
+      emptyHint: t('dialogs.catalog.empty.noFiles.hint', { folder: basename(root) }),
       emptyKind: 'no_files',
       expandAll: false,
       showEmptyMessage: true,
@@ -359,8 +361,8 @@ export function buildCatalogViewState(
     if (tag && !query) {
       return {
         tree,
-        emptyTitle: 'Нет сценариев с тегом',
-        emptyHint: `Тег «@${tag}» не найден ни в одном сценарии.\nОчистите поле поиска.`,
+        emptyTitle: t('dialogs.catalog.empty.noMatchTag.title'),
+        emptyHint: t('dialogs.catalog.empty.noMatchTag.hint', { tag }),
         emptyKind: 'no_match',
         expandAll: true,
         showEmptyMessage: true,
@@ -368,8 +370,8 @@ export function buildCatalogViewState(
     }
     return {
       tree,
-      emptyTitle: 'Ничего не найдено',
-      emptyHint: `Запрос «${trimmed}» не дал результатов.\nОчистите поле поиска.`,
+      emptyTitle: t('dialogs.catalog.empty.noMatchQuery.title'),
+      emptyHint: t('dialogs.catalog.empty.noMatchQuery.hint', { query: trimmed }),
       emptyKind: 'no_match',
       expandAll: true,
       showEmptyMessage: true,
@@ -387,12 +389,16 @@ export function buildCatalogViewState(
 }
 
 export function formatLastRunSummary(node: CatalogNode): string {
-  if (node.runSuccess === null) return 'Последний прогон: нет данных'
-  const status = node.runSuccess ? 'успех' : 'ошибка'
-  const parts = [`Последний прогон: ${status}`]
-  if (node.runAt) parts.push(`Время: ${node.runAt}`)
-  if (node.runRunner) parts.push(`Runner: ${node.runRunner}`)
-  if (!node.runSuccess && node.runMessage) parts.push(`Сообщение: ${node.runMessage}`)
+  if (node.runSuccess === null) return t('catalog.lastRun.noData')
+  const status = node.runSuccess
+    ? t('catalog.lastRun.success')
+    : t('catalog.lastRun.failure')
+  const parts = [t('catalog.lastRun.summary', { status })]
+  if (node.runAt) parts.push(t('catalog.lastRun.time', { at: node.runAt }))
+  if (node.runRunner) parts.push(t('catalog.lastRun.runner', { runner: node.runRunner }))
+  if (!node.runSuccess && node.runMessage) {
+    parts.push(t('catalog.lastRun.message', { message: node.runMessage }))
+  }
   return parts.join('\n')
 }
 

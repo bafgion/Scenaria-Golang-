@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { ImportJSON, PickOpenFile, PickSaveFile, ArtifactExists } from '../../wailsjs/go/wailsapp/App'
 
   export let projectPath = ''
   export let onClose: () => void = () => {}
   export let onLog: (message: string) => void = () => {}
   export let onImported: (featurePath: string) => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let jsonPath = ''
   let outputPath = ''
@@ -45,7 +48,7 @@
   }
 
   async function pickJson() {
-    const picked = await PickOpenFile('Импорт JSON')
+    const picked = await PickOpenFile(tr('dialogs.import.json.pickJsonTitle'))
     if (!picked) {
       if (!jsonPath) onClose()
       return
@@ -57,7 +60,7 @@
   }
 
   async function pickOutput() {
-    const picked = await PickSaveFile('Сохранить feature', basename(outputPath || 'imported.feature'))
+    const picked = await PickSaveFile(tr('dialogs.import.json.pickSaveTitle'), basename(outputPath || 'imported.feature'))
     if (!picked) return
     outputPath = picked
     await checkOutputExists()
@@ -66,12 +69,12 @@
   async function runImport() {
     if (!canImport) return
     if (outputExists && !forceOverwrite) {
-      error = 'Файл уже существует — включите «Перезаписать»'
+      error = tr('dialogs.import.json.fileExistsError')
       return
     }
     busy = true
     error = ''
-    onLog(`Импорт ${jsonPath}…`)
+    onLog(tr('dialogs.import.json.importing', { path: jsonPath }))
     try {
       const result = await ImportJSON({
         jsonPath,
@@ -81,7 +84,7 @@
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         error = result.error
-        onLog(`Ошибка: ${result.error}`)
+        onLog(`${tr('dialogs.import.json.errorPrefix')} ${result.error}`)
         return
       }
       onImported(outputPath.trim())
@@ -101,32 +104,32 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide import-dialog" role="dialog" aria-modal="true" aria-label="Импорт JSON" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Импорт JSON</h3>
+  <div class="modal wide import-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.import.json.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.import.json.title')}</h3>
     <label>
-      JSON-файл
+      {tr('dialogs.import.json.jsonFile')}
       <div class="path-row">
-        <input bind:value={jsonPath} readonly placeholder="Выберите .json" />
-        <button type="button" on:click={pickJson} disabled={busy}>Обзор…</button>
+        <input bind:value={jsonPath} readonly placeholder={tr('dialogs.import.json.jsonPlaceholder')} />
+        <button type="button" on:click={pickJson} disabled={busy}>{tr('dialogs.common.browse')}</button>
       </div>
     </label>
     <label>
-      Feature
+      {tr('dialogs.import.json.feature')}
       <div class="path-row">
-        <input bind:value={outputPath} on:change={checkOutputExists} placeholder="путь к .feature" />
-        <button type="button" on:click={pickOutput} disabled={busy}>Обзор…</button>
+        <input bind:value={outputPath} on:change={checkOutputExists} placeholder={tr('dialogs.import.json.featurePlaceholder')} />
+        <button type="button" on:click={pickOutput} disabled={busy}>{tr('dialogs.common.browse')}</button>
       </div>
     </label>
     {#if outputExists}
       <label class="check-row warn">
         <input type="checkbox" bind:checked={forceOverwrite} />
-        Перезаписать существующий файл
+        {tr('dialogs.import.json.overwrite')}
       </label>
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={runImport} disabled={!canImport}>Импорт</button>
-      <button type="button" on:click={onClose} disabled={busy}>Отмена</button>
+      <button type="button" class="primary" on:click={runImport} disabled={!canImport}>{tr('dialogs.import.json.confirm')}</button>
+      <button type="button" on:click={onClose} disabled={busy}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

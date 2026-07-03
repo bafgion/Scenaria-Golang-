@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { gui } from '../../wailsjs/go/models'
 
   export let entry: gui.RunResultEntry | null = null
   export let onGotoFailedStep: (entry: gui.RunResultEntry) => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   function splitPath(path: string): { feature: string; scenario: string } {
     const idx = path.indexOf('::')
@@ -13,25 +16,25 @@
 
 <div class="error-panel">
   {#if !entry}
-    <p class="empty">Нет ошибок в последнем запуске</p>
+    <p class="empty">{tr('results.error.empty')}</p>
   {:else}
-    <h4>Ошибка теста</h4>
+    <h4>{tr('results.error.title')}</h4>
     {@const parts = splitPath(entry.path)}
     <dl>
-      <dt>Сценарий</dt>
-      <dd>{parts.scenario || '—'}</dd>
-      <dt>Файл</dt>
+      <dt>{tr('results.error.scenario')}</dt>
+      <dd>{parts.scenario || tr('dialogs.common.notFound')}</dd>
+      <dt>{tr('results.error.file')}</dt>
       <dd>{parts.feature}</dd>
       {#if entry.failed_step != null && entry.failed_step >= 0}
-        <dt>Упавший шаг</dt>
+        <dt>{tr('results.error.failedStep')}</dt>
         <dd>
           <button type="button" class="goto-step" on:click={() => onGotoFailedStep(entry)}>
-            Перейти к шагу {entry.failed_step + 1}
+            {tr('results.error.gotoStep', { n: entry.failed_step + 1 })}
           </button>
         </dd>
       {/if}
-      <dt>Сообщение</dt>
-      <dd class="msg">{entry.message || '—'}</dd>
+      <dt>{tr('results.error.message')}</dt>
+      <dd class="msg">{entry.message || tr('dialogs.common.notFound')}</dd>
     </dl>
   {/if}
 </div>

@@ -1,0 +1,32 @@
+export const catalog = {
+  title: 'SCENARIOS',
+  searchPlaceholder: 'Search, @tag or tag:smoke',
+  newScenario: 'New scenario',
+  batchMode: 'Select',
+  batchSelected: 'Selected for run: {count}',
+  outputPanel: 'Output panel',
+  root: '(root)',
+  context: {
+    run: 'Run',
+    open: 'Open',
+    duplicate: 'Duplicate',
+    rename: 'Rename…',
+    move: 'Move…',
+    reveal: 'Reveal in Explorer',
+    delete: 'Delete',
+  },
+  folder: {
+    runAll: 'Run all .feature ({count})',
+    dryRun: 'Dry-run folder',
+    selectBatch: 'Select for batch run',
+  },
+  lastRun: {
+    noData: 'Last run: no data',
+    summary: 'Last run: {status}',
+    success: 'success',
+    failure: 'failure',
+    time: 'Time: {at}',
+    runner: 'Runner: {runner}',
+    message: 'Message: {message}',
+  },
+} as const

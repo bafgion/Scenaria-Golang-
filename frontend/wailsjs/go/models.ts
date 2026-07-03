@@ -64,6 +64,7 @@ export namespace gui {
 	    startUrl: string;
 	    runDialogConfirmed: boolean;
 	    pickerDuringRecording: boolean;
+	    uiLocale: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettingsDTO(source);
@@ -104,6 +105,7 @@ export namespace gui {
 	        this.startUrl = source["startUrl"];
 	        this.runDialogConfirmed = source["runDialogConfirmed"];
 	        this.pickerDuringRecording = source["pickerDuringRecording"];
+	        this.uiLocale = source["uiLocale"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -1,9 +1,13 @@
 import type * as Monaco from 'monaco-editor'
 import type { gui } from '../../wailsjs/go/models'
-import { HINT_MARKER_SOURCE } from './gherkinHintActionsHelpers'
+import { hintMarkerSource } from './gherkinHintActionsHelpers'
+import { t } from './i18n'
 
 export const EDITOR_MARKER_OWNER = 'scenaria-editor'
-export const VALIDATION_MARKER_SOURCE = 'Валидация'
+
+export function validationMarkerSource(): string {
+  return t('editor.marker.validation')
+}
 
 export type ValidationMarkerIssue = { line: number; message: string }
 
@@ -14,6 +18,8 @@ export function buildEditorMarkers(
   monacoInstance: typeof Monaco,
 ): Monaco.editor.IMarkerData[] {
   const markers: Monaco.editor.IMarkerData[] = []
+  const validationSource = validationMarkerSource()
+  const hintSource = hintMarkerSource()
 
   for (const issue of validationIssues) {
     if (issue.line < 1 || issue.line > model.getLineCount()) continue
@@ -24,7 +30,7 @@ export function buildEditorMarkers(
       endColumn: model.getLineMaxColumn(issue.line),
       message: issue.message,
       severity: monacoInstance.MarkerSeverity.Error,
-      source: VALIDATION_MARKER_SOURCE,
+      source: validationSource,
     })
   }
 
@@ -40,7 +46,7 @@ export function buildEditorMarkers(
         hint.severity === 'warning'
           ? monacoInstance.MarkerSeverity.Warning
           : monacoInstance.MarkerSeverity.Info,
-      source: HINT_MARKER_SOURCE,
+      source: hintSource,
       code: hint.id,
     })
   }

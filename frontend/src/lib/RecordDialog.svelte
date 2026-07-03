@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import StepsInsertDialog from './StepsInsertDialog.svelte'
 
   export let mode: 'live' | 'baseline' = 'live'
@@ -11,8 +12,8 @@
   export let filterRecording = false
   export let navOnlyRecording = false
   export let hoverRecord = false
-  export let featureName = 'Записанный сценарий'
-  export let scenarioName = 'Запись'
+  export let featureName = ''
+  export let scenarioName = ''
   export let testClients: string[] = []
   export let recording = false
   export let recordPaused = false
@@ -29,8 +30,12 @@
   }) => void = () => {}
   export let onClose: () => void = () => {}
   export let childModalOpen = false
-  /** Synced to parent for nested «Вставить шаг» picker. */
+  /** Synced to parent for nested step picker. */
   export let stepPickerOpen = false
+
+  $: tr = createTranslator($locale)
+  $: if ($locale && !featureName) featureName = tr('dialogs.record.featureDefault')
+  $: if ($locale && !scenarioName) scenarioName = tr('dialogs.record.scenarioDefault')
 
   let steps: string[] = []
   let newStep = ''
@@ -41,7 +46,7 @@
   $: if (mode === 'baseline' && url !== baselineInitUrl) {
     baselineInitUrl = url
     const start = url.trim() || 'https://example.com'
-    steps = [`открываю "${start}"`]
+    steps = [tr('dialogs.record.openStepTemplate', { url: start })]
   }
 
   function addStep() {
@@ -77,12 +82,14 @@
   $: previewText = buildPreview(featureName, scenarioName, steps)
 
   function buildPreview(feature: string, scenario: string, stepList: string[]): string {
-    const title = feature.trim() || 'Записанный сценарий'
-    const scen = scenario.trim() || 'Базовый сценарий'
+    const title = feature.trim() || tr('dialogs.record.featureDefault')
+    const scen = scenario.trim() || tr('dialogs.record.baselineScenarioDefault')
+    const featureKw = $locale === 'en' ? 'Feature' : 'Функционал'
+    const scenarioKw = $locale === 'en' ? 'Scenario' : 'Сценарий'
     const lines = stepList
-      .map((s, i) => `    ${i === 0 ? 'Допустим' : 'И'} ${s.trim()}`)
+      .map((s, i) => `    ${i === 0 ? tr('dialogs.record.gherkinGiven') : tr('dialogs.record.gherkinAnd')} ${s.trim()}`)
       .join('\n')
-    return `# language: ru\nФункционал: ${title}\n  Сценарий: ${scen}\n${lines || '    Допустим выполняю действие'}`
+    return `# language: ${$locale}\n${featureKw}: ${title}\n  ${scenarioKw}: ${scen}\n${lines || `    ${tr('dialogs.record.gherkinFallbackStep')}`}`
   }
 
   function onKey(e: KeyboardEvent) {
@@ -111,7 +118,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="modal-backdrop" role="presentation" on:click={onBackdropClose}>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal wide record-dialog" role="dialog" aria-modal="true" aria-label="Запись сценария" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <div class="modal wide record-dialog" role="dialog" aria-modal="true" aria-label={tr('dialogs.record.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
       <div class="tabs" role="tablist">
         <button
           type="button"
@@ -120,7 +127,7 @@
           disabled={recording}
           on:click={() => (mode = 'live')}
         >
-          Live-запись
+          {tr('dialogs.record.tabLive')}
         </button>
         <button
           type="button"
@@ -129,88 +136,88 @@
           disabled={recording}
           on:click={() => (mode = 'baseline')}
         >
-          Из шагов
+          {tr('dialogs.record.tabBaseline')}
         </button>
       </div>
 
       {#if mode === 'live'}
-        <h3>Live-запись</h3>
-        <label>URL <input bind:value={url} disabled={recording} /></label>
-        <label>Функционал <input bind:value={featureName} placeholder="Записанный сценарий" disabled={recording} /></label>
-        <label>Сценарий <input bind:value={scenarioName} placeholder="Запись" disabled={recording} /></label>
-        <label>Файл <input bind:value={output} disabled={recording} /></label>
-        <label>Дописать в существующий feature
-          <input bind:value={appendTo} placeholder="путь к .feature или пусто" disabled={recording} />
+        <h3>{tr('dialogs.record.liveTitle')}</h3>
+        <label>{tr('dialogs.record.url')} <input bind:value={url} disabled={recording} /></label>
+        <label>{tr('dialogs.record.feature')} <input bind:value={featureName} placeholder={tr('dialogs.record.featurePlaceholder')} disabled={recording} /></label>
+        <label>{tr('dialogs.record.scenario')} <input bind:value={scenarioName} placeholder={tr('dialogs.record.scenarioPlaceholder')} disabled={recording} /></label>
+        <label>{tr('dialogs.record.file')} <input bind:value={output} disabled={recording} /></label>
+        <label>{tr('dialogs.record.appendTo')}
+          <input bind:value={appendTo} placeholder={tr('dialogs.record.appendToPlaceholder')} disabled={recording} />
         </label>
-        <label>TestClient
+        <label>{tr('dialogs.record.testClient')}
           <select bind:value={testClient} disabled={recording}>
-            <option value="">(без профиля)</option>
+            <option value="">{tr('dialogs.record.testClientNone')}</option>
             {#each testClients as client}
               <option value={client}>{client}</option>
             {/each}
           </select>
         </label>
-        <label>Idle (сек)
+        <label>{tr('dialogs.record.idle')}
           <input id="record-idle" type="number" bind:value={idleSeconds} min={5} disabled={recording} />
         </label>
-        <label class="check-row"><input type="checkbox" bind:checked={headless} disabled={recording} /> Headless</label>
+        <label class="check-row"><input type="checkbox" bind:checked={headless} disabled={recording} /> {tr('dialogs.record.headless')}</label>
         <label class="check-row">
           <input type="checkbox" bind:checked={filterRecording} disabled={recording} on:change={() => filterRecording && (navOnlyRecording = false)} />
-          Только важные (фильтр записи)
+          {tr('dialogs.record.filterRecording')}
         </label>
         <label class="check-row">
           <input type="checkbox" bind:checked={navOnlyRecording} disabled={recording} on:change={() => navOnlyRecording && (filterRecording = false)} />
-          Только ссылки
+          {tr('dialogs.record.navOnlyRecording')}
         </label>
-        <label class="check-row"><input type="checkbox" bind:checked={hoverRecord} disabled={recording} /> Записывать наведение</label>
-        <p class="hint">В URL можно указать user:pass@host — пароль сохранится для хоста. Пикер элемента доступен на паузе.</p>
+        <label class="check-row"><input type="checkbox" bind:checked={hoverRecord} disabled={recording} /> {tr('dialogs.record.hoverRecord')}</label>
+        <p class="hint">{tr('dialogs.record.urlHint')}</p>
         <div class="modal-actions">
-          <button type="button" on:click={onHttpAuth} disabled={recording}>HTTP Auth…</button>
+          <button type="button" on:click={onHttpAuth} disabled={recording}>{tr('dialogs.record.httpAuth')}</button>
           {#if recording}
-            <button type="button" on:click={onTogglePause}>{recordPaused ? 'Resume' : 'Pause'}</button>
-            <button type="button" on:click={onStop}>Стоп</button>
+            <button type="button" on:click={onTogglePause}>{recordPaused ? tr('dialogs.record.resume') : tr('dialogs.record.pause')}</button>
+            <button type="button" on:click={onStop}>{tr('dialogs.record.stop')}</button>
           {:else}
-            <button type="button" class="primary" on:click={onStart}>Начать</button>
+            <button type="button" class="primary" on:click={onStart}>{tr('dialogs.record.start')}</button>
           {/if}
-          <button type="button" on:click={onClose}>Закрыть</button>
+          <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
         </div>
       {:else}
-        <h3>Запись из шагов</h3>
-        <p class="hint">Создаёт .feature без браузера — аналог <code>scenaria record --step …</code>.</p>
-        <label>Файл <input bind:value={output} disabled={baselineBusy} /></label>
-        <label>Функционал <input bind:value={featureName} disabled={baselineBusy} /></label>
-        <label>Сценарий <input bind:value={scenarioName} disabled={baselineBusy} /></label>
-        <label>Стартовый URL (для первого шага) <input bind:value={url} disabled={baselineBusy} /></label>
+        <h3>{tr('dialogs.record.baselineTitle')}</h3>
+        <p class="hint">{tr('dialogs.record.baselineHint')}</p>
+        <label>{tr('dialogs.record.file')} <input bind:value={output} disabled={baselineBusy} /></label>
+        <label>{tr('dialogs.record.feature')} <input bind:value={featureName} disabled={baselineBusy} /></label>
+        <label>{tr('dialogs.record.scenario')} <input bind:value={scenarioName} disabled={baselineBusy} /></label>
+        <label>{tr('dialogs.record.startUrl')} <input bind:value={url} disabled={baselineBusy} /></label>
 
         <div class="steps-header">
-          <span>Шаги ({steps.length})</span>
-          <button type="button" disabled={baselineBusy} on:click={() => (showStepPicker = true)}>Из каталога…</button>
+          <span>{tr('dialogs.record.steps', { count: steps.length })}</span>
+          <button type="button" disabled={baselineBusy} on:click={() => (showStepPicker = true)}>{tr('dialogs.record.fromCatalog')}</button>
         </div>
         <ol class="step-list">
           {#each steps as step, index}
             <li>
               <span class="step-text">{step}</span>
               <span class="step-actions">
-                <button type="button" class="btn-compact" title="Выше" disabled={baselineBusy || index === 0} on:click={() => moveStep(index, -1)}>↑</button>
-                <button type="button" class="btn-compact" title="Ниже" disabled={baselineBusy || index === steps.length - 1} on:click={() => moveStep(index, 1)}>↓</button>
-                <button type="button" class="btn-compact" title="Удалить" disabled={baselineBusy} on:click={() => removeStep(index)}>×</button>
+                <button type="button" class="btn-compact" title={tr('dialogs.record.moveUp')} disabled={baselineBusy || index === 0} on:click={() => moveStep(index, -1)}>↑</button>
+                <button type="button" class="btn-compact" title={tr('dialogs.record.moveDown')} disabled={baselineBusy || index === steps.length - 1} on:click={() => moveStep(index, 1)}>↓</button>
+                <button type="button" class="btn-compact" title={tr('dialogs.record.removeStep')} disabled={baselineBusy} on:click={() => removeStep(index)}>×</button>
               </span>
             </li>
           {/each}
         </ol>
 
         <div class="add-step">
-          <input bind:value={newStep} placeholder="Текст шага…" disabled={baselineBusy} on:keydown={(e) => e.key === 'Enter' && addStep()} />
-          <button type="button" disabled={baselineBusy} on:click={addStep}>Добавить</button>
+          <input bind:value={newStep} placeholder={tr('dialogs.record.stepPlaceholder')} disabled={baselineBusy} on:keydown={(e) => e.key === 'Enter' && addStep()} />
+          <button type="button" disabled={baselineBusy} on:click={addStep}>{tr('dialogs.common.add')}</button>
         </div>
 
-        <div class="preview-label">Предпросмотр Gherkin
+        <div class="preview-label">{tr('dialogs.record.gherkinPreview')}
           <pre class="preview">{previewText}</pre>
         </div>
 
         <div class="modal-actions">
-          <button type="button" class="primary" disabled={baselineBusy} on:click={saveBaseline}>Сохранить feature</button>
-          <button type="button" disabled={baselineBusy} on:click={onClose}>Отмена</button>
+          <button type="button" class="primary" disabled={baselineBusy} on:click={saveBaseline}>{tr('dialogs.record.saveFeature')}</button>
+          <button type="button" disabled={baselineBusy} on:click={onClose}>{tr('dialogs.common.cancel')}</button>
         </div>
       {/if}
     </div>

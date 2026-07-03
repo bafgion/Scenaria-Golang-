@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
-  import { brandOverlayTitle } from './brand'
+  import { createTranslator, locale } from './i18n'
+  import { BRAND_NAME } from './brand'
   import { icons } from './icons'
 
   export let visible = false
@@ -15,6 +16,8 @@
   export let onPicker: () => void = () => {}
   export let onFocusBrowser: () => void = () => {}
   export let pickerDuringRecording = false
+
+  $: tr = createTranslator($locale)
 
   $: pickerEnabled =
     pickerDuringRecording
@@ -65,11 +68,11 @@
 
   $: title = recording
     ? paused
-      ? '⏸ Пауза — можно выбрать элемент'
-      : '● Идёт запись'
+      ? tr('browser.paused')
+      : tr('browser.recording')
     : playing
-      ? '▶ Идёт тест'
-      : brandOverlayTitle()
+      ? tr('browser.testing')
+      : tr('brand.overlayTitle', { name: BRAND_NAME })
 
   function onPointerDown(e: PointerEvent) {
     if ((e.target as HTMLElement).closest('button')) return
@@ -131,24 +134,24 @@
     </p>
     <div class="overlay-actions">
       <button type="button" disabled={!recordEnabled} on:click={onRecord}>
-        {@html icons.record}<span>Запись</span>
+        {@html icons.record}<span>{tr('browser.record')}</span>
       </button>
       <button type="button" disabled={!pauseEnabled} on:click={onPause}>
-        <span>{paused ? 'Продолжить' : 'Пауза'}</span>
+        <span>{paused ? tr('browser.resume') : tr('browser.pause')}</span>
       </button>
       <button type="button" disabled={!stopEnabled} on:click={onStop}>
-        {@html icons.stop}<span>Стоп</span>
+        {@html icons.stop}<span>{tr('browser.stop')}</span>
       </button>
-      <button type="button" disabled={!focusEnabled} on:click={onFocusBrowser} title="Показать окно браузера">
-        {@html icons.globe}<span>Браузер</span>
+      <button type="button" disabled={!focusEnabled} on:click={onFocusBrowser} title={tr('browser.showBrowserTitle')}>
+        {@html icons.globe}<span>{tr('palette.commands.browser')}</span>
       </button>
       <button
         type="button"
         disabled={!pickerEnabled}
         on:click={onPicker}
-        title={recording && !paused ? 'Поставьте запись на паузу' : 'Указать элемент'}
+        title={recording && !paused ? tr('browser.pickElementPauseHint') : tr('browser.pickElement')}
       >
-        <span>Указать элемент</span>
+        <span>{tr('browser.pickElement')}</span>
       </button>
     </div>
   </div>

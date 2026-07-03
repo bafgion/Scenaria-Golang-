@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
+
   export let email = ''
   export let onSubmit: (code: string) => void = () => {}
   export let onCancel: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let code = ''
 
@@ -19,13 +23,13 @@
 
 <div class="modal-backdrop modal-layer-top" role="presentation" on:click={onCancel}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal" role="dialog" aria-modal="true" aria-label="Код из почты" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Код из почты</h3>
+  <div class="modal" role="dialog" aria-modal="true" aria-label={tr('dialogs.otp.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.otp.title')}</h3>
     {#if email}<p class="hint">{email}</p>{/if}
-    <input bind:value={code} placeholder="123456" autofocus />
+    <input bind:value={code} placeholder={tr('dialogs.otp.placeholder')} autofocus />
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={submit}>OK</button>
-      <button type="button" on:click={onCancel}>Отмена</button>
+      <button type="button" class="primary" on:click={submit}>{tr('dialogs.common.ok')}</button>
+      <button type="button" on:click={onCancel}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

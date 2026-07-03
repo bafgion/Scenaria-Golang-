@@ -162,6 +162,7 @@ type AppSettingsDTO struct {
 	StartURL            string `json:"startUrl"`
 	RunDialogConfirmed  bool   `json:"runDialogConfirmed"`
 	PickerDuringRecording bool `json:"pickerDuringRecording"`
+	UILocale            string `json:"uiLocale"`
 }
 
 type UntitledTabDTO struct {
@@ -656,6 +657,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		StartURL:            strings.TrimSpace(cfg.StartURL),
 		RunDialogConfirmed:  cfg.RunDialogConfirmed,
 		PickerDuringRecording: cfg.PickerDuringRecording,
+		UILocale:            normalizeUILocale(cfg.UILocale),
 	}
 }
 
@@ -705,6 +707,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	cfg.StartURL = strings.TrimSpace(dto.StartURL)
 	cfg.RunDialogConfirmed = dto.RunDialogConfirmed
 	cfg.PickerDuringRecording = dto.PickerDuringRecording
+	cfg.UILocale = normalizeUILocale(dto.UILocale)
 	if existing != nil {
 		cfg.HTTPAuth = existing.HTTPAuth
 		if len(cfg.RecentProjects) == 0 {
@@ -770,6 +773,15 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func normalizeUILocale(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "en":
+		return "en"
+	default:
+		return "ru"
+	}
 }
 
 func normalizeHoverRecordMinMs(ms int) int {

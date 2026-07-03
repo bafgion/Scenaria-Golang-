@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import { icons } from './icons'
 
   export let activeKey = ''
@@ -11,9 +12,11 @@
   export let onClose: (path: string) => void = () => {}
   export let onCloseWelcome: () => void = () => {}
   export let welcomeVisible = true
+
+  $: tr = createTranslator($locale)
 </script>
 
-<div class="editor-tabbar" role="tablist" aria-label="Вкладки редактора">
+<div class="editor-tabbar" role="tablist" aria-label={tr('editor.tabsAria')}>
   {#if welcomeVisible}
     <div
       class="editor-tab welcome"
@@ -21,7 +24,7 @@
       role="tab"
       tabindex="0"
       aria-selected={activeKey === welcomeKey}
-      title="Стартовая страница"
+      title={tr('editor.welcomeTitle')}
       on:click={() => onSelect(welcomeKey)}
       on:keydown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -31,12 +34,12 @@
       }}
     >
       <span class="tab-icon" aria-hidden="true">{@html icons.home}</span>
-      <span class="tab-label">Старт</span>
+      <span class="tab-label">{tr('editor.welcome')}</span>
       <button
         type="button"
         class="tab-close"
-        aria-label="Закрыть вкладку"
-        title="Закрыть"
+        aria-label={tr('editor.closeTab')}
+        title={tr('editor.close')}
         on:click|stopPropagation={onCloseWelcome}
       >
         {@html icons.close}
@@ -64,8 +67,8 @@
       <button
         type="button"
         class="tab-close"
-        aria-label="Закрыть вкладку"
-        title="Закрыть"
+        aria-label={tr('editor.closeTab')}
+        title={tr('editor.close')}
         on:click|stopPropagation={() => onClose(tab.path)}
       >
         {@html icons.close}

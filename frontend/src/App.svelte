@@ -85,6 +85,7 @@
   import OnboardingTour from './lib/onboarding/OnboardingTour.svelte'
   import { ONBOARDING_TOUR_VERSION } from './lib/onboarding/tourSteps'
   import type { TourContext } from './lib/onboarding/tourState'
+  import { createTranslator, locale, setLocale, t, type Locale } from './lib/i18n'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
   import { isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './lib/editorLargeFile'
   import {
@@ -221,13 +222,12 @@
   let welcomeTabVisible = true
   let editorText = ''
   let logText = ''
-  let stepStatus = '0 шагов'
   let stepStatusError = false
   let testClients: string[] = []
   let monaco: MonacoEditor | undefined
 
   let appReady = false
-  let splashMessage = 'Запуск…'
+  let splashMessage = t('splash.starting')
   let splashProgress = 0
   let splashFading = false
   let showSettings = false
@@ -333,7 +333,7 @@
       confirmDialog = {
         title: opts.title,
         message: opts.message,
-        confirmLabel: opts.confirmLabel || 'OK',
+        confirmLabel: opts.confirmLabel || tr('common.ok'),
         danger: opts.danger || false,
         dontAskAgainLabel: opts.dontAskAgainLabel,
         resolve: (confirmed, dontAskAgain) => {
@@ -369,7 +369,7 @@
   let editorHintsDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
   let folderMenu: { x: number; y: number; dir: string; paths: string[] } | null = null
-  let runDialogTitle = 'Запуск сценария'
+  let runDialogTitle = ''
   let runDialogScenarios: string[] = []
   let vanessaDialogScenarios: string[] = []
   let pluginRunScenarios: string[] = []
@@ -401,7 +401,7 @@
   let sidebarSearch = ''
   let catalogFilterText = ''
   let openMenu: string | null = null
-  let statusMessage = 'Проект → Открыть проект…'
+  let statusMessage = ''
   let statusTone: 'normal' | 'error' | 'success' | 'busy' = 'normal'
 
   let catalogBaseTree: CatalogNode | null = null
@@ -460,8 +460,8 @@
   let recordIdle = 30
   let recordAppendTo = ''
   let recordTestClient = ''
-  let recordFeatureName = 'Записанный сценарий'
-  let recordScenarioName = 'Запись'
+  let recordFeatureName = t('dialogs.record.featureDefault')
+  let recordScenarioName = t('dialogs.record.scenarioDefault')
   let lastRecordTarget = ''
   let liveRecordStepLines: Record<number, number> = {}
   let recordStepApplyChain: Promise<void> = Promise.resolve()
@@ -490,6 +490,8 @@
 
   const unsubscribers: (() => void)[] = []
 
+  $: tr = createTranslator($locale)
+
   $: if (pendingUpdateCheckOnStartup && settingsCheckUpdatesOnStartup && projectPath) {
     pendingUpdateCheckOnStartup = false
     void checkUpdatesOnStartup()
@@ -505,7 +507,7 @@
   $: editorLineCount = isWelcome ? 0 : editorText.split(/\r?\n/).length
   $: showLargeFileBanner = !isWelcome && isLargeFeatureFile(editorLineCount)
   $: unsavedTabCount = tabs.filter((t) => tabIsUnsaved(t)).length
-  $: lastRunSummary = formatLastRunSummary(lastRun)
+  $: lastRunSummary = ($locale, formatLastRunSummary(lastRun))
   $: automationActive = playing || vanessaRunning
   $: pickerToolbarEnabled =
     pickerDuringRecording
@@ -585,7 +587,13 @@
     void tick().then(() => onboardingTour?.relayout())
   }
   $: showBrowserOverlay = (browserOpen || recording || playing) && !anyAppDialogOpen
-  $: paletteCommands = buildPaletteCommands()
+  $: paletteCommands = ($locale, buildPaletteCommands())
+  $: stepStatusDisplay =
+    stepCount === 0 && !stepStatusError
+      ? tr('statusBar.steps', { count: 0 })
+      : stepStatusError
+        ? tr('statusBar.stepsWithErrors', { count: stepCount, errors: editorValidationIssues.length })
+        : tr('statusBar.steps', { count: stepCount })
 
   let resizingBottom = false
   let resizingSteps = false
@@ -664,16 +672,17 @@
   let onboardingTour: OnboardingTour
   let runDialogConfirmed = false
   let pickerDuringRecording = false
+  let uiLocale: Locale = 'ru'
   let allureInstalled = true
   let allureServeRunning = false
 
   $: stopActionLabel = playing
-    ? 'Стоп тест'
+    ? tr('toolbar.stopTest')
     : recording
-      ? 'Стоп запись'
+      ? tr('toolbar.stopRecord')
       : browserOpen
-        ? 'Закрыть браузер'
-        : 'Стоп'
+        ? tr('toolbar.closeBrowser')
+        : tr('toolbar.stop')
   $: recordingTargetLabel =
     recording && recordingTargetPath ? basename(recordingTargetPath) : ''
 
@@ -798,7 +807,7 @@
     const finishStartup = async () => {
       if (splashFinished) return
       splashFinished = true
-      setSplashStage('Готово', 100)
+      setSplashStage(tr('splash.ready'), 100)
       await dismissSplash(startedAt)
       applyDevUiMock()
       syncIdleStatus()
@@ -814,7 +823,7 @@
     setSplashDocumentState(true)
     await beginSplashWindow()
 
-    setSplashStage('Настройка окружения…', 8)
+    setSplashStage(tr('splash.envSetup'), 8)
 
     const layout = loadLayout()
     sidebarVisible = layout.sidebarVisible
@@ -823,7 +832,7 @@
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth || 360
 
-    setSplashStage('Подключение к приложению…', 40)
+    setSplashStage(tr('splash.connecting'), 40)
 
     try {
       version = await Version()
@@ -831,7 +840,7 @@
       version = 'dev'
     }
 
-    setSplashStage('Загрузка настроек…', 60)
+    setSplashStage(tr('splash.loadingSettings'), 60)
 
     const [recents, settings] = await Promise.all([
       loadRecents(),
@@ -856,7 +865,7 @@
 
     draftAutosaveTimer = setInterval(() => void autosaveDirtyDrafts(), 30_000)
 
-    setSplashStage('Инициализация…', 88)
+    setSplashStage(tr('splash.initializing'), 88)
 
     try {
       OnFileDrop((_x, _y, paths) => {
@@ -882,8 +891,8 @@
         EventsOn('browser-opened', () => {
           applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
           showRecord = false
-          setStatus('Браузер открыт', 'busy')
-          appendLog('Браузер открыт. Запись шагов — только по кнопке «Запись» (в браузере или Ctrl+R).')
+          setStatus(tr('journal.status.browserOpen'), 'busy')
+          appendLog(tr('journal.browser.opened'))
           startBrowserWatch()
         }),
       )
@@ -913,7 +922,7 @@
           const wasRecording = recording
           applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
           showRecord = false
-          setStatus('Подготовка записи…', 'busy')
+          setStatus(tr('journal.status.preparingRecord'), 'busy')
           startBrowserWatch()
           recordEditorReadyPromise = (async () => {
             if (!syncOnly) {
@@ -929,16 +938,16 @@
           try {
             await recordEditorReadyPromise
           } catch (e: any) {
-            appendLog(`Ошибка подготовки вкладки записи: ${e}`)
+            appendLog(tr('journal.record.prepTabError', { error: String(e) }))
           }
           if (!syncOnly && activeTab && !isWelcome) {
             recordingTargetPath = normalizeRecordTabPath(activeTab)
           }
           if (!appendOnly && !syncOnly) {
-            appendLog('Запись начата…')
-            setStatus('● Идёт запись', 'busy')
+            appendLog(tr('journal.record.started'))
+            setStatus(tr('journal.status.recording'), 'busy')
           } else if (syncOnly) {
-            setStatus('● Идёт запись', 'busy')
+            setStatus(tr('journal.status.recording'), 'busy')
           }
         }),
       )
@@ -1004,8 +1013,8 @@
           showRecord = false
           liveRecordStepLines = {}
           recordingTargetPath = ''
-          appendLog(`Ошибка записи: ${message || 'неизвестная ошибка'}`)
-          setStatus('Ошибка записи', 'error')
+          appendLog(tr('journal.record.error', { message: message || tr('journal.record.unknownError') }))
+          setStatus(tr('journal.status.recordError'), 'error')
           syncIdleStatus()
         }),
       )
@@ -1013,8 +1022,8 @@
         EventsOn('vanessa-run-started', () => {
           vanessaRunning = true
           vanessaWatchDir = ''
-          setStatus('▶ Vanessa', 'busy')
-          appendLog('Запуск Vanessa…')
+          setStatus(tr('journal.status.vanessaRunning'), 'busy')
+          appendLog(tr('journal.vanessa.starting'))
           startVanessaPoll()
         }),
       )
@@ -1032,11 +1041,11 @@
           }
           if (result.output) appendLog(result.output.trimEnd())
           if (result.error) {
-            appendLog(`Ошибка: ${result.error}`)
-            setStatus('Ошибка Vanessa', 'error')
+            appendLog(tr('journal.error.generic', { error: result.error }))
+            setStatus(tr('journal.status.vanessaError'), 'error')
           } else {
-            appendLog('Vanessa завершён.')
-            setStatus('Vanessa завершён', result.success ? 'success' : 'error')
+            appendLog(tr('journal.vanessa.done'))
+            setStatus(tr('journal.status.vanessaDone'), result.success ? 'success' : 'error')
           }
           await refreshRunResults()
         }),
@@ -1110,8 +1119,8 @@
       featureTags = info.featureTags || {}
       testClients = await ListTestClients().catch(() => [])
     } catch {
-      appendLog(`Сессия: проект не найден — ${proj}`)
-      setStatus('Проект сессии не найден', 'error')
+      appendLog(tr('journal.session.projectNotFound', { path: proj }))
+      setStatus(tr('journal.status.sessionProjectNotFound'), 'error')
       return
     }
     try {
@@ -1173,10 +1182,12 @@
     }
   }
 
+  function runModeLabel(dryRun: boolean): string {
+    return dryRun ? tr('journal.run.mode.dryRun') : tr('journal.run.mode.run')
+  }
+
   function partialRunLogSuffix(startStep: number, endStep: number): string {
-    if (startStep >= 0 && endStep >= 0) return ` (шаги ${startStep + 1}–${endStep + 1})`
-    if (startStep >= 0) return ` (с шага ${startStep + 1})`
-    if (endStep >= 0) return ` (до шага ${endStep + 1})`
+    if (startStep >= 0 && endStep >= 0) return ` (${startStep + 1}–${endStep + 1})`
     return ''
   }
 
@@ -1276,6 +1287,10 @@
     runDialogConfirmed = !!s.runDialogConfirmed
     pickerDuringRecording = !!s.pickerDuringRecording
     if (s.startUrl) startURL = s.startUrl
+    if (s.uiLocale === 'en' || s.uiLocale === 'ru') {
+      uiLocale = s.uiLocale
+      setLocale(s.uiLocale)
+    }
   }
 
   function resolveStepsPanelCollapsed(): boolean {
@@ -1283,96 +1298,98 @@
   }
 
   function buildPaletteCommands(): PaletteCommand[] {
-    const compactLabel = toolbarCompact ? 'Расширенная панель' : 'Компактная панель'
+    const pg = (key: string) => tr(`palette.groups.${key}`)
+    const pc = (key: string) => tr(`palette.commands.${key}`)
+    const compactLabel = toolbarCompact ? pc('expanded') : pc('compact')
     return [
-      { id: 'palette', label: 'Палитра команд', group: 'Вид', shortcut: 'Ctrl+Shift+P', run: () => (showCommandPalette = true) },
-      { id: 'welcome', label: 'Старт', group: 'Вид', run: () => selectTab(WELCOME_KEY) },
-      { id: 'open', label: 'Открыть проект…', group: 'Проект', run: openProjectDialog },
-      { id: 'new-project', label: 'Новый проект…', group: 'Проект', run: openNewProjectWizard },
-      { id: 'close-project', label: 'Закрыть проект', group: 'Проект', run: closeProject },
-      { id: 'settings', label: 'Настройки…', group: 'Проект', shortcut: 'Ctrl+,', run: openSettings },
-      { id: 'init', label: 'Init проекта', group: 'Проект', run: openInitProjectDialog },
-      { id: 'examples', label: 'Открыть примеры сценариев', group: 'Проект', run: openExamples },
-      { id: 'new', label: 'Новый сценарий', group: 'Сценарий', shortcut: 'Ctrl+N', run: newScenario },
-      { id: 'open-file', label: 'Открыть файл…', group: 'Сценарий', shortcut: 'Ctrl+O', run: openFileDialog },
-      { id: 'save', label: 'Сохранить', group: 'Сценарий', shortcut: 'Ctrl+S', run: saveFeature },
-      { id: 'save-as', label: 'Сохранить как…', group: 'Сценарий', shortcut: 'Ctrl+Shift+S', run: saveFeatureAs },
-      { id: 'export', label: 'Экспорт…', group: 'Сценарий', run: openExportDialog },
-      { id: 'import', label: 'Импорт JSON…', group: 'Сценарий', run: openImportDialog },
-      { id: 'import-features', label: 'Импорт .feature…', group: 'Сценарий', run: openImportFeaturesDialog },
-      { id: 'steps', label: 'Вставить шаг…', group: 'Сценарий', run: openStepsDialog },
-      { id: 'snippets', label: 'Палитра сниппетов', group: 'Сценарий', shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
-      { id: 'find-replace', label: 'Найти и заменить…', group: 'Сценарий', shortcut: 'Ctrl+H', run: openFindReplace },
-      { id: 'find', label: 'Найти в редакторе', group: 'Сценарий', shortcut: 'Ctrl+F', run: () => monaco?.openFind() },
-      { id: 'format', label: 'Форматировать сценарий', group: 'Сценарий', shortcut: 'Shift+Alt+F', run: () => void monaco?.formatDocument() },
-      { id: 'goto-symbol', label: 'Перейти к символу…', group: 'Сценарий', shortcut: 'Ctrl+Shift+O', run: () => monaco?.openSymbolOutline() },
-      { id: 'project-replace', label: 'Замена по проекту…', group: 'Сценарий', run: () => (showProjectReplace = true) },
-      { id: 'duplicate', label: 'Дублировать сценарий…', group: 'Сценарий', run: () => activeTab && !isWelcome && openDuplicateDialog(activeTab) },
-      { id: 'rename-feature', label: 'Переименовать сценарий…', group: 'Сценарий', run: () => {
+      { id: 'palette', label: pc('palette'), group: pg('view'), shortcut: 'Ctrl+Shift+P', run: () => (showCommandPalette = true) },
+      { id: 'welcome', label: pc('welcome'), group: pg('view'), run: () => selectTab(WELCOME_KEY) },
+      { id: 'open', label: pc('open'), group: pg('project'), run: openProjectDialog },
+      { id: 'new-project', label: pc('newProject'), group: pg('project'), run: openNewProjectWizard },
+      { id: 'close-project', label: pc('closeProject'), group: pg('project'), run: closeProject },
+      { id: 'settings', label: pc('settings'), group: pg('project'), shortcut: 'Ctrl+,', run: openSettings },
+      { id: 'init', label: pc('init'), group: pg('project'), run: openInitProjectDialog },
+      { id: 'examples', label: pc('examples'), group: pg('project'), run: openExamples },
+      { id: 'new', label: pc('new'), group: pg('scenario'), shortcut: 'Ctrl+N', run: newScenario },
+      { id: 'open-file', label: pc('openFile'), group: pg('scenario'), shortcut: 'Ctrl+O', run: openFileDialog },
+      { id: 'save', label: pc('save'), group: pg('scenario'), shortcut: 'Ctrl+S', run: saveFeature },
+      { id: 'save-as', label: pc('saveAs'), group: pg('scenario'), shortcut: 'Ctrl+Shift+S', run: saveFeatureAs },
+      { id: 'export', label: pc('export'), group: pg('scenario'), run: openExportDialog },
+      { id: 'import', label: pc('import'), group: pg('scenario'), run: openImportDialog },
+      { id: 'import-features', label: pc('importFeatures'), group: pg('scenario'), run: openImportFeaturesDialog },
+      { id: 'steps', label: pc('steps'), group: pg('scenario'), run: openStepsDialog },
+      { id: 'snippets', label: pc('snippets'), group: pg('scenario'), shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
+      { id: 'find-replace', label: pc('findReplace'), group: pg('scenario'), shortcut: 'Ctrl+H', run: openFindReplace },
+      { id: 'find', label: pc('find'), group: pg('scenario'), shortcut: 'Ctrl+F', run: () => monaco?.openFind() },
+      { id: 'format', label: pc('format'), group: pg('scenario'), shortcut: 'Shift+Alt+F', run: () => void monaco?.formatDocument() },
+      { id: 'goto-symbol', label: pc('gotoSymbol'), group: pg('scenario'), shortcut: 'Ctrl+Shift+O', run: () => monaco?.openSymbolOutline() },
+      { id: 'project-replace', label: pc('projectReplace'), group: pg('scenario'), run: () => (showProjectReplace = true) },
+      { id: 'duplicate', label: pc('duplicate'), group: pg('scenario'), run: () => activeTab && !isWelcome && openDuplicateDialog(activeTab) },
+      { id: 'rename-feature', label: pc('renameFeature'), group: pg('scenario'), run: () => {
         if (!activeTab || isWelcome) return
         renameFeaturePath = activeTab
         showRenameFeature = true
       }},
-      { id: 'delete-feature', label: 'Удалить сценарий', group: 'Сценарий', run: () => activeTab && !isWelcome && deleteFeature(activeTab) },
-      { id: 'refactor-indents', label: 'Нормализовать отступы', group: 'Рефакторинг', run: refactorNormalizeIndents },
-      { id: 'refactor-blanks', label: 'Убрать пустые строки между шагами', group: 'Рефакторинг', run: refactorCollapseBlank },
-      { id: 'steps-help', label: 'Справка по шагам…', group: 'Справка', shortcut: 'F1', run: () => openStepsHelp() },
-      { id: 'browser', label: 'Браузер', group: 'Запись и тест', shortcut: 'Ctrl+B', run: () => void openBrowser() },
-      { id: 'record', label: 'Запись', group: 'Запись и тест', shortcut: 'Ctrl+R', run: beginRecord },
-      { id: 'record-pause', label: 'Пауза записи', group: 'Запись и тест', shortcut: 'Alt+P', run: () => void toggleRecordPause() },
-      { id: 'record-stop', label: 'Стоп (запись / тест / браузер)', group: 'Запись и тест', shortcut: 'Ctrl+Shift+R', run: () => void stopRecord() },
-      { id: 'record-baseline', label: 'Запись из шагов…', group: 'Запись и тест', run: openBaselineRecordDialog },
-      { id: 'stop', label: 'Стоп', group: 'Запись и тест', run: stopRecord },
-      { id: 'pause', label: 'Пауза', group: 'Запись и тест', run: toggleRecordPause },
-      { id: 'run', label: 'Запустить', group: 'Запись и тест', shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
-      { id: 'run-current', label: 'Запустить текущий сценарий', group: 'Запись и тест', shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
-      { id: 'run-current-dry', label: 'Dry-run текущего сценария', group: 'Запись и тест', run: () => runCurrentScenario(true) },
-      { id: 'run-dialog', label: 'Запустить…', group: 'Запись и тест', run: () => openRunDialog('Запуск сценария', {}) },
-      { id: 'run-tag', label: 'Запустить сценарии с тегом…', group: 'Запись и тест', run: () => openRunDialog('Запуск с тегом', {}) },
-      { id: 'playwright', label: 'Playwright…', group: 'Запись и тест', run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
-      { id: 'dry', label: 'Dry-run', group: 'Запись и тест', run: () => runPrimary(true) },
-      { id: 'batch', label: 'Пакетный выбор', group: 'Запись и тест', run: () => toggleBatchMode() },
-      { id: 'batch-run', label: 'Запустить выбранные', group: 'Запись и тест', run: () => runBatchSelected(false) },
-      { id: 'batch-dry', label: 'Dry-run выбранных', group: 'Запись и тест', run: () => runBatchSelected(true) },
-      { id: 'rerun-failed', label: 'Перезапустить упавшие', group: 'Запись и тест', run: rerunFailed },
-      { id: 'run-history', label: 'История запусков…', group: 'Запись и тест', run: openRunHistory },
-      { id: 'testclient', label: 'TestClient…', group: 'Запись и тест', run: openTestClientDialog },
-      { id: 'capture-session', label: 'Сохранить сессию браузера…', group: 'Запись и тест', run: openTestClientDialogForCapture },
-      { id: 'validate', label: 'Проверить', group: 'Запись и тест', run: () => openValidateDialog(true) },
-      { id: 'validate-browser', label: 'Проверить в браузере', group: 'Запись и тест', run: () => openValidateDialog(false) },
+      { id: 'delete-feature', label: pc('deleteFeature'), group: pg('scenario'), run: () => activeTab && !isWelcome && deleteFeature(activeTab) },
+      { id: 'refactor-indents', label: pc('refactorIndents'), group: pg('refactor'), run: refactorNormalizeIndents },
+      { id: 'refactor-blanks', label: pc('refactorBlanks'), group: pg('refactor'), run: refactorCollapseBlank },
+      { id: 'steps-help', label: pc('stepsHelp'), group: pg('help'), shortcut: 'F1', run: () => openStepsHelp() },
+      { id: 'browser', label: pc('browser'), group: pg('run'), shortcut: 'Ctrl+B', run: () => void openBrowser() },
+      { id: 'record', label: pc('record'), group: pg('run'), shortcut: 'Ctrl+R', run: beginRecord },
+      { id: 'record-pause', label: pc('recordPause'), group: pg('run'), shortcut: 'Alt+P', run: () => void toggleRecordPause() },
+      { id: 'record-stop', label: pc('recordStop'), group: pg('run'), shortcut: 'Ctrl+Shift+R', run: () => void stopRecord() },
+      { id: 'record-baseline', label: pc('recordBaseline'), group: pg('run'), run: openBaselineRecordDialog },
+      { id: 'stop', label: pc('stop'), group: pg('run'), run: stopRecord },
+      { id: 'pause', label: pc('pause'), group: pg('run'), run: toggleRecordPause },
+      { id: 'run', label: pc('run'), group: pg('run'), shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
+      { id: 'run-current', label: pc('runCurrent'), group: pg('run'), shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
+      { id: 'run-current-dry', label: pc('runCurrentDry'), group: pg('run'), run: () => runCurrentScenario(true) },
+      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog(tr('menus.runDialog').replace('…', ''), {}) },
+      { id: 'run-tag', label: pc('runTag'), group: pg('run'), run: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}) },
+      { id: 'playwright', label: pc('playwright'), group: pg('run'), run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
+      { id: 'dry', label: pc('dry'), group: pg('run'), run: () => runPrimary(true) },
+      { id: 'batch', label: pc('batch'), group: pg('run'), run: () => toggleBatchMode() },
+      { id: 'batch-run', label: pc('batchRun'), group: pg('run'), run: () => runBatchSelected(false) },
+      { id: 'batch-dry', label: pc('batchDry'), group: pg('run'), run: () => runBatchSelected(true) },
+      { id: 'rerun-failed', label: pc('rerunFailed'), group: pg('run'), run: rerunFailed },
+      { id: 'run-history', label: pc('runHistory'), group: pg('run'), run: openRunHistory },
+      { id: 'testclient', label: pc('testclient'), group: pg('run'), run: openTestClientDialog },
+      { id: 'capture-session', label: pc('captureSession'), group: pg('run'), run: openTestClientDialogForCapture },
+      { id: 'validate', label: pc('validate'), group: pg('run'), run: () => openValidateDialog(true) },
+      { id: 'validate-browser', label: pc('validateBrowser'), group: pg('run'), run: () => openValidateDialog(false) },
       ...(hasVanessaPlugin()
         ? [
-            { id: 'vanessa-dry', label: 'Vanessa (dry)…', group: 'Запись и тест', run: () => openVanessaDialog(true) },
-            { id: 'vanessa', label: 'Vanessa run…', group: 'Запись и тест', run: () => openVanessaDialog(false) },
-            { id: 'vanessa-rerun', label: 'Vanessa rerun-failed…', group: 'Запись и тест', run: () => openVanessaDialog(false, true) },
-            { id: 'vanessa-settings', label: 'Настройки Vanessa…', group: 'Запись и тест', run: openVanessaSettingsDialog },
-            { id: 'vanessa-monitor', label: 'Монитор Vanessa…', group: 'Запись и тест', run: openVanessaMonitor },
+            { id: 'vanessa-dry', label: pc('vanessaDry'), group: pg('run'), run: () => openVanessaDialog(true) },
+            { id: 'vanessa', label: pc('vanessa'), group: pg('run'), run: () => openVanessaDialog(false) },
+            { id: 'vanessa-rerun', label: pc('vanessaRerun'), group: pg('run'), run: () => openVanessaDialog(false, true) },
+            { id: 'vanessa-settings', label: pc('vanessaSettings'), group: pg('run'), run: openVanessaSettingsDialog },
+            { id: 'vanessa-monitor', label: pc('vanessaMonitor'), group: pg('run'), run: openVanessaMonitor },
           ]
         : []),
-      { id: 'plugins', label: 'Управление плагинами…', group: 'Плагины', run: () => (showPlugins = true) },
+      { id: 'plugins', label: pc('plugins'), group: pg('plugins'), run: () => (showPlugins = true) },
       ...installedPlugins.flatMap((plugin) => {
         if (!plugin.runnable || plugin.vanessa) return []
         const label = pluginLabel(plugin)
         return [
-          { id: `plugin-${plugin.name}-dry`, label: `${label} (dry)…`, group: 'Плагины', run: () => openPluginRun(plugin.name, true) },
-          { id: `plugin-${plugin.name}`, label: `Запустить ${label}…`, group: 'Плагины', run: () => openPluginRun(plugin.name, false) },
+          { id: `plugin-${plugin.name}-dry`, label: tr('menus.runPluginDry', { name: label }), group: pg('plugins'), run: () => openPluginRun(plugin.name, true) },
+          { id: `plugin-${plugin.name}`, label: tr('menus.runPlugin', { name: label }), group: pg('plugins'), run: () => openPluginRun(plugin.name, false) },
         ]
       }),
-      { id: 'journal', label: 'Журнал', group: 'Вид', shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
-      { id: 'results', label: 'Результаты', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
-      { id: 'allure-serve', label: 'Allure serve', group: 'Вид', run: () => serveAllureReport(projectArtifacts.allureDir || '') },
-      { id: 'validate-panel', label: 'Проверка селекторов', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'validate' } },
-      { id: 'error-panel', label: 'Ошибка', group: 'Вид', run: () => { bottomPanelOpen = true; bottomTab = 'error' } },
-      { id: 'explorer', label: 'Сценарии (explorer)', group: 'Вид', run: () => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) } },
-      { id: 'explorer-hide', label: 'Скрыть сценарии', group: 'Вид', run: () => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) } },
-      { id: 'preview', label: previewVisible ? 'Скрыть превью Gherkin' : 'Превью Gherkin', group: 'Вид', run: togglePreview },
-      { id: 'steps-panel', label: stepsPanelVisible ? 'Скрыть панель шагов' : 'Панель шагов', group: 'Вид', run: toggleStepsPanel },
-      { id: 'compact', label: compactLabel, group: 'Вид', run: () => { toolbarCompact = !toolbarCompact; persistSettings() } },
-      { id: 'refactor-urls', label: 'Обновить стартовый URL…', group: 'Рефакторинг', run: refactorUpdateUrls },
-      { id: 'hotkeys', label: 'Горячие клавиши', group: 'Справка', shortcut: 'Shift+F1', run: () => (showHotkeys = true) },
-      { id: 'reset-layout', label: 'Сбросить макет окон', group: 'Вид', run: resetWindowLayout },
-      { id: 'updates', label: 'Проверить обновления…', group: 'Справка', run: checkUpdates },
-      { id: 'about', label: 'О программе', group: 'Справка', run: showAboutDialog },
+      { id: 'journal', label: pc('journal'), group: pg('view'), shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
+      { id: 'results', label: pc('results'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
+      { id: 'allure-serve', label: pc('allureServe'), group: pg('view'), run: () => serveAllureReport(projectArtifacts.allureDir || '') },
+      { id: 'validate-panel', label: pc('validatePanel'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'validate' } },
+      { id: 'error-panel', label: pc('errorPanel'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'error' } },
+      { id: 'explorer', label: pc('explorer'), group: pg('view'), run: () => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) } },
+      { id: 'explorer-hide', label: pc('explorerHide'), group: pg('view'), run: () => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) } },
+      { id: 'preview', label: previewVisible ? pc('previewHide') : pc('previewShow'), group: pg('view'), run: togglePreview },
+      { id: 'steps-panel', label: stepsPanelVisible ? pc('stepsPanelHide') : pc('stepsPanelShow'), group: pg('view'), run: toggleStepsPanel },
+      { id: 'compact', label: compactLabel, group: pg('view'), run: () => { toolbarCompact = !toolbarCompact; persistSettings() } },
+      { id: 'refactor-urls', label: pc('refactorUrls'), group: pg('refactor'), run: refactorUpdateUrls },
+      { id: 'hotkeys', label: pc('hotkeys'), group: pg('help'), shortcut: 'Shift+F1', run: () => (showHotkeys = true) },
+      { id: 'reset-layout', label: pc('resetLayout'), group: pg('view'), run: resetWindowLayout },
+      { id: 'updates', label: pc('updates'), group: pg('help'), run: checkUpdates },
+      { id: 'about', label: pc('about'), group: pg('help'), run: showAboutDialog },
     ]
   }
 
@@ -1393,7 +1410,7 @@
 
   function openFindReplace() {
     if (isWelcome) {
-      appendLog('Откройте сценарий для поиска')
+      appendLog(tr('journal.search.openScenario'))
       return
     }
     monaco?.openFindReplace()
@@ -1406,7 +1423,7 @@
     bottomPanelHeight = layout.bottomPanelHeight
     previewVisible = layout.previewVisible
     previewWidth = layout.previewWidth
-    appendLog('Макет окон сброшен')
+    appendLog(tr('journal.layout.reset'))
   }
 
   function hintDismissKey(hint: gui.ScenarioHintDTO): string {
@@ -1474,7 +1491,7 @@
       })
       if (result.count > 0) {
         await applyEditorText(result.text, { skipValidate: true })
-        appendLog(`Исправлена подсказка: ${hint.title}`)
+        appendLog(tr('journal.hint.fixed', { title: hint.title }))
         scheduleValidateEditor(150)
       }
     } finally {
@@ -1519,7 +1536,7 @@
     if (!postRecordPath) return
     const modified = monaco?.getEditorText() ?? editorText
     if (postRecordBaselineText === modified) {
-      appendLog('Нет изменений для сравнения с текстом до записи')
+      appendLog(tr('journal.record.noPostRecordDiff'))
       return
     }
     showPostRecordDiff = true
@@ -1531,7 +1548,7 @@
     const resolved = resolveLogicalRunTarget(postRecordPath, tabs, activeTab)
     const targets = await materializeRunTargets([resolved])
     if (!targets.length) {
-      appendLog('Не удалось подготовить сценарий для проверки после записи')
+      appendLog(tr('journal.record.postRecordValidateFailed'))
       return
     }
     await validateProject(false, settingsBrowser || 'chromium', targets)
@@ -1567,7 +1584,7 @@
               ? tabEditorText(tab)
               : ''
         if (!text || !projectPath) {
-          appendLog('Сначала сохраните сценарий или откройте проект')
+          appendLog(tr('journal.project.saveOrOpenFirst'))
           return
         }
         const name = newName.trim().replace(/\.feature$/i, '') || 'copy'
@@ -1575,15 +1592,15 @@
         await SaveFeature(target, text)
         await refreshProject()
         await loadFeature(target)
-        appendLog(`Создана копия: ${name}.feature`)
+        appendLog(tr('journal.file.duplicateCreated', { name: `${name}.feature` }))
         return
       }
       const target = await DuplicateFeature(path, newName)
       await refreshProject()
       await loadFeature(target)
-      appendLog(`Создана копия: ${basename(target)}`)
+      appendLog(tr('journal.file.duplicateCreated', { name: basename(target) }))
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     }
   }
 
@@ -1594,9 +1611,9 @@
   async function deleteFeature(path: string) {
     if (!path || isWelcome) return
     const ok = await askConfirm({
-      title: 'Удалить сценарий',
-      message: `Удалить «${basename(path)}» без возможности восстановления?`,
-      confirmLabel: 'Удалить',
+      title: tr('confirm.deleteFeature.title'),
+      message: tr('confirm.deleteFeature.message', { name: basename(path) }),
+      confirmLabel: tr('confirm.deleteFeature.confirmLabel'),
       danger: true,
     })
     if (!ok) return
@@ -1606,16 +1623,16 @@
   async function doDeleteFeature(path: string) {
     if (isUntitled(path)) {
       finalizeCloseTab(path)
-      appendLog(`Закрыт: ${untitledLabel(path)}`)
+      appendLog(tr('journal.file.closed', { name: untitledLabel(path) }))
       return
     }
     try {
       await DeleteFeature(path)
       closeTab(path)
       await refreshProject()
-      appendLog(`Удалён: ${basename(path)}`)
+      appendLog(tr('journal.file.deleted', { name: basename(path) }))
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     }
   }
 
@@ -1666,7 +1683,7 @@
     batchMode = true
     batchSelected = [...folderMenu.paths]
     dismissFolderMenu()
-    appendLog(`Выбрано ${batchSelected.length} сценариев в папке`)
+    appendLog(tr('journal.catalog.batchSelected', { count: batchSelected.length }))
   }
 
   function openVanessaForFolder(dirPath: string, dry: boolean) {
@@ -1770,9 +1787,9 @@
       const wasActive = activeTab === src
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
-      appendLog(`Перемещён: ${basename(newPath)}`)
+      appendLog(tr('journal.file.moved', { name: basename(newPath) }))
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     }
   }
 
@@ -1803,9 +1820,9 @@
       batchSelected = batchSelected.map((p) => (p === path ? newPath : p))
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
-      appendLog(`Переименован: ${basename(newPath)}`)
+      appendLog(tr('journal.file.renamed', { name: basename(newPath) }))
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     }
   }
 
@@ -1818,7 +1835,7 @@
         replace: replaceText,
         caseSensitive: replaceCaseSensitive,
       })
-      appendLog(`Замена: ${result.replacements} в ${result.filesChanged} файлах`)
+      appendLog(tr('journal.file.replaceDone', { replacements: result.replacements, files: result.filesChanged }))
       showProjectReplace = false
       await refreshProject()
       if (activeTab && !isWelcome) {
@@ -1827,7 +1844,7 @@
         validateEditor()
       }
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     } finally {
       projectReplaceBusy = false
     }
@@ -1870,7 +1887,7 @@
           ? runResultFeaturePath(runTargets[0])
           : diskTargets.length === 1
             ? diskTargets[0]
-            : 'запуск'
+            : tr('journal.run.defaultLabel')
       lastErrorEntry = buildSyntheticRunError({
         featurePath,
         scenario: scenario || undefined,
@@ -1905,11 +1922,11 @@
     if (switching && (tabs.length > 0 || browserOpen || recording)) {
       const dirty = tabs.filter((t) => t.dirty)
       const ok = await askConfirm({
-        title: 'Открыть другой проект',
+        title: tr('confirm.openOtherProject.title'),
         message: dirty.length
-          ? `Есть ${dirty.length} несохранённых файл(ов). Закрыть текущий проект и открыть новый?`
-          : 'Закрыть текущий проект и открыть новый?',
-        confirmLabel: 'Открыть',
+          ? tr('confirm.openOtherProject.messageDirty', { count: dirty.length })
+          : tr('confirm.openOtherProject.messageClean'),
+        confirmLabel: tr('confirm.openOtherProject.confirmLabel'),
         danger: dirty.length > 0,
       })
       if (!ok) return
@@ -1925,13 +1942,13 @@
       await rememberProject(projectPath)
       const recents = await loadRecents()
       recentProjects = recents.projects
-      appendLog(`Проект открыт: ${projectPath}`)
+      appendLog(tr('journal.project.opened', { path: projectPath }))
       syncIdleStatus()
       await refreshRunResults()
       await refreshArtifacts()
       schedulePersistSession()
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
       setStatus(String(e), 'error')
     }
   }
@@ -1986,9 +2003,9 @@
     const dirty = tabs.filter((t) => t.dirty)
     if (dirty.length > 0) {
       const ok = await askConfirm({
-        title: 'Закрыть проект',
-        message: `Есть ${dirty.length} несохранённых файл(ов). Закрыть проект без сохранения?`,
-        confirmLabel: 'Закрыть',
+        title: tr('confirm.closeProject.title'),
+        message: tr('confirm.closeProject.message', { count: dirty.length }),
+        confirmLabel: tr('confirm.closeProject.confirmLabel'),
         danger: true,
       })
       if (!ok) return
@@ -2010,7 +2027,7 @@
     batchSelected = []
     batchMode = false
     editorValidationIssues = []
-    appendLog('Проект закрыт.')
+    appendLog(tr('journal.project.closed'))
     syncIdleStatus()
     schedulePersistSession()
   }
@@ -2083,22 +2100,22 @@
   async function openExamples() {
     const examples = await BundledExamplesPath()
     if (!examples) {
-      appendLog('Папка examples не найдена')
+      appendLog(tr('journal.examples.folderNotFound'))
       return
     }
     await openProjectAt(examples)
     sidebarVisible = true
     saveLayout({ sidebarVisible: true })
     selectTab(WELCOME_KEY)
-    appendLog('Выберите сценарий в каталоге слева или нажмите Ctrl+O')
-    setStatus('Примеры открыты — выберите сценарий', 'normal')
+    appendLog(tr('journal.examples.selectScenario'))
+    setStatus(tr('journal.status.examplesOpened'), 'normal')
   }
 
   async function rerunFailed() {
     const source = lastRunBatchResults.length > 0 ? lastRunBatchResults : runResults
     const failed = [...new Map(source.filter((e) => !e.success).map((e) => [e.path, e])).values()]
     if (!failed.length) {
-      appendLog('Нет упавших сценариев для перезапуска')
+      appendLog(tr('journal.run.noFailed'))
       return
     }
     for (const entry of failed) {
@@ -2107,9 +2124,9 @@
   }
 
   async function runFlakyTriplicate(entry: gui.RunResultEntry) {
-    appendLog(`Запуск 3×: ${entry.path}`)
+    appendLog(tr('journal.run.flakyTriplicate', { path: entry.path }))
     for (let i = 0; i < 3; i++) {
-      appendLog(`Прогон ${i + 1}/3…`)
+      appendLog(tr('journal.run.flakyIteration', { current: i + 1 }))
       await runSingleScenario(entry)
     }
   }
@@ -2186,7 +2203,7 @@
 
   function runPrimary(dryRun = false) {
     if (playing) {
-      appendLog('Тест уже выполняется — дождитесь завершения или нажмите Стоп (Ctrl+Shift+R)')
+      appendLog(tr('journal.run.alreadyRunning'))
       return
     }
     if (batchSelected.length > 0) {
@@ -2194,7 +2211,7 @@
       return
     }
     if (!runDialogConfirmed) {
-      openRunDialog(dryRun ? 'Dry-run' : 'Запуск сценария', { dryRun })
+      openRunDialog(dryRun ? tr('journal.run.mode.dryRun') : tr('menus.runDialog').replace('…', ''), { dryRun })
       return
     }
     void executeRun({ ...lastRun, dryRun })
@@ -2216,12 +2233,13 @@
     monaco?.gotoLine(line)
     const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
     const range = partialRunLogSuffix(startStep, endStep)
+    const mode = runModeLabel(dryRun)
     if (partial && startStep >= 0) {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} с шага ${startStep + 1} сценария «${scenario}»${range}…`)
+      appendLog(tr('journal.run.fromStep', { mode, step: startStep + 1, scenario, range }))
     } else if (scenario) {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}» (строка ${line})${range}…`)
+      appendLog(tr('journal.run.scenarioAtLine', { mode, scenario, line, range }))
     } else {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} файла (строка ${line})${range}…`)
+      appendLog(tr('journal.run.fileAtLine', { mode, line, range }))
     }
     await executeRun(runOpts, [activeTab])
   }
@@ -2238,12 +2256,13 @@
     monaco?.gotoLine(line)
     const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
     const range = partialRunLogSuffix(startStep, endStep)
+    const mode = runModeLabel(dryRun)
     if (endStep >= 0 && scenario) {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} до шага ${endStep + 1} сценария «${scenario}»${range}…`)
+      appendLog(tr('journal.run.untilStep', { mode, step: endStep + 1, scenario, range }))
     } else if (scenario) {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} сценария «${scenario}» (строка ${line})…`)
+      appendLog(tr('journal.run.scenarioAtLineNoRange', { mode, scenario, line }))
     } else {
-      appendLog(`${dryRun ? 'Dry-run' : 'Запуск'} файла (строка ${line})…`)
+      appendLog(tr('journal.run.fileAtLineNoRange', { mode, line }))
     }
     await executeRun(runOpts, [activeTab])
   }
@@ -2561,7 +2580,7 @@
       statusTone = 'normal'
       return
     }
-    statusMessage = 'Проект → Открыть проект…'
+    statusMessage = tr('statusBar.default')
     statusTone = 'normal'
   }
 
@@ -2598,11 +2617,11 @@
   }
 
   async function serveAllureReport(path = '') {
-    appendLog('Запуск Allure serve…')
+    appendLog(tr('journal.reports.allureServe'))
     const result = await ServeAllure(path)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
-      appendLog(`Ошибка: ${result.error}`)
+      appendLog(tr('journal.error.generic', { error: result.error }))
     } else {
       allureServeRunning = true
     }
@@ -2626,19 +2645,19 @@
   async function openHtmlReport(path = '') {
     const result = await OpenHTMLReport(path)
     if (result.error) {
-      appendLog(`Ошибка открытия отчёта: ${result.error}`)
+      appendLog(tr('journal.reports.reportOpenError', { error: result.error }))
       return
     }
-    if (result.output) appendLog(`Открыт отчёт: ${result.output.trim()}`)
+    if (result.output) appendLog(tr('journal.reports.reportOpened', { path: result.output.trim() }))
   }
 
   async function openTraceReport(path = '') {
     const result = await OpenTrace(path)
     if (result.error) {
-      appendLog(`Ошибка trace viewer: ${result.error}`)
+      appendLog(tr('journal.reports.traceViewerError', { error: result.error }))
       return
     }
-    if (result.output) appendLog(`Trace viewer: ${result.output.trim()}`)
+    if (result.output) appendLog(tr('journal.reports.traceViewer', { path: result.output.trim() }))
   }
 
   function resolveRunResultFeaturePath(featurePath: string): string {
@@ -2676,7 +2695,7 @@
       await loadFeature(featurePath)
       if (line > 0) gotoEditorLine(line)
     } catch (e: unknown) {
-      appendLog(`Не удалось перейти к шагу: ${e}`)
+      appendLog(tr('journal.reports.gotoStepFailed', { error: String(e) }))
       await loadFeature(featurePath)
     }
   }
@@ -2686,7 +2705,7 @@
     try {
       await OpenFolder(path)
     } catch (e: unknown) {
-      appendLog(`Не удалось открыть: ${e}`)
+      appendLog(tr('journal.reports.openFailed', { error: String(e) }))
     }
   }
 
@@ -2740,9 +2759,9 @@
       batchSelected = batchSelected.map((p) => (p === src ? newPath : p))
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
-      appendLog(`Перемещён: ${basename(newPath)}`)
+      appendLog(tr('journal.file.moved', { name: basename(newPath) }))
     } catch (e: any) {
-      appendLog(`Ошибка: ${e}`)
+      appendLog(tr('journal.error.generic', { error: String(e) }))
     }
   }
 
@@ -2751,10 +2770,10 @@
     try {
       const imported = await ImportFeatures(destDir, paths)
       await refreshProject()
-      appendLog(`Импортировано файлов: ${imported.length}`)
+      appendLog(tr('journal.file.imported', { count: imported.length }))
       if (imported.length === 1) await loadFeature(imported[0])
     } catch (e: any) {
-      appendLog(`Ошибка импорта: ${e}`)
+      appendLog(tr('journal.file.importError', { error: String(e) }))
     }
   }
 
@@ -2783,9 +2802,7 @@
 
   function warnManyOpenTabs() {
     if (tabs.length >= MAX_OPEN_EDITOR_TABS) {
-      appendLog(
-        `Открыто ${tabs.length} вкладок — закройте лишние, иначе растёт потребление памяти редактора.`,
-      )
+      appendLog(tr('journal.file.manyTabs', { count: tabs.length }))
     }
   }
 
@@ -2825,9 +2842,9 @@
       const disk = await ReadFeature(activeTab)
       if (disk === baseline) return
       const ok = await askConfirm({
-        title: 'Файл изменён на диске',
-        message: `«${basename(activeTab)}» был изменён вне редактора. Перезагрузить с диска? Несохранённые правки в редакторе будут потеряны.`,
-        confirmLabel: 'Перезагрузить',
+        title: tr('confirm.diskChanged.title'),
+        message: tr('confirm.diskChanged.message', { name: basename(activeTab) }),
+        confirmLabel: tr('confirm.diskChanged.confirmLabel'),
         danger: true,
       })
       if (!ok) return
@@ -2835,7 +2852,7 @@
         t.path === activeTab ? { ...t, content: disk, dirty: false, draft: undefined, unloaded: false } : t,
       )
       await applyEditorText(disk, { saved: true, switchTab: true, tabPath: activeTab, skipValidate: true })
-      appendLog(`Перезагружен с диска: ${basename(activeTab)}`)
+      appendLog(tr('journal.file.reloaded', { name: basename(activeTab) }))
     } catch {
       /* ignore */
     }
@@ -2848,19 +2865,19 @@
     }
     if (skipRecordTabSwitchConfirm) {
       recordingTargetPath = normalizeRecordTabPath(path)
-      appendLog(`Цель записи: ${basename(path)}`)
+      appendLog(tr('journal.record.target', { name: basename(path) }))
       return true
     }
     const ok = await askConfirm({
-      title: 'Запись активна',
-      message: `Шаги записываются в «${basename(recordingTargetPath)}». Переключить вкладку? Дальнейшие шаги будут записываться в «${basename(path)}».`,
-      confirmLabel: 'Переключить',
+      title: tr('confirm.recordingActive.title'),
+      message: tr('confirm.recordingActive.message', { from: basename(recordingTargetPath), to: basename(path) }),
+      confirmLabel: tr('confirm.recordingActive.confirmLabel'),
       danger: true,
-      dontAskAgainLabel: 'Больше не спрашивать',
+      dontAskAgainLabel: tr('confirm.recordingActive.dontAskAgainLabel'),
     })
     if (ok) {
       recordingTargetPath = normalizeRecordTabPath(path)
-      appendLog(`Цель записи: ${basename(path)}`)
+      appendLog(tr('journal.record.target', { name: basename(path) }))
     }
     return ok
   }
@@ -2887,7 +2904,7 @@
             t.path === path ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
           )
         } catch (e: any) {
-          appendLog(`Ошибка открытия: ${e}`)
+          appendLog(tr('journal.file.openError', { error: String(e) }))
           return
         }
       }
@@ -2908,7 +2925,7 @@
         if (draft && draft.trim() !== diskContent.trim()) {
           content = draft
           dirty = true
-          appendLog(`Восстановлен черновик: ${basename(path)}`)
+          appendLog(tr('journal.file.draftRestored', { name: basename(path) }))
         }
       } catch {
         /* no draft */
@@ -2925,15 +2942,15 @@
       stepsPanelCollapsed = resolveStepsPanelCollapsed()
       schedulePersistSession()
     } catch (e: any) {
-      appendLog(`Ошибка открытия: ${e}`)
+      appendLog(tr('journal.file.openError', { error: String(e) }))
     }
   }
 
   function selectTab(path: string) {
     if (path === WELCOME_KEY) {
       if (recording && !recordPaused) {
-        appendLog('Поставьте запись на паузу, чтобы переключиться на Старт')
-        setStatus('Запись активна', 'busy')
+        appendLog(tr('journal.record.pauseToWelcome'))
+        setStatus(tr('journal.status.recordingActive'), 'busy')
         return
       }
       const leavingTab = activeTab
@@ -2969,11 +2986,11 @@
     if (recording && recordingTargetPath && isSameRecordTab(path, recordingTargetPath)) {
       void (async () => {
         const ok = await askConfirm({
-          title: 'Целевая вкладка записи',
+          title: tr('confirm.recordingTargetTab.title'),
           message: recordPaused
-            ? `«${basename(path)}» — цель записи (на паузе). Закрыть вкладку?`
-            : `Запись идёт в «${basename(path)}». Поставьте на паузу или закройте вкладку осознанно.`,
-          confirmLabel: recordPaused ? 'Закрыть' : 'Закрыть всё равно',
+            ? tr('confirm.recordingTargetTab.messagePaused', { name: basename(path) })
+            : tr('confirm.recordingTargetTab.messageRecording', { name: basename(path) }),
+          confirmLabel: recordPaused ? tr('confirm.recordingTargetTab.confirmLabelClose') : tr('confirm.recordingTargetTab.confirmLabelForceClose'),
           danger: true,
         })
         if (!ok) return
@@ -3039,7 +3056,7 @@
 
   async function saveFeatureAs() {
     if (!activeTab || isWelcome) return
-    const picked = await PickSaveFile('Сохранить как', basename(activeTab))
+    const picked = await PickSaveFile(tr('filePicker.saveAs'), basename(activeTab))
     if (!picked) return
     try {
       const text = monaco?.getEditorText() ?? editorText
@@ -3051,11 +3068,11 @@
       activeTab = picked
       await rememberFeature(picked)
       await refreshProject()
-      appendLog(`Сохранено как: ${basename(picked)}`)
-      setStatus('Сохранено', 'success')
+      appendLog(tr('journal.file.savedAs', { name: basename(picked) }))
+      setStatus(tr('journal.status.saved'), 'success')
     } catch (e: any) {
-      appendLog(`Ошибка сохранения: ${e}`)
-      setStatus('Ошибка сохранения', 'error')
+      appendLog(tr('journal.file.saveError', { error: String(e) }))
+      setStatus(tr('journal.status.saveError'), 'error')
     }
   }
 
@@ -3077,7 +3094,7 @@
         text = autoFixed
         editorText = text
         await monaco?.setContent(text)
-        appendLog(`Авто-исправлено подсказок: ${autoFixCount}`)
+        appendLog(tr('journal.hint.autoFixed', { count: autoFixCount }))
       }
       await SaveFeature(activeTab, text)
       markActiveTabSaved(text)
@@ -3086,11 +3103,11 @@
       } catch {
         /* ignore */
       }
-      appendLog(`Сохранено: ${basename(activeTab)}`)
-      setStatus('Сохранено', 'success')
+      appendLog(tr('journal.file.saved', { name: basename(activeTab) }))
+      setStatus(tr('journal.status.saved'), 'success')
     } catch (e: any) {
-      appendLog(`Ошибка сохранения: ${e}`)
-      setStatus('Ошибка сохранения', 'error')
+      appendLog(tr('journal.file.saveError', { error: String(e) }))
+      setStatus(tr('journal.status.saveError'), 'error')
     }
   }
 
@@ -3113,9 +3130,8 @@
   function clearEditorValidation() {
     editorValidationIssues = []
     stepStatusError = false
-    stepStatus = '0 шагов'
     monaco?.setMarkers([])
-    if (statusMessage === 'Ошибка в сценарии') {
+    if (statusMessage === tr('journal.status.scenarioError')) {
       setStatus('', 'normal')
     }
   }
@@ -3136,17 +3152,14 @@
       await refreshEditorSteps()
       if (generation !== validateGeneration || tabAtStart !== activeTab) return
       if (editorValidationIssues.length > 0) {
-        stepStatus = `${stepCount} шагов · ошибок ${editorValidationIssues.length}`
         stepStatusError = true
-        setStatus('Ошибка в сценарии', 'error')
+        setStatus(tr('journal.status.scenarioError'), 'error')
       } else {
-        stepStatus = `${stepCount} шагов`
         stepStatusError = false
       }
     } catch {
       if (generation !== validateGeneration || tabAtStart !== activeTab) return
       editorValidationIssues = []
-      stepStatus = `${stepCount} шагов`
       await refreshEditorSteps()
     }
     if (generation !== validateGeneration || tabAtStart !== activeTab) return
@@ -3164,8 +3177,8 @@
 
   function validateProjectHint(): string {
     if (validatePanelIssues.length > 0 || editorValidationIssues.length > 0) return ''
-    if (isWelcome) return 'Откройте сценарий для проверки шагов'
-    return 'Ошибок в шагах сценария нет. Проверка селекторов в браузере — меню «Запись и тест».'
+    if (isWelcome) return tr('results.validate.hintWelcome')
+    return tr('results.validate.hintBrowser')
   }
 
   function validatePanelDisplayIssues(): gui.ValidationIssue[] {
@@ -3250,7 +3263,7 @@
 
   async function executeRun(opts: RunForm, targets: string[] = []) {
     if (playing) {
-      appendLog('Тест уже выполняется — дождитесь завершения или нажмите Стоп (Ctrl+Shift+R)')
+      appendLog(tr('journal.run.alreadyRunning'))
       return
     }
     syncActiveTabContent()
@@ -3266,14 +3279,14 @@
       }
     }
     if (runTargets.length === 0 && !projectPath) {
-      appendLog('Откройте сценарий для запуска')
+      appendLog(tr('journal.run.openScenario'))
       return
     }
 
     const diskTargets = runTargets.length ? await materializeRunTargets(runTargets) : []
     if (runTargets.length > 0 && diskTargets.length === 0) {
-      appendLog('Не удалось подготовить файл(ы) для запуска')
-      setStatus('Ошибка запуска', 'error')
+      appendLog(tr('journal.run.prepareFailed'))
+      setStatus(tr('journal.status.runError'), 'error')
       return
     }
 
@@ -3292,10 +3305,10 @@
 
     playingLabel =
       runTargets.length > 1
-        ? `${runTargets.length} сценариев`
+        ? tr('journal.run.scenariosCount', { count: runTargets.length })
         : runTargets.length === 1
           ? featureTabLabel(runTargets[0])
-          : runOpts.scenario || runOpts.tag || 'тест'
+          : runOpts.scenario || runOpts.tag || tr('journal.run.defaultLabel')
 
     const allureDir = runOpts.allure ? await scenariaSubdir('allure-results') : ''
     const traceDir = !runOpts.dryRun && runOpts.trace ? await scenariaSubdir('traces') : ''
@@ -3313,14 +3326,14 @@
     runProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
     runCancelling = false
     runLogStreaming = true
-    setStatus('▶ Идёт тест', 'busy')
+    setStatus(tr('journal.status.testRunning'), 'busy')
     const range = partialRunLogSuffix(runOpts.startStep ?? -1, runOpts.endStep ?? -1)
     if (targets.length) {
-      appendLog(`Запуск ${targets.length} сценариев${range}…`)
+      appendLog(tr('journal.run.scenarios', { count: targets.length, range }))
     } else if (runOpts.dryRun) {
-      appendLog(`Dry-run${range}…`)
+      appendLog(tr('journal.run.dryRun', { range }))
     } else {
-      appendLog(`Запуск Playwright${range}…`)
+      appendLog(tr('journal.run.playwright', { range }))
     }
 
     const runSince = new Date().toISOString()
@@ -3360,17 +3373,17 @@
     if (result.output && !journalStreamed) appendLog(result.output.trimEnd())
     if (result.error) {
       if (/context canceled/i.test(result.error)) {
-        appendLog('Тест остановлен.')
-        setStatus('Тест остановлен', 'busy')
+        appendLog(tr('journal.run.stopped'))
+        setStatus(tr('journal.status.testStopped'), 'busy')
         bottomTab = 'journal'
       } else {
-        appendLog(`Ошибка: ${result.error}`)
-        setStatus('Ошибка теста', 'error')
+        appendLog(tr('journal.error.generic', { error: result.error }))
+        setStatus(tr('journal.status.testError'), 'error')
         bottomTab = 'error'
       }
     } else {
-      appendLog('Завершено.')
-      setStatus('Тест завершён', 'success')
+      appendLog(tr('journal.run.done'))
+      setStatus(tr('journal.status.testDone'), 'success')
       welcomePlayedSuccess = true
       if (showOnboardingTour && runOpts.dryRun) {
         onboardingDryRunDone = true
@@ -3393,7 +3406,7 @@
             ? runResultFeaturePath(runTargets[0])
             : diskTargets.length === 1
               ? diskTargets[0]
-              : 'запуск'
+              : tr('journal.run.defaultLabel')
         lastErrorEntry = buildSyntheticRunError({
           featurePath,
           scenario: runOpts.scenario || cursorScenarioName() || undefined,
@@ -3455,7 +3468,7 @@
 
   async function validateProject(browser: boolean, browserName = settingsBrowser || 'chromium', targets: string[] = []) {
     if (!projectPath) return
-    appendLog(browser ? 'Проверка в браузере…' : 'Проверка…')
+    appendLog(browser ? tr('journal.validate.startingBrowser') : tr('journal.validate.starting'))
     bottomPanelOpen = true
     bottomTab = browser ? 'validate' : 'journal'
     validateCliLog = ''
@@ -3474,13 +3487,13 @@
         const missing = validatePanelIssues.filter((i) => i.status === 'missing' || !i.status).length
         const warnings = validatePanelIssues.filter((i) => i.status === 'warning').length
         const found = validatePanelIssues.filter((i) => i.status === 'found').length
-        appendLog(`Проверка в браузере: найдено ${found}, предупреждений ${warnings}, ошибок ${missing}.`)
-        setStatus(missing > 0 ? 'Ошибки проверки в браузере' : 'Проверка в браузере завершена', missing > 0 ? 'error' : 'success')
+        appendLog(tr('journal.validate.browserSummary', { found, warnings, missing }))
+        setStatus(missing > 0 ? tr('journal.status.validateBrowserErrors') : tr('journal.status.validateBrowserDone'), missing > 0 ? 'error' : 'success')
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         validateCliLog = msg
-        appendLog(`Ошибка: ${msg}`)
-        setStatus('Ошибка проверки', 'error')
+        appendLog(tr('journal.error.generic', { error: msg }))
+        setStatus(tr('journal.status.validateError'), 'error')
       }
     } else {
       const result = await Validate({
@@ -3494,11 +3507,11 @@
       }
       if (result.error) {
         validateCliLog = `${validateCliLog}\n${result.error}`.trim()
-        appendLog(`Ошибка: ${result.error}`)
-        setStatus('Ошибка проверки', 'error')
+        appendLog(tr('journal.error.generic', { error: result.error }))
+        setStatus(tr('journal.status.validateError'), 'error')
       } else {
-        appendLog('Проверка завершена.')
-        setStatus('Проверка завершена', 'success')
+        appendLog(tr('journal.validate.done'))
+        setStatus(tr('journal.status.validateDone'), 'success')
         if (showOnboardingTour && !browser) {
           onboardingValidateDone = true
         }
@@ -3521,8 +3534,8 @@
     if (payload.scope === 'current' && activeTab && !isWelcome) {
       targets = await materializeRunTargets([activeTab])
       if (targets.length === 0) {
-        appendLog('Не удалось подготовить текущий сценарий для проверки')
-        setStatus('Ошибка проверки', 'error')
+        appendLog(tr('journal.validate.prepareFailed'))
+        setStatus(tr('journal.status.validateError'), 'error')
         return
       }
     }
@@ -3563,12 +3576,12 @@
         })
         await SaveFeature(featurePath, content)
         await loadFeature(featurePath)
-        appendLog(`Создан сценарий: ${fileName}`)
+        appendLog(tr('journal.project.scenarioCreated', { fileName }))
       }
-      setStatus('Проект создан', 'success')
+      setStatus(tr('journal.status.projectCreated'), 'success')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      appendLog(`Ошибка: ${msg}`)
+      appendLog(tr('journal.error.generic', { error: msg }))
       setStatus(msg, 'error')
     }
   }
@@ -3590,7 +3603,7 @@
   async function openTestClientDialogForCapture() {
     if (!projectPath) return
     if (!browserOpen && !recording) {
-      appendLog('Откройте браузер (Ctrl+B), войдите на сайт, затем сохраните сессию.')
+      appendLog(tr('journal.browser.openForSession'))
       return
     }
     testClients = await ListTestClients().catch(() => [])
@@ -3604,13 +3617,13 @@
     testClientSelection = name
     lastRun.testClient = name
     runForm.testClient = name
-    appendLog(`TestClient: ${name}`)
+    appendLog(tr('journal.testClient.selected', { name }))
     showTestClient = false
   }
 
   async function openStepsDialog() {
     if (recordingBlocksManualTools()) {
-      appendLog('Поставьте запись на паузу, чтобы вставить шаг')
+      appendLog(tr('journal.record.pauseToInsertStep'))
       return
     }
     showSteps = true
@@ -3623,7 +3636,7 @@
 
   function openStepsHelp(query: unknown = '') {
     if (recordingBlocksManualTools()) {
-      appendLog('Поставьте запись на паузу, чтобы открыть справку по шагам')
+      appendLog(tr('journal.record.pauseToOpenStepsHelp'))
       return
     }
     stepsHelpQuery = typeof query === 'string' ? query : ''
@@ -3637,8 +3650,8 @@
 
   function insertStep(template: string) {
     if (recordingBlocksManualTools()) {
-      appendLog('Поставьте запись на паузу, чтобы вставить шаг')
-      setStatus('Запись активна', 'busy')
+      appendLog(tr('journal.record.pauseToInsertStep'))
+      setStatus(tr('journal.status.recordingActive'), 'busy')
       return
     }
     const line = template.endsWith('\n') ? template : template + '\n'
@@ -3653,8 +3666,8 @@
 
   function openSnippetPalette() {
     if (recordingBlocksManualTools()) {
-      appendLog('Поставьте запись на паузу, чтобы вставить шаг из палитры')
-      setStatus('Запись активна', 'busy')
+      appendLog(tr('journal.record.pauseToInsertFromPalette'))
+      setStatus(tr('journal.status.recordingActive'), 'busy')
       return
     }
     showSnippetPalette = true
@@ -3697,25 +3710,25 @@
   async function applyRefactorUrl(newUrl: string) {
     const result = await RefactorUpdateStartURLs(editorText, newUrl.trim())
     if (result.count <= 0) {
-      appendLog('Шаги «открыт» не найдены')
+      appendLog(tr('journal.refactor.openStepsNotFound'))
       return
     }
     await applyEditorText(result.text)
-    appendLog(`Обновлено URL в ${result.count} шагах`)
+    appendLog(tr('journal.refactor.urlUpdated', { count: result.count }))
   }
 
   async function refactorNormalizeIndents() {
     if (isWelcome) return
     const text = await RefactorNormalizeIndents(editorText)
     await applyEditorText(text)
-    appendLog('Отступы нормализованы')
+    appendLog(tr('journal.refactor.indentsNormalized'))
   }
 
   async function refactorCollapseBlank() {
     if (isWelcome) return
     const text = await RefactorCollapseBlankLines(editorText)
     await applyEditorText(text)
-    appendLog('Пустые строки между шагами убраны')
+    appendLog(tr('journal.refactor.blankLinesCollapsed'))
   }
 
   function focusBrowserWindow() {
@@ -3757,7 +3770,7 @@
 
   async function runPlugin(name: string, dry: boolean, opts: Partial<gui.PluginRunRequest> = {}) {
     const label = pluginLabel(installedPlugins.find((p) => p.name === name) || { name, id: name, vanessa: false } as gui.PluginEntryDTO)
-    appendLog(dry ? `${label} (dry)…` : `${label}…`)
+    appendLog(dry ? tr('journal.plugin.runningDry', { label }) : tr('journal.plugin.running', { label }))
     const result = await RunPlugin({
       name,
       dryRun: dry,
@@ -3776,7 +3789,7 @@
       vaFiles: opts.vaFiles || '',
     })
     if (result.output) appendLog(result.output.trimEnd())
-    if (result.error) appendLog(`Ошибка: ${result.error}`)
+    if (result.error) appendLog(tr('journal.error.generic', { error: result.error }))
   }
 
   function openPluginRun(name: string, dry = false) {
@@ -3805,10 +3818,10 @@
     recordURL = startURL || recordURL || 'https://example.com'
     if (activeTab && !isWelcome) {
       recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-      recordScenarioName = 'Базовый сценарий'
+      recordScenarioName = tr('dialogs.record.baselineScenarioDefault')
     } else {
-      recordFeatureName = 'Записанный сценарий'
-      recordScenarioName = 'Базовый сценарий'
+      recordFeatureName = tr('dialogs.record.featureDefault')
+      recordScenarioName = tr('dialogs.record.baselineScenarioDefault')
     }
     showRecord = true
   }
@@ -3822,7 +3835,7 @@
     if (!projectPath || baselineBusy) return
     baselineBusy = true
     showRecord = false
-    appendLog('Создание feature из шагов…')
+    appendLog(tr('journal.record.baselineCreating'))
     try {
       const result = await RecordBaseline({
         output: payload.output || 'recorded.feature',
@@ -3832,12 +3845,12 @@
       })
       if (result.output) appendLog(result.output.trimEnd())
       if (result.error) {
-        appendLog(`Ошибка: ${result.error}`)
-        setStatus('Ошибка записи', 'error')
+        appendLog(tr('journal.error.generic', { error: result.error }))
+        setStatus(tr('journal.status.recordError'), 'error')
         return
       }
-      appendLog('Feature сохранён.')
-      setStatus('Feature создан', 'success')
+      appendLog(tr('journal.record.baselineSaved'))
+      setStatus(tr('journal.status.featureCreated'), 'success')
       await refreshProject()
       const rel = (payload.output || 'recorded.feature').replace(/\\/g, '/')
       const featurePath = rel.startsWith('/') || /^[A-Za-z]:\//.test(rel)
@@ -3858,7 +3871,7 @@
       updateCheckHasUpdate = !!info.updateAvailable
       if (info.updateAvailable) {
         showUpdateCheck = true
-        setStatus('Доступно обновление', 'normal')
+        setStatus(tr('journal.status.updateAvailable'), 'normal')
       }
     } catch {
       /* offline or dev without wails */
@@ -3875,7 +3888,7 @@
   }
 
   async function checkUpdates() {
-    appendLog('Проверка обновлений…')
+    appendLog(tr('journal.update.checking'))
     try {
       const info = await CheckUpdateInfo()
       updateCheckInfo = info
@@ -3883,16 +3896,16 @@
       updateCheckHasUpdate = !!info.updateAvailable
       appendLog(updateCheckMessage)
       if (info.updateAvailable) {
-        appendLog(`Релиз: ${info.htmlUrl || '—'}`)
-        if (info.downloadName) appendLog(`Файл: ${info.downloadName}`)
+        appendLog(tr('journal.update.release', { url: info.htmlUrl || '—' }))
+        if (info.downloadName) appendLog(tr('journal.update.file', { name: info.downloadName }))
       }
-      appendLog('Проверка завершена.')
+      appendLog(tr('journal.validate.done'))
       showUpdateCheck = true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       updateCheckMessage = msg
       updateCheckHasUpdate = false
-      appendLog(`Ошибка: ${msg}`)
+      appendLog(tr('journal.error.generic', { error: msg }))
       showUpdateCheck = true
     }
   }
@@ -3903,7 +3916,7 @@
     try {
       await OpenExternalURL(url)
     } catch (err) {
-      appendLog(`Не удалось открыть ссылку: ${err instanceof Error ? err.message : String(err)}`)
+      appendLog(tr('journal.update.linkOpenFailed', { error: err instanceof Error ? err.message : String(err) }))
     }
   }
 
@@ -3935,24 +3948,24 @@
   async function applyUpdate() {
     if (updateDownloading) return
     updateDownloading = true
-    updateProgress = { stage: 'check', message: 'Запуск обновления…', percent: 0 }
-    appendLog('Установка обновления…')
+    updateProgress = { stage: 'check', message: tr('journal.update.progressStarting'), percent: 0 }
+    appendLog(tr('journal.update.installing'))
     const unbind = listenUpdateProgress((result) => {
       unbind()
       if (result?.error) {
-        appendLog(`Ошибка обновления: ${result.error}`)
+        appendLog(tr('journal.update.installError', { error: result.error }))
         updateDownloading = false
         updateProgress = null
         return
       }
-      updateProgress = { stage: 'restart', message: 'Перезапуск приложения…', percent: 100 }
-      appendLog('Приложение перезапускается…')
+      updateProgress = { stage: 'restart', message: tr('journal.update.progressRestarting'), percent: 100 }
+      appendLog(tr('journal.update.restarting'))
     })
     try {
       await ApplyUpdate()
     } catch (err) {
       unbind()
-      appendLog(`Ошибка обновления: ${err instanceof Error ? err.message : String(err)}`)
+      appendLog(tr('journal.update.installError', { error: err instanceof Error ? err.message : String(err) }))
       updateDownloading = false
       updateProgress = null
     }
@@ -3961,19 +3974,19 @@
   async function downloadUpdate() {
     if (updateDownloading) return
     updateDownloading = true
-    updateProgress = { stage: 'check', message: 'Подготовка к скачиванию…', percent: 0 }
-    appendLog('Скачивание обновления…')
+    updateProgress = { stage: 'check', message: tr('journal.update.progressDownloading'), percent: 0 }
+    appendLog(tr('journal.update.downloading'))
     const unbind = listenUpdateProgress(async (result) => {
       unbind()
       if (result?.error) {
-        appendLog(`Ошибка скачивания: ${result.error}`)
+        appendLog(tr('journal.update.downloadError', { error: result.error }))
         updateDownloading = false
         updateProgress = null
         return
       }
       const path = result.output || ''
-      appendLog(`Скачано: ${path}`)
-      updateCheckMessage = `${updateCheckMessage}\n\nФайл сохранён:\n${path}`.trim()
+      appendLog(tr('journal.update.downloaded', { path }))
+      updateCheckMessage = `${updateCheckMessage}\n\n${tr('journal.update.fileSaved', { path })}`.trim()
       const folder = path.replace(/[\\/][^\\/]+$/, '')
       if (folder) await OpenFolder(folder)
       updateDownloading = false
@@ -3983,7 +3996,7 @@
       await DownloadUpdate()
     } catch (err) {
       unbind()
-      appendLog(`Ошибка скачивания: ${err instanceof Error ? err.message : String(err)}`)
+      appendLog(tr('journal.update.downloadError', { error: err instanceof Error ? err.message : String(err) }))
       updateDownloading = false
       updateProgress = null
     }
@@ -4032,6 +4045,7 @@
       onboardingVersion: ONBOARDING_TOUR_VERSION,
       runDialogConfirmed,
       pickerDuringRecording,
+      uiLocale,
       startUrl: startURL,
     })
   }
@@ -4065,9 +4079,9 @@
     if (browserOpen || recording) {
       input.checked = settingsHeadless
       const ok = await askConfirm({
-        title: 'Headless',
-        message: 'Переключение режима окна браузера применится к текущей сессии записи (может перезапустить окно). Продолжить?',
-        confirmLabel: 'Применить',
+        title: tr('confirm.headless.title'),
+        message: tr('confirm.headless.message'),
+        confirmLabel: tr('confirm.headless.confirmLabel'),
         danger: true,
       })
       if (!ok) return
@@ -4077,6 +4091,7 @@
   }
 
   async function applySettingsCore(closeDialog: boolean) {
+    setLocale(uiLocale)
     editorSettings = { ...editorSettings }
     stepsPanelTab = editorSettings.stepsPanelView
     if (!stepsPanelVisible) stepsPanelCollapsed = true
@@ -4101,7 +4116,7 @@
     if (closeDialog) {
       settingsDialogBaseline = null
       showSettings = false
-      appendLog('Настройки сохранены.')
+      appendLog(tr('common.settingsSaved'))
       return saved
     }
     settingsDialogBaseline = saved
@@ -4114,10 +4129,7 @@
 
   async function applySettingsKeepOpen(): Promise<string> {
     await applySettingsCore(false)
-    let message = 'Настройки применены и сохранены.'
-    if (browserOpen) {
-      message += ' Порядок селекторов для записи — после перезапуска браузера.'
-    }
+    let message = tr('common.settingsApplied')
     appendLog(message)
     return message
   }
@@ -4155,20 +4167,20 @@
     recordURL = recordStartURL()
     if (activeTab && !isWelcome) {
       recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-      recordScenarioName = 'Запись'
+      recordScenarioName = tr('dialogs.record.scenarioDefault')
     } else {
-      recordFeatureName = 'Записанный сценарий'
-      recordScenarioName = 'Запись'
+      recordFeatureName = tr('dialogs.record.featureDefault')
+      recordScenarioName = tr('dialogs.record.scenarioDefault')
     }
   }
 
   function beginRecord() {
     if (playing) {
-      appendLog('Дождитесь завершения теста перед записью')
+      appendLog(tr('journal.record.waitForTest'))
       return
     }
     if (!projectPath) {
-      appendLog('Сначала откройте проект для записи сценария')
+      appendLog(tr('journal.record.openProjectFirst'))
       return
     }
     prepareRecordDialogDefaults({ inheritTestClient: true })
@@ -4177,7 +4189,7 @@
 
   async function openBrowser() {
     if (!projectPath) {
-      appendLog('Сначала откройте проект')
+      appendLog(tr('journal.project.openFirst'))
       return
     }
     if (browserOpen || recording) {
@@ -4188,9 +4200,9 @@
     recordURL = recordStartURL()
     showRecord = false
     if (recordURL) {
-      appendLog(`Открываю браузер: ${recordURL}`)
+      appendLog(tr('journal.browser.openingUrl', { url: recordURL }))
     } else {
-      appendLog('Открываю браузер (пустая страница — перейдите вручную или начните запись)')
+      appendLog(tr('journal.browser.openingEmpty'))
     }
     await OpenBrowser({
       url: recordURL,
@@ -4228,7 +4240,7 @@
       try {
         await BeginRecordingCapture()
       } catch (e: unknown) {
-        appendLog(`Запись: ${e}`)
+        appendLog(tr('journal.record.sessionError', { error: String(e) }))
       }
       return
     }
@@ -4334,12 +4346,12 @@
     void maybeShowPostRecordBannerAfterStop()
     if (payload?.reason === 'idle') {
       const sec = payload.idleSeconds ?? recordIdle ?? 30
-      appendLog(`Запись остановлена: нет действий ${sec} с`)
+      appendLog(tr('journal.record.stoppedIdle', { seconds: sec }))
     }
     if (browserOpen) {
-      setStatus(payload?.reason === 'idle' ? 'Запись остановлена (таймаут)' : 'Браузер открыт', 'busy')
+      setStatus(payload?.reason === 'idle' ? tr('journal.status.recordStoppedIdle') : tr('journal.status.browserOpen'), 'busy')
       if (payload?.reason !== 'idle') {
-        appendLog('Запись остановлена. Браузер остаётся открытым.')
+        appendLog(tr('journal.record.stoppedBrowserOpen'))
       }
     } else {
       syncIdleStatus()
@@ -4357,9 +4369,9 @@
     recordingTargetPath = ''
     lastRecordTarget = ''
     if (result.output) appendLog(result.output)
-    if (result.error) appendLog(`Ошибка записи: ${result.error}`)
+    if (result.error) appendLog(tr('journal.record.error', { message: result.error || tr('journal.record.unknownError') }))
     else if (kind === 'record') {
-      appendLog('Браузер закрыт. Сохраните сценарий (Ctrl+S), если ещё не сохраняли.')
+      appendLog(tr('journal.browser.closedSaveHint'))
       if (recordTarget && !isUntitled(recordTarget)) {
         await showPostRecordBanner(recordTarget)
       } else if (activeTab && !isWelcome) {
@@ -4375,11 +4387,11 @@
     if (recordPaused) {
       await ResumeRecording()
       recordPaused = false
-      setStatus('● Идёт запись', 'busy')
+      setStatus(tr('journal.status.recording'), 'busy')
     } else {
       await PauseRecording()
       recordPaused = true
-      setStatus('⏸ Пауза', 'busy')
+      setStatus(tr('journal.status.paused'), 'busy')
     }
     void syncBrowserStateFromBackend()
   }
@@ -4428,13 +4440,13 @@
         paused: guardPause ? recordPaused : s.paused,
       })
       if (s.recording && !prevRecording) {
-        setStatus('● Идёт запись', 'busy')
+        setStatus(tr('journal.status.recording'), 'busy')
       } else if (s.recording && s.paused && (!prevPaused || !prevRecording)) {
-        setStatus('⏸ Пауза', 'busy')
+        setStatus(tr('journal.status.paused'), 'busy')
       } else if (s.recording && !s.paused && prevPaused) {
-        setStatus('● Идёт запись', 'busy')
+        setStatus(tr('journal.status.recording'), 'busy')
       } else if (!s.recording && prevRecording) {
-        setStatus('Браузер открыт', 'busy')
+        setStatus(tr('journal.status.browserOpen'), 'busy')
       }
     } catch {
       /* dev without wails */
@@ -4444,8 +4456,8 @@
   async function stopRecord() {
     if (playing) {
       runCancelling = true
-      setStatus('Останавливаем тест…', 'busy')
-      appendLog('Остановка теста…')
+      setStatus(tr('journal.status.stoppingTest'), 'busy')
+      appendLog(tr('journal.run.stopping'))
       await CancelRun()
       return
     }
@@ -4455,7 +4467,7 @@
     }
     if (browserOpen) {
       if (activeTabUnsaved) {
-        const ok = confirm('Есть несохранённые изменения. Закрыть браузер?')
+        const ok = confirm(tr('confirm.closeBrowser.message'))
         if (!ok) return
       }
       await CloseBrowser()
@@ -4468,7 +4480,7 @@
       showOtp = false
       return
     }
-    appendLog('Нет активного запроса OTP — код не отправлен')
+    appendLog(tr('journal.otp.noActiveRequest'))
   }
 
   async function cancelOtp() {
@@ -4479,8 +4491,8 @@
   function newScenario() {
     void openUntitledTab(
       buildFeatureTemplate({
-        title: 'Примеры для новичков',
-        scenario: 'Первая проверка страницы',
+        title: tr('dialogs.project.beginnerExamples.title'),
+        scenario: tr('dialogs.project.beginnerExamples.scenario'),
         startUrl: startURL || recordURL || 'https://example.com',
       }),
     )
@@ -4504,7 +4516,7 @@
   }
 
   async function openFileDialog() {
-    const path = await PickOpenFile('Открыть feature')
+    const path = await PickOpenFile(tr('filePicker.openFeature'))
     if (path) await loadFeature(path)
   }
 
@@ -4514,8 +4526,8 @@
       return
     }
     const template = buildFeatureTemplate({
-      title: 'Примеры для новичков',
-      scenario: 'Первая проверка страницы',
+      title: tr('dialogs.project.beginnerExamples.title'),
+      scenario: tr('dialogs.project.beginnerExamples.scenario'),
       startUrl: startURL || recordURL || 'https://example.com',
     })
     monaco?.insertAtCursor(template)
@@ -4523,7 +4535,7 @@
 
   function quickStart() {
     if (!projectPath) {
-      appendLog('Сначала откройте проект — иначе запуск теста будет недоступен')
+      appendLog(tr('journal.project.openFirstForTest'))
       openProjectDialog()
       return
     }
@@ -4538,21 +4550,21 @@
 
   function continueRecord() {
     if (!projectPath) {
-      appendLog('Сначала откройте проект')
+      appendLog(tr('journal.project.openFirst'))
       return
     }
     if (!activeTab || isWelcome || !activeTab.toLowerCase().endsWith('.feature')) {
-      appendLog('Откройте .feature файл для дозаписи в конец сценария')
+      appendLog(tr('journal.record.openFeatureForAppend'))
       beginRecord()
       return
     }
     recordAppendTo = activeTab
     recordOutput = activeTab
     recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-    recordScenarioName = 'Дозапись'
+    recordScenarioName = tr('dialogs.record.appendScenarioDefault')
     recordURL = startURL
     showRecord = true
-    appendLog(`Дозапись в ${basename(activeTab)}`)
+    appendLog(tr('journal.record.appendTo', { name: basename(activeTab) }))
   }
 
   function quickRecord() {
@@ -4561,16 +4573,16 @@
 
   async function focusBrowser() {
     if (!browserOpen && !recording) {
-      appendLog('Браузер не открыт')
+      appendLog(tr('journal.browser.notOpen'))
       return
     }
     try {
       await FocusBrowser()
-      appendLog('Окно браузера выведено на передний план')
+      appendLog(tr('journal.browser.focused'))
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      appendLog(`Показать браузер: ${msg}`)
-      setStatus('Не удалось показать браузер', 'error')
+      appendLog(tr('journal.browser.showFailed', { error: msg }))
+      setStatus(tr('journal.status.showBrowserFailed'), 'error')
     }
   }
 
@@ -4594,40 +4606,40 @@
 
   async function pickElement() {
     if (!recording && !browserOpen) {
-      appendLog('Указать элемент: откройте браузер')
+      appendLog(tr('journal.picker.openBrowser'))
       return
     }
     if (recording && !recordPaused && !pickerDuringRecording) {
-      appendLog('Указать элемент: поставьте запись на паузу или включите в настройках')
-      setStatus('Поставьте запись на паузу', 'busy')
+      appendLog(tr('journal.picker.pauseOrSettings'))
+      setStatus(tr('journal.status.pauseRecording'), 'busy')
       return
     }
-    appendLog('Укажите элемент в окне браузера…')
+    appendLog(tr('journal.picker.pickInBrowser'))
     await focusBrowser()
     const result = await PickSelector()
     if (result.error) {
-      if (result.error !== 'отменено') appendLog(`Указать элемент: ${result.error}`)
+      if (result.error !== 'отменено' && result.error !== tr('journal.picker.cancelled')) appendLog(tr('journal.picker.error', { error: result.error }))
       return
     }
     if (!result.selector) return
     pickerSelector = result.selector
-    pickerChoices = await PickerStepChoices(result.selector, 'Допустим')
+    pickerChoices = await PickerStepChoices(result.selector, tr('dialogs.record.gherkinGiven'))
     showPickerStep = true
   }
 
   function insertPickerStep(text: string) {
     if (recordingBlocksManualTools()) {
-      appendLog('Поставьте запись на паузу, чтобы вставить шаг')
+      appendLog(tr('journal.record.pauseToInsertStep'))
       return
     }
     monaco?.insertAtCursor(text.endsWith('\n') ? text : text + '\n')
-    appendLog('Шаг вставлен из указателя элемента')
+    appendLog(tr('journal.picker.stepInserted'))
   }
 
   async function undoRecordedStep() {
     const ok = await UndoRecordedStep()
     if (!ok) {
-      appendLog('Нечего отменять')
+      appendLog(tr('journal.record.undoNothing'))
       return
     }
     const sourceText = monaco?.getEditorText() ?? editorText
@@ -4636,7 +4648,7 @@
       liveRecordStepLines = result.lineByIndex
       await applyEditorText(result.text, { skipValidate: true })
     }
-    appendLog('Последний записанный шаг отменён')
+    appendLog(tr('journal.record.undoDone'))
   }
 
   function onWelcomeChecklistStep(step: number) {
@@ -4653,10 +4665,10 @@
   }
 
   function projectLabel(): string {
-    if (isWelcome) return 'Старт'
+    if (isWelcome) return tr('editor.welcome')
     if (activeTab && activeTab !== WELCOME_KEY) return featureTabLabel(activeTab)
     if (projectPath) return basename(projectPath)
-    return 'Открыть проект…'
+    return tr('statusBar.default')
   }
 </script>
 
@@ -4673,30 +4685,30 @@
   <!-- Menu bar (Python: Проект / Сценарий / Запись и тест / Вид / Справка) -->
   <div class="menubar" class:onboarding-elevated={onboardingElevateMenubar} role="menubar">
     <div class="menu-root" class:open={openMenu === 'project'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('project', e)}>Проект</button>
+      <button class="menu-trigger" on:click={(e) => toggleMenu('project', e)}>{tr('menus.project')}</button>
       {#if openMenu === 'project'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={openExamples}>Открыть примеры сценариев</button>
-          <button class="menu-item" on:click={openNewProjectWizard}>Новый проект…</button>
-          <button class="menu-item" on:click={openProjectDialog}>Открыть проект…</button>
-          <button class="menu-item" on:click={closeProject} disabled={!projectPath}>Закрыть проект</button>
-          <button class="menu-item" on:click={openSettings}>Настройки…<span class="menu-shortcut">Ctrl+,</span></button>
+          <button class="menu-item" on:click={openExamples}>{tr('menus.openExamples')}</button>
+          <button class="menu-item" on:click={openNewProjectWizard}>{tr('menus.newProject')}</button>
+          <button class="menu-item" on:click={openProjectDialog}>{tr('menus.openProject')}</button>
+          <button class="menu-item" on:click={closeProject} disabled={!projectPath}>{tr('menus.closeProject')}</button>
+          <button class="menu-item" on:click={openSettings}>{tr('menus.settings')}<span class="menu-shortcut">Ctrl+,</span></button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openInitProjectDialog} disabled={!projectPath}>Init проекта</button>
+          <button class="menu-item" on:click={openInitProjectDialog} disabled={!projectPath}>{tr('menus.initProject')}</button>
         </div>
       {/if}
     </div>
 
     <div class="menu-root" class:open={openMenu === 'scenario'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('scenario', e)}>Сценарий</button>
+      <button class="menu-trigger" on:click={(e) => toggleMenu('scenario', e)}>{tr('menus.scenario')}</button>
       {#if openMenu === 'scenario'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={newScenario}>Новый</button>
-          <button class="menu-item" on:click={openFileDialog}>Открыть…</button>
-          <button class="menu-item" on:click={saveFeature} disabled={isWelcome}>Сохранить<span class="menu-shortcut">Ctrl+S</span></button>
-          <button class="menu-item" on:click={saveFeatureAs} disabled={isWelcome}>Сохранить как…</button>
-          <button class="menu-item" on:click={() => activeTab && !isWelcome && openDuplicateDialog(activeTab)} disabled={isWelcome}>Дублировать…</button>
-          <button class="menu-item" on:click={openImportFeaturesDialog} disabled={!projectPath}>Импорт .feature…</button>
+          <button class="menu-item" on:click={newScenario}>{tr('menus.new')}</button>
+          <button class="menu-item" on:click={openFileDialog}>{tr('menus.open')}</button>
+          <button class="menu-item" on:click={saveFeature} disabled={isWelcome}>{tr('menus.save')}<span class="menu-shortcut">Ctrl+S</span></button>
+          <button class="menu-item" on:click={saveFeatureAs} disabled={isWelcome}>{tr('menus.saveAs')}</button>
+          <button class="menu-item" on:click={() => activeTab && !isWelcome && openDuplicateDialog(activeTab)} disabled={isWelcome}>{tr('menus.duplicate')}</button>
+          <button class="menu-item" on:click={openImportFeaturesDialog} disabled={!projectPath}>{tr('menus.importFeature')}</button>
           <button
             class="menu-item"
             on:click={() => {
@@ -4706,152 +4718,152 @@
             }}
             disabled={isWelcome}
           >
-            Переименовать…
+            {tr('menus.rename')}
           </button>
-          <button class="menu-item" on:click={() => activeTab && !isWelcome && deleteFeature(activeTab)} disabled={isWelcome}>Удалить</button>
+          <button class="menu-item" on:click={() => activeTab && !isWelcome && deleteFeature(activeTab)} disabled={isWelcome}>{tr('menus.delete')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openFindReplace} disabled={isWelcome}>Найти и заменить…<span class="menu-shortcut">Ctrl+H</span></button>
-          <button class="menu-item" on:click={() => (showProjectReplace = true)} disabled={!projectPath}>Замена по проекту…</button>
+          <button class="menu-item" on:click={openFindReplace} disabled={isWelcome}>{tr('menus.findReplace')}<span class="menu-shortcut">Ctrl+H</span></button>
+          <button class="menu-item" on:click={() => (showProjectReplace = true)} disabled={!projectPath}>{tr('menus.projectReplace')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>Экспорт…</button>
-          <button class="menu-item" on:click={openImportDialog} disabled={!projectPath}>Импорт JSON…</button>
+          <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>{tr('menus.export')}</button>
+          <button class="menu-item" on:click={openImportDialog} disabled={!projectPath}>{tr('menus.importJson')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openSnippetPalette}>Палитра сниппетов…<span class="menu-shortcut">Ctrl+Shift+Space</span></button>
-          <button class="menu-item" on:click={openStepsDialog}>Вставить шаг…</button>
+          <button class="menu-item" on:click={openSnippetPalette}>{tr('menus.snippetPalette')}<span class="menu-shortcut">Ctrl+Shift+Space</span></button>
+          <button class="menu-item" on:click={openStepsDialog}>{tr('menus.insertStep')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={refactorUpdateUrls} disabled={isWelcome}>Обновить стартовый URL…</button>
-          <button class="menu-item" on:click={refactorNormalizeIndents} disabled={isWelcome}>Нормализовать отступы</button>
-          <button class="menu-item" on:click={refactorCollapseBlank} disabled={isWelcome}>Убрать пустые строки между шагами</button>
+          <button class="menu-item" on:click={refactorUpdateUrls} disabled={isWelcome}>{tr('menus.updateStartUrl')}</button>
+          <button class="menu-item" on:click={refactorNormalizeIndents} disabled={isWelcome}>{tr('menus.normalizeIndents')}</button>
+          <button class="menu-item" on:click={refactorCollapseBlank} disabled={isWelcome}>{tr('menus.collapseBlanks')}</button>
         </div>
       {/if}
     </div>
 
     <div class="menu-root" class:open={openMenu === 'run'} data-tour="menu-run">
-      <button class="menu-trigger" data-tour="menu-run-trigger" on:click={(e) => toggleMenu('run', e)}>Запись и тест</button>
+      <button class="menu-trigger" data-tour="menu-run-trigger" on:click={(e) => toggleMenu('run', e)}>{tr('menus.runMenu')}</button>
       {#if openMenu === 'run'}
         <div class="menu-dropdown" data-tour="menu-run-dropdown">
-          <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>Браузер<span class="menu-shortcut">Ctrl+B</span></button>
-          <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>Запись<span class="menu-shortcut">Ctrl+R</span></button>
-          <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>Запись из шагов…</button>
-          <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen && !playing}>Стоп</button>
-          <button class="menu-item" on:click={toggleRecordPause} disabled={!recording}>Пауза</button>
+          <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>{tr('menus.browser')}<span class="menu-shortcut">Ctrl+B</span></button>
+          <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>{tr('menus.record')}<span class="menu-shortcut">Ctrl+R</span></button>
+          <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>{tr('menus.recordFromSteps')}</button>
+          <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen && !playing}>{tr('menus.stop')}</button>
+          <button class="menu-item" on:click={toggleRecordPause} disabled={!recording}>{tr('menus.pause')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={openTestClientDialog} disabled={!projectPath}>TestClient…</button>
+          <button class="menu-item" on:click={openTestClientDialog} disabled={!projectPath}>{tr('menus.testClient')}</button>
           <button class="menu-item" on:click={openTestClientDialogForCapture} disabled={!projectPath || (!browserOpen && !recording)}>
-            Сохранить сессию браузера…
+            {tr('menus.saveBrowserSession')}
           </button>
-          <button class="menu-item" on:click={openHttpAuthDialog}>HTTP Auth…</button>
+          <button class="menu-item" on:click={openHttpAuthDialog}>{tr('menus.httpAuth')}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={() => runPrimary(false)} disabled={isWelcome && !projectPath && !batchSelected.length}>
-            Запустить<span class="menu-shortcut">Ctrl+Enter</span>
+            {tr('menus.run')}<span class="menu-shortcut">Ctrl+Enter</span>
           </button>
           <button class="menu-item" on:click={() => runCurrentScenario(false)} disabled={isWelcome || !activeTab}>
-            Запустить текущий сценарий<span class="menu-shortcut">Ctrl+Shift+Enter</span>
+            {tr('menus.runCurrent')}<span class="menu-shortcut">Ctrl+Shift+Enter</span>
           </button>
           <button class="menu-item" on:click={() => runCurrentScenario(true)} disabled={isWelcome || !activeTab}>
-            Dry-run текущего сценария
+            {tr('menus.dryRunCurrent')}
           </button>
           <button class="menu-item" on:click={() => runBatchSelected(false)} disabled={!projectPath || !batchSelected.length}>
-            Запустить выбранные
+            {tr('menus.runSelected')}
           </button>
           <button class="menu-item" on:click={() => runBatchSelected(true)} disabled={!projectPath || !batchSelected.length}>
-            Dry-run выбранных
+            {tr('menus.dryRunSelected')}
           </button>
-          <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>Перезапустить упавшие</button>
-          <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>История запусков…</button>
-          <button class="menu-item" on:click={() => openRunDialog('Запуск сценария', {})} disabled={isWelcome && !projectPath}>Запустить…</button>
-          <button class="menu-item" on:click={() => openRunDialog('Запуск с тегом', {})} disabled={isWelcome && !projectPath}>
-            Запустить сценарии с тегом…
+          <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>{tr('menus.rerunFailed')}</button>
+          <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>{tr('menus.runHistory')}</button>
+          <button class="menu-item" on:click={() => openRunDialog(tr('menus.runDialog').replace('…', ''), {})} disabled={isWelcome && !projectPath}>{tr('menus.runDialog')}</button>
+          <button class="menu-item" on:click={() => openRunDialog(tr('menus.runTag').replace('…', ''), {})} disabled={isWelcome && !projectPath}>
+            {tr('menus.runTag')}
           </button>
-          <button class="menu-item" data-tour="menu-dry-run" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>Dry-run</button>
+          <button class="menu-item" data-tour="menu-dry-run" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>{tr('menus.dryRun')}</button>
           <button
             class="menu-item"
             on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
             disabled={isWelcome && !activeTab}
           >
-            Playwright…
+            {tr('menus.playwright')}
           </button>
           <div class="menu-sep"></div>
-          <button class="menu-item" data-tour="menu-validate" on:click={() => openValidateDialog(true)} disabled={!projectPath}>Проверить…</button>
-          <button class="menu-item" on:click={() => openValidateDialog(false)} disabled={!projectPath}>Проверить в браузере…</button>
+          <button class="menu-item" data-tour="menu-validate" on:click={() => openValidateDialog(true)} disabled={!projectPath}>{tr('menus.validate')}</button>
+          <button class="menu-item" on:click={() => openValidateDialog(false)} disabled={!projectPath}>{tr('menus.validateBrowser')}</button>
           <div class="menu-sep"></div>
           {#if hasVanessaPlugin()}
-            <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
-            <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
-            <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
-            <button class="menu-item" on:click={openVanessaSettingsDialog} disabled={!projectPath}>Настройки Vanessa…</button>
-            <button class="menu-item" on:click={openVanessaMonitor} disabled={!projectPath}>Монитор Vanessa…</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>{tr('menus.vanessaDry')}</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>{tr('menus.vanessaRun')}</button>
+            <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>{tr('menus.vanessaRerun')}</button>
+            <button class="menu-item" on:click={openVanessaSettingsDialog} disabled={!projectPath}>{tr('menus.vanessaSettings')}</button>
+            <button class="menu-item" on:click={openVanessaMonitor} disabled={!projectPath}>{tr('menus.vanessaMonitor')}</button>
           {/if}
         </div>
       {/if}
     </div>
 
     <div class="menu-root" class:open={openMenu === 'plugins'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>Плагины</button>
+      <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>{tr('menus.pluginsMenu')}</button>
       {#if openMenu === 'plugins'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>Управление плагинами…</button>
+          <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>{tr('menus.plugins')}</button>
           {#if installedPlugins.length > 0}
             <div class="menu-sep"></div>
             {#each installedPlugins as plugin (plugin.name)}
               {#if plugin.runnable}
                 {#if plugin.vanessa}
-                  <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>Vanessa (dry)…</button>
-                  <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>Vanessa run…</button>
-                  <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>Vanessa rerun-failed…</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(true)} disabled={!projectPath}>{tr('menus.vanessaDry')}</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(false)} disabled={!projectPath}>{tr('menus.vanessaRun')}</button>
+                  <button class="menu-item" on:click={() => openVanessaDialog(false, true)} disabled={!projectPath}>{tr('menus.vanessaRerun')}</button>
                 {:else}
-                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, true)} disabled={!projectPath}>{pluginLabel(plugin)} (dry)…</button>
-                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, false)} disabled={!projectPath}>Запустить {pluginLabel(plugin)}…</button>
+                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, true)} disabled={!projectPath}>{tr('menus.runPluginDry', { name: pluginLabel(plugin) })}</button>
+                  <button class="menu-item" on:click={() => openPluginRun(plugin.name, false)} disabled={!projectPath}>{tr('menus.runPlugin', { name: pluginLabel(plugin) })}</button>
                 {/if}
               {:else}
-                <button class="menu-item" disabled title="Нет команды запуска в plugin.json">{pluginLabel(plugin)} — установлен</button>
+                <button class="menu-item" disabled title={tr('menus.pluginNoRunTitle')}>{tr('menus.pluginNoRun', { name: pluginLabel(plugin) })}</button>
               {/if}
             {/each}
           {:else if projectPath}
             <div class="menu-sep"></div>
-            <button class="menu-item" disabled>Нет установленных плагинов</button>
+            <button class="menu-item" disabled>{tr('menus.noInstalledPlugins')}</button>
           {/if}
         </div>
       {/if}
     </div>
 
     <div class="menu-root" class:open={openMenu === 'view'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('view', e)}>Вид</button>
+      <button class="menu-trigger" on:click={(e) => toggleMenu('view', e)}>{tr('menus.view')}</button>
       {#if openMenu === 'view'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>Старт</button>
-          <button class="menu-item" on:click={() => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) }}>Сценарии</button>
-          <button class="menu-item" on:click={() => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) }}>Скрыть сценарии</button>
-          <button class="menu-item" on:click={() => (showCommandPalette = true)}>Палитра команд<span class="menu-shortcut">Ctrl+Shift+P</span></button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>Журнал</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'results' }}>Результаты</button>
-          <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>История запусков…</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'validate' }}>Проверка селекторов</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'error' }}>Ошибка</button>
+          <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>{tr('menus.start')}</button>
+          <button class="menu-item" on:click={() => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) }}>{tr('menus.scenarios')}</button>
+          <button class="menu-item" on:click={() => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) }}>{tr('menus.hideExplorer')}</button>
+          <button class="menu-item" on:click={() => (showCommandPalette = true)}>{tr('palette.commands.palette')}<span class="menu-shortcut">Ctrl+Shift+P</span></button>
+          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>{tr('menus.journal')}</button>
+          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'results' }}>{tr('menus.resultsPanel')}</button>
+          <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>{tr('menus.runHistory')}</button>
+          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'validate' }}>{tr('menus.validatePanel')}</button>
+          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'error' }}>{tr('menus.errorPanel')}</button>
           <button class="menu-item" on:click={togglePreview}>
-            {previewVisible ? 'Скрыть превью Gherkin' : 'Превью Gherkin'}
+            {previewVisible ? tr('menus.hidePreview') : tr('menus.showPreview')}
           </button>
           <button class="menu-item" on:click={toggleStepsPanel}>
-            {stepsPanelVisible ? 'Скрыть панель шагов' : 'Панель шагов'}
+            {stepsPanelVisible ? tr('menus.hideStepsPanel') : tr('menus.showStepsPanel')}
           </button>
           <button class="menu-item" on:click={() => { toolbarCompact = !toolbarCompact; persistSettings() }}>
-            {toolbarCompact ? 'Расширенная панель' : 'Компактная панель'}
+            {toolbarCompact ? tr('menus.expandedToolbar') : tr('menus.compactToolbar')}
           </button>
-          <button class="menu-item" on:click={resetWindowLayout}>Сбросить макет окон</button>
+          <button class="menu-item" on:click={resetWindowLayout}>{tr('menus.resetLayout')}</button>
         </div>
       {/if}
     </div>
 
     <div class="menu-root" class:open={openMenu === 'help'}>
-      <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>Справка</button>
+      <button class="menu-trigger" on:click={(e) => toggleMenu('help', e)}>{tr('menus.help')}</button>
       {#if openMenu === 'help'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={restartOnboardingTour}>Обучение…</button>
+          <button class="menu-item" on:click={restartOnboardingTour}>{tr('menus.training')}</button>
           <div class="menu-sep"></div>
-          <button class="menu-item" on:click={() => openStepsHelp()}>Справка по шагам…<span class="menu-shortcut">F1</span></button>
-          <button class="menu-item" on:click={() => (showHotkeys = true)}>Горячие клавиши<span class="menu-shortcut">Shift+F1</span></button>
-          <button class="menu-item" on:click={checkUpdates}>Проверить обновления…</button>
-          <button class="menu-item" on:click={showAboutDialog}>О программе</button>
+          <button class="menu-item" on:click={() => openStepsHelp()}>{tr('menus.stepsHelp')}<span class="menu-shortcut">F1</span></button>
+          <button class="menu-item" on:click={() => (showHotkeys = true)}>{tr('menus.hotkeys')}<span class="menu-shortcut">Shift+F1</span></button>
+          <button class="menu-item" on:click={checkUpdates}>{tr('menus.checkUpdates')}</button>
+          <button class="menu-item" on:click={showAboutDialog}>{tr('menus.about')}</button>
         </div>
       {/if}
     </div>
@@ -4864,7 +4876,7 @@
         <button
           class="activity-btn"
           class:active={sidebarVisible}
-          title="Сценарии"
+          title={tr('menus.scenarios')}
           on:click={() => {
             sidebarVisible = !sidebarVisible
             saveLayout({ sidebarVisible })
@@ -4875,7 +4887,7 @@
         <button
           class="activity-btn"
           class:active={bottomPanelOpen}
-          title="Панель вывода"
+          title={tr('catalog.outputPanel')}
           on:click={() => {
             bottomPanelOpen = !bottomPanelOpen
             saveLayout({ bottomPanelOpen })
@@ -4890,14 +4902,14 @@
         <div class="sidebar-column" class:onboarding-elevated={onboardingElevateSidebar} style="width: {layoutSidebarWidth + 4}px">
         <aside class="explorer" style="width: {layoutSidebarWidth}px">
           <div class="explorer-header">
-            <p class="zone-title">СЦЕНАРИИ</p>
+            <p class="zone-title">{tr('catalog.title')}</p>
             <div class="explorer-tools">
-              <input class="explorer-search" value={sidebarSearch} placeholder="Поиск, @тег или tag:smoke" on:input={onSidebarSearchInput} />
+              <input class="explorer-search" value={sidebarSearch} placeholder={tr('catalog.searchPlaceholder')} on:input={onSidebarSearchInput} />
               <div class="explorer-tool-actions">
-                <button class="icon-btn" title="Новый сценарий" on:click={newScenario}>{@html icons.plus}</button>
-                <button class="icon-btn batch-toggle" class:active={batchMode} title="Пакетный запуск: выбрать все видимые сценарии" on:click={toggleBatchMode}>
+                <button class="icon-btn" title={tr('catalog.newScenario')} on:click={newScenario}>{@html icons.plus}</button>
+                <button class="icon-btn batch-toggle" class:active={batchMode} title={tr('catalog.folder.selectBatch')} on:click={toggleBatchMode}>
                   <span class="batch-toggle-icon" aria-hidden="true">{@html icons.validate}</span>
-                  <span class="batch-label">Выбор</span>
+                  <span class="batch-label">{tr('catalog.batchMode')}</span>
                 </button>
               </div>
             </div>
@@ -4916,7 +4928,7 @@
               </div>
             {/if}
             {#if batchMode || projectPath}
-              <p class="batch-selection">Выбрано для запуска: {batchCount}</p>
+              <p class="batch-selection">{tr('catalog.batchSelected', { count: batchCount })}</p>
             {/if}
           </div>
           <div class="catalog catalog-panel" data-tour="catalog-tree">
@@ -4957,17 +4969,17 @@
         <div class="action-bar" class:compact={actionBarCompact} use:observeActionBar>
           <div class="quick-toolbar">
             <div class="toolbar-row primary">
-              <button class="tool-btn primary" title="Браузер (Ctrl+B)" on:click={() => void openBrowser()} disabled={!projectPath}>
-                {@html toolbarIcons.browser()}<span>Браузер</span>
+              <button class="tool-btn primary" title={tr('toolbar.browser') + ' (Ctrl+B)'} on:click={() => void openBrowser()} disabled={!projectPath}>
+                {@html toolbarIcons.browser()}<span>{tr('toolbar.browser')}</span>
               </button>
               <button
                 class="tool-btn primary"
                 class:record-active={recording}
-                title="Запись (Ctrl+R)"
+                title={tr('toolbar.record') + ' (Ctrl+R)'}
                 on:click={beginRecord}
                 disabled={!projectPath || recording}
               >
-                {@html toolbarIcons.record()}<span>Запись</span>
+                {@html toolbarIcons.record()}<span>{tr('toolbar.record')}</span>
               </button>
               <button class="tool-btn primary" on:click={stopRecord} disabled={!recording && !browserOpen && !playing} title={stopActionLabel}>
                 {@html toolbarIcons.stop()}<span>{stopActionLabel}</span>
@@ -4976,58 +4988,58 @@
                 class="tool-btn primary primary-run"
                 class:run-active={playing}
                 title={batchSelected.length > 0
-                  ? `Запустить выбранные (${batchSelected.length})`
-                  : 'Запустить (Ctrl+Enter)'}
+                  ? tr('toolbar.runSelectedTitle', { count: batchSelected.length })
+                  : tr('toolbar.runTitle')}
                 on:click={() => runPrimary(false)}
                 disabled={(isWelcome && !projectPath && !batchSelected.length) || playing}
               >
-                {@html toolbarIcons.play()}<span>{batchSelected.length > 0 ? `Запустить (${batchSelected.length})` : 'Запустить'}</span>
+                {@html toolbarIcons.play()}<span>{batchSelected.length > 0 ? tr('toolbar.runSelected', { count: batchSelected.length }) : tr('toolbar.run')}</span>
               </button>
               <button
                 class="tool-btn"
-                title="Текущий сценарий (Ctrl+Shift+Enter)"
+                title={tr('toolbar.scenarioTitle')}
                 on:click={() => runCurrentScenario(false)}
                 disabled={isWelcome || !activeTab}
               >
-                {@html toolbarIcons.play()}<span>Сценарий</span>
+                {@html toolbarIcons.play()}<span>{tr('toolbar.scenario')}</span>
               </button>
-              <button class="tool-btn primary" on:click={saveFeature} disabled={isWelcome} title="Сохранить файл сценария (Ctrl+S)">
-                {@html toolbarIcons.save()}<span>Сохранить</span>
+              <button class="tool-btn primary" on:click={saveFeature} disabled={isWelcome} title={tr('toolbar.saveTitle')}>
+                {@html toolbarIcons.save()}<span>{tr('toolbar.save')}</span>
               </button>
             </div>
             {#if !actionBarCompact}
             <div class="toolbar-row secondary" class:icon-only={toolbarIconOnly}>
-              <button class="tool-btn" on:click={continueRecord} disabled={!projectPath || recording} title="Продолжить запись в конец сценария">
-                {@html toolbarIcons.continueRecord()}<span>Дозапись</span>
+              <button class="tool-btn" on:click={continueRecord} disabled={!projectPath || recording} title={tr('toolbar.continueRecordTitle')}>
+                {@html toolbarIcons.continueRecord()}<span>{tr('toolbar.continueRecord')}</span>
               </button>
-              <button class="tool-btn" on:click={toggleRecordPause} disabled={!recording} title="Приостановить запись">
-                {@html toolbarIcons.pause()}<span>Пауза</span>
+              <button class="tool-btn" on:click={toggleRecordPause} disabled={!recording} title={tr('toolbar.pauseTitle')}>
+                {@html toolbarIcons.pause()}<span>{tr('toolbar.pause')}</span>
               </button>
               <span class="toolbar-sep" aria-hidden="true"></span>
               <button class="tool-btn" on:click={() => void focusBrowser()} disabled={!browserOpen && !recording}>
-                {@html toolbarIcons.browserFocus()}<span>Показать браузер</span>
+                {@html toolbarIcons.browserFocus()}<span>{tr('toolbar.showBrowser')}</span>
               </button>
               <button class="tool-btn" on:click={() => openValidateDialog(false)} disabled={!projectPath}>
-                {@html toolbarIcons.validate()}<span>Селекторы на странице</span>
+                {@html toolbarIcons.validate()}<span>{tr('toolbar.selectorsOnPage')}</span>
               </button>
-              <button class="tool-btn" on:click={pickElement} disabled={!pickerToolbarEnabled} title={recording && !recordPaused && !pickerDuringRecording ? 'Поставьте запись на паузу' : 'Указать элемент'}>
-                {@html toolbarIcons.picker()}<span>Указать элемент</span>
+              <button class="tool-btn" on:click={pickElement} disabled={!pickerToolbarEnabled} title={recording && !recordPaused && !pickerDuringRecording ? tr('toolbar.pickElementPauseHint') : tr('toolbar.pickElement')}>
+                {@html toolbarIcons.picker()}<span>{tr('toolbar.pickElement')}</span>
               </button>
               <button class="tool-btn" on:click={quickRecord} disabled={!projectPath || recording}>
-                {@html toolbarIcons.quickRecord()}<span>Быстрая запись</span>
+                {@html toolbarIcons.quickRecord()}<span>{tr('toolbar.quickRecord')}</span>
               </button>
               <button class="tool-btn" on:click={validateEditor} disabled={isWelcome}>
-                {@html toolbarIcons.gherkin()}<span>Синтаксис Gherkin</span>
+                {@html toolbarIcons.gherkin()}<span>{tr('toolbar.gherkinSyntax')}</span>
               </button>
               <button class="tool-btn" on:click={undoRecordedStep} disabled={!recording}>
-                {@html toolbarIcons.undo()}<span>Отменить шаг</span>
+                {@html toolbarIcons.undo()}<span>{tr('toolbar.undoStep')}</span>
               </button>
               <span class="toolbar-sep" aria-hidden="true"></span>
               <button class="tool-btn" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>
-                {@html toolbarIcons.log()}<span>Журнал</span>
+                {@html toolbarIcons.log()}<span>{tr('toolbar.journal')}</span>
               </button>
               <button class="tool-btn" on:click={() => { bottomPanelOpen = true; bottomTab = 'results' }}>
-                {@html toolbarIcons.results()}<span>Результаты</span>
+                {@html toolbarIcons.results()}<span>{tr('toolbar.results')}</span>
               </button>
             </div>
             {/if}
@@ -5036,7 +5048,7 @@
           <div class="url-block">
             <span>URL</span>
             <input bind:value={startURL} placeholder="https://site.com" on:change={syncUrlFromField} />
-            <button class="icon-btn" title="URL из вкладки браузера" on:click={() => (recordURL = startURL)}>
+            <button class="icon-btn" title={tr('toolbar.urlFromBrowser')} on:click={() => (recordURL = startURL)}>
               {@html icons.external}
             </button>
           </div>
@@ -5093,13 +5105,13 @@
               <div class="dirty-banner">
                 <span>
                   {#if isUntitled(activeTab)}
-                    Несохранённый сценарий
+                    {tr('editor.unsavedScenario')}
                   {:else}
-                    Несохранённые изменения
+                    {tr('editor.unsavedChanges')}
                   {/if}
                 </span>
                 <button class="primary" on:click={saveFeature}>
-                  {isUntitled(activeTab) ? 'Сохранить как…' : 'Сохранить'}
+                  {isUntitled(activeTab) ? tr('filePicker.saveAs') + '…' : tr('toolbar.save')}
                 </button>
               </div>
             {/if}
@@ -5112,45 +5124,45 @@
             {/if}
             {#if stepStatusError}
               <div class="dirty-banner error">
-                <span>В тексте сценария есть ошибки синтаксиса</span>
+                <span>{tr('editor.syntaxErrors')}</span>
               </div>
             {/if}
             {#if showPlayingBar}
               <div class="playing-bar" role="status" aria-live="polite">
-                <span class="play-label">▶ Выполняется:</span>
+                <span class="play-label">{tr('editor.running')}</span>
                 <span class="play-target">{playingLabel}</span>
                 {#if runProgressTotal > 1}
                   <span class="play-progress-text">{runProgressCurrent}/{runProgressTotal}</span>
                 {/if}
                 {#if settingsSlowMo > 0 || lastRun.slowMo > 0}
-                  <span class="play-slowmo">slow-mo {(lastRun.slowMo > 0 ? lastRun.slowMo : settingsSlowMo)} мс</span>
+                  <span class="play-slowmo">slow-mo {(lastRun.slowMo > 0 ? lastRun.slowMo : settingsSlowMo)} {tr('settings.units.ms')}</span>
                 {/if}
                 {#if runCancelling}
-                  <span class="play-cancel">Останавливаем…</span>
+                  <span class="play-cancel">{tr('editor.stopping')}</span>
                 {:else}
-                  <button type="button" class="play-cancel-btn" on:click={stopRecord}>Отмена</button>
+                  <button type="button" class="play-cancel-btn" on:click={stopRecord}>{tr('editor.cancel')}</button>
                 {/if}
                 <span class="play-progress" aria-hidden="true" style="--run-progress: {runProgressTotal > 0 ? (runProgressCurrent / runProgressTotal) * 100 : 0}%"></span>
               </div>
             {/if}
             {#if showRecordingBar}
               <div class="recording-bar">
-                <span class="rec-label">Запись:</span>
-                <span class="rec-hint" title="Отменить последний шаг записи — кнопка в overlay, не Ctrl+Z">«Отменить шаг» ≠ Ctrl+Z</span>
-                <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => { if (filterRecording) navOnlyRecording = false; void syncRecordingOptions() }} /> Только важные</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => { if (navOnlyRecording) filterRecording = false; void syncRecordingOptions() }} /> Только ссылки</label>
-                <label class="check-inline"><input type="checkbox" checked={settingsHeadless} on:change={onRecordingHeadlessChange} /> Без окна браузера</label>
-                <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} on:change={() => void syncRecordingOptions()} /> Записывать наведение</label>
+                <span class="rec-label">{tr('editor.recording')}</span>
+                <span class="rec-hint" title={tr('editor.recordingUndoHint')}>{tr('editor.recordingUndoHint')}</span>
+                <label class="check-inline"><input type="checkbox" bind:checked={filterRecording} on:change={() => { if (filterRecording) navOnlyRecording = false; void syncRecordingOptions() }} /> {tr('editor.recordingFilters.importantOnly')}</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={navOnlyRecording} on:change={() => { if (navOnlyRecording) filterRecording = false; void syncRecordingOptions() }} /> {tr('editor.recordingFilters.linksOnly')}</label>
+                <label class="check-inline"><input type="checkbox" checked={settingsHeadless} on:change={onRecordingHeadlessChange} /> {tr('toolbar.headless')}</label>
+                <label class="check-inline"><input type="checkbox" bind:checked={hoverRecord} on:change={() => void syncRecordingOptions()} /> {tr('editor.recordingFilters.recordHover')}</label>
               </div>
             {/if}
             <div class="gherkin-hints">
-              <span class="hint-summary" title="{stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления">
-                {stepCount} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления
+              <span class="hint-summary" title={tr('editor.hintSummary', { count: stepCount })}>
+                {tr('editor.hintSummary', { count: stepCount })}
               </span>
               <div class="hint-actions">
-                <button on:click={openStepsDialog}>Шаблон</button>
-                <button on:click={() => openStepsHelp()}>Справка</button>
-                <button class:active={previewVisible} on:click={togglePreview}>Превью</button>
+                <button on:click={openStepsDialog}>{tr('editor.template')}</button>
+                <button on:click={() => openStepsHelp()}>{tr('editor.help')}</button>
+                <button class:active={previewVisible} on:click={togglePreview}>{tr('menus.showPreview')}</button>
               </div>
             </div>
             <div class="editor-row" style="--preview-width: {layoutPreviewWidth}px">
@@ -5175,17 +5187,17 @@
                 <div class="steps-panel" class:collapsed={stepsPanelCollapsed} style="max-height: {stepsPanelCollapsed ? 24 : stepsPanelHeight}px">
                   <div
                     class="steps-header"
-                    title="Панель под редактором: дерево сценария или таблица шагов. Развернуть — стрелка слева."
+                    title={tr('editor.stepsPanel.tooltip')}
                   >
                     <button
                       type="button"
-                      aria-label={stepsPanelCollapsed ? 'Развернуть панель шагов' : 'Свернуть панель шагов'}
+                      aria-label={stepsPanelCollapsed ? tr('editor.stepsPanel.expand') : tr('editor.stepsPanel.collapse')}
                       on:click={() => (stepsPanelCollapsed = !stepsPanelCollapsed)}
                     >
                       {#if stepsPanelCollapsed}{@html icons.chevronRight}{:else}{@html icons.chevronDown}{/if}
                     </button>
                     {#if editorSettings.symbolOutline}
-                      <div class="steps-panel-tabs" role="tablist" aria-label="Вид панели шагов">
+                      <div class="steps-panel-tabs" role="tablist" aria-label={tr('editor.stepsPanel.aria')}>
                         <button
                           type="button"
                           role="tab"
@@ -5193,7 +5205,7 @@
                           aria-selected={stepsPanelTab === 'outline'}
                           on:click={() => (stepsPanelTab = 'outline')}
                         >
-                          Структура
+                          {tr('editor.stepsPanel.outline')}
                         </button>
                         <button
                           type="button"
@@ -5202,13 +5214,13 @@
                           aria-selected={stepsPanelTab === 'steps'}
                           on:click={() => (stepsPanelTab = 'steps')}
                         >
-                          Шаги ({stepCount})
+                          {tr('editor.stepsPanel.title', { count: stepCount })}
                         </button>
                       </div>
                     {:else}
-                      <span>Шаги ({stepCount})</span>
+                      <span>{tr('editor.stepsPanel.title', { count: stepCount })}</span>
                     {/if}
-                    {#if stepStatusError}<span class="steps-header-error">ошибки</span>{/if}
+                    {#if stepStatusError}<span class="steps-header-error">{tr('editor.stepsPanel.errors')}</span>{/if}
                   </div>
                   {#if !stepsPanelCollapsed}
                     {#if editorSettings.symbolOutline && stepsPanelTab === 'outline'}
@@ -5223,7 +5235,7 @@
                     <div class="steps-table-wrap">
                       <table class="steps-table">
                         <thead>
-                          <tr><th>#</th><th>Действие</th><th>Элемент</th><th>Значение</th></tr>
+                          <tr><th>#</th><th>{tr('editor.stepsPanel.action')}</th><th>{tr('editor.stepsPanel.element')}</th><th>{tr('editor.stepsPanel.value')}</th></tr>
                         </thead>
                         <tbody>
                           {#each editorSteps as step, i}
@@ -5233,7 +5245,7 @@
                               on:click={() => step.line && gotoEditorLine(step.line)}
                               on:dblclick={() => openStepHelpFromPanel(step)}
                               on:contextmenu|preventDefault={(e) => openStepsContextMenu(e, step)}
-                              title={step.text ? 'ПКМ или двойной клик — действия со шагом' : ''}
+                              title={step.text ? tr('dialogs.steps.contextMenu.contextMenuTitle') : ''}
                             >
                               <td>{i + 1}</td>
                               <td>{step.action}{step.error ? ' ⚠' : ''}</td>
@@ -5252,7 +5264,7 @@
               {#if showPreviewPane && previewPaneMounted}
                 <div class="splitter-v" role="separator" on:mousedown={startResizePreview}></div>
                 <div class="feature-preview-pane" style="width: {layoutPreviewWidth}px">
-                  <div class="preview-header">Превью Gherkin</div>
+                  <div class="preview-header">{tr('editor.preview')}</div>
                   <FeaturePreview
                     text={editorText}
                     theme={editorSettings.theme}
@@ -5273,14 +5285,14 @@
     <div class="splitter-h bottom-splitter" role="separator" on:mousedown={startResizeBottom}></div>
     <div class="bottom-panel" style="--panel-height: {bottomPanelHeight}px">
     <div class="panel-tabs">
-      <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => openJournalTab(true)}>Журнал</button>
-      <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (bottomTab = 'results')}>Результаты</button>
-      <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (bottomTab = 'validate')}>Проверка</button>
-      <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (bottomTab = 'error')}>Ошибка</button>
+      <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => openJournalTab(true)}>{tr('panels.journal')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (bottomTab = 'results')}>{tr('panels.results')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (bottomTab = 'validate')}>{tr('panels.validate')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (bottomTab = 'error')}>{tr('panels.error')}</button>
     </div>
     <div class="panel-body" class:muted={bottomTab === 'journal' && !logText} class:text-panel={bottomTab === 'journal'}>
       {#if bottomTab === 'journal'}
-        {logText || 'Журнал…'}
+        {logText || tr('panels.journalEmpty')}
       {:else if bottomTab === 'results'}
         <ResultsPanel
           entries={resultsPanelEntries}
@@ -5322,35 +5334,35 @@
     <div class="status-right">
       <div class="status-segment browser-segment">
         <span class="led" class:recording={recording} class:playing={playing} class:on={recording || browserOpen || playing}></span>
-        Браузер · {recording ? 'запись' : playing ? 'тест' : browserOpen ? 'открыт' : 'закрыт'}
+        {tr('statusBar.browser', { state: recording ? tr('statusBar.browserRecording') : playing ? tr('statusBar.browserTesting') : browserOpen ? tr('statusBar.browserOpen') : tr('statusBar.browserClosed') })}
       </div>
       {#if recordingTargetLabel}
         <div class="status-segment recording-target" title={recordingTargetPath}>
-          Запись → {recordingTargetLabel}
+          {tr('statusBar.recordingTarget', { label: recordingTargetLabel })}
         </div>
       {/if}
       {#if unsavedTabCount > 1}
-        <div class="status-segment warning" title="Несохранённые вкладки">
-          {unsavedTabCount} несохран.
+        <div class="status-segment warning" title={tr('statusBar.unsavedTabsTitle')}>
+          {tr('statusBar.unsavedTabs', { count: unsavedTabCount })}
         </div>
       {/if}
       {#if lastRunSummary && !playing && !runningDryRun}
-        <div class="status-segment muted run-summary" title="Последний запуск (Ctrl+Enter)">
-          Запуск · {lastRunSummary}
+        <div class="status-segment muted run-summary" title={tr('statusBar.lastRunTitle')}>
+          {tr('statusBar.lastRun', { summary: lastRunSummary })}
         </div>
       {/if}
       {#if runningDryRun}
-        <div class="status-segment muted">Dry-run — редактор доступен</div>
+        <div class="status-segment muted">{tr('statusBar.dryRun')}</div>
       {/if}
       {#if showLargeFileBanner}
-        <div class="status-segment warning large-file-banner" title="Упрощённый режим редактора для больших файлов">
-          ≥{LARGE_FILE_LINE_THRESHOLD} строк · без outline / minimap
+        <div class="status-segment warning large-file-banner" title={tr('statusBar.largeFileTitle')}>
+          {tr('statusBar.largeFile', { lines: LARGE_FILE_LINE_THRESHOLD })}
         </div>
       {/if}
-      <div class="status-segment muted">Runner · Playwright</div>
-      <div class="status-segment" class:warning={stepStatusError}>{stepStatus}</div>
+      <div class="status-segment muted">{tr('statusBar.runner')}</div>
+      <div class="status-segment" class:warning={stepStatusError}>{stepStatusDisplay}</div>
       <button type="button" class="status-segment clickable" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>
-        {@html icons.log} Журнал
+        {@html icons.log} {tr('panels.journal')}
       </button>
       <button type="button" class="status-segment clickable project-segment" on:click={() => (isWelcome ? selectTab(WELCOME_KEY) : openProjectDialog())}>
         {@html icons.explorer} {projectLabel()}
@@ -5418,7 +5430,7 @@
     onClientsChange={(names) => (testClients = names)}
     onLog={appendLog}
     onAskConfirm={(message) =>
-      askConfirm({ title: 'Подтверждение', message, confirmLabel: 'Удалить', danger: true })}
+      askConfirm({ title: tr('confirm.generic.title'), message, confirmLabel: tr('confirm.generic.confirmLabelDelete'), danger: true })}
   />
 {/if}
 
@@ -5583,6 +5595,7 @@
     bind:selectorInputStrategies={settingsSelectorInputStrategies}
     bind:navWaitUntil={settingsNavWaitUntil}
     bind:pickerDuringRecording
+    bind:uiLocale
     bind:editorSettings
     onSave={applySettings}
     onApply={applySettingsKeepOpen}
@@ -5666,7 +5679,7 @@
     }}
     onRunPlugin={(name, dry) => openPluginRun(name, dry)}
     onAskConfirm={(message) =>
-      askConfirm({ title: 'Подтверждение', message, confirmLabel: 'Удалить', danger: true })}
+      askConfirm({ title: tr('confirm.generic.title'), message, confirmLabel: tr('confirm.generic.confirmLabelDelete'), danger: true })}
   />
 {/if}
 

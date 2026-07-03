@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { preloadMonacoEditor } from './appBootstrap'
   import type { editor as MonacoEditor } from 'monaco-editor'
 
@@ -7,6 +8,8 @@
   export let modified = ''
   export let path = ''
   export let onClose: () => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let container: HTMLDivElement
   let diffEditor: MonacoEditor.IStandaloneDiffEditor | null = null
@@ -53,16 +56,16 @@
     class="modal post-record-diff"
     role="dialog"
     aria-modal="true"
-    aria-label="Изменения после записи"
+    aria-label={tr('dialogs.postRecord.diff.ariaLabel')}
     tabindex="-1"
     on:click|stopPropagation
     on:keydown|stopPropagation
   >
-    <h3>Изменения после записи — {basename(path)}</h3>
-    <p class="hint">Слева — до записи, справа — текущий текст в редакторе.</p>
+    <h3>{tr('dialogs.postRecord.diff.title', { fileName: basename(path) })}</h3>
+    <p class="hint">{tr('dialogs.postRecord.diff.hint')}</p>
     <div class="diff-host" bind:this={container}></div>
     <div class="modal-actions">
-      <button type="button" on:click={onClose}>Закрыть</button>
+      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
     </div>
   </div>
 </div>

@@ -45,6 +45,7 @@ type AppSettings struct {
 	StartURL            string                   `json:"start_url,omitempty"`
 	RunDialogConfirmed  bool                     `json:"run_dialog_confirmed,omitempty"`
 	PickerDuringRecording bool                   `json:"picker_during_recording,omitempty"`
+	UILocale            string                   `json:"ui_locale,omitempty"`
 }
 
 // UntitledTabSession stores in-memory editor tab state across app restarts.

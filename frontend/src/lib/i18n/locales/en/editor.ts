@@ -1,0 +1,53 @@
+export const editor = {
+  tabsAria: 'Editor tabs',
+  welcome: 'Start',
+  welcomeTitle: 'Start page',
+  closeTab: 'Close tab',
+  close: 'Close',
+  unsavedScenario: 'Unsaved scenario',
+  unsavedChanges: 'Unsaved changes',
+  syntaxErrors: 'Scenario has syntax errors',
+  running: '▶ Running:',
+  stopping: 'Stopping…',
+  cancel: 'Cancel',
+  recording: 'Recording:',
+  recordingUndoHint: '"Undo step" ≠ Ctrl+Z',
+  stepsPanel: {
+    title: 'Steps ({count})',
+    outline: 'Outline',
+    steps: 'Steps table',
+    expand: 'Expand steps panel',
+    collapse: 'Collapse steps panel',
+    aria: 'Steps panel view',
+    tooltip:
+      'Panel below the editor: scenario tree or steps table. Expand — arrow on the left.',
+    errors: 'errors',
+    action: 'Action',
+    element: 'Element',
+    value: 'Value',
+  },
+  hintSummary:
+    '{count} steps · Ctrl+Space — suggestions · Ctrl+Shift+O — structure · Ctrl+. — fixes',
+  recordingFilters: {
+    importantOnly: 'Important only',
+    linksOnly: 'Links only',
+    recordHover: 'Record hover',
+  },
+  preview: 'Gherkin preview',
+  template: 'Template',
+  help: 'Help',
+  outlineEmpty: 'No scenario structure',
+  codeLens: {
+    runScenario: '▶ Run scenario',
+    fromLine: '▶ from this line',
+  },
+  marker: {
+    validation: 'Validation',
+    hint: 'Hint',
+  },
+  hint: {
+    fix: 'Fix: {title}',
+    ignore: 'Ignore hint',
+  },
+  flakyStep: 'step {step} — {failures} failures',
+} as const

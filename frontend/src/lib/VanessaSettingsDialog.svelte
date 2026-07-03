@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { createTranslator, locale } from './i18n'
   import { ReadVanessaSettingsJSON, SaveVanessaSettingsJSON } from '../../wailsjs/go/wailsapp/App'
 
   export let onClose: () => void = () => {}
   export let onLog: (message: string) => void = () => {}
+
+  $: tr = createTranslator($locale)
 
   let jsonText = ''
   let busy = false
@@ -26,7 +29,7 @@
     try {
       JSON.parse(jsonText)
       await SaveVanessaSettingsJSON(jsonText)
-      onLog('Настройки Vanessa сохранены в .scenaria/vanessa.json')
+      onLog(tr('dialogs.vanessa.settings.saved'))
       onClose()
     } catch (e: any) {
       error = String(e)
@@ -45,14 +48,14 @@
 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 <div class="modal-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label="Настройки Vanessa" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <h3>Настройки Vanessa (1C)</h3>
-    <p class="hint">Файл <code>.scenaria/vanessa.json</code> — пути к платформе 1C, EPF Vanessa и каталогу запусков.</p>
+  <div class="modal wide tall" role="dialog" aria-modal="true" aria-label={tr('dialogs.vanessa.settings.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+    <h3>{tr('dialogs.vanessa.settings.title')}</h3>
+    <p class="hint">{tr('dialogs.vanessa.settings.hint')}</p>
     <textarea bind:value={jsonText} spellcheck="false" disabled={busy}></textarea>
     {#if error}<p class="error">{error}</p>{/if}
     <div class="modal-actions">
-      <button type="button" class="primary" on:click={save} disabled={busy || !jsonText.trim()}>Сохранить</button>
-      <button type="button" on:click={onClose} disabled={busy}>Отмена</button>
+      <button type="button" class="primary" on:click={save} disabled={busy || !jsonText.trim()}>{tr('dialogs.common.save')}</button>
+      <button type="button" on:click={onClose} disabled={busy}>{tr('dialogs.common.cancel')}</button>
     </div>
   </div>
 </div>

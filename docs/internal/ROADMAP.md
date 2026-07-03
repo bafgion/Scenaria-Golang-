@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.25.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.27.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -18,7 +18,7 @@
 | **P2** | **Cold start + FailedStep + E2E (Фаза 11)** | **done** |
 | **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
 | **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
-| **P0** | **Daily-use QA audit (Фаза 15)** | **in progress** |
+| **P0** | **Daily-use QA audit (Фаза 15)** | **done** |
 
 ---
 
@@ -228,7 +228,8 @@
 | **0.23.0** | Monaco lazy load, FailedStep в player, E2E outline/diff (Фаза 11) — **master** |
 | **0.24.0** | Lazy Monaco workers, E2E flaky-run UI (Фаза 12) — **master** |
 | **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13–14) — **master** |
-| **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **planned** |
+| **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
+| **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
 
 ---
 

@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { BRAND_NAME, BRAND_TAGLINE, brandAboutText, brandOverlayTitle } from './brand'
+import { t } from './i18n'
+import { BRAND_NAME, brandAboutText, brandOverlayTitle, brandTagline } from './brand'
 
 describe('brand', () => {
   it('matches Python brand constants', () => {
     expect(BRAND_NAME).toBe('Scenaria')
-    expect(BRAND_TAGLINE).toContain('Gherkin')
+    expect(brandTagline()).toContain('Gherkin')
   })
 
   it('builds about text with version', () => {
-    expect(brandAboutText('0.15.0')).toContain('Версия 0.15.0')
-    expect(brandAboutText('0.15.0')).toContain(BRAND_TAGLINE)
+    expect(brandAboutText('0.15.0')).toContain(t('brand.aboutVersion', { version: '0.15.0' }))
+    expect(brandAboutText('0.15.0')).toContain(t('brand.tagline'))
   })
 
   it('builds overlay title', () => {

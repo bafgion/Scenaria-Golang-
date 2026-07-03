@@ -1,12 +1,16 @@
 <script lang="ts">
+  import { createTranslator, locale } from './i18n'
   import brandMark from '../assets/branding/app-icon-mark.png'
-  import { BRAND_TAGLINE, BRAND_TITLE } from './brand'
+  import { BRAND_TITLE } from './brand'
 
   export let version = 'dev'
-  export let message = 'Запуск…'
+  export let message = ''
   export let progress = 0
   export let fading = false
   export let standalone = false
+
+  $: tr = createTranslator($locale)
+  $: displayMessage = message || tr('splash.starting')
 </script>
 
 <div class="splash-overlay" class:fading class:standalone aria-live="polite" aria-busy={!fading}>
@@ -24,7 +28,7 @@
 
       <div class="splash-progress-block">
         <div class="splash-status-row">
-          <span class="splash-status">{message}</span>
+          <span class="splash-status">{displayMessage}</span>
           <span class="splash-percent">{Math.round(progress)}%</span>
         </div>
         <div class="splash-track" aria-hidden="true">
@@ -32,7 +36,7 @@
         </div>
       </div>
 
-      <p class="splash-tagline">{BRAND_TAGLINE}</p>
+      <p class="splash-tagline">{tr('brand.tagline')}</p>
     </div>
   </div>
 </div>

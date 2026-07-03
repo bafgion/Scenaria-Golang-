@@ -3,6 +3,7 @@ import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { getCachedFeatureSymbols } from './featureSymbolCache'
 import type { FeatureSymbol } from './gherkinDocumentSymbols'
 import { scenarioAtLine } from './scenarioAtLine'
+import { t } from './i18n'
 
 export type RunCodeLensPayload = {
   scenario: string
@@ -43,7 +44,13 @@ function scenarioLenses(node: FeatureSymbol): RunCodeLensItem[] {
   const scenario = node.name.trim()
   if (!scenario) return []
   return [
-    { line: node.line, title: '▶ Запустить сценарий', scenario, dryRun: false, partial: false },
+    {
+      line: node.line,
+      title: t('editor.codeLens.runScenario'),
+      scenario,
+      dryRun: false,
+      partial: false,
+    },
     { line: node.line, title: 'Dry-run', scenario, dryRun: true, partial: false },
   ]
 }
@@ -52,7 +59,13 @@ function stepLenses(text: string, node: FeatureSymbol): RunCodeLensItem[] {
   const scenario = scenarioAtLine(text, node.line)
   if (!scenario) return []
   return [
-    { line: node.line, title: '▶ с этой строки', scenario, dryRun: false, partial: true },
+    {
+      line: node.line,
+      title: t('editor.codeLens.fromLine'),
+      scenario,
+      dryRun: false,
+      partial: true,
+    },
     { line: node.line, title: 'Dry-run', scenario, dryRun: true, partial: true },
   ]
 }

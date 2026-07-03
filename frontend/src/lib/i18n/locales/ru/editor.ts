@@ -1,0 +1,53 @@
+export const editor = {
+  tabsAria: 'Вкладки редактора',
+  welcome: 'Старт',
+  welcomeTitle: 'Стартовая страница',
+  closeTab: 'Закрыть вкладку',
+  close: 'Закрыть',
+  unsavedScenario: 'Несохранённый сценарий',
+  unsavedChanges: 'Несохранённые изменения',
+  syntaxErrors: 'В тексте сценария есть ошибки синтаксиса',
+  running: '▶ Выполняется:',
+  stopping: 'Останавливаем…',
+  cancel: 'Отмена',
+  recording: 'Запись:',
+  recordingUndoHint: '«Отменить шаг» ≠ Ctrl+Z',
+  stepsPanel: {
+    title: 'Шаги ({count})',
+    outline: 'Структура',
+    steps: 'Таблица шагов',
+    expand: 'Развернуть панель шагов',
+    collapse: 'Свернуть панель шагов',
+    aria: 'Вид панели шагов',
+    tooltip:
+      'Панель под редактором: дерево сценария или таблица шагов. Развернуть — стрелка слева.',
+    errors: 'ошибки',
+    action: 'Действие',
+    element: 'Элемент',
+    value: 'Значение',
+  },
+  hintSummary:
+    '{count} шагов · Ctrl+Space — подсказки · Ctrl+Shift+O — структура · Ctrl+. — исправления',
+  recordingFilters: {
+    importantOnly: 'Только важные',
+    linksOnly: 'Только ссылки',
+    recordHover: 'Записывать наведение',
+  },
+  preview: 'Превью Gherkin',
+  template: 'Шаблон',
+  help: 'Справка',
+  outlineEmpty: 'Нет структуры сценария',
+  codeLens: {
+    runScenario: '▶ Запустить сценарий',
+    fromLine: '▶ с этой строки',
+  },
+  marker: {
+    validation: 'Валидация',
+    hint: 'Подсказка',
+  },
+  hint: {
+    fix: 'Исправить: {title}',
+    ignore: 'Игнорировать подсказку',
+  },
+  flakyStep: 'шаг {step} — {failures} падений',
+} as const

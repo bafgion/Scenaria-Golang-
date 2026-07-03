@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildEditorMarkers,
   EDITOR_MARKER_OWNER,
-  VALIDATION_MARKER_SOURCE,
+  validationMarkerSource,
 } from './gherkinEditorMarkers'
-import { HINT_MARKER_SOURCE } from './gherkinHintActionsHelpers'
+import { hintMarkerSource } from './gherkinHintActionsHelpers'
 
 describe('buildEditorMarkers', () => {
   it('merges validation errors and hints under one owner contract', () => {
@@ -24,8 +24,8 @@ describe('buildEditorMarkers', () => {
     )
 
     expect(markers).toHaveLength(2)
-    expect(markers[0].source).toBe(VALIDATION_MARKER_SOURCE)
-    expect(markers[1].source).toBe(HINT_MARKER_SOURCE)
+    expect(markers[0].source).toBe(validationMarkerSource())
+    expect(markers[1].source).toBe(hintMarkerSource())
     expect(EDITOR_MARKER_OWNER).toBe('scenaria-editor')
   })
 })
