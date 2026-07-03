@@ -9,6 +9,8 @@ export interface TourContext {
   welcomeKey: string
   validateDone: boolean
   dryRunDone: boolean
+  /** User opened the journal tab during the tour (not via dry-run auto-switch). */
+  journalVisited: boolean
   bottomPanelOpen: boolean
   bottomTab: string
 }
@@ -28,7 +30,7 @@ export function isTourStepComplete(stepId: string, ctx: TourContext): boolean {
     case 'dry-run':
       return ctx.dryRunDone
     case 'journal':
-      return ctx.bottomPanelOpen && ctx.bottomTab === 'journal'
+      return ctx.journalVisited
     default:
       return false
   }
@@ -49,7 +51,7 @@ export function maxValidTourStepIndex(ctx: TourContext): number {
   if (!hasFeatureTab) return idx('pick-feature')
   if (!ctx.validateDone) return idx('validate')
   if (!ctx.dryRunDone) return idx('dry-run')
-  if (!(ctx.bottomPanelOpen && ctx.bottomTab === 'journal')) return idx('journal')
+  if (!ctx.journalVisited) return idx('journal')
   return idx('finish')
 }
 

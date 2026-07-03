@@ -558,6 +558,7 @@
     welcomeKey: WELCOME_KEY,
     validateDone: onboardingValidateDone,
     dryRunDone: onboardingDryRunDone,
+    journalVisited: onboardingJournalVisited,
     bottomPanelOpen,
     bottomTab,
   } satisfies TourContext
@@ -568,6 +569,7 @@
   $: if (showOnboardingTour && isWelcome && projectPath && features.length > 0) {
     onboardingValidateDone = false
     onboardingDryRunDone = false
+    onboardingJournalVisited = false
   }
   let onboardingTourStepId = 'welcome'
   $: onboardingElevateMenubar =
@@ -657,6 +659,7 @@
   let onboardingDismissed = false
   let onboardingValidateDone = false
   let onboardingDryRunDone = false
+  let onboardingJournalVisited = false
   let showOnboardingTour = false
   let onboardingTour: OnboardingTour
   let runDialogConfirmed = false
@@ -721,9 +724,16 @@
     void maybeCheckUpdatesOnStartup()
   }
 
+  function openJournalTab(markTourVisit = false) {
+    bottomPanelOpen = true
+    bottomTab = 'journal'
+    if (markTourVisit && showOnboardingTour) onboardingJournalVisited = true
+  }
+
   function restartOnboardingTour() {
     onboardingValidateDone = false
     onboardingDryRunDone = false
+    onboardingJournalVisited = false
     onboardingTourStepId = ''
     sidebarVisible = true
     saveLayout({ sidebarVisible: true })
@@ -5263,7 +5273,7 @@
     <div class="splitter-h bottom-splitter" role="separator" on:mousedown={startResizeBottom}></div>
     <div class="bottom-panel" style="--panel-height: {bottomPanelHeight}px">
     <div class="panel-tabs">
-      <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>Журнал</button>
+      <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => openJournalTab(true)}>Журнал</button>
       <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (bottomTab = 'results')}>Результаты</button>
       <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (bottomTab = 'validate')}>Проверка</button>
       <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (bottomTab = 'error')}>Ошибка</button>

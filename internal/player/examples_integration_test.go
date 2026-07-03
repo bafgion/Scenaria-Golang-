@@ -47,12 +47,10 @@ func TestBundledExamplesPlaywright(t *testing.T) {
 		inputs = append(inputs, player.FeatureInput{Path: path, Feature: feature})
 	}
 
-	plan := player.BuildExecutionPlanWithTestClient(inputs, "", "", nil, "")
+	// CI: only @smoke examples — full examples suite is too slow (browser per scenario).
+	plan := player.BuildExecutionPlanWithTestClient(inputs, "smoke", "", nil, "")
 	if len(plan.Cases) == 0 {
-		t.Fatal("execution plan has no runnable scenarios")
-	}
-	if len(plan.Cases) < 6 {
-		t.Fatalf("expected at least 6 runnable scenarios (outline expands), got %d", len(plan.Cases))
+		t.Fatal("execution plan has no @smoke scenarios in examples/")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

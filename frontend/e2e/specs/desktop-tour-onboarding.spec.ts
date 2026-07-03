@@ -78,7 +78,7 @@ test('тур: шаг 6 — dry-run', async () => {
   await expect(page.locator('footer.status-bar .status-message')).toContainText(/завершён|остановлен/i, {
     timeout: 120_000,
   })
-  await expect(page.getByText('Шаг 7 из 8')).toBeVisible({ timeout: 30_000 })
-  await page.locator('[data-tour="panel-journal"]').click()
   await expectTourStep(page, 7, 'Журнал')
+  await page.locator('[data-tour="panel-journal"]').click()
+  await expect(page.getByText('Шаг 8 из 8')).toBeVisible({ timeout: 15_000 })
 })

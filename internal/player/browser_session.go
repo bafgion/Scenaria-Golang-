@@ -146,11 +146,16 @@ func (s *browserSession) close() {
 func (s *browserSession) closeLocked(force bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.closeWhileLocked(force)
+}
+
+// closeWhileLocked tears down the session; caller must hold s.mu.
+func (s *browserSession) closeWhileLocked(force bool) {
 	if s == nil || s.closed {
 		return
 	}
 	// IDE live browser: detach the test runner without closing the user's window.
-	if s.external {
+	if s.external && !force {
 		s.closed = true
 		return
 	}
@@ -502,7 +507,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return nil
 	case "close-browser":
-		session.closeLocked(true)
+		session.closeWhileLocked(true)
 		return nil
 	case "remember-text":
 		if runCtx == nil {

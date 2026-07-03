@@ -13,6 +13,7 @@ function ctx(overrides: Partial<import('./tourState').TourContext> = {}) {
     welcomeKey,
     validateDone: false,
     dryRunDone: false,
+    journalVisited: false,
     bottomPanelOpen: false,
     bottomTab: 'journal',
     ...overrides,
@@ -40,6 +41,16 @@ describe('tourState', () => {
     const validate = ONBOARDING_TOUR_STEPS.find((s) => s.id === 'validate')!
     expect(canAdvanceTourStep(validate, ctx())).toBe(false)
     expect(canAdvanceTourStep(validate, ctx({ validateDone: true }))).toBe(true)
+  })
+
+  it('journal step requires explicit tab visit', () => {
+    const journal = ONBOARDING_TOUR_STEPS.find((s) => s.id === 'journal')!
+    expect(
+      isTourStepComplete('journal', ctx({ bottomPanelOpen: true, bottomTab: 'journal', journalVisited: false })),
+    ).toBe(false)
+    expect(
+      isTourStepComplete('journal', ctx({ bottomPanelOpen: true, bottomTab: 'journal', journalVisited: true })),
+    ).toBe(true)
   })
 
   it('maxValidTourStepIndex allows open-examples before project is open', () => {
