@@ -14,7 +14,9 @@
     "test:e2e:journeys": "playwright test -c e2e/playwright.config.ts e2e/specs/user-journeys.spec.ts",
     "test:e2e:qa": "playwright test -c e2e/playwright.config.ts e2e/specs/qa-daily-use.spec.ts",
     "test:e2e:desktop": "playwright test -c e2e/playwright.desktop.config.ts",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "docs:screenshots": "playwright test -c e2e/playwright.docs.config.ts",
+    "docs:demo-video": "go test ../internal/report/... -run \"TestWriteReport.*Fixture\" -count=1 && playwright test -c e2e/playwright.demo.config.ts"
   },
   "dependencies": {
     "@monaco-editor/loader": "^1.4.0",

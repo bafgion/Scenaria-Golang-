@@ -28,6 +28,8 @@ type ScenarioResult struct {
 	Status        string
 	Message       string
 	FailedStep    *int
+	DurationMS    int64
+	StepRecords   []StepRecord
 	ScreenshotPNG []byte
 	TraceZIP      []byte
 	VideoWebM     []byte

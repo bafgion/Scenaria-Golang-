@@ -14,7 +14,7 @@ function withFreshSessionQuery(search: string): string {
 }
 
 export async function dismissTourIfVisible(page: Page): Promise<void> {
-  const skip = page.getByRole('button', { name: 'Пропустить обучение' })
+  const skip = page.getByRole('button', { name: /Пропустить обучение|Skip tour/ })
   if (await skip.isVisible().catch(() => false)) {
     await skip.click()
     await expect(skip).toBeHidden({ timeout: 10_000 })

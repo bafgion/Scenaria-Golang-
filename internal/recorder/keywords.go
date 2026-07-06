@@ -11,9 +11,18 @@ var recordedStepKeywords = []string{
 	"Given", "When", "Then", "And", "But",
 }
 
-// AssignRecordedStepKeywords maps bare recorder lines to Gherkin steps using Russian
-// recording style: first step is Допустим, continuations are И.
+// AssignRecordedStepKeywords maps bare recorder lines to Gherkin steps.
 func AssignRecordedStepKeywords(lines []string, existingStepCount int) []gherkin.Step {
+	return AssignRecordedStepKeywordsLang(lines, existingStepCount, gherkin.LangRU)
+}
+
+func AssignRecordedStepKeywordsLang(lines []string, existingStepCount int, lang gherkin.Language) []gherkin.Step {
+	firstKw := "Допустим"
+	contKw := "И"
+	if lang == gherkin.LangEN {
+		firstKw = "Given"
+		contKw = "And"
+	}
 	steps := make([]gherkin.Step, 0, len(lines))
 	for i, line := range lines {
 		body, keyword := splitRecordedStepKeyword(line)
@@ -22,9 +31,9 @@ func AssignRecordedStepKeywords(lines []string, existingStepCount int) []gherkin
 		}
 		if keyword == "" {
 			if existingStepCount+i == 0 {
-				keyword = "Допустим"
+				keyword = firstKw
 			} else {
-				keyword = "И"
+				keyword = contKw
 			}
 		}
 		steps = append(steps, gherkin.Step{Keyword: keyword, Text: body})

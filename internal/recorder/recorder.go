@@ -33,7 +33,7 @@ func WriteFeature(path string, opts Options) error {
 		},
 	}
 	for _, line := range opts.Steps {
-		steps := AssignRecordedStepKeywords([]string{line}, len(feature.Scenarios[0].Steps))
+		steps := AssignRecordedStepKeywordsLang([]string{line}, len(feature.Scenarios[0].Steps), feature.Language)
 		if len(steps) == 0 {
 			return fmt.Errorf("unsupported recorded step %q", line)
 		}
@@ -61,11 +61,11 @@ func AppendStepsToFeature(path string, newLines []string) error {
 		})
 	}
 	scenario := &feature.Scenarios[0]
-	if len(scenario.Steps) > 0 && len(newLines) > 0 && strings.HasPrefix(newLines[0], "открыт ") {
+	if len(scenario.Steps) > 0 && len(newLines) > 0 && isDuplicateOpenStep(newLines[0]) {
 		newLines = newLines[1:]
 	}
 	for _, line := range newLines {
-		steps := AssignRecordedStepKeywords([]string{line}, len(scenario.Steps))
+		steps := AssignRecordedStepKeywordsLang([]string{line}, len(scenario.Steps), feature.Language)
 		if len(steps) == 0 {
 			continue
 		}
@@ -84,6 +84,11 @@ func parseRecordedStep(line string) (gherkin.Step, bool) {
 		return gherkin.Step{}, false
 	}
 	return steps[0], true
+}
+
+func isDuplicateOpenStep(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	return strings.HasPrefix(lower, "открыт ") || strings.HasPrefix(lower, "i open ")
 }
 
 // EventsToStep converts a recorder DOM event into a Gherkin step line.

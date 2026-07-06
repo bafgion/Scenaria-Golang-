@@ -9,22 +9,26 @@ import {
   snippetizeInsert,
   usesSnippetTabStops,
 } from './gherkinCompletionSnippets'
+import { defaultStepKeyword, detectFeatureGherkinLanguage, type FeatureGherkinLanguage } from './featureGherkinLang'
 
-export type CompletionFetcher = (line: string, column: number) => Promise<gui.StepCompletionsDTO>
+export type CompletionFetcher = (line: string, column: number, featureText: string) => Promise<gui.StepCompletionsDTO>
 
-const STEP_KEYWORD_RE = /^(?:Допустим|Дано|Когда|Тогда|И|Но)\s+/i
+const STEP_KEYWORD_RE =
+  /^(?:Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+/i
 
-export function formatInsertText(line: string, snippet: gui.StepCompletionSnippet): string {
+const KEYWORD_ONLY_RE = /^(?:Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But)$/i
+
+export function formatInsertText(line: string, snippet: gui.StepCompletionSnippet, lang: FeatureGherkinLanguage): string {
   const trimmed = line.trimStart()
   const indent = line.slice(0, line.length - trimmed.length)
-  if (snippet.label === snippet.insert && /^(Допустим|Дано|Когда|Тогда|И|Но)$/i.test(snippet.label)) {
+  if (snippet.label === snippet.insert && KEYWORD_ONLY_RE.test(snippet.label)) {
     if (!trimmed) {
       return `${indent}${snippet.insert} `
     }
     return `${snippet.insert} `
   }
   if (!STEP_KEYWORD_RE.test(trimmed)) {
-    return `Когда ${snippet.insert}`
+    return `${defaultStepKeyword(lang)} ${snippet.insert}`
   }
   return snippet.insert
 }
@@ -45,9 +49,10 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
       }
       const line = model.getLineContent(position.lineNumber)
       const runeColumn = monacoColumnToRuneIndex(line, position.column - 1)
+      const lang = detectFeatureGherkinLanguage(model.getValue())
       let result: gui.StepCompletionsDTO
       try {
-        result = await fetchCompletions(line, runeColumn)
+        result = await fetchCompletions(line, runeColumn, model.getValue())
       } catch {
         return { suggestions: [] }
       }
@@ -66,7 +71,7 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
       const typedPrefix = runeSlice(line, result.start, result.end)
 
       const suggestions = result.items.map((item, index) => {
-        const formatted = formatInsertText(line, item)
+        const formatted = formatInsertText(line, item, lang)
         const insertText = snippetizeInsert(formatted)
         const snippet = usesSnippetTabStops(insertText)
         return {

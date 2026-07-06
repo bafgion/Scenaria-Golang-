@@ -10,6 +10,7 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/httpauth"
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/playwrightrt"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -61,11 +62,11 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 	if err := paths.EnsurePlaywrightEngine(opts.BrowserName); err != nil {
 		return nil, fmt.Errorf("install playwright: %w", err)
 	}
-	pw, err := playwright.Run()
+	pw, release, err := playwrightrt.Acquire(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer pw.Stop()
+	defer release()
 
 	name := strings.ToLower(strings.TrimSpace(opts.BrowserName))
 	if name == "" {

@@ -13,13 +13,11 @@ import (
 var unsafeNameRE = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func captureFailureArtifacts(session *browserSession, input ScenarioInput, traceDir, videoDir string) (screenshot, trace, video []byte) {
+	// Trace/video/screenshot artifacts are collected only when a scenario fails.
 	if session == nil {
 		return nil, nil, nil
 	}
-	session.mu.Lock()
-	closed := session.closed
-	session.mu.Unlock()
-	if closed {
+	if closed := session.isClosed(); closed {
 		return nil, nil, nil
 	}
 	screenshot = captureFailureScreenshot(session)
@@ -46,17 +44,27 @@ func readVideoRecording(recorder playwright.Video, dir string) []byte {
 }
 
 func captureTraceZIP(session *browserSession, dir string, input ScenarioInput) []byte {
-	if session == nil || !session.traceEnabled || session.traceStopped || session.context == nil || strings.TrimSpace(dir) == "" {
+	if session == nil || strings.TrimSpace(dir) == "" {
+		return nil
+	}
+	session.mu.Lock()
+	traceEnabled := session.traceEnabled
+	traceStopped := session.traceStopped
+	bctx := session.context
+	session.mu.Unlock()
+	if !traceEnabled || traceStopped || bctx == nil {
 		return nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil
 	}
 	path := filepath.Join(dir, artifactBaseName(input)+".zip")
-	if err := session.context.Tracing().Stop(path); err != nil {
+	if err := bctx.Tracing().Stop(path); err != nil {
 		return nil
 	}
+	session.mu.Lock()
 	session.traceStopped = true
+	session.mu.Unlock()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil

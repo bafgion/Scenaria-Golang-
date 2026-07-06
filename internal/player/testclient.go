@@ -3,6 +3,7 @@ package player
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -98,6 +99,7 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 	input ScenarioInput,
 	run ScenarioSessionRun,
 ) (ScenarioResult, error) {
+	started := time.Now()
 	result := ScenarioResult{
 		FeaturePath: input.FeaturePath,
 		Scenario:    input.ScenarioName,
@@ -109,6 +111,7 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 	}
 
 	failed := false
+	var runCtx *RunContext
 	if input.TestClient != nil {
 		if err := ApplyTestClient(session.page, input.TestClient); err != nil {
 			failed = true
@@ -117,7 +120,8 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 		}
 	}
 	if !failed {
-		runCtx, err := run(ctx, session)
+		var err error
+		runCtx, err = run(ctx, session)
 		if err != nil {
 			failed = true
 			result.Status = "failed"
@@ -133,7 +137,14 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 		result.ScreenshotPNG, result.TraceZIP, result.VideoWebM = captureFailureArtifacts(
 			session, input, e.options.TraceDir, e.options.VideoDir,
 		)
+		restartTraceRecording(session)
+	} else {
+		discardTraceRecording(session)
 	}
+	if runCtx != nil {
+		result.StepRecords = runCtx.StepRecords()
+	}
+	result.DurationMS = time.Since(started).Milliseconds()
 	return result, nil
 }
 

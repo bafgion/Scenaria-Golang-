@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/browserconfig"
@@ -29,6 +30,7 @@ type PlaywrightExecutorOptions struct {
 	NavWaitUntil      string
 	PromptEmailCode   EmailCodePrompter
 	CloseAfterRun     bool
+	StepScreenshots   bool
 }
 
 type PlaywrightExecutor struct {
@@ -44,17 +46,19 @@ func (e *PlaywrightExecutor) NavWaitUntil() string {
 }
 
 type browserSession struct {
-	mu            sync.Mutex
-	browser       playwright.Browser
-	context       playwright.BrowserContext
-	page          playwright.Page
-	closed        bool
-	external      bool
-	traceEnabled  bool
-	traceStopped  bool
-	videoEnabled  bool
-	videoRetained bool
-	navWaitUntil  *playwright.WaitUntilState
+	mu               sync.Mutex
+	networkMu        sync.Mutex
+	browser          playwright.Browser
+	context          playwright.BrowserContext
+	page             playwright.Page
+	closed           atomic.Bool
+	external         bool
+	traceEnabled     bool
+	traceStopped     bool
+	videoEnabled     bool
+	videoRetained    bool
+	navWaitUntil     *playwright.WaitUntilState
+	lastNetworkFail  string
 }
 
 func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOptions) (*browserSession, error) {
@@ -94,11 +98,9 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 		videoEnabled: strings.TrimSpace(options.VideoDir) != "",
 		navWaitUntil: navWaitUntil,
 	}
+	wireNetworkFailureListener(session)
 	if strings.TrimSpace(options.TraceDir) != "" {
-		if err := bctx.Tracing().Start(playwright.TracingStartOptions{
-			Screenshots: playwright.Bool(true),
-			Snapshots:   playwright.Bool(true),
-		}); err != nil {
+		if err := startTraceRecording(session); err != nil {
 			session.close()
 			return nil, fmt.Errorf("start playwright trace: %w", err)
 		}
@@ -121,13 +123,25 @@ func AttachToPage(page playwright.Page, navWaitUntil string) (*browserSession, e
 	if err != nil {
 		return nil, err
 	}
-	return &browserSession{
+	session := &browserSession{
 		browser:      bctx.Browser(),
 		context:      bctx,
 		page:         page,
 		external:     true,
 		navWaitUntil: nav,
-	}, nil
+	}
+	wireNetworkFailureListener(session)
+	return session, nil
+}
+
+func (s *browserSession) isClosed() bool {
+	return s != nil && s.closed.Load()
+}
+
+func (s *browserSession) setClosed() {
+	if s != nil {
+		s.closed.Store(true)
+	}
 }
 
 func (s *browserSession) alive() bool {
@@ -136,10 +150,11 @@ func (s *browserSession) alive() bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return !s.closed && s.page != nil && !s.page.IsClosed()
+	return !s.isClosed() && s.page != nil && !s.page.IsClosed()
 }
 
 func (s *browserSession) close() {
+	drainPendingAsync(2 * time.Second)
 	s.closeLocked(false)
 }
 
@@ -151,12 +166,15 @@ func (s *browserSession) closeLocked(force bool) {
 
 // closeWhileLocked tears down the session; caller must hold s.mu.
 func (s *browserSession) closeWhileLocked(force bool) {
-	if s == nil || s.closed {
+	if s == nil {
 		return
 	}
 	// IDE live browser: detach the test runner without closing the user's window.
 	if s.external && !force {
-		s.closed = true
+		s.setClosed()
+		return
+	}
+	if s.isClosed() && s.page == nil && s.context == nil && s.browser == nil {
 		return
 	}
 	if s.traceEnabled && !s.traceStopped && s.context != nil {
@@ -189,7 +207,16 @@ func (s *browserSession) closeWhileLocked(force bool) {
 		closeBrowserResource("browser", func() error { return s.browser.Close() })
 		s.browser = nil
 	}
-	s.closed = true
+	s.setClosed()
+}
+
+func (s *browserSession) lastNetworkFailure() string {
+	if s == nil {
+		return ""
+	}
+	s.networkMu.Lock()
+	defer s.networkMu.Unlock()
+	return s.lastNetworkFail
 }
 
 func (s *browserSession) navigationWaitUntil() *playwright.WaitUntilState {
@@ -202,7 +229,7 @@ func (s *browserSession) navigationWaitUntil() *playwright.WaitUntilState {
 func (s *browserSession) resetForScenario() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed || s.context == nil {
+	if s.isClosed() || s.context == nil {
 		return fmt.Errorf("browser session is closed")
 	}
 	if s.page != nil {
@@ -221,7 +248,7 @@ func (s *browserSession) resetForScenario() error {
 func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s == nil || s.closed || !s.videoEnabled || s.page == nil {
+	if s == nil || s.isClosed() || !s.videoEnabled || s.page == nil {
 		return nil
 	}
 	recorder := s.page.Video()
@@ -300,26 +327,20 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		return err
 	}
 	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.closed {
+	if session.isClosed() {
+		session.mu.Unlock()
 		return fmt.Errorf("browser session is closed")
 	}
 	page := session.page
+	if action.Kind == "goto" {
+		navWait := session.navigationWaitUntil()
+		session.mu.Unlock()
+		url := stepdsl.ResolveURL(action.Value1, baseURL)
+		return pageGoto(ctx, page, url, navWait)
+	}
+	defer session.mu.Unlock()
 
 	switch action.Kind {
-	case "goto":
-		url := stepdsl.ResolveURL(action.Value1, baseURL)
-		if UrlsMatch(page.URL(), url) {
-			return nil
-		}
-		_, err := page.Goto(url, playwright.PageGotoOptions{
-			WaitUntil: session.navigationWaitUntil(),
-			Timeout:   timeoutMs(ctx, NavTimeoutMs),
-		})
-		if err != nil {
-			return fmt.Errorf("goto failed: %w", err)
-		}
-		return nil
 	case "click":
 		if err := clickWithFallback(ctx, page, action.Value1); err != nil {
 			return err

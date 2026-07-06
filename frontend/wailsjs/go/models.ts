@@ -380,7 +380,7 @@ export namespace gui {
 	
 	export class HTTPAuthCredentials {
 	    username: string;
-	    password: string;
+	    hasPassword: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new HTTPAuthCredentials(source);
@@ -389,7 +389,7 @@ export namespace gui {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.username = source["username"];
-	        this.password = source["password"];
+	        this.hasPassword = source["hasPassword"];
 	    }
 	}
 	export class HTTPAuthRequest {
@@ -743,6 +743,9 @@ export namespace gui {
 	    startStep: number;
 	    endStep: number;
 	    continueOnFail: boolean;
+	    htmlLightMode: boolean;
+	    reuseLiveBrowser: boolean;
+	    reportLocale: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
@@ -772,6 +775,9 @@ export namespace gui {
 	        this.startStep = source["startStep"];
 	        this.endStep = source["endStep"];
 	        this.continueOnFail = source["continueOnFail"];
+	        this.htmlLightMode = source["htmlLightMode"];
+	        this.reuseLiveBrowser = source["reuseLiveBrowser"];
+	        this.reportLocale = source["reportLocale"];
 	    }
 	}
 	export class RunResultEntry {

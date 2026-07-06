@@ -70,6 +70,9 @@ func pluginToVanessaRun(projectRoot string, req PluginRunRequest) vanessa.RunReq
 }
 
 func (s *Service) RunVanessaPlugin(req PluginRunRequest) VanessaRunResultDTO {
+	s.activeBackground.Add(1)
+	defer s.activeBackground.Done()
+
 	path := s.ProjectPath()
 	if path == "" {
 		return VanessaRunResultDTO{Error: "open a project folder first"}

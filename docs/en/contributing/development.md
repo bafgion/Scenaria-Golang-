@@ -44,6 +44,7 @@ Tag `v*` triggers `.github/workflows/release.yml` on GitHub Actions.
 | Go integration (browser) | `go test -tags=integration ./internal/player/... ./internal/recorder/... ./internal/selector/...` |
 | Frontend unit | `cd frontend && npm test` |
 | UI E2E (mock Wails) | `cd frontend && npm run test:e2e` |
+| Docs screenshots | `cd frontend && npm run docs:screenshots` |
 | Desktop smoke (WebView2) | `./scripts/desktop-smoke.ps1` |
 
 CI: `.github/workflows/ci.yml` — test, integration, desktop-smoke on `master`.

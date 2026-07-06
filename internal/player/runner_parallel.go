@@ -168,14 +168,15 @@ func (r BrowserRunner) executeParallelWithPool(
 			defer func() { <-sem }()
 
 			if err := runCtx.Err(); err != nil {
-				mu.Lock()
 				failed := ScenarioResult{
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
 					Status:      "failed",
 					Message:     err.Error(),
 				}
+				mu.Lock()
 				results[i] = failed
+				mu.Unlock()
 				recordScenarioRunStatus(runCtx, failed)
 				emitRunProgress(runCtx, RunProgressEvent{
 					Phase:       ProgressScenarioDone,
@@ -186,7 +187,6 @@ func (r BrowserRunner) executeParallelWithPool(
 					Success:     false,
 					Message:     err.Error(),
 				})
-				mu.Unlock()
 				return
 			}
 
@@ -220,7 +220,6 @@ func (r BrowserRunner) executeParallelWithPool(
 			pool.release(slot)
 
 			mu.Lock()
-			defer mu.Unlock()
 			scenarioFailed := err != nil || runResult.Status == "failed"
 			if scenarioFailed {
 				if firstErr == nil {
@@ -248,6 +247,8 @@ func (r BrowserRunner) executeParallelWithPool(
 				}
 			}
 			results[i] = runResult
+			mu.Unlock()
+
 			recordScenarioRunStatus(runCtx, runResult)
 			emitRunProgress(runCtx, RunProgressEvent{
 				Phase:       ProgressScenarioDone,
@@ -300,14 +301,15 @@ func (r BrowserRunner) executeParallel(
 			defer func() { <-sem }()
 
 			if err := runCtx.Err(); err != nil {
-				mu.Lock()
 				failed := ScenarioResult{
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
 					Status:      "failed",
 					Message:     err.Error(),
 				}
+				mu.Lock()
 				results[i] = failed
+				mu.Unlock()
 				recordScenarioRunStatus(runCtx, failed)
 				emitRunProgress(runCtx, RunProgressEvent{
 					Phase:       ProgressScenarioDone,
@@ -318,7 +320,6 @@ func (r BrowserRunner) executeParallel(
 					Success:     false,
 					Message:     err.Error(),
 				})
-				mu.Unlock()
 				return
 			}
 
@@ -332,7 +333,6 @@ func (r BrowserRunner) executeParallel(
 
 			runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
 			mu.Lock()
-			defer mu.Unlock()
 			scenarioFailed := err != nil || runResult.Status == "failed"
 			if scenarioFailed {
 				if firstErr == nil {
@@ -362,6 +362,8 @@ func (r BrowserRunner) executeParallel(
 				}
 			}
 			results[i] = runResult
+			mu.Unlock()
+
 			recordScenarioRunStatus(runCtx, runResult)
 			emitRunProgress(runCtx, RunProgressEvent{
 				Phase:       ProgressScenarioDone,
@@ -433,6 +435,7 @@ func (r BrowserRunner) executeSequentialSession(
 	var firstErr error
 	session := attached
 	var stopPW func()
+	var stopWatch func()
 
 	openSession := func() error {
 		if session != nil && session.alive() {
@@ -441,7 +444,15 @@ func (r BrowserRunner) executeSequentialSession(
 		if attached != nil {
 			return fmt.Errorf("браузер не открыт")
 		}
+		if stopWatch != nil {
+			stopWatch()
+			stopWatch = nil
+		}
 		if stopPW != nil {
+			if session != nil {
+				session.close()
+				time.Sleep(playwrightDrainDelay)
+			}
 			stopPW()
 			stopPW = nil
 		}
@@ -457,11 +468,16 @@ func (r BrowserRunner) executeSequentialSession(
 			return err
 		}
 		session = next
+		stopWatch = session.watchContext(ctx)
 		return nil
 	}
 	defer func() {
+		if stopWatch != nil {
+			stopWatch()
+		}
 		if attached == nil && exec.options.CloseAfterRun && session != nil {
 			session.close()
+			time.Sleep(playwrightDrainDelay)
 		}
 		if stopPW != nil && exec.options.CloseAfterRun {
 			stopPW()

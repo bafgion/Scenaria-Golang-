@@ -43,6 +43,7 @@ go run ./cmd/scenaria --help
 | Go integration | `go test -tags=integration ./internal/player/... ./internal/recorder/...` |
 | Frontend unit | `cd frontend && npm test` |
 | UI E2E | `cd frontend && npm run test:e2e` |
+| Скриншоты для docs | `cd frontend && npm run docs:screenshots` |
 | Desktop smoke | `./scripts/desktop-smoke.ps1` |
 
 CI: `.github/workflows/ci.yml`.

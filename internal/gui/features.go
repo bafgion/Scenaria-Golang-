@@ -88,12 +88,16 @@ func (s *Service) DuplicateFeature(path, newName string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("feature path is required")
 	}
-	payload, err := os.ReadFile(path)
+	srcAbs, err := s.confineFeaturePath(path)
+	if err != nil {
+		return "", err
+	}
+	payload, err := os.ReadFile(srcAbs)
 	if err != nil {
 		return "", fmt.Errorf("read feature: %w", err)
 	}
-	dir := filepath.Dir(path)
-	ext := filepath.Ext(path)
+	dir := filepath.Dir(srcAbs)
+	ext := filepath.Ext(srcAbs)
 	target := ""
 	if name := strings.TrimSpace(newName); name != "" {
 		name = strings.TrimSuffix(name, ext)
@@ -108,7 +112,7 @@ func (s *Service) DuplicateFeature(path, newName string) (string, error) {
 			return "", err
 		}
 	} else {
-		base := strings.TrimSuffix(filepath.Base(path), ext)
+		base := strings.TrimSuffix(filepath.Base(srcAbs), ext)
 		target = filepath.Join(dir, base+"-copy"+ext)
 		for i := 2; i < 100; i++ {
 			if _, err := os.Stat(target); os.IsNotExist(err) {

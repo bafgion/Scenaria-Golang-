@@ -208,6 +208,9 @@ func (s *Service) startCaptureOnExistingSession(req RecordRequest, emit func(str
 }
 
 func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResult {
+	s.activePlaywright.Add(1)
+	defer s.activePlaywright.Done()
+
 	path := s.ProjectPath()
 	if path == "" {
 		return RunResult{Error: "open a project folder first"}
@@ -470,6 +473,20 @@ func (s *Service) StopRecordingCapture() error {
 }
 
 func (s *Service) CloseBrowser() {
+	s.mu.RLock()
+	session := s.liveSession
+	s.mu.RUnlock()
+	if session != nil && session.TestRunHeld() {
+		return
+	}
+	s.closeBrowserLocked()
+}
+
+func (s *Service) closeBrowserForced() {
+	s.closeBrowserLocked()
+}
+
+func (s *Service) closeBrowserLocked() {
 	s.mu.Lock()
 	cancel := s.recordCancel
 	session := s.liveSession
@@ -487,7 +504,7 @@ func (s *Service) CloseBrowser() {
 }
 
 func (s *Service) CancelRecording() {
-	s.CloseBrowser()
+	s.closeBrowserForced()
 }
 
 func (s *Service) FocusBrowser() error {

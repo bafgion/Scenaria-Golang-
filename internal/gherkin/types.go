@@ -1,6 +1,7 @@
 package gherkin
 
 type Feature struct {
+	Language        Language
 	Title           string
 	Line            int
 	Tags            []string

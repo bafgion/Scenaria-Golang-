@@ -28,6 +28,7 @@
     onboardingCompleted: false,
     onboardingDismissed: false,
     onboardingVersion: 0,
+    uiLocale: 'ru',
     editor: {
       fontSize: 13,
       fontFamily: '"Cascadia Code", Consolas, monospace',
@@ -73,8 +74,12 @@
   }
 
   let settings = readSettings()
+  const localeParam = params.get('locale')
+  if (localeParam === 'en' || localeParam === 'ru') {
+    settings = { ...settings, uiLocale: localeParam }
+  }
   const mode = e2eMode()
-  if (mode === 'run-progress' || mode === 'run-stream' || mode === 'run-cancel') {
+  if (mode === 'run-progress' || mode === 'run-stream' || mode === 'run-cancel' || mode === 'demo-video') {
     settings = { ...settings, runDialogConfirmed: true }
   }
   if (mode === 'update-available') {
@@ -181,6 +186,24 @@
     },
   ]
 
+  const demoRunResults = [
+    {
+      path: `${E2E_PROJECT}/smoke.feature::тест`,
+      success: true,
+      message: '',
+      runner: 'playwright',
+      at: '2026-06-29T10:00:00Z',
+    },
+    {
+      path: `${E2E_PROJECT}/login.feature::Неуспешный вход`,
+      success: false,
+      message: 'элемент не найден',
+      runner: 'playwright',
+      at: '2026-06-29T10:01:00Z',
+      failed_step: 1,
+    },
+  ]
+
   const flakyMetricsPayload = {
     scenarios: [
       {
@@ -236,7 +259,7 @@
       if (text.includes('нажимаю')) return sampleSteps[0]
       return { label: '', action: '', category: '', description: '', template: '', example: '', parameters: [], help: '' }
     },
-    CompletionsForLine: async (line, column) => {
+    CompletionsForLine: async (line, column, featureText = '') => {
       const items = sampleSteps.map((s) => ({
         label: s.label,
         insert: s.template,
@@ -257,13 +280,18 @@
     ValidateFeature: async () => [],
     OpenProject: async (path) => {
       const root = path || E2E_PROJECT
-      const smoke = `${root.replace(/\\/g, '/')}/smoke.feature`
+      const norm = root.replace(/\\/g, '/')
+      const isExamples = norm.includes('examples')
+      const features = isExamples
+        ? [`${norm}/smoke.feature`, `${norm}/login.feature`, `${norm}/api-smoke.feature`]
+        : [`${norm}/smoke.feature`]
+      const featureTags = Object.fromEntries(features.map((f) => [f, ['@smoke']]))
       return {
         path: root,
-        features: [smoke],
+        features,
         tags: ['@smoke'],
-        featureTags: { [smoke]: ['@smoke'] },
-        name: 'e2e',
+        featureTags,
+        name: isExamples ? 'examples' : 'e2e',
       }
     },
     PickProjectFolder: async () => (e2eMode() === 'new-project' ? 'C:/e2e/new-project' : ''),
@@ -288,6 +316,49 @@
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
     Run: async (opts) => {
       lastRunRequest = opts
+      if (e2eMode() === 'demo-video') {
+        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+        emitE2E('run-progress', {
+          phase: 'scenario_start',
+          index: 1,
+          total: 2,
+          featurePath: `${E2E_PROJECT}/smoke.feature`,
+          scenario: 'тест',
+        })
+        await delay(2000)
+        emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 2, success: true })
+        emitE2E('run-progress', {
+          phase: 'scenario_start',
+          index: 2,
+          total: 2,
+          featurePath: `${E2E_PROJECT}/login.feature`,
+          scenario: 'Неуспешный вход',
+        })
+        await delay(2000)
+        emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 2, success: false })
+        const at = new Date().toISOString()
+        return {
+          output: 'ok',
+          error: '',
+          entries: [
+            {
+              path: `${E2E_PROJECT}/smoke.feature::тест`,
+              success: true,
+              message: '',
+              runner: 'playwright',
+              at,
+            },
+            {
+              path: `${E2E_PROJECT}/login.feature::Неуспешный вход`,
+              success: false,
+              message: 'элемент не найден',
+              runner: 'playwright',
+              at,
+              failed_step: 1,
+            },
+          ],
+        }
+      }
       if (e2eMode() === 'run-progress') {
         emitE2E('run-progress', {
           phase: 'scenario_start',
@@ -343,7 +414,15 @@
       e2eMode() === 'with-plugins'
         ? [{ name: 'demo', description: 'Demo plugin', runnable: true, id: 'demo', source: 'local' }]
         : [],
-    ListRunResults: async () => (e2eMode() === 'flaky-run' ? flakyRunResults : []),
+    ListRunResults: async () => {
+      const mode = e2eMode()
+      if (mode === 'flaky-run') return flakyRunResults
+      if (mode === 'demo-video') {
+        const at = new Date().toISOString()
+        return demoRunResults.map((r) => ({ ...r, at }))
+      }
+      return []
+    },
     FlakyMetrics: async () => (e2eMode() === 'flaky-run' ? flakyMetricsPayload : { scenarios: [], steps: [] }),
     ProjectArtifacts: async () => {
       if (e2eMode() === 'flaky-run' || e2eMode() === 'trace-artifacts') {
@@ -443,14 +522,22 @@
     },
     StartRecord: async () => {
       const mode = e2eMode()
-      if (mode === 'post-record' || mode === 'post-record-diff' || mode === 'record-resume' || mode === 'record-idle') {
+      if (
+        mode === 'demo-video' ||
+        mode === 'post-record' ||
+        mode === 'post-record-diff' ||
+        mode === 'record-resume' ||
+        mode === 'record-idle'
+      ) {
         liveRecord.browserOpen = true
         liveRecord.recording = true
         liveRecord.captureEver = true
         liveRecord.paused = false
         liveRecord.steps = mode === 'record-resume' ? [...resumeRecordSteps] : [...postRecordSteps]
         emitE2E('browser-opened', '')
-        emitE2E('record-started', { resume: false, output: `${E2E_PROJECT}/smoke.feature` })
+        const recordOutput =
+          mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : `${E2E_PROJECT}/smoke.feature`
+        emitE2E('record-started', { resume: false, output: recordOutput })
         queueMicrotask(() => {
           for (const step of liveRecord.steps) {
             emitE2E('record-step', step)

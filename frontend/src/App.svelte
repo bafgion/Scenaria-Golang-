@@ -436,7 +436,7 @@
   let hoverRecord = false
   let stepsPanelVisible = true
 
-  let lastRun: RunForm = defaultRunForm({ headed: true, installPW: true, html: true })
+  let lastRun: RunForm = defaultRunForm({ headed: true, installPW: true, html: true, htmlLightMode: true })
   let runForm: RunForm = { ...lastRun }
 
   let settingsBrowser = 'chromium'
@@ -481,6 +481,8 @@
   let lastErrorEntry: gui.RunResultEntry | null = null
   let lastRunSince: string | null = null
   let lastRunBatchResults: gui.RunResultEntry[] = []
+  let lastRunSummary = ''
+  let paletteCommands: PaletteCommand[] = []
   $: flakyByPath = flakyScenarioMap(flakyMetrics)
   $: flakyStepByPath = flakyStepHints(flakyMetrics)
   let editorSteps: EditorStepRow[] = []
@@ -507,7 +509,10 @@
   $: editorLineCount = isWelcome ? 0 : editorText.split(/\r?\n/).length
   $: showLargeFileBanner = !isWelcome && isLargeFeatureFile(editorLineCount)
   $: unsavedTabCount = tabs.filter((t) => tabIsUnsaved(t)).length
-  $: lastRunSummary = ($locale, formatLastRunSummary(lastRun))
+  $: {
+    $locale
+    lastRunSummary = formatLastRunSummary(lastRun)
+  }
   $: automationActive = playing || vanessaRunning
   $: pickerToolbarEnabled =
     pickerDuringRecording
@@ -587,7 +592,10 @@
     void tick().then(() => onboardingTour?.relayout())
   }
   $: showBrowserOverlay = (browserOpen || recording || playing) && !anyAppDialogOpen
-  $: paletteCommands = ($locale, buildPaletteCommands())
+  $: {
+    $locale
+    paletteCommands = buildPaletteCommands()
+  }
   $: stepStatusDisplay =
     stepCount === 0 && !stepStatusError
       ? tr('statusBar.steps', { count: 0 })
@@ -994,6 +1002,21 @@
         }),
       )
       unsubscribers.push(
+        EventsOn('report-goto', (req: { feature_path: string; scenario: string; leaf_index: number; line: number }) => {
+          if (req) void gotoReportStep(req)
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('report-rerun', (req: { feature_path: string; scenario: string }) => {
+          if (req) void rerunFromReport(req)
+        }),
+      )
+      unsubscribers.push(
+        EventsOn('report-trace', (req: { trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number }) => {
+          if (req) void openTraceFromReport(req)
+        }),
+      )
+      unsubscribers.push(
         EventsOn('record-step', (payload: { index: number; line: string }) => {
           void applyLiveRecordedStep(payload?.index ?? 0, payload?.line ?? '')
         }),
@@ -1344,7 +1367,7 @@
       { id: 'run', label: pc('run'), group: pg('run'), shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
       { id: 'run-current', label: pc('runCurrent'), group: pg('run'), shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
       { id: 'run-current-dry', label: pc('runCurrentDry'), group: pg('run'), run: () => runCurrentScenario(true) },
-      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog(tr('menus.runDialog').replace('…', ''), {}) },
+      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog('', {}) },
       { id: 'run-tag', label: pc('runTag'), group: pg('run'), run: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}) },
       { id: 'playwright', label: pc('playwright'), group: pg('run'), run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
       { id: 'dry', label: pc('dry'), group: pg('run'), run: () => runPrimary(true) },
@@ -2211,7 +2234,7 @@
       return
     }
     if (!runDialogConfirmed) {
-      openRunDialog(dryRun ? tr('journal.run.mode.dryRun') : tr('menus.runDialog').replace('…', ''), { dryRun })
+      openRunDialog(dryRun ? tr('journal.run.mode.dryRun') : '', { dryRun })
       return
     }
     void executeRun({ ...lastRun, dryRun })
@@ -2223,11 +2246,16 @@
     let startStep = -1
     let endStep = -1
     if (partial) {
-      const resolved = await ResolveRunFromLine(editorText, line)
-      if (resolved.scenario) scenario = resolved.scenario
-      if (resolved.partial && resolved.startStep >= 0) {
-        startStep = resolved.startStep
-        endStep = resolved.endStep >= 0 ? resolved.endStep : -1
+      try {
+        const resolved = await ResolveRunFromLine(editorText, line)
+        if (resolved.scenario) scenario = resolved.scenario
+        if (resolved.partial && resolved.startStep >= 0) {
+          startStep = resolved.startStep
+          endStep = resolved.endStep >= 0 ? resolved.endStep : -1
+        }
+      } catch (e: unknown) {
+        appendLog(tr('journal.run.resolveLineError', { error: String(e) }))
+        return
       }
     }
     monaco?.gotoLine(line)
@@ -2662,6 +2690,64 @@
 
   function resolveRunResultFeaturePath(featurePath: string): string {
     return resolveLogicalRunTarget(featurePath, tabs, activeTab)
+  }
+
+  async function gotoReportStep(req: {
+    feature_path: string
+    scenario: string
+    leaf_index: number
+    line: number
+  }) {
+    const featurePath = resolveRunResultFeaturePath(req.feature_path)
+    if (!featurePath) return
+    bottomPanelOpen = true
+    if (req.line > 0) {
+      await loadFeature(featurePath)
+      gotoEditorLine(req.line)
+      setStatus(`Line ${req.line}`, 'busy')
+      return
+    }
+    if (req.leaf_index >= 0) {
+      await gotoFailedStep({
+        path: `${req.feature_path}::${req.scenario}`,
+        success: false,
+        message: '',
+        runner: '',
+        at: '',
+        failed_step: req.leaf_index,
+      } as gui.RunResultEntry)
+    } else {
+      await loadFeature(featurePath)
+    }
+  }
+
+  async function openTraceFromReport(req: {
+    trace_path: string
+    report_dir: string
+    trace_offset_ms?: number
+    step_index?: number
+  }) {
+    let path = req.trace_path || ''
+    if (path && req.report_dir && !path.match(/^[a-zA-Z]:\\|^\//)) {
+      path = `${req.report_dir.replace(/\\/g, '/')}/${path.replace(/\\/g, '/')}`.replace(/\/+/g, '/')
+    }
+    await openTraceReport(path)
+    if (req.trace_offset_ms != null && req.trace_offset_ms >= 0) {
+      const sec = req.trace_offset_ms < 1000
+        ? `${req.trace_offset_ms}ms`
+        : `${(req.trace_offset_ms / 1000).toFixed(2)}s`
+      const step = req.step_index != null ? ` (step #${req.step_index + 1})` : ''
+      appendLog(tr('journal.reports.traceSeekHint', { offset: sec + step }))
+    }
+  }
+
+  async function rerunFromReport(req: { feature_path: string; scenario: string }) {
+    const featurePath = resolveRunResultFeaturePath(req.feature_path)
+    if (!featurePath || !projectPath) return
+    await loadFeature(featurePath)
+    bottomPanelOpen = true
+    bottomTab = 'journal'
+    await executeRun({ ...lastRun, dryRun: false, scenario: req.scenario, html: true }, [featurePath])
   }
 
   async function gotoFailedStep(entry: gui.RunResultEntry) {
@@ -3338,38 +3424,57 @@
 
     const runSince = new Date().toISOString()
 
-    const result = await Run({
-      tag: runOpts.tag,
-      scenario: runOpts.scenario || '',
-      testClient: runOpts.testClient,
-      vars: parseVars(runOpts.vars),
-      dryRun: runOpts.dryRun,
-      headed: runOpts.headed,
-      engine: runOpts.dryRun ? '' : runOpts.engine,
-      installPlaywright: runOpts.installPW,
-      allureDir,
-      traceDir,
-      videoDir,
-      htmlPath,
-      junitPath,
-      summaryJson: summaryJsonPath,
-      browser: runOpts.dryRun ? '' : runOpts.browser || settingsBrowser || 'chromium',
-      workers: runOpts.workers || settingsWorkers || 1,
-      slowMo: runOpts.dryRun ? 0 : (runOpts.slowMo > 0 ? runOpts.slowMo : settingsSlowMo),
-      baseUrl: runOpts.dryRun ? '' : (runOpts.baseUrl || '').trim(),
-      startStep: runOpts.startStep ?? -1,
-      endStep: runOpts.endStep ?? -1,
-      continueOnFail: runOpts.continueOnFail,
-      targets: diskTargets,
-    })
-    const journalStreamed = runLogStreaming
-    runLogStreaming = false
-    playing = false
-    runningDryRun = false
-    runCancelling = false
-    playingLabel = ''
-    runProgressCurrent = 0
-    runProgressTotal = 0
+    let result: Awaited<ReturnType<typeof Run>> = gui.RunResult.createFrom({ output: '', error: '', entries: [] })
+    let runThrown: unknown = null
+    let journalStreamed = false
+    try {
+      result = await Run({
+        tag: runOpts.tag,
+        scenario: runOpts.scenario || '',
+        testClient: runOpts.testClient,
+        vars: parseVars(runOpts.vars),
+        dryRun: runOpts.dryRun,
+        headed: runOpts.headed,
+        engine: runOpts.dryRun ? '' : runOpts.engine,
+        installPlaywright: runOpts.installPW,
+        allureDir,
+        traceDir,
+        videoDir,
+        htmlPath,
+        junitPath,
+        summaryJson: summaryJsonPath,
+        browser: runOpts.dryRun ? '' : runOpts.browser || settingsBrowser || 'chromium',
+        workers: runOpts.workers || settingsWorkers || 1,
+        slowMo: runOpts.dryRun ? 0 : (runOpts.slowMo > 0 ? runOpts.slowMo : settingsSlowMo),
+        baseUrl: runOpts.dryRun ? '' : (runOpts.baseUrl || '').trim(),
+        startStep: runOpts.startStep ?? -1,
+        endStep: runOpts.endStep ?? -1,
+        continueOnFail: runOpts.continueOnFail,
+        htmlLightMode: runOpts.htmlLightMode,
+        reuseLiveBrowser: runOpts.reuseLiveBrowser,
+        reportLocale: $locale,
+        targets: diskTargets,
+      })
+      journalStreamed = runLogStreaming
+    } catch (err) {
+      runThrown = err
+    } finally {
+      runLogStreaming = false
+      playing = false
+      runningDryRun = false
+      runCancelling = false
+      playingLabel = ''
+      runProgressCurrent = 0
+      runProgressTotal = 0
+    }
+
+    if (runThrown) {
+      appendLog(tr('journal.error.generic', { error: String(runThrown) }))
+      setStatus(tr('journal.status.testError'), 'error')
+      bottomTab = 'error'
+      return
+    }
+
     if (result.output && !journalStreamed) appendLog(result.output.trimEnd())
     if (result.error) {
       if (/context canceled/i.test(result.error)) {
@@ -3427,11 +3532,23 @@
     }
     await refreshArtifacts()
     await refreshAllureStatus()
-    if (!result.error && runOpts.html && htmlPath) {
+    const runCancelled = /context canceled/i.test(result.error || '')
+    if (runOpts.html && htmlPath && !runCancelled) {
       try {
         if (await ArtifactExists(htmlPath)) {
           await openHtmlReport(htmlPath)
         }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (
+      traceDir &&
+      !runCancelled &&
+      lastRunBatchResults.some((e) => !e.success && e.runner !== 'dry-run')
+    ) {
+      try {
+        await openTraceReport(traceDir)
       } catch {
         /* ignore */
       }
@@ -4771,7 +4888,7 @@
           </button>
           <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>{tr('menus.rerunFailed')}</button>
           <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>{tr('menus.runHistory')}</button>
-          <button class="menu-item" on:click={() => openRunDialog(tr('menus.runDialog').replace('…', ''), {})} disabled={isWelcome && !projectPath}>{tr('menus.runDialog')}</button>
+          <button class="menu-item" on:click={() => openRunDialog('', {})} disabled={isWelcome && !projectPath}>{tr('menus.runDialog')}</button>
           <button class="menu-item" on:click={() => openRunDialog(tr('menus.runTag').replace('…', ''), {})} disabled={isWelcome && !projectPath}>
             {tr('menus.runTag')}
           </button>

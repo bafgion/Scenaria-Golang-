@@ -31,14 +31,6 @@ func recordScenarioRunStatus(ctx context.Context, result ScenarioResult) {
 	if !ok {
 		return
 	}
-	entry := runstatus.Entry{
-		Path:    result.FeaturePath + "::" + result.Scenario,
-		Success: result.Status == "passed",
-		Message: result.Message,
-		Runner:  h.runner,
-	}
-	if result.FailedStep != nil {
-		entry.FailedStep = result.FailedStep
-	}
+	entry := RunstatusEntry(result, h.runner)
 	_ = h.store.Record(entry)
 }

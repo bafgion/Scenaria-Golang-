@@ -9,7 +9,7 @@ export function formatLastRunSummary(run: RunForm): string {
   } else {
     parts.push(run.headed ? t('statusBar.runSummary.headed') : t('statusBar.runSummary.headless'))
   }
-  if (run.html) parts.push('HTML')
+  if (run.html) parts.push(run.htmlLightMode ? 'HTML-light' : 'HTML')
   if (run.trace) parts.push('trace')
   if (run.video) parts.push('video')
   if (run.junit) parts.push('JUnit')

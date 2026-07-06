@@ -6,7 +6,7 @@ export type Locale = 'ru' | 'en'
 
 const catalogs: Record<Locale, Messages> = {
   ru,
-  en: en as Messages,
+  en: en as unknown as Messages,
 }
 
 export const locale = writable<Locale>(detectDefaultLocale())

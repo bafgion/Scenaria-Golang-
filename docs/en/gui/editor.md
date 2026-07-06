@@ -2,6 +2,8 @@
 
 Scenaria uses **Monaco** with a custom `scenaria-feature` language for Russian Gherkin.
 
+![Gherkin editor](../../images/gui-main-en.png)
+
 ## Tabs and files
 
 - Each `.feature` opens in a tab; unsaved changes show a dot on the tab

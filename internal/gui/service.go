@@ -37,6 +37,10 @@ type Service struct {
 	runGen       uint64
 	tempFeatureMu   sync.Mutex
 	tempFeatureDirs []string
+	reportBridgeMu  sync.Mutex
+	reportBridge    *reportBridge
+	activePlaywright sync.WaitGroup
+	activeBackground sync.WaitGroup
 }
 
 func NewService() *Service {
@@ -73,6 +77,9 @@ type RunRequest struct {
 	StartStep     int               `json:"startStep"`
 	EndStep       int               `json:"endStep"`
 	ContinueOnFail bool             `json:"continueOnFail"`
+	HTMLLightMode  bool             `json:"htmlLightMode"`
+	ReuseLiveBrowser bool           `json:"reuseLiveBrowser"`
+	ReportLocale   string           `json:"reportLocale"`
 }
 
 type ValidateRequest struct {
@@ -366,7 +373,11 @@ func collectProjectTags(store *scenario.FeatureStore, files []string) []string {
 }
 
 func (s *Service) ReadFeature(path string) (string, error) {
-	payload, err := os.ReadFile(path)
+	abs, err := s.confineFeaturePath(path)
+	if err != nil {
+		return "", err
+	}
+	payload, err := os.ReadFile(abs)
 	if err != nil {
 		return "", fmt.Errorf("read feature: %w", err)
 	}
@@ -374,7 +385,11 @@ func (s *Service) ReadFeature(path string) (string, error) {
 }
 
 func (s *Service) SaveFeature(path, content string) error {
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	abs, err := s.confineFeaturePath(path)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("save feature: %w", err)
 	}
 	return nil
@@ -444,11 +459,13 @@ type EventEmitter func(name string, payload any)
 
 func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 	defer s.cleanupTempFeatureDirs()
+	s.activePlaywright.Add(1)
+	defer s.activePlaywright.Done()
 	if len(req.Targets) == 0 && s.ProjectPath() == "" {
 		return RunResult{Error: "нет файлов для запуска — откройте сценарий или проект"}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultRunTimeout)
 	s.mu.Lock()
 	if s.runCancel != nil {
 		s.runCancel()
@@ -470,8 +487,15 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 
 	result, err := s.runInProcess(ctx, req, emit)
 	out := s.formatRunOutput(result, err)
-	entries := scenarioResultsToEntries(result.ScenarioResults, resolveGUIEngine(req, req.Targets))
+	runner := resolveGUIEngine(req, req.Targets)
+	if req.DryRun {
+		runner = "dry-run"
+	}
+	entries := scenarioResultsToEntries(result.ScenarioResults, runner)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return RunResult{Output: out, Error: "превышен лимит времени прогона (20 мин) — нажмите «Стоп» или упростите сценарий", Entries: entries}
+		}
 		return RunResult{Output: out, Error: err.Error(), Entries: entries}
 	}
 	return RunResult{Output: out, Entries: entries}
@@ -581,8 +605,9 @@ func (s *Service) SearchSteps(query string) []StepCatalogEntry {
 	return out
 }
 
-func (s *Service) CompletionsForLine(line string, column int) StepCompletionsDTO {
-	result := stepcatalog.CompletionsForLine(line, column)
+func (s *Service) CompletionsForLine(line string, column int, featureText string) StepCompletionsDTO {
+	lang := string(gherkin.ParseLanguageTag(featureText))
+	result := stepcatalog.CompletionsForLineLang(line, column, lang)
 	out := StepCompletionsDTO{
 		Start: result.Start,
 		End:   result.End,

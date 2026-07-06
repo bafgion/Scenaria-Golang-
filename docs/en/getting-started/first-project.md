@@ -4,6 +4,8 @@
 
 Fastest way to explore Scenaria without creating files:
 
+![Start tab](../../images/gui-welcome-en.png)
+
 1. Launch **scenaria-gui.exe**
 2. **Start** tab → **Open example scenarios**
 3. The left **Catalog** lists `.feature` files under `examples/`

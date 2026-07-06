@@ -26,7 +26,10 @@ func (e *PlaywrightExecutor) ExecuteScenario(ctx context.Context, input Scenario
 		steps = gherkin.ApplyStepRange(steps, start, input.EndStep)
 	}
 	return e.executeWithSession(ctx, input, func(ctx context.Context, session *browserSession) (*RunContext, error) {
-		runCtx := NewRunContext(input.Variables, time.Now().UnixNano(), input.ProjectRoot, WithPromptEmailCode(prompt))
+		runCtx := NewRunContext(input.Variables, time.Now().UnixNano(), input.ProjectRoot,
+			WithPromptEmailCode(prompt),
+			WithStepScreenshots(e.options.StepScreenshots),
+		)
 		defer runCtx.CleanupDownloads()
 		err := exec.ExecuteSteps(ctx, session, steps, runCtx)
 		return runCtx, err
@@ -52,7 +55,10 @@ func (e *PlaywrightExecutor) ExecuteScenarioOnSession(ctx context.Context, sessi
 		steps = gherkin.ApplyStepRange(steps, start, input.EndStep)
 	}
 	return e.runScenarioOnSession(ctx, session, input, func(ctx context.Context, session *browserSession) (*RunContext, error) {
-		runCtx := NewRunContext(input.Variables, time.Now().UnixNano(), input.ProjectRoot, WithPromptEmailCode(prompt))
+		runCtx := NewRunContext(input.Variables, time.Now().UnixNano(), input.ProjectRoot,
+			WithPromptEmailCode(prompt),
+			WithStepScreenshots(e.options.StepScreenshots),
+		)
 		defer runCtx.CleanupDownloads()
 		err := exec.ExecuteSteps(ctx, session, steps, runCtx)
 		return runCtx, err

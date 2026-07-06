@@ -24,12 +24,16 @@ func (s *Service) resolveTracePath(path string) (string, error) {
 			return "", err
 		}
 		path = resolved
-	} else if !filepath.IsAbs(path) {
+	} else {
 		root := s.ProjectPath()
 		if root == "" {
 			return "", fmt.Errorf("open a project folder first")
 		}
-		path = filepath.Join(root, path)
+		confined, err := paths.ConfineToProjectRoot(root, path)
+		if err != nil {
+			return "", fmt.Errorf("trace path outside project: %w", err)
+		}
+		path = confined
 	}
 	info, err := os.Stat(path)
 	if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/bafgion/scenaria-golang/internal/brand"
 	"github.com/bafgion/scenaria-golang/internal/logx"
@@ -36,5 +37,6 @@ func main() {
 	})
 	if err != nil {
 		logx.Error("wails run failed", "err", err)
+		os.Exit(1)
 	}
 }

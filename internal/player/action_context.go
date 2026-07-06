@@ -2,9 +2,16 @@ package player
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	playwright "github.com/mxschmitt/playwright-go"
+)
+
+const (
+	gotoMaxAttempts = 3
+	gotoRetryDelay  = 500 * time.Millisecond
 )
 
 const (
@@ -58,6 +65,80 @@ func capWaitDuration(ctx context.Context, duration time.Duration) time.Duration 
 	return duration
 }
 
+func pageGoto(ctx context.Context, page playwright.Page, url string, waitUntil *playwright.WaitUntilState) error {
+	if page == nil {
+		return fmt.Errorf("browser page is not available")
+	}
+	if UrlsMatch(page.URL(), url) {
+		return nil
+	}
+	var lastErr error
+	for attempt := 0; attempt < gotoMaxAttempts; attempt++ {
+		if attempt > 0 {
+			if err := sleepContext(ctx, gotoRetryDelay); err != nil {
+				return err
+			}
+		}
+		lastErr = pageGotoOnce(ctx, page, url, waitUntil)
+		if lastErr == nil {
+			return nil
+		}
+		if ctx != nil && ctx.Err() != nil {
+			return lastErr
+		}
+		if !isRetryableGotoError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func isRetryableGotoError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "net::") ||
+		strings.Contains(msg, "connection") ||
+		strings.Contains(msg, "econnreset") ||
+		strings.Contains(msg, "err_connection")
+}
+
+func pageGotoOnce(ctx context.Context, page playwright.Page, url string, waitUntil *playwright.WaitUntilState) error {
+	opts := playwright.PageGotoOptions{
+		WaitUntil: waitUntil,
+		Timeout:   timeoutMs(ctx, NavTimeoutMs),
+	}
+	if ctx == nil {
+		if _, err := page.Goto(url, opts); err != nil {
+			return fmt.Errorf("goto failed: %w", err)
+		}
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := page.Goto(url, opts)
+		errCh <- err
+	}()
+	select {
+	case <-ctx.Done():
+		drainAsync(errCh)
+		return ctx.Err()
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("goto failed: %w", err)
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return nil
+	}
+}
+
 func sleepContext(ctx context.Context, duration time.Duration) error {
 	if ctx == nil {
 		time.Sleep(duration)
@@ -93,7 +174,7 @@ func waitForLocator(ctx context.Context, locator playwright.Locator, opts playwr
 	}()
 	select {
 	case <-ctx.Done():
-		go func() { _ = <-errCh }()
+		drainAsync(errCh)
 		return ctx.Err()
 	case err := <-errCh:
 		if ctx.Err() != nil {
@@ -116,7 +197,7 @@ func pressKey(ctx context.Context, page playwright.Page, key string) error {
 	}()
 	select {
 	case <-ctx.Done():
-		go func() { _ = <-errCh }()
+		drainAsync(errCh)
 		return ctx.Err()
 	case err := <-errCh:
 		if ctx.Err() != nil {
@@ -144,7 +225,7 @@ func expectDownload(ctx context.Context, page playwright.Page, trigger func() er
 	}()
 	select {
 	case <-ctx.Done():
-		go func() { _ = <-ch }()
+		drainChan(ch)
 		return nil, ctx.Err()
 	case r := <-ch:
 		if ctx.Err() != nil {

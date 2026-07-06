@@ -139,6 +139,26 @@ func keywordEndRune(indentLen int, keyword string) int {
 // CompletionsForLine returns replace columns and snippets (Python completions_for_line parity).
 // column is a 0-based rune index in line.
 func CompletionsForLine(line string, column int) CompletionsResult {
+	return CompletionsForLineLang(line, column, "ru")
+}
+
+// CompletionsForLineLang uses Gherkin dialect ru or en for keywords and step snippets.
+func CompletionsForLineLang(line string, column int, lang string) CompletionsResult {
+	if lang == "en" {
+		return completionsForLineDialect(line, column, completionKeywordsEN, headerLineEN, stepKeywordEN, headerSnippetsEN, stepSnippetsEN)
+	}
+	return completionsForLineDialect(line, column, completionKeywords, headerLineRE, stepKeywordRE, headerSnippets, stepSnippets)
+}
+
+func completionsForLineDialect(
+	line string,
+	column int,
+	keywords []string,
+	headerRE *regexp.Regexp,
+	stepRE *regexp.Regexp,
+	headers []CompletionSnippet,
+	snippets []snippetDef,
+) CompletionsResult {
 	runes := []rune(line)
 	if column < 0 {
 		column = len(runes)
@@ -149,25 +169,25 @@ func CompletionsForLine(line string, column int) CompletionsResult {
 
 	empty := CompletionsResult{Start: column, End: column}
 	indentLen := leadingIndentRunes(runes)
-	stepLine := isStepLineRunes(runes, indentLen)
+	stepLine := isStepLineRunesWithKeywords(runes, indentLen, keywords)
 
 	if indentLen >= len(runes) || (len(runes) > indentLen && runes[indentLen] == '#') {
 		if len(runes) == indentLen && column >= indentLen {
 			if stepLine || indentLen == 0 {
-				items := append(stepSnippetsForCompletion(), keywordCandidates("")...)
+				items := append(stepSnippetsForDialect(snippets), keywordCandidatesWith(keywords, "")...)
 				return CompletionsResult{Start: indentLen, End: column, Items: items}
 			}
-			return CompletionsResult{Start: indentLen, End: column, Items: keywordCandidates("")}
+			return CompletionsResult{Start: indentLen, End: column, Items: keywordCandidatesWith(keywords, "")}
 		}
 		return empty
 	}
 
 	stripped := string(runes[indentLen:])
-	if headerLineRE.MatchString(stripped) && !isStepIndentedRunes(runes, indentLen) {
+	if headerRE.MatchString(stripped) && !isStepIndentedRunes(runes, indentLen) {
 		return CompletionsResult{
 			Start: indentLen,
 			End:   column,
-			Items: headerCandidates(stripped),
+			Items: headerCandidatesWith(headers, stripped),
 		}
 	}
 
@@ -175,7 +195,7 @@ func CompletionsForLine(line string, column int) CompletionsResult {
 		return empty
 	}
 
-	match := stepKeywordRE.FindStringSubmatch(stripped)
+	match := stepRE.FindStringSubmatch(stripped)
 	if match == nil {
 		return empty
 	}
@@ -191,14 +211,14 @@ func CompletionsForLine(line string, column int) CompletionsResult {
 			return CompletionsResult{
 				Start: indentLen,
 				End:   column,
-				Items: keywordCandidates(strings.TrimSpace(string(prefixRunes))),
+				Items: keywordCandidatesWith(keywords, strings.TrimSpace(string(prefixRunes))),
 			}
 		}
 	} else {
 		linePrefixRunes := runes[indentLen:column]
 		linePrefix := string(linePrefixRunes)
 		if !strings.Contains(strings.TrimRight(linePrefix, " "), " ") {
-			if matches := keywordCandidates(strings.TrimSpace(linePrefix)); len(matches) > 0 {
+			if matches := keywordCandidatesWith(keywords, strings.TrimSpace(linePrefix)); len(matches) > 0 {
 				return CompletionsResult{Start: indentLen, End: column, Items: matches}
 			}
 		}
@@ -207,12 +227,82 @@ func CompletionsForLine(line string, column int) CompletionsResult {
 	bodyPrefix := strings.TrimLeft(string(runes[bodyOffset:column]), " \t")
 	if bodyPrefix == "" {
 		if keyword != "" {
-			return CompletionsResult{Start: bodyOffset, End: column, Items: stepSnippetsForCompletion()}
+			return CompletionsResult{Start: bodyOffset, End: column, Items: stepSnippetsForDialect(snippets)}
 		}
-		return CompletionsResult{Start: indentLen, End: column, Items: keywordCandidates("")}
+		return CompletionsResult{Start: indentLen, End: column, Items: keywordCandidatesWith(keywords, "")}
 	}
 
-	matches := stepCandidates(bodyPrefix)
+	matches := stepCandidatesWith(snippets, bodyPrefix)
 	start := column - runeLen(bodyPrefix)
 	return CompletionsResult{Start: start, End: column, Items: matches}
 }
+
+func isStepLineRunesWithKeywords(line []rune, indentLen int, keywords []string) bool {
+	if isStepIndentedRunes(line, indentLen) {
+		return true
+	}
+	if indentLen >= len(line) {
+		return false
+	}
+	stripped := strings.ToLower(string(line[indentLen:]))
+	for _, kw := range keywords {
+		lkw := strings.ToLower(kw)
+		if strings.HasPrefix(stripped, lkw+" ") || stripped == lkw {
+			return true
+		}
+	}
+	return false
+}
+
+func keywordCandidatesWith(keywords []string, prefix string) []CompletionSnippet {
+	prefix = strings.TrimSpace(prefix)
+	out := make([]CompletionSnippet, 0, len(keywords))
+	for _, word := range keywords {
+		if matchPrefix(word, prefix) {
+			out = append(out, CompletionSnippet{
+				Label:       word,
+				Insert:      word,
+				Description: word,
+			})
+		}
+	}
+	return out
+}
+
+func headerCandidatesWith(headers []CompletionSnippet, prefix string) []CompletionSnippet {
+	stripped := strings.TrimLeft(prefix, " \t")
+	out := make([]CompletionSnippet, 0)
+	for _, snip := range headers {
+		if matchPrefix(snip.Label, stripped) || matchPrefix(snip.Insert, stripped) {
+			out = append(out, snip)
+		}
+	}
+	return out
+}
+
+func stepSnippetsForDialect(snippets []snippetDef) []CompletionSnippet {
+	out := make([]CompletionSnippet, len(snippets))
+	for i, snip := range snippets {
+		out[i] = CompletionSnippet{
+			Label:       snip.label,
+			Insert:      snip.insert,
+			Description: plainDescription(snip.description),
+		}
+	}
+	return out
+}
+
+func stepCandidatesWith(snippets []snippetDef, prefix string) []CompletionSnippet {
+	out := make([]CompletionSnippet, 0)
+	for _, snip := range snippets {
+		if matchPrefix(snip.label, prefix) || matchPrefix(snip.insert, prefix) {
+			out = append(out, CompletionSnippet{
+				Label:       snip.label,
+				Insert:      snip.insert,
+				Description: plainDescription(snip.description),
+			})
+		}
+	}
+	return out
+}
+

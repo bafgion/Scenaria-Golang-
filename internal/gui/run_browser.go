@@ -2,7 +2,9 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -97,7 +99,8 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 
 	if req.DryRun {
 		runner := player.DryRunner{}
-		return runner.Execute(ctx, plan)
+		result, err := runner.Execute(ctx, plan)
+		return s.finalizeGUIReports(root, req, plan, result, err, false)
 	}
 
 	workers := req.Workers
@@ -107,11 +110,8 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 
 	appCfg, _ := settings.LoadDefaultAppSettings()
 	httpCreds := player.ResolveRunHTTPCredentials(req.BaseURL, plan, appCfg)
-	navWait := ""
-	if appCfg != nil {
-		navWait = appCfg.NavWaitUntil
-	}
-	if _, err := player.ParseNavWaitUntil(navWait); err != nil {
+	navWait, err := resolveRunNavWait(paths.InferProjectRoot(targets), appCfg)
+	if err != nil {
 		return player.ExecutionResult{}, err
 	}
 
@@ -126,33 +126,49 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 		HTTPCredentials:   httpCreds,
 		MaxLoopIterations: appCfgMaxLoops(appCfg),
 		NavWaitUntil:      navWait,
-		CloseAfterRun:     false,
+		CloseAfterRun:     !s.canReuseLiveBrowser(req),
+		StepScreenshots:   req.HTMLPath != "" && !req.HTMLLightMode,
 	})
 
 	var result player.ExecutionResult
-	var err error
+	var runErr error
 	if s.canReuseLiveBrowser(req) {
-		result, err = s.runOnLiveBrowser(ctx, exec, plan, navWait)
+		result, runErr = s.runOnLiveBrowser(ctx, exec, plan, navWait)
 	} else {
 		runner := player.BrowserRunner{Executor: exec, ParallelWorkers: workers}
-		result, err = runner.Execute(ctx, plan)
+		result, runErr = runner.Execute(ctx, plan)
 	}
-	if err != nil {
-		return result, err
-	}
+	return s.finalizeGUIReports(root, req, plan, result, runErr, statusIncremental)
+}
+
+func (s *Service) finalizeGUIReports(
+	root string,
+	req RunRequest,
+	plan player.ExecutionPlan,
+	result player.ExecutionResult,
+	runErr error,
+	statusIncremental bool,
+) (player.ExecutionResult, error) {
 	if root != "" {
 		req = remapRunArtifacts(root, req)
 	}
-	if reportErr := writeGUIReports(req, result); reportErr != nil {
+	reportErr := s.writeGUIReports(root, req, plan, result)
+	if reportErr != nil && runErr != nil {
+		return result, errors.Join(runErr, reportErr)
+	}
+	if reportErr != nil {
 		return result, reportErr
 	}
 	if root != "" && !statusIncremental {
 		recordGUIStatus(root, req, result)
 	}
-	return result, nil
+	return result, runErr
 }
 
 func (s *Service) canReuseLiveBrowser(req RunRequest) bool {
+	if !req.ReuseLiveBrowser {
+		return false
+	}
 	if req.DryRun || !s.HasLiveBrowser() {
 		return false
 	}
@@ -173,6 +189,14 @@ func (s *Service) canReuseLiveBrowser(req RunRequest) bool {
 	return true
 }
 
+func resolveRunNavWait(projectRoot string, appCfg *settings.AppSettings) (string, error) {
+	navWait := settings.ResolveNavWaitUntil(projectRoot, appCfg)
+	if _, err := player.ParseNavWaitUntil(navWait); err != nil {
+		return "", err
+	}
+	return navWait, nil
+}
+
 func (s *Service) runOnLiveBrowser(ctx context.Context, exec *player.PlaywrightExecutor, plan player.ExecutionPlan, navWait string) (player.ExecutionResult, error) {
 	s.mu.RLock()
 	session := s.liveSession
@@ -190,6 +214,8 @@ func (s *Service) runOnLiveBrowser(ctx context.Context, exec *player.PlaywrightE
 	if wasRecording && !wasPaused {
 		session.Pause()
 	}
+	releaseTestHold := session.HoldForTestRun()
+	defer releaseTestHold()
 	defer func() {
 		if wasRecording && !wasPaused {
 			session.Resume()
@@ -268,9 +294,13 @@ func remapRunArtifacts(root string, req RunRequest) RunRequest {
 	return req
 }
 
-func writeGUIReports(req RunRequest, result player.ExecutionResult) error {
+func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan player.ExecutionPlan, result player.ExecutionResult) error {
+	var prevSummary *report.RunSummaryDetailed
 	if req.SummaryJSON != "" {
-		if err := report.WriteRunSummary(req.SummaryJSON, report.FromExecutionResult(result)); err != nil {
+		prevSummary = report.ReadPreviousSummary(req.SummaryJSON)
+	}
+	if req.SummaryJSON != "" {
+		if err := report.WriteRunSummaryDetailed(req.SummaryJSON, report.FromExecutionResultDetailed(result)); err != nil {
 			return err
 		}
 	}
@@ -280,7 +310,16 @@ func writeGUIReports(req RunRequest, result player.ExecutionResult) error {
 		}
 	}
 	if req.HTMLPath != "" {
-		if err := report.WriteHTML(req.HTMLPath, result); err != nil {
+		if err := report.WriteHTML(req.HTMLPath, result, report.HTMLOptions{
+			Plan:            plan,
+			ProjectRoot:     projectRoot,
+			LightMode:       req.HTMLLightMode,
+			BridgeURL:       s.ReportBridgeURL(),
+			BridgeToken:     s.ReportBridgeToken(),
+			Locale:          req.ReportLocale,
+			ReportDir:       filepath.Dir(req.HTMLPath),
+			PreviousSummary: prevSummary,
+		}); err != nil {
 			return err
 		}
 	}
@@ -299,16 +338,7 @@ func recordGUIStatus(root string, req RunRequest, result player.ExecutionResult)
 	}
 	engine := resolveGUIEngine(req, nil)
 	for _, scenarioResult := range result.ScenarioResults {
-		entry := runstatus.Entry{
-			Path:    scenarioResult.FeaturePath + "::" + scenarioResult.Scenario,
-			Success: scenarioResult.Status == "passed",
-			Message: scenarioResult.Message,
-			Runner:  engine,
-		}
-		if scenarioResult.FailedStep != nil {
-			entry.FailedStep = scenarioResult.FailedStep
-		}
-		_ = store.Record(entry)
+		_ = store.Record(player.RunstatusEntry(scenarioResult, engine))
 	}
 }
 

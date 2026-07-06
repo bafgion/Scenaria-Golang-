@@ -11,6 +11,8 @@ Scenaria includes an **8-step interactive tour** for new users. It highlights UI
 
 Press **Skip** to dismiss; completion is remembered in settings.
 
+![Onboarding tour, step 1](../../images/gui-onboarding-en.png)
+
 ## Tour steps
 
 | # | ID | What you do |

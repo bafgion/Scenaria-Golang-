@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './specs',
-  testIgnore: ['**/desktop-smoke.spec.ts', '**/desktop-tour-onboarding.spec.ts'],
+  testIgnore: ['**/desktop-smoke.spec.ts', '**/desktop-tour-onboarding.spec.ts', '**/capture-docs-screenshots.spec.ts', '**/capture-demo-video.spec.ts'],
   timeout: 60_000,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

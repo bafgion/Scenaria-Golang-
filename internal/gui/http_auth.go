@@ -15,8 +15,8 @@ type HTTPAuthRequest struct {
 }
 
 type HTTPAuthCredentials struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username    string `json:"username"`
+	HasPassword bool   `json:"hasPassword"`
 }
 
 func (s *Service) loadAppSettings() (*settings.AppSettings, error) {
@@ -52,7 +52,7 @@ func (s *Service) HTTPAuthForHost(host string) (HTTPAuthCredentials, error) {
 		return HTTPAuthCredentials{}, err
 	}
 	username, password := httpauth.CredentialsForHost(host, cfg)
-	return HTTPAuthCredentials{Username: username, Password: password}, nil
+	return HTTPAuthCredentials{Username: username, HasPassword: password != ""}, nil
 }
 
 func (s *Service) SaveHTTPAuth(req HTTPAuthRequest) error {
@@ -64,7 +64,13 @@ func (s *Service) SaveHTTPAuth(req HTTPAuthRequest) error {
 	if host == "" {
 		return fmt.Errorf("host is required")
 	}
-	httpauth.StoreHostCredentials(host, req.Username, req.Password, cfg)
+	password := req.Password
+	if strings.TrimSpace(password) == "" {
+		if _, existing := httpauth.CredentialsForHost(host, cfg); existing != "" {
+			password = existing
+		}
+	}
+	httpauth.StoreHostCredentials(host, req.Username, password, cfg)
 	return s.saveAppSettings(cfg)
 }
 

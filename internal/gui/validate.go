@@ -100,7 +100,7 @@ func isScenarioStructureLine(line string) bool {
 		"функция:", "функциональность:", "функционал:", "feature:", "сценарий:", "scenario:",
 		"структура сценария:", "scenario outline:", "примеры:", "examples:",
 		"контекст:", "background:",
-		"если ", "повторяю ", "пока ", "для каждого ", "конец",
+		"если ", "if ", "повторяю ", "repeat ", "пока ", "while ", "для каждого ", "for each ", "конец", "end if",
 	}
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(lower, prefix) {

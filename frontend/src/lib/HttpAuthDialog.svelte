@@ -12,6 +12,7 @@
   let host = ''
   let username = ''
   let password = ''
+  let hasPassword = false
   let hosts: string[] = []
   let busy = false
   let message = ''
@@ -36,7 +37,8 @@
     host = value
     const creds = await HTTPAuthForHost(value).catch(() => new gui.HTTPAuthCredentials())
     username = creds.username
-    password = creds.password
+    password = ''
+    hasPassword = creds.hasPassword
   }
 
   async function save() {
@@ -49,6 +51,8 @@
         username: username.trim(),
         password,
       }))
+      hasPassword = hasPassword || password.length > 0
+      password = ''
       message = tr('dialogs.httpAuth.saved')
       await refreshHosts()
     } catch (e: any) {
@@ -66,6 +70,7 @@
       await RemoveHTTPAuth(host.trim())
       username = ''
       password = ''
+      hasPassword = false
       message = tr('dialogs.httpAuth.removed')
       await refreshHosts()
     } catch (e: any) {
@@ -107,7 +112,14 @@
     {/if}
     <label>{tr('dialogs.httpAuth.host')} <input bind:value={host} placeholder={tr('dialogs.httpAuth.hostPlaceholder')} /></label>
     <label>{tr('dialogs.httpAuth.username')} <input bind:value={username} autocomplete="username" /></label>
-    <label>{tr('dialogs.httpAuth.password')} <input type="password" bind:value={password} autocomplete="current-password" /></label>
+    <label>{tr('dialogs.httpAuth.password')}
+      <input
+        type="password"
+        bind:value={password}
+        autocomplete="current-password"
+        placeholder={hasPassword ? tr('dialogs.httpAuth.passwordSaved') : ''}
+      />
+    </label>
     {#if message}<p class="message">{message}</p>{/if}
     <div class="modal-actions">
       <button type="button" class="primary" disabled={busy || !host.trim() || !username.trim()} on:click={save}>

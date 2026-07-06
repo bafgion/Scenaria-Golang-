@@ -6,16 +6,6 @@ import (
 	"strings"
 )
 
-var stepKeywords = []string{
-	"Допустим",
-	"Дано",
-	"Когда",
-	"Тогда",
-	"И",
-	"Но",
-	"*",
-}
-
 func ParseFeatureFile(path string) (*Feature, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -26,7 +16,9 @@ func ParseFeatureFile(path string) (*Feature, error) {
 
 func ParseFeature(content string) (*Feature, error) {
 	content = NormalizeFeatureText(content)
-	feature := &Feature{}
+	lang := ParseLanguageTag(content)
+	feature := &Feature{Language: lang}
+	stepKeywords := stepKeywordsFor(lang)
 	lines := strings.Split(content, "\n")
 
 	var currentScenario *Scenario
@@ -60,6 +52,9 @@ func ParseFeature(content string) (*Feature, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
+			if languageTagRE.MatchString(line) {
+				continue
+			}
 			continue
 		}
 		if strings.HasPrefix(line, "@") {
@@ -67,76 +62,63 @@ func ParseFeature(content string) (*Feature, error) {
 			continue
 		}
 
-		if strings.HasPrefix(line, "Функционал:") {
-			title := strings.TrimSpace(strings.TrimPrefix(line, "Функционал:"))
-			if title == "" {
-				return nil, fmt.Errorf("line %d: empty feature title", lineNo)
+		if kind, title, ok := matchHeader(line, lang); ok {
+			switch kind {
+			case headerFeature:
+				if title == "" {
+					return nil, fmt.Errorf("line %d: empty feature title", lineNo)
+				}
+				feature.Title = title
+				feature.Line = lineNo
+				if len(pendingTags) > 0 {
+					feature.Tags = append(feature.Tags, pendingTags...)
+					pendingTags = nil
+				}
+				currentScenario = nil
+				currentStep = nil
+				currentExample = nil
+				inBackground = false
+				inExamples = false
+			case headerBackground:
+				feature.HasContextBlock = true
+				inBackground = true
+				currentScenario = nil
+				currentStep = nil
+				currentExample = nil
+				inExamples = false
+			case headerScenario, headerScenarioOutline:
+				if title == "" {
+					return nil, fmt.Errorf("line %d: empty scenario title", lineNo)
+				}
+				scenario := Scenario{
+					Title:     title,
+					Line:      lineNo,
+					IsOutline: kind == headerScenarioOutline,
+				}
+				if len(pendingTags) > 0 {
+					scenario.Tags = append(scenario.Tags, pendingTags...)
+					pendingTags = nil
+				}
+				feature.Scenarios = append(feature.Scenarios, scenario)
+				currentScenario = &feature.Scenarios[len(feature.Scenarios)-1]
+				currentStep = nil
+				currentExample = nil
+				inBackground = false
+				inExamples = false
+			case headerExamples:
+				if currentScenario == nil {
+					return nil, fmt.Errorf("line %d: examples outside scenario", lineNo)
+				}
+				if !currentScenario.IsOutline {
+					return nil, fmt.Errorf("line %d: examples are only valid for scenario outline", lineNo)
+				}
+				currentScenario.Examples = append(currentScenario.Examples, Example{Line: lineNo})
+				currentScenario.ExamplesLine = lineNo
+				currentExample = &currentScenario.Examples[len(currentScenario.Examples)-1]
+				currentStep = nil
+				inExamples = true
+				inBackground = false
 			}
-			feature.Title = title
-			feature.Line = lineNo
-			if len(pendingTags) > 0 {
-				feature.Tags = append(feature.Tags, pendingTags...)
-				pendingTags = nil
-			}
-			currentScenario = nil
-			currentStep = nil
-			currentExample = nil
-			inBackground = false
-			inExamples = false
-			continue
-		}
-
-		if strings.HasPrefix(line, "Контекст:") {
-			feature.HasContextBlock = true
-			inBackground = true
-			currentScenario = nil
-			currentStep = nil
-			currentExample = nil
-			inExamples = false
-			continue
-		}
-
-		if strings.HasPrefix(line, "Сценарий:") || strings.HasPrefix(line, "Структура сценария:") {
-			isOutline := strings.HasPrefix(line, "Структура сценария:")
-			prefix := "Сценарий:"
-			if isOutline {
-				prefix = "Структура сценария:"
-			}
-			title := strings.TrimSpace(strings.TrimPrefix(line, prefix))
-			if title == "" {
-				return nil, fmt.Errorf("line %d: empty scenario title", lineNo)
-			}
-			scenario := Scenario{
-				Title:     title,
-				Line:      lineNo,
-				IsOutline: isOutline,
-			}
-			if len(pendingTags) > 0 {
-				scenario.Tags = append(scenario.Tags, pendingTags...)
-				pendingTags = nil
-			}
-			feature.Scenarios = append(feature.Scenarios, scenario)
-			currentScenario = &feature.Scenarios[len(feature.Scenarios)-1]
-			currentStep = nil
-			currentExample = nil
-			inBackground = false
-			inExamples = false
-			continue
-		}
-
-		if strings.HasPrefix(line, "Примеры:") {
-			if currentScenario == nil {
-				return nil, fmt.Errorf("line %d: examples outside scenario", lineNo)
-			}
-			if !currentScenario.IsOutline {
-				return nil, fmt.Errorf("line %d: examples are only valid for scenario outline", lineNo)
-			}
-			currentScenario.Examples = append(currentScenario.Examples, Example{Line: lineNo})
-			currentScenario.ExamplesLine = lineNo
-			currentExample = &currentScenario.Examples[len(currentScenario.Examples)-1]
-			currentStep = nil
-			inExamples = true
-			inBackground = false
 			continue
 		}
 
@@ -170,7 +152,7 @@ func ParseFeature(content string) (*Feature, error) {
 		inExamples = false
 		currentExample = nil
 
-		step, ok := parseStep(line, lineNo)
+		step, ok := parseStep(line, lineNo, lang, stepKeywords)
 		if !ok {
 			return nil, fmt.Errorf("line %d: unsupported statement %q", lineNo, line)
 		}
@@ -202,8 +184,11 @@ func ParseFeature(content string) (*Feature, error) {
 	return feature, nil
 }
 
-func parseStep(line string, lineNo int) (Step, bool) {
+func parseStep(line string, lineNo int, lang Language, stepKeywords []string) (Step, bool) {
 	for _, keyword := range stepKeywords {
+		if keyword == "*" {
+			continue
+		}
 		if strings.HasPrefix(line, keyword+" ") || line == keyword {
 			text := strings.TrimSpace(strings.TrimPrefix(line, keyword))
 			text = NormalizeLegacyHasTextEscapes(text)
@@ -215,10 +200,10 @@ func parseStep(line string, lineNo int) (Step, bool) {
 		}
 	}
 	text := strings.TrimSpace(line)
-	if testClientRe.MatchString(text) {
-		return Step{Keyword: "Допустим", Text: text, Line: lineNo}, true
+	if IsTestClientStep(Step{Text: text, Line: lineNo}) {
+		return Step{Keyword: defaultGivenKeyword(lang), Text: text, Line: lineNo}, true
 	}
-	if header, err := detectBlockHeader(Step{Text: text, Line: lineNo}); err == nil && header != nil {
+	if header, err := detectBlockHeader(Step{Text: text, Line: lineNo}, lang); err == nil && header != nil {
 		return Step{Keyword: "*", Text: text, Line: lineNo}, true
 	}
 	return Step{}, false

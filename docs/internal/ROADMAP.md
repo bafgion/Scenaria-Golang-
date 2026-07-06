@@ -19,6 +19,8 @@
 | **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
 | **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
 | **P0** | **Daily-use QA audit (Фаза 15)** | **done** |
+| **P1** | **Interactive HTML Report (Фаза 16)** | **in progress** |
+| **P0** | **Code audit Web UI stability (Фаза 17)** | **done** |
 
 ---
 
@@ -637,3 +639,187 @@
 | Recorder | session gen, steps mutex | picker cancel, path confine | trust doc, sanitize |
 | Reports / CLI | reports on failure | runstatus, dedupe, validate flags | JUnit broken, help |
 | Wails / GUI | — | OTP, captureCLI, ctx guard | temp cleanup, Allure PID |
+
+---
+
+## Фаза 16 — Interactive HTML Report (Mini Trace Viewer)
+
+Цель: превратить `report.html` в практичный инструмент для QA — timeline шагов, inspector, сравнение с историей, интеграция с Playwright Trace.
+
+### 16.1 MVP — структура и timeline (P1) — **done (частично)**
+
+- [x] Embedded JSON payload в одном HTML-файле
+- [x] Трёхпанельный layout: сценарии | timeline | inspector
+- [x] Фильтры: только упавшие, тег, длительность, поиск
+- [x] Failure highlight: авто-выбор первого failed сценария и шага
+- [x] Per-step записи при browser-run (`StepRecord`: timing, selector, error)
+- [x] Dry-run timeline из плана (leaf steps + inferred status)
+- [x] Inspector: Gherkin, selector, ошибка, скриншот (full mode)
+- [x] Copy selector / Copy Gherkin / Copy re-run / Copy trace cmd
+- [x] Кнопка «Open Playwright Trace» → trace.playwright.dev + trace zip рядом с отчётом
+- [x] Советы по шагу (data-testid, timeout, strict mode)
+- [x] Шапка: passed/failed/skipped, flaky count, slowest step
+- [x] Сравнение с `run_status.json` (последний прогон)
+- [x] Export failed steps → `.feature`
+- [x] Responsive (mobile sidebar + inspector drawer)
+- [x] `HTMLOptions.LightMode` / `RunRequest.HTMLLightMode` (без бинарных артефактов)
+
+### 16.2 Сбор данных — расширение (P1)
+
+- [ ] Network snippet на шаг (HAR / failed request) из Playwright tracing
+- [x] Network snippet последнего failed request на упавшем шаге
+- [x] Network failures из trace.network (HTTP ≥400) на failed step
+- [ ] Скриншот на каждый шаг (опционально, full mode)
+- [x] Скриншот на каждый шаг при full HTML (не light mode)
+- [x] Скриншот viewport на упавшем шаге (full mode)
+- [ ] DOM snapshot / accessibility tree для failed step
+- [x] DOM snapshot + a11y tree (упрощённый) на failed step
+- [x] Page context (title + URL) на failed step
+- [ ] Теги и метаданные example-строк (outline index)
+- [x] Example index в payload и заголовке timeline
+- [x] Длительность сценария end-to-end (wall clock)
+
+### 16.3 Trace Viewer — углубление (P1)
+
+- [x] Встроенный мини-viewer (timeline + action log без полного PW UI)
+- [x] Trace tab: rail + события + шаги (mini-viewer в центральной панели)
+- [x] Action log tab (таблица шагов, sync с timeline/inspector)
+- [x] Drag-and-drop trace в отчёт (offline парсинг .zip → Trace tab; fallback trace.playwright.dev)
+- [x] Drop-zone для trace .zip в inspector
+- [ ] Ссылка `npx playwright show-trace` с авто-open из IDE (кнопка в GUI)
+- [x] Авто-open trace viewer после GUI-прогона с падениями (если включён trace)
+- [x] Кнопка «Trace in IDE» через report bridge → `OpenTrace`
+- [x] Trace только для failed сценариев (zip при падении, discard после pass)
+- [x] Синхронизация шага ↔ trace (timeline из zip + offset/bridge)
+- [x] Trace timeline из zip + клик → выбор ближайшего шага
+- [x] Trace at step: offset в bridge + seek hint в IDE/journal
+
+### 16.4 Размер и режимы (P2)
+
+- [x] Сжатие скриншотов (webp / jpeg quality)
+- [x] Toggle Full/Light в диалоге «Запустить» (GUI)
+- [x] CLI `--html-light`
+- [ ] Лимит размера embedded JSON; вынос крупных trace в `traces/` only
+- [x] Лимит embedded JSON (4 MiB) с `artifacts_trimmed` flag
+- [x] Поэтапный trim: screenshots → DOM/a11y → trace_events (zip остаётся в `traces/`)
+- [x] Дедупликация одинаковых скриншотов между шагами
+
+### 16.5 История и flaky (P2)
+
+- [ ] Diff шагов с N предыдущими прогонами (таблица regressions)
+- [x] Diff шагов с N предыдущими прогонами (`run_diff` в inspector)
+- [x] Regression hints (new_failure / step_changed / still_failing)
+- [x] Таблица последних 5 прогонов на сценарий в inspector
+- [x] Подсветка flaky шагов на timeline (badge + tint для passed flaky)
+- [x] Flaky badge на timeline (из run_status)
+- [x] Sparkline длительности сценария по истории (run_status)
+- [x] Sparkline длительности шага по истории (`step_durations` в run_status)
+- [x] Импорт внешнего `run_summary` для CI сравнения
+
+### 16.6 QA workflow (P2)
+
+- [ ] Re-run scenario из IDE по клику в отчёте (deep link / custom protocol)
+- [x] HTTP bridge localhost: Open in IDE / Re-run in IDE из HTML-отчёта
+- [ ] Jump to line в Monaco из inspector
+- [x] Jump to line через bridge (кнопка «Open in Scenaria IDE»)
+- [x] Печать / PDF-friendly layout (`@media print`)
+- [x] i18n отчёта ru/en (`locale` в payload, строки в viewer)
+- [x] Клавиатура j/k и ↑↓ для навигации по шагам
+
+### 16.7 Тесты и CI (P1)
+
+- [x] Unit: payload builder, step status inference, WriteHTML smoke
+- [x] Golden JSON snapshot (структура payload)
+- [ ] E2E: прогон example → открыть report.html → клик по failed step
+- [x] E2E: fixture из `examples/01-pervaya-proverka.feature` → `example-report.html`
+- [x] E2E: fixture `sample.html` + Playwright (timeline, action log, filter)
+- [x] Trace offset hint в inspector (кумулятивная длительность шагов)
+
+---
+
+## Фаза 17 — Code audit: стабильность Web UI / Playwright / Wails (P0)
+
+Аудит senior Go (июнь 2026). Оценка до фиксов: **5/10** для production Web UI. Цель фазы — закрыть критические дыры и зафиксировать остаток.
+
+### 17.1 Критические — исправлено
+
+- [x] **Deadlock `browser_pool.release` + `Close()`** при abort/cancel (`internal/player/browser_pool.go`) — слот всегда возвращается в канал; тест `browser_pool_release_test.go`
+- [x] **Live browser vs прогон:** `HoldForTestRun` блокирует poll записи; `CloseBrowser` не закрывает браузер пока `TestRunHeld()`; forced close только в `Shutdown`
+- [x] **EPIPE / Ctrl+C:** graceful shutdown ждёт `activePlaywright` (8 с), затем `StopAllureServe` + `closeBrowserForced`; мягкий `abortRun` без рвения pipe; drain 75 ms перед `pw.Stop`
+- [x] **Report bridge без auth:** per-session token `X-Scenaria-Bridge-Token`, встраивается в HTML payload (`bridge_token`)
+- [x] **Произвольные пути в bridge:** `confineFeaturePath` / `confineArtifactPath` перед emit; trace/open — `ConfineToProjectRoot`
+- [x] **`ReadFeature` / `SaveFeature` / `DuplicateFeature`:** confinement через `path_guard.go` (проект, temp run dirs, `%TEMP%`)
+
+### 17.2 Средний приоритет — исправлено
+
+- [x] **`session.closed` data race** → `atomic.Bool` + `isClosed()` / `setClosed()`
+- [x] **`OnRequestFailed` vs `executeAction` deadlock** — отдельный `networkMu` для `lastNetworkFail`
+- [x] **`captureTraceZIP` / `traceStopped`** — чтение/запись под `session.mu`
+- [x] **`watchContext` на sequential runner** — при `openSession` для non-attached прогонов
+- [x] **`HoldForTestRun` counter** — floor at 0 при release
+- [x] **`EachRecordedLine` slice race** — копия steps под lock
+- [x] **CPU spin в `live_session` poll** — `time.After(50ms)` вместо `select default`
+- [x] **CLI: report error маскирует execute error** — `errors.Join`
+- [x] **CLI: `recordRunStatus` engine** — `resolveRunEngine` вместо пустого `opts.engine`
+- [x] **GUI `CloseAfterRun`** для отдельного тестового браузера (не live reuse)
+- [x] **`pageGoto` с ctx** — отмена навигации без удержания mutex
+
+### 17.3 Средний приоритет — открыто
+
+- [x] **`emitRunProgress` под mutex** в parallel runner — progress вне lock
+- [x] **Orphan goroutines** Playwright при cancel — `pendingAsync` + `drainPendingAsync` перед `pw.Stop` / `session.close`
+- [x] **`startPlaywright` не отменяется** по ctx при pool create — cancel + stop orphan driver
+- [x] **Vanessa run goroutine** не tracked в shutdown — `activeBackground` WaitGroup
+- [x] **`WriteTempFeature` dirs** — cleanup в `Shutdown` (не только после `Run`)
+- [x] **Plugin install** — лимит 100 MiB на download
+- [x] **HTTP auth passwords** во frontend — `hasPassword` вместо пароля; preserve on save
+- [x] **Wails bindings:** `BeginRecordingCapture` → `bool`; `ResolveRunFromLine` → error
+- [x] **`main.go` exit code** при ошибке `wails.Run` — `os.Exit(1)`
+- [x] **`go test -race`** в CI на player/gui/recorder
+
+### 17.3b Средний приоритет — осталось
+
+- [x] **Wails bindings:** `EventBindingTypes` — DTO уже в `models.ts` (`RunProgressEvent`, `UpdateProgressDTO`)
+- [x] **Chaos-тест** pool cancel при `workers>1` — `browser_pool_chaos_test.go`
+
+### 17.4 Flaky / UX Web UI — открыто
+
+- [x] Изолированный browser context по умолчанию — `reuseLiveBrowser` opt-in в диалоге «Запустить»
+- [x] `networkidle` / per-project nav wait — `nav_wait_until` в `.scenaria/project.json`
+- [x] Retries на `goto` — до 3 попыток на timeout/net errors
+- [x] HTML full mode: скриншоты opt-in — light по умолчанию (GUI + CLI `--html` без `--html-full`)
+
+### 17.5 Архитектура (backlog)
+
+- [x] Единый `PlaywrightRuntime` — `internal/playwrightrt` (ref-count, player/recorder/selector + shutdown)
+- [x] `go test -race` gate + chaos-тест pool cancel при `workers>1`
+- [x] Report bridge: origin allowlist (`null`, `localhost`, `127.0.0.1`) вместо `CORS: *`
+
+### 17.5b Отчёт после прогона
+
+- [x] **HTML не открывался при падении** — `finalizeGUIReports` пишет отчёт до return error; UI открывает при `result.error` (кроме cancel)
+
+### 17.6 Симптомы пользователя (связь с аудитом)
+
+| Симптом | Причина | Статус |
+|---------|---------|--------|
+| Зависание «Выполняется» | Нет timeout / UI без finally | [x] лимит 20 мин, finally в `executeRun` |
+| Зависание на 1-м шаге | Recorder + run на одной page | [x] `HoldForTestRun` |
+| EPIPE в консоли после Ctrl+C | Go exit раньше Node driver | [x] shutdown wait + drain |
+| Множественные перезапуски | OOM / crash Node | [x] единый `playwrightrt` + light HTML по умолчанию |
+| Отчёт не открывается при fail | skip write + `!result.error` в UI | [x] `finalizeGUIReports` + open on fail |
+
+### 17.7 Файлы изменений (фаза 17)
+
+`internal/player/{browser_pool.go,browser_session.go,browser_cleanup.go,network.go,artifacts.go,trace_lifecycle.go,runner_parallel.go,action_context.go,async_drain.go,prompt.go}`
+`internal/gui/{path_guard.go,report_bridge.go,record.go,service_shutdown.go,allure.go,trace.go,features.go,service.go,run_browser.go,http_auth.go,vanessa_monitor.go}`
+`internal/recorder/{session.go,live_session.go}`
+`internal/cli/run.go`
+`internal/report/{html_payload.go,html_assets/viewer.js}`
+`internal/plugin/install.go`
+`internal/wailsapp/app.go`
+`main.go`
+`frontend/src/lib/HttpAuthDialog.svelte`
+`internal/settings/{project.go,nav_wait.go}`
+`internal/playwrightrt/runtime.go`
+`internal/gui/run_browser.go` (finalizeGUIReports, report on fail)

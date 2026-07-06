@@ -43,7 +43,7 @@ func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession
 		if err := e.executeStep(ctx, session, step, runCtx); err != nil {
 			return fmt.Errorf("line %d: %w", step.Line, err)
 		}
-		if session.closed {
+		if session.isClosed() {
 			return nil
 		}
 	}
@@ -74,7 +74,7 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
 				return err
 			}
-			if session.closed {
+			if session.isClosed() {
 				return nil
 			}
 		}
@@ -98,7 +98,7 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
 				return err
 			}
-			if session.closed {
+			if session.isClosed() {
 				return nil
 			}
 		}
@@ -111,22 +111,43 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		return nil
 	}
 
+	idx := -1
+	started := time.Now()
+	if runCtx != nil {
+		idx = runCtx.beginLeafStep(step)
+	}
+
 	action, err := stepdsl.Parse(step)
 	if err != nil {
+		if runCtx != nil && idx >= 0 {
+			runCtx.completeLeafStep(idx, "", started, session, err)
+		}
 		return e.failLeafStep(runCtx, err)
 	}
 	if runCtx != nil {
 		if action.Value1, err = runCtx.ResolveText(action.Value1); err != nil {
+			runCtx.completeLeafStep(idx, actionSelector(action), started, session, err)
 			return e.failLeafStep(runCtx, err)
 		}
 		if action.Value2, err = runCtx.ResolveText(action.Value2); err != nil {
+			runCtx.completeLeafStep(idx, actionSelector(action), started, session, err)
 			return e.failLeafStep(runCtx, err)
 		}
 	}
+	selector := actionSelector(action)
+	if session != nil {
+		session.clearNetworkFailure()
+	}
 	if err := e.runAction(ctx, session, action, runCtx); err != nil {
+		if runCtx != nil && idx >= 0 {
+			runCtx.completeLeafStep(idx, selector, started, session, err)
+		}
 		return e.failLeafStep(runCtx, err)
 	}
 	if runCtx != nil {
+		if idx >= 0 {
+			runCtx.completeLeafStep(idx, selector, started, session, nil)
+		}
 		runCtx.RecordStep(step)
 	}
 	return nil
@@ -148,6 +169,9 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if index >= e.maxLoopIterations() {
+			return fmt.Errorf("превышен лимит итераций for_each (%d)", e.maxLoopIterations())
+		}
 		locator := session.page.Locator(selector).Nth(index)
 		text, _ := locator.InnerText()
 		text = strings.TrimSpace(text)
@@ -158,7 +182,7 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
 			return err
 		}
-		if session.closed {
+		if session.isClosed() {
 			return nil
 		}
 	}

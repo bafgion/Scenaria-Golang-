@@ -10,6 +10,7 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/playwrightrt"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	playwright "github.com/mxschmitt/playwright-go"
 )
@@ -66,11 +67,11 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 	if err := paths.EnsurePlaywrightEngine("chromium"); err != nil {
 		return fmt.Errorf("playwright browsers: %w", err)
 	}
-	pw, err := playwright.Run()
+	pw, release, err := playwrightrt.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("start playwright: %w", err)
 	}
-	defer pw.Stop()
+	defer release()
 
 	recorded := []RecordedStep{}
 	if !opts.BrowseOnly {

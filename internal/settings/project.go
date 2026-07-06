@@ -12,6 +12,7 @@ type ProjectConfig struct {
 	FeaturesRoot  string `json:"features_root"`
 	BaseURL       string `json:"base_url"`
 	VAParamsBase  string `json:"va_params_base"`
+	NavWaitUntil  string `json:"nav_wait_until,omitempty"`
 }
 
 func DefaultProjectConfig() ProjectConfig {

@@ -14,9 +14,10 @@ type Entry struct {
 	Path         string `json:"path"`
 	Success      bool   `json:"success"`
 	Message      string `json:"message"`
-	DurationMS   int    `json:"duration_ms"`
-	FailedStep   *int   `json:"failed_step,omitempty"`
-	Runner       string `json:"runner"`
+	DurationMS     int    `json:"duration_ms"`
+	FailedStep     *int   `json:"failed_step,omitempty"`
+	StepDurations  []int  `json:"step_durations,omitempty"`
+	Runner         string `json:"runner"`
 	At           string `json:"at"`
 	ExampleIndex *int   `json:"example_index,omitempty"`
 }

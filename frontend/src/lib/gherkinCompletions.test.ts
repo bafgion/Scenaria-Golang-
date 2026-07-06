@@ -7,7 +7,7 @@ describe('formatInsertText', () => {
       label: 'нажимаю',
       insert: 'нажимаю "button.submit"',
       description: '',
-    })
+    }, 'ru')
     expect(insert).toBe('Когда нажимаю "button.submit"')
   })
 
@@ -16,7 +16,7 @@ describe('formatInsertText', () => {
       label: 'нажимаю',
       insert: 'нажимаю "button.submit"',
       description: '',
-    })
+    }, 'ru')
     expect(insert).toBe('нажимаю "button.submit"')
   })
 
@@ -25,7 +25,7 @@ describe('formatInsertText', () => {
       label: 'Когда',
       insert: 'Когда',
       description: '',
-    })
+    }, 'ru')
     expect(insert).toBe('\tКогда ')
   })
 })

@@ -89,12 +89,14 @@
     </label>
     <label class="check-row"><input type="checkbox" bind:checked={form.dryRun} /> {tr('dialogs.run.dryRun')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.headed} disabled={form.dryRun} /> {tr('dialogs.run.headed')}</label>
+    <label class="check-row"><input type="checkbox" bind:checked={form.reuseLiveBrowser} disabled={form.dryRun || form.workers > 1} /> {tr('dialogs.run.reuseLiveBrowser')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.installPW} disabled={form.dryRun} /> {tr('dialogs.run.installPw')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.allure} disabled={form.dryRun} /> {tr('dialogs.run.allure')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.trace} disabled={form.dryRun} /> {tr('dialogs.run.trace')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.video} disabled={form.dryRun} /> {tr('dialogs.run.video')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.html} disabled={form.dryRun} /> {tr('dialogs.run.html')}</label>
     <label class="check-row indent"><input type="checkbox" bind:checked={form.htmlTimestamp} disabled={form.dryRun || !form.html} /> {tr('dialogs.run.htmlTimestamp')}</label>
+    <label class="check-row indent"><input type="checkbox" bind:checked={form.htmlLightMode} disabled={form.dryRun || !form.html} /> {tr('dialogs.run.htmlLightMode')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.junit} disabled={form.dryRun} /> {tr('dialogs.run.junit')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.summaryJson} disabled={form.dryRun} /> {tr('dialogs.run.summaryJson')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.continueOnFail} disabled={form.dryRun} /> {tr('dialogs.run.continueOnFail')}</label>

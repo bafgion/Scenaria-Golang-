@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
@@ -22,6 +24,8 @@ type runOptions struct {
 	summaryJSON       string
 	junitPath         string
 	htmlPath          string
+	htmlLight         bool
+	htmlFull          bool
 	allureDir         string
 	traceDir          string
 	videoDir          string
@@ -143,7 +147,11 @@ func RunRunContext(ctx context.Context, args []string) error {
 	}
 	ctx = player.WithContinueOnFail(ctx, opts.continueOnFail)
 	result, err := runner.Execute(ctx, plan)
-	if reportErr := writeRunReports(opts, result); reportErr != nil {
+	reportErr := writeRunReports(opts, plan, result)
+	if reportErr != nil && err != nil {
+		return errors.Join(err, reportErr)
+	}
+	if reportErr != nil {
 		return reportErr
 	}
 	if !opts.dryRun && !statusIncremental {
@@ -164,9 +172,13 @@ func RunRunContext(ctx context.Context, args []string) error {
 	return nil
 }
 
-func writeRunReports(opts runOptions, result player.ExecutionResult) error {
+func writeRunReports(opts runOptions, plan player.ExecutionPlan, result player.ExecutionResult) error {
+	var prevSummary *report.RunSummaryDetailed
 	if opts.summaryJSON != "" {
-		if writeErr := report.WriteRunSummary(opts.summaryJSON, report.FromExecutionResult(result)); writeErr != nil {
+		prevSummary = report.ReadPreviousSummary(opts.summaryJSON)
+	}
+	if opts.summaryJSON != "" {
+		if writeErr := report.WriteRunSummaryDetailed(opts.summaryJSON, report.FromExecutionResultDetailed(result)); writeErr != nil {
 			return writeErr
 		}
 		fmt.Printf("Wrote summary report: %s\n", opts.summaryJSON)
@@ -178,7 +190,14 @@ func writeRunReports(opts runOptions, result player.ExecutionResult) error {
 		fmt.Printf("Wrote JUnit report: %s\n", opts.junitPath)
 	}
 	if opts.htmlPath != "" {
-		if writeErr := report.WriteHTML(opts.htmlPath, result); writeErr != nil {
+		root := paths.InferProjectRoot(opts.targets)
+		if writeErr := report.WriteHTML(opts.htmlPath, result, report.HTMLOptions{
+			Plan:            plan,
+			ProjectRoot:     root,
+			LightMode:       opts.htmlLight,
+			ReportDir:       filepath.Dir(opts.htmlPath),
+			PreviousSummary: prevSummary,
+		}); writeErr != nil {
 			return writeErr
 		}
 		fmt.Printf("Wrote HTML report: %s\n", opts.htmlPath)
@@ -194,18 +213,13 @@ func writeRunReports(opts runOptions, result player.ExecutionResult) error {
 
 func recordRunStatus(opts runOptions, result player.ExecutionResult) {
 	if root := paths.InferProjectRoot(opts.targets); root != "" {
+		engine := resolveRunEngine("", opts.engine)
+		if len(opts.targets) > 0 {
+			engine = resolveRunEngine(opts.targets[0], opts.engine)
+		}
 		if store, storeErr := runstatus.Open(root); storeErr == nil {
 			for _, scenarioResult := range result.ScenarioResults {
-				entry := runstatus.Entry{
-					Path:    scenarioResult.FeaturePath + "::" + scenarioResult.Scenario,
-					Success: scenarioResult.Status == "passed",
-					Message: scenarioResult.Message,
-					Runner:  opts.engine,
-				}
-				if scenarioResult.FailedStep != nil {
-					entry.FailedStep = scenarioResult.FailedStep
-				}
-				_ = store.Record(entry)
+				_ = store.Record(player.RunstatusEntry(scenarioResult, engine))
 			}
 		}
 	}
@@ -213,7 +227,7 @@ func recordRunStatus(opts runOptions, result player.ExecutionResult) {
 
 func parseRunOptions(args []string) (runOptions, error) {
 	if len(args) == 0 {
-		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--html <file>] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>] [--nav-wait-until load|domcontentloaded|networkidle|commit]")
+		return runOptions{}, fmt.Errorf("usage: scenaria run <path> [more paths...] [--dry-run] [--summary-json <file>] [--junit <file>] [--html <file>] [--html-light] [--allure <dir>] [--trace <dir>] [--video <dir>] [--engine stub|playwright] [--browser chromium|firefox|webkit] [--headed] [--base-url <url>] [--install-playwright] [--tag <tag>] [--scenario <name>] [--var NAME=VALUE] [--slow-mo <ms>] [--nav-wait-until load|domcontentloaded|networkidle|commit]")
 	}
 	opts := runOptions{
 		engine:    "",
@@ -255,6 +269,10 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.junitPath = args[i]
+		case "--html-light":
+			opts.htmlLight = true
+		case "--html-full":
+			opts.htmlFull = true
 		case "--html":
 			if i+1 >= len(args) {
 				return runOptions{}, fmt.Errorf("--html requires a file path")
@@ -395,6 +413,12 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 		}
 	}
+	if opts.htmlPath != "" && !opts.htmlFull {
+		opts.htmlLight = true
+	}
+	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
+		opts.navWaitUntil = settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
+	}
 	return opts, nil
 }
 
@@ -430,9 +454,9 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 	case "playwright":
 		appCfg, _ := settings.LoadDefaultAppSettings()
 		httpCreds := player.ResolveRunHTTPCredentials(opts.baseURL, plan, appCfg)
-		navWait := opts.navWaitUntil
-		if navWait == "" && appCfg != nil {
-			navWait = appCfg.NavWaitUntil
+		navWait := settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
+		if navWait == "" {
+			navWait = opts.navWaitUntil
 		}
 		if _, err := player.ParseNavWaitUntil(navWait); err != nil {
 			return nil, err
@@ -450,6 +474,7 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 				MaxLoopIterations: opts.maxLoopIterations,
 				NavWaitUntil:      navWait,
 				CloseAfterRun:     true,
+				StepScreenshots:   opts.htmlPath != "" && !opts.htmlLight,
 			}),
 			ParallelWorkers: opts.workers,
 		}, nil

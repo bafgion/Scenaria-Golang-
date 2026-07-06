@@ -117,13 +117,21 @@ func runLiveBrowserSession(
 				opts.Callbacks.OnBrowserLost()
 			}
 			return context.Canceled
-		default:
+		case <-time.After(50 * time.Millisecond):
 		}
 		if !session.BrowserAlive() {
 			if opts.Callbacks.OnBrowserLost != nil {
 				opts.Callbacks.OnBrowserLost()
 			}
 			return context.Canceled
+		}
+		if session.TestRunHeld() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
 		}
 		syncBrowserToolbar(page, session, opts.BrowseOnly)
 		if action := takeToolbarAction(page); action != "" {

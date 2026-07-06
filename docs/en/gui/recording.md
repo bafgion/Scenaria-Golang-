@@ -4,6 +4,8 @@ Record browser actions into `.feature` steps using Playwright live capture.
 
 ## Start recording (GUI)
 
+![Record dialog](../../images/gui-record-dialog-en.png)
+
 1. Open or create a `.feature` file (target for new steps)
 2. **Record → Start recording…** (or toolbar)
 3. Enter start URL, output options, idle timeout

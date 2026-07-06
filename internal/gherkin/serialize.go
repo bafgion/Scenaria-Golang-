@@ -14,16 +14,24 @@ func SerializeFeature(feature *Feature) (string, error) {
 		return "", fmt.Errorf("feature title is empty")
 	}
 
+	lang := feature.Language
+	if lang == "" {
+		lang = LangRU
+	}
+
 	var b strings.Builder
+	b.WriteString(languageTagLine(lang))
 
 	writeTags(&b, feature.Tags)
-	b.WriteString("Функционал: ")
+	b.WriteString(serializeFeatureHeader(lang))
+	b.WriteString(": ")
 	b.WriteString(feature.Title)
 	b.WriteString("\n")
 
 	if len(feature.Background) > 0 {
 		b.WriteString("\n")
-		b.WriteString("Контекст:\n")
+		b.WriteString(serializeBackgroundHeader(lang))
+		b.WriteString(":\n")
 		for _, step := range feature.Background {
 			writeStep(&b, step)
 		}
@@ -38,11 +46,8 @@ func SerializeFeature(feature *Feature) (string, error) {
 
 		writeTags(&b, scenario.Tags)
 
-		if scenario.IsOutline {
-			b.WriteString("Структура сценария: ")
-		} else {
-			b.WriteString("Сценарий: ")
-		}
+		b.WriteString(serializeScenarioHeader(lang, scenario.IsOutline))
+		b.WriteString(": ")
 		b.WriteString(scenario.Title)
 		b.WriteString("\n")
 
@@ -53,7 +58,8 @@ func SerializeFeature(feature *Feature) (string, error) {
 		if scenario.IsOutline {
 			for _, example := range scenario.Examples {
 				b.WriteString("\n")
-				b.WriteString("Примеры:\n")
+				b.WriteString(serializeExamplesHeader(lang))
+				b.WriteString(":\n")
 				for _, row := range example.Rows {
 					writeTableRow(&b, row, "  ")
 				}

@@ -65,7 +65,7 @@ func parseStepsAtLevel(flat []Step, start int, level int) ([]Step, int, error) {
 			return nil, i, fmt.Errorf("line %d: unexpected step indent", step.Line)
 		}
 
-		header, err := detectBlockHeader(step)
+		header, err := detectBlockHeader(step, LangRU)
 		if err != nil {
 			return nil, i, err
 		}

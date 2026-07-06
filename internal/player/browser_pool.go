@@ -3,6 +3,8 @@ package player
 import (
 	"context"
 	"fmt"
+
+	"github.com/bafgion/scenaria-golang/internal/logx"
 )
 
 type browserPool struct {
@@ -42,9 +44,7 @@ func newBrowserPool(ctx context.Context, options PlaywrightExecutorOptions, size
 		}
 		stopWatch := session.watchContext(ctx)
 		pool.stops = append(pool.stops, func() {
-			stopWatch()
-			session.close()
-			stopPW()
+			stopBrowserWorker(stopWatch, session, stopPW)
 		})
 		pool.slots <- &browserPoolSlot{session: session}
 	}
@@ -71,7 +71,7 @@ func (p *browserPool) release(slot *browserPoolSlot) {
 		return
 	}
 	if err := slot.session.resetForScenario(); err != nil {
-		return
+		logx.Debug("pool reset failed", "error", err)
 	}
 	p.slots <- slot
 }

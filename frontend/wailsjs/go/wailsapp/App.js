@@ -74,8 +74,8 @@ export function CloseBrowser() {
   return window['go']['wailsapp']['App']['CloseBrowser']();
 }
 
-export function CompletionsForLine(arg1, arg2) {
-  return window['go']['wailsapp']['App']['CompletionsForLine'](arg1, arg2);
+export function CompletionsForLine(arg1, arg2, arg3) {
+  return window['go']['wailsapp']['App']['CompletionsForLine'](arg1, arg2, arg3);
 }
 
 export function DeleteFeature(arg1) {

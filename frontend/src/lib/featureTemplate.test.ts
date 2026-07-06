@@ -3,7 +3,7 @@ import { setLocale } from './i18n'
 import { buildFeatureTemplate } from './featureTemplate'
 
 describe('buildFeatureTemplate', () => {
-  it('includes start URL and scenario name for Russian locale', () => {
+  it('always uses Russian Gherkin with # language: ru', () => {
     setLocale('ru')
     const text = buildFeatureTemplate({
       title: 'UI',
@@ -12,17 +12,21 @@ describe('buildFeatureTemplate', () => {
     })
     expect(text).toContain('https://store.test')
     expect(text).toContain('Сценарий: Smoke')
+    expect(text).toContain('Функционал: UI')
     expect(text).toContain('# language: ru')
+    expect(text).not.toContain('# language: en')
   })
 
-  it('uses English Gherkin keywords for English locale', () => {
+  it('ignores English UI locale for new feature scaffold', () => {
     setLocale('en')
     const text = buildFeatureTemplate({
       title: 'UI',
       scenario: 'Smoke',
       startUrl: 'https://store.test',
     })
-    expect(text).toContain('Scenario: Smoke')
-    expect(text).toContain('# language: en')
+    expect(text).toContain('Сценарий: Smoke')
+    expect(text).toContain('# language: ru')
+    expect(text).not.toContain('Scenario:')
+    expect(text).not.toContain('# language: en')
   })
 })

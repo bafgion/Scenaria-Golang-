@@ -9,9 +9,11 @@ import (
 )
 
 type RunCase struct {
-	FeaturePath string
-	Name        string
-	Steps       []gherkin.Step
+	FeaturePath  string
+	Name         string
+	Tags         []string
+	ExampleIndex int
+	Steps        []gherkin.Step
 	TestClient  *settings.TestClient
 	Variables   map[string]string
 	ProjectRoot string
@@ -59,9 +61,11 @@ func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables
 				continue
 			}
 			plan.Cases = append(plan.Cases, RunCase{
-				FeaturePath: input.Path,
-				Name:        runnable.Title,
-				Steps:       runnable.Steps,
+				FeaturePath:  input.Path,
+				Name:         runnable.Title,
+				Tags:         runnable.Tags,
+				ExampleIndex: runnable.ExampleIndex,
+				Steps:        runnable.Steps,
 				TestClient:  testClient,
 				Variables:   variables,
 				ProjectRoot: projectRoot,

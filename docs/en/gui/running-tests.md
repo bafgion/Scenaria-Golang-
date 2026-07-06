@@ -11,6 +11,8 @@
 
 ## Run dialog
 
+![Run scenario dialog](../../images/gui-run-dialog-en.png)
+
 First run shows **Run scenario** dialog with options:
 
 - Scenario name or full file

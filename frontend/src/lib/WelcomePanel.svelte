@@ -197,17 +197,20 @@
 
   .welcome-card {
     width: min(520px, 100%);
-    padding: 32px;
-    border: 1px solid var(--color-border);
+    min-width: 280px;
+    padding: 28px 32px;
+    border: 1px solid var(--color-divider);
     border-radius: 8px;
-    background: var(--color-panel);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    background: #252526;
+    box-sizing: border-box;
   }
 
   h1 {
-    margin: 0 0 20px;
-    font-size: 22px;
-    font-weight: 600;
+    margin: 0 0 16px;
+    font-size: 24px;
+    font-weight: 300;
+    letter-spacing: 0.01em;
+    color: var(--color-text);
     text-align: center;
   }
 
@@ -262,7 +265,8 @@
   }
 
   .checklist-dismiss {
-    margin: 0 0 16px;
+    display: block;
+    margin: 6px 0 14px;
     padding: 0;
     background: none;
     border: none;
@@ -274,8 +278,9 @@
 
   .quick-start {
     display: flex;
+    align-items: stretch;
     gap: 8px;
-    margin-bottom: 20px;
+    margin: 6px 0 14px;
   }
 
   .quick-start input {
@@ -283,31 +288,61 @@
     min-width: 0;
   }
 
+  .quick-start button.primary {
+    flex-shrink: 0;
+    padding: 6px 14px;
+    border: 1px solid var(--color-primary);
+    border-radius: 4px;
+    background: var(--color-primary);
+    color: var(--color-on-accent);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .quick-start button.primary:hover {
+    filter: brightness(1.08);
+  }
+
   .section-heading,
   .recent-heading {
-    margin: 16px 0 8px;
-    font-size: 12px;
+    margin: 12px 0 6px;
+    font-size: 13px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    color: var(--color-text);
+  }
+
+  .recent-heading {
     color: var(--color-muted);
   }
 
   .section-heading {
-    margin-top: 0;
+    margin-top: 4px;
   }
 
   .links {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    margin-top: 2px;
   }
 
   .links button {
-    justify-content: flex-start;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     text-align: left;
-    padding: 6px 8px;
+    padding: 4px 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-primary);
     font-size: 13px;
+    cursor: pointer;
+  }
+
+  .links button:hover {
+    text-decoration: underline;
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .muted {

@@ -65,7 +65,7 @@ func ctxAwareEmailPrompt(ctx context.Context, prompt EmailCodePrompter) EmailCod
 		select {
 		case <-ctx.Done():
 			cancelPendingOTP()
-			go func() { _ = <-ch }()
+			drainChan(ch)
 			return "", ctx.Err()
 		case r := <-ch:
 			if ctx.Err() != nil {

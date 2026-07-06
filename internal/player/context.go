@@ -38,7 +38,9 @@ type RunContext struct {
 	lastDownload    string
 	downloadDir     string
 	completedSteps  []gherkin.Step
+	stepRecords     []StepRecord
 	failedLeafStep  int
+	stepScreenshots bool
 	PromptEmailCode func(email string) (string, error)
 }
 
@@ -62,6 +64,13 @@ func NewRunContext(variables map[string]string, seed int64, projectRoot string, 
 		opt(ctx)
 	}
 	return ctx
+}
+
+// WithStepScreenshots captures a viewport screenshot after each passed leaf step.
+func WithStepScreenshots(enabled bool) RunContextOption {
+	return func(c *RunContext) {
+		c.stepScreenshots = enabled
+	}
 }
 
 func (c *RunContext) SetPage(page playwright.Page) {

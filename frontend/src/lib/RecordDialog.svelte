@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createTranslator, locale } from './i18n'
+  import { buildGherkinPreview, defaultOpenStepTemplate } from './featureTemplate'
   import StepsInsertDialog from './StepsInsertDialog.svelte'
 
   export let mode: 'live' | 'baseline' = 'live'
@@ -46,7 +47,7 @@
   $: if (mode === 'baseline' && url !== baselineInitUrl) {
     baselineInitUrl = url
     const start = url.trim() || 'https://example.com'
-    steps = [tr('dialogs.record.openStepTemplate', { url: start })]
+    steps = [defaultOpenStepTemplate(start)]
   }
 
   function addStep() {
@@ -79,18 +80,7 @@
     })
   }
 
-  $: previewText = buildPreview(featureName, scenarioName, steps)
-
-  function buildPreview(feature: string, scenario: string, stepList: string[]): string {
-    const title = feature.trim() || tr('dialogs.record.featureDefault')
-    const scen = scenario.trim() || tr('dialogs.record.baselineScenarioDefault')
-    const featureKw = $locale === 'en' ? 'Feature' : 'Функционал'
-    const scenarioKw = $locale === 'en' ? 'Scenario' : 'Сценарий'
-    const lines = stepList
-      .map((s, i) => `    ${i === 0 ? tr('dialogs.record.gherkinGiven') : tr('dialogs.record.gherkinAnd')} ${s.trim()}`)
-      .join('\n')
-    return `# language: ${$locale}\n${featureKw}: ${title}\n  ${scenarioKw}: ${scen}\n${lines || `    ${tr('dialogs.record.gherkinFallbackStep')}`}`
-  }
+  $: previewText = buildGherkinPreview(featureName, scenarioName, steps)
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape' && !showStepPicker && !childModalOpen) {

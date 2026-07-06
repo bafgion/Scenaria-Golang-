@@ -1,8 +1,20 @@
-# Gherkin (русский DSL)
+# Gherkin (русский и английский DSL)
 
-Сценарии Scenaria пишутся на **русском Gherkin**. IDE и runner ожидают этот синтаксис.
+Сценарии Scenaria пишутся на **русском или английском Gherkin**. Язык задаётся в первой строке файла:
 
-## Структура
+```gherkin
+# language: ru
+```
+
+или
+
+```gherkin
+# language: en
+```
+
+Без тега используется **русский** (`ru`). От языка зависят ключевые слова, автодополнение в редакторе и разбор шагов.
+
+## Структура (русский)
 
 ```gherkin
 @smoke
@@ -37,7 +49,41 @@
 | `Примеры:` | Таблица данных |
 | `Если вижу`, `Повторяю`, `Пока`, `Для каждого` | Управление потоком |
 
-## Теги
+## Структура (английский)
+
+```gherkin
+# language: en
+@smoke
+Feature: Login
+
+  Background:
+    Given I connect TestClient "User"
+
+  Scenario: Successful sign-in
+    Given I open "https://app.example/login"
+    When I type "user@example.com" into "#email"
+    And I click "Sign in"
+    Then I see "h1"
+
+  Scenario Outline: Parameterized
+    Given I open "<url>"
+    Then I see "<selector>"
+
+    Examples:
+      | url                 | selector |
+      | https://example.com | h1       |
+```
+
+| Keyword | Role |
+|---------|------|
+| `Feature:` | Feature title |
+| `Background:` | Steps before each scenario |
+| `Scenario:` / `Scenario Outline:` | Test case / outline |
+| `Given`, `When`, `Then`, `And`, `But` | Steps |
+| `Examples:` | Data table |
+| `If I see`, `Repeat`, `While`, `For each` | Control flow |
+
+## Tags
 
 `@smoke` и др. — фильтр запуска:
 
@@ -63,7 +109,7 @@ scenaria run ./features --tag smoke
 
 ## Каталог шагов
 
-**F1** в IDE. Шаги на русском, действия Playwright.
+**F1** в IDE. Формулировки шагов соответствуют `# language:` файла (русский или английский).
 
 ## См. также
 

@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// MaxPluginDownloadBytes caps remote plugin zip downloads (100 MiB).
+const MaxPluginDownloadBytes = 100 << 20
+
 func FetchAndInstall(projectRoot, name, source string) error {
 	source = strings.TrimSpace(source)
 	if source == "" {
@@ -73,9 +76,15 @@ func downloadToTemp(url string) (string, error) {
 		return "", err
 	}
 	defer tmp.Close()
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	limited := io.LimitReader(resp.Body, MaxPluginDownloadBytes+1)
+	written, err := io.Copy(tmp, limited)
+	if err != nil {
 		os.Remove(tmp.Name())
 		return "", err
+	}
+	if written > MaxPluginDownloadBytes {
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("download plugin: exceeds %d byte limit", MaxPluginDownloadBytes)
 	}
 	return tmp.Name(), nil
 }

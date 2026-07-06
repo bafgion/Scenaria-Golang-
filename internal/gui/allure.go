@@ -108,6 +108,17 @@ func (s *Service) ServeAllure(dir string) RunResult {
 	return RunResult{Output: fmt.Sprintf("Allure serve: %s\n", resultsDir)}
 }
 
+// StopAllureServe terminates a background `allure serve` started from the GUI.
+func StopAllureServe() {
+	allureServeMu.Lock()
+	defer allureServeMu.Unlock()
+	if allureServeCmd != nil && allureServeCmd.Process != nil {
+		_ = allureServeCmd.Process.Kill()
+	}
+	allureServeCmd = nil
+	allureServeDir = ""
+}
+
 func (s *Service) OpenHTMLReport(path string) RunResult {
 	path = strings.TrimSpace(path)
 	if path == "" {

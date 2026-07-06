@@ -2,6 +2,8 @@
 
 **File → Settings…** (or command palette). Tabs:
 
+![Settings dialog](../../images/gui-settings-en.png)
+
 ## Interface (UI)
 
 - Theme: system / light / dark

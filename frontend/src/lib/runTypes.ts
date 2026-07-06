@@ -14,6 +14,8 @@ export type RunForm = {
   junit: boolean
   summaryJson: boolean
   htmlTimestamp: boolean
+  htmlLightMode: boolean
+  reuseLiveBrowser: boolean
   continueOnFail: boolean
   workers: number
   slowMo: number
@@ -40,6 +42,8 @@ export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
     junit: false,
     summaryJson: false,
     htmlTimestamp: false,
+    htmlLightMode: true,
+    reuseLiveBrowser: false,
     continueOnFail: false,
     workers: 1,
     slowMo: 0,

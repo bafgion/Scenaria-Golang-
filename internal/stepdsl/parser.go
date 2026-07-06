@@ -220,6 +220,11 @@ func Parse(step gherkin.Step) (Action, error) {
 			return pattern.mapFn(groups), nil
 		}
 	}
+	for _, pattern := range englishStepPatterns {
+		if groups := pattern.re.FindStringSubmatch(body); groups != nil {
+			return pattern.mapFn(groups), nil
+		}
+	}
 	return Action{}, fmt.Errorf("line %d: unsupported step text %q", step.Line, step.Text)
 }
 

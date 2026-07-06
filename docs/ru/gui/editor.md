@@ -2,6 +2,8 @@
 
 В Scenaria используется **Monaco** с языком `scenaria-feature` для русского Gherkin.
 
+![Редактор Gherkin](../../images/gui-main-ru.png)
+
 ## Вкладки и файлы
 
 - Каждый `.feature` — отдельная вкладка; несохранённые изменения отмечены точкой

@@ -12,7 +12,7 @@ export function ApplyUpdate():Promise<void>;
 
 export function ArtifactExists(arg1:string):Promise<boolean>;
 
-export function BeginRecordingCapture():Promise<void>;
+export function BeginRecordingCapture():Promise<boolean>;
 
 export function BeginSplashWindowChrome():Promise<void>;
 
@@ -38,7 +38,7 @@ export function ClearFeatureDraft(arg1:string):Promise<void>;
 
 export function CloseBrowser():Promise<void>;
 
-export function CompletionsForLine(arg1:string,arg2:number):Promise<gui.StepCompletionsDTO>;
+export function CompletionsForLine(arg1:string,arg2:number,arg3:string):Promise<gui.StepCompletionsDTO>;
 
 export function DeleteFeature(arg1:string):Promise<void>;
 

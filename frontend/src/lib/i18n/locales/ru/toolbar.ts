@@ -27,6 +27,6 @@ export const toolbar = {
   continueRecordTitle: 'Продолжить запись в конец сценария',
   pauseTitle: 'Приостановить запись',
   urlFromBrowser: 'URL из вкладки браузера',
-  headless: 'Headless',
+  headless: 'Без окна браузера',
   stepsHelp: 'Справка',
 } as const

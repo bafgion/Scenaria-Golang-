@@ -31,12 +31,35 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	player.SetEmailCodePrompt(a.promptEmailCode)
 	player.SetOTPCancelHook(a.CancelOTP)
+	_ = a.svc.EnsureReportBridge(a.emitReportGoto, a.emitReportRerun, a.emitReportTrace)
+}
+
+func (a *App) emitReportGoto(req gui.ReportGotoRequest) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "report-goto", req)
+}
+
+func (a *App) emitReportRerun(req gui.ReportRerunRequest) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "report-rerun", req)
+}
+
+func (a *App) emitReportTrace(req gui.ReportTraceRequest) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "report-trace", req)
 }
 
 // Shutdown tears down in-flight runs and browser sessions when the app exits.
 func (a *App) Shutdown(ctx context.Context) {
-	a.svc.CancelRun()
-	a.svc.CancelRecording()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), gui.DefaultShutdownTimeout)
+	defer cancel()
+	a.svc.Shutdown(shutdownCtx)
 }
 
 func (a *App) promptEmailCode(email string) (string, error) {
@@ -198,8 +221,8 @@ func (a *App) DescribeEditorLine(line string) gui.StepCatalogEntry {
 	return entry
 }
 
-func (a *App) CompletionsForLine(line string, column int) gui.StepCompletionsDTO {
-	return a.svc.CompletionsForLine(line, column)
+func (a *App) CompletionsForLine(line string, column int, featureText string) gui.StepCompletionsDTO {
+	return a.svc.CompletionsForLine(line, column, featureText)
 }
 
 func (a *App) CheckUpdate() gui.RunResult {
@@ -333,20 +356,12 @@ func (a *App) ApplyScenarioHintFix(req gui.ScenarioHintFixRequest) gui.RefactorR
 	return gui.ApplyScenarioHintFix(req)
 }
 
-func (a *App) ResolveRunFromLine(text string, line int) gui.RunFromLineDTO {
-	result, err := gui.ResolveRunFromLine(text, line)
-	if err != nil {
-		return gui.RunFromLineDTO{StartStep: -1, EndStep: -1}
-	}
-	return result
+func (a *App) ResolveRunFromLine(text string, line int) (gui.RunFromLineDTO, error) {
+	return gui.ResolveRunFromLine(text, line)
 }
 
-func (a *App) ResolveRunToLine(text string, line int) gui.RunFromLineDTO {
-	result, err := gui.ResolveRunToLine(text, line)
-	if err != nil {
-		return gui.RunFromLineDTO{StartStep: -1, EndStep: -1}
-	}
-	return result
+func (a *App) ResolveRunToLine(text string, line int) (gui.RunFromLineDTO, error) {
+	return gui.ResolveRunToLine(text, line)
 }
 
 func (a *App) SaveFeatureDraft(featurePath, content string) error {
@@ -477,17 +492,17 @@ func (a *App) StartRecord(req gui.RecordRequest) {
 	}()
 }
 
-func (a *App) BeginRecordingCapture() error {
+func (a *App) BeginRecordingCapture() (bool, error) {
 	started, err := a.svc.BeginRecordingCapture()
 	if err != nil {
-		return err
+		return false, err
 	}
 	payload := map[string]any{"append": true}
 	if !started {
 		payload["sync"] = true
 	}
 	runtime.EventsEmit(a.ctx, "record-started", payload)
-	return nil
+	return started, nil
 }
 
 func (a *App) RecordBaseline(req gui.BaselineRecordRequest) gui.RunResult {

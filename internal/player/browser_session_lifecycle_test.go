@@ -6,7 +6,7 @@ func TestBrowserSessionCloseIsIdempotent(t *testing.T) {
 	session := &browserSession{videoEnabled: true}
 	session.close()
 	session.close()
-	if !session.closed {
+	if !session.isClosed() {
 		t.Fatal("expected session to be closed")
 	}
 }
@@ -14,7 +14,7 @@ func TestBrowserSessionCloseIsIdempotent(t *testing.T) {
 func TestExternalSessionCloseDetachesWithoutClosing(t *testing.T) {
 	session := &browserSession{external: true}
 	session.closeLocked(true)
-	if !session.closed {
+	if !session.isClosed() {
 		t.Fatal("expected external session to be marked closed")
 	}
 }

@@ -26,6 +26,7 @@ type LiveSession struct {
 	captureEver      atomic.Bool
 	recorderInjected atomic.Bool
 	recMu            sync.RWMutex
+	testRunHold      atomic.Int32
 	filterImportant bool
 	navOnly         bool
 	hoverRecord     bool
@@ -115,6 +116,20 @@ func (s *LiveSession) Pause()  { s.paused.Store(true) }
 func (s *LiveSession) Resume() { s.paused.Store(false) }
 func (s *LiveSession) IsPaused() bool {
 	return s.paused.Load()
+}
+
+// HoldForTestRun pauses recorder page polling while a Playwright scenario runs on the live browser.
+func (s *LiveSession) HoldForTestRun() func() {
+	s.testRunHold.Add(1)
+	return func() {
+		if s.testRunHold.Add(-1) < 0 {
+			s.testRunHold.Store(0)
+		}
+	}
+}
+
+func (s *LiveSession) TestRunHeld() bool {
+	return s.testRunHold.Load() > 0
 }
 
 func (s *LiveSession) CaptureEnabled() bool {
@@ -243,12 +258,15 @@ func (s *LiveSession) EachRecordedLine(fn func(index int, line string)) {
 		return
 	}
 	s.mu.Lock()
-	steps := s.steps
+	var lines []string
+	if s.steps != nil {
+		lines = RecordedStepsToLines(append([]RecordedStep(nil), (*s.steps)...))
+	}
 	s.mu.Unlock()
-	if steps == nil {
+	if len(lines) == 0 {
 		return
 	}
-	for i, line := range RecordedStepsToLines(*steps) {
+	for i, line := range lines {
 		fn(i, line)
 	}
 }

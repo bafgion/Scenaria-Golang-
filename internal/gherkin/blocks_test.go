@@ -4,13 +4,13 @@ import "testing"
 
 func TestDetectBlockHeaders(t *testing.T) {
 	ifStep := Step{Line: 1, Text: `Если вижу "#modal"`}
-	header, err := detectBlockHeader(ifStep)
+	header, err := detectBlockHeader(ifStep, LangRU)
 	if err != nil || header == nil || header.Kind != BlockIf {
 		t.Fatalf("unexpected if header: %+v err=%v", header, err)
 	}
 
 	repeatStep := Step{Line: 2, Text: "Повторяю 3 раза"}
-	header, err = detectBlockHeader(repeatStep)
+	header, err = detectBlockHeader(repeatStep, LangRU)
 	if err != nil || header == nil || header.Kind != BlockRepeat || header.Count != 3 {
 		t.Fatalf("unexpected repeat header: %+v err=%v", header, err)
 	}

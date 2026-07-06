@@ -10,23 +10,23 @@ import (
 var quoted = `((?:\\.|[^"])*)`
 
 var (
-	ifHeaderRe      = regexp.MustCompile(`(?i)^если\s+(.+)$`)
-	repeatHeaderRe  = regexp.MustCompile(`(?i)^повторяю\s+(\d+)\s+раз(?:а)?$`)
-	whileHeaderRe   = regexp.MustCompile(`(?i)^пока\s+(.+)$`)
-	forEachHeaderRe = regexp.MustCompile(`(?i)^для\s+каждого\s+"` + quoted + `"\s+как\s+"` + quoted + `"$`)
-	visibleCondRe   = regexp.MustCompile(`(?i)^вижу\s+"` + quoted + `"$`)
-	hiddenCondRe    = regexp.MustCompile(`(?i)^не\s+вижу\s+"` + quoted + `"$`)
-	urlContainsRe   = regexp.MustCompile(`(?i)^url\s+содержит\s+"` + quoted + `"$`)
-	pageTextRe      = regexp.MustCompile(`(?i)^текст\s+на\s+странице\s+"` + quoted + `"$`)
-	testClientRe    = regexp.MustCompile(`(?i)^я\s+подключаю\s+TestClient\s+"` + quoted + `"$`)
+	ifHeaderRe      = regexp.MustCompile(`(?i)^(?:если|if)\s+(.+)$`)
+	repeatHeaderRe  = regexp.MustCompile(`(?i)^(?:повторяю\s+(\d+)\s+раз(?:а)?|repeat\s+(\d+)\s+times?)$`)
+	whileHeaderRe   = regexp.MustCompile(`(?i)^(?:пока|while)\s+(.+)$`)
+	forEachHeaderRe = regexp.MustCompile(`(?i)^(?:для\s+каждого|for\s+each)\s+"` + quoted + `"\s+(?:как|as)\s+"` + quoted + `"$`)
+	visibleCondRe   = regexp.MustCompile(`(?i)^(?:вижу|i\s+see)\s+"` + quoted + `"$`)
+	hiddenCondRe    = regexp.MustCompile(`(?i)^(?:не\s+вижу|i\s+(?:do\s+not|don't)\s+see)\s+"` + quoted + `"$`)
+	urlContainsRe   = regexp.MustCompile(`(?i)^url\s+(?:содержит|contains)\s+"` + quoted + `"$`)
+	pageTextRe      = regexp.MustCompile(`(?i)^(?:текст\s+на\s+странице|page\s+(?:text\s+)?contains?)\s+"` + quoted + `"$`)
+	testClientRe    = regexp.MustCompile(`(?i)^(?:я\s+подключаю|i\s+connect)\s+TestClient\s+"` + quoted + `"$`)
 )
 
 type blockHeader struct {
-	Kind     string
+	Kind      string
 	Condition *Condition
-	Count    int
-	Selector string
-	Variable string
+	Count     int
+	Selector  string
+	Variable  string
 }
 
 func parseCondition(expr string) (*Condition, error) {
@@ -45,7 +45,7 @@ func parseCondition(expr string) (*Condition, error) {
 	}
 }
 
-func detectBlockHeader(step Step) (*blockHeader, error) {
+func detectBlockHeader(step Step, _ Language) (*blockHeader, error) {
 	body := strings.TrimSpace(step.Text)
 	if groups := ifHeaderRe.FindStringSubmatch(body); groups != nil {
 		cond, err := parseCondition(groups[1])
@@ -62,7 +62,11 @@ func detectBlockHeader(step Step) (*blockHeader, error) {
 		return &blockHeader{Kind: BlockWhile, Condition: cond}, nil
 	}
 	if groups := repeatHeaderRe.FindStringSubmatch(body); groups != nil {
-		count, _ := strconv.Atoi(groups[1])
+		countStr := groups[1]
+		if countStr == "" {
+			countStr = groups[2]
+		}
+		count, _ := strconv.Atoi(countStr)
 		if count < 1 {
 			count = 1
 		}

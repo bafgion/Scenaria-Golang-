@@ -42,7 +42,7 @@ test.describe('Сценарий: знакомство с примерами', ()
     await bootApp(page, '?e2e=examples')
     await openMenuItem(page, 'Проект', 'Открыть примеры сценариев')
     await expect(page.locator('.catalog-tree')).toBeVisible({ timeout: 10_000 })
-    await catalogFeature(page, 'smoke').click()
+    await catalogFeature(page, '^○ smoke$').click()
     await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'smoke' })).toBeVisible()
 
     await openMenuItem(page, 'Запись и тест', 'Проверить…')

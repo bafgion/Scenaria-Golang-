@@ -4,18 +4,9 @@ The Scenaria IDE is a single-window desktop app (Wails + WebView2) organized lik
 
 ## Main areas
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Menu bar (File, Project, Run, Record, View, Help, …)      │
-├──────────┬──────────────────────────────────┬───────────────┤
-│ Catalog  │  Editor tabs + Monaco            │ Preview (opt) │
-│ sidebar  │                                  │               │
-├──────────┴──────────────────────────────────┴───────────────┤
-│ Bottom panel: Journal | Results | Validate | Error          │
-├─────────────────────────────────────────────────────────────┤
-│ Status bar: message, browser/run indicator, progress        │
-└─────────────────────────────────────────────────────────────┘
-```
+![Scenaria main window](../../images/gui-main-en.png)
+
+*Menu bar, catalog sidebar, Monaco editor, bottom panel, and status bar.*
 
 | Area | Purpose |
 |------|---------|
@@ -38,6 +29,8 @@ The Scenaria IDE is a single-window desktop app (Wails + WebView2) organized lik
 ## Command palette
 
 **Ctrl+Shift+P** — searchable list of ~80 commands (run, save, export, settings, …).
+
+![Command palette](../../images/gui-command-palette-en.png)
 
 ## Browser overlay
 
