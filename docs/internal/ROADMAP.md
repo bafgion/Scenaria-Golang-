@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.27.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.28.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -232,6 +232,7 @@
 | **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13–14) — **master** |
 | **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
 | **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
+| **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
 
 ---
 
