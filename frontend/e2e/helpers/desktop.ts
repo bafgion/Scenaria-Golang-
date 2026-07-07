@@ -70,6 +70,37 @@ export async function resetRunDialogConfirmed(page: Page): Promise<void> {
   })
 }
 
+export async function ensureRussianLocale(p: Page): Promise<void> {
+  const projectMenu = p.locator('.menubar .menu-trigger').first()
+  await expect(projectMenu).toBeVisible({ timeout: 30_000 })
+  const label = ((await projectMenu.textContent()) ?? '').trim()
+  if (label.includes('Проект')) return
+
+  const needsReload = await p.evaluate(async () => {
+    const api = (
+      window as unknown as {
+        go?: {
+          wailsapp?: {
+            App?: {
+              LoadSettings: () => Promise<Record<string, unknown>>
+              SaveSettings: (s: Record<string, unknown>) => Promise<void>
+            }
+          }
+        }
+      }
+    ).go?.wailsapp?.App
+    if (!api?.LoadSettings || !api?.SaveSettings) return false
+    const settings = await api.LoadSettings()
+    settings.uiLocale = 'ru'
+    await api.SaveSettings(settings)
+    return true
+  })
+  if (!needsReload) return
+  await p.reload({ waitUntil: 'domcontentloaded' })
+  await p.waitForFunction(() => document.querySelector('.ide'), null, { timeout: 90_000 })
+  await expect(p.locator('.menubar .menu-trigger', { hasText: 'Проект' })).toBeVisible({ timeout: 30_000 })
+}
+
 export async function dismissBlockingDialogs(p: Page): Promise<void> {
   for (let i = 0; i < 4; i++) {
     const update = p.getByRole('dialog', { name: /обновлени|update/i })
@@ -104,6 +135,8 @@ export async function clickCatalogFeature(p: Page, index = 0): Promise<void> {
 }
 
 export async function waitForAppReady(p: Page): Promise<void> {
+  await dismissBlockingDialogs(p)
+  await ensureRussianLocale(p)
   await dismissBlockingDialogs(p)
   await dismissTourIfVisible(p)
   await expect(p.locator('.ide')).toBeVisible({ timeout: 90_000 })
