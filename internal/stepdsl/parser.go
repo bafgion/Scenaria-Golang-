@@ -239,6 +239,9 @@ func Parse(step gherkin.Step) (Action, error) {
 
 func ResolveURL(raw string, baseURL string) string {
 	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "data:") {
+		return NormalizeDataTextHTMLURL(trimmed)
+	}
 	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
 		return trimmed
 	}

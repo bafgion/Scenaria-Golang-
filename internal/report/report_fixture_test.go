@@ -39,6 +39,8 @@ func TestWriteReportE2EFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	fs := 1
+	// Minimal PNG header — enough for fixture screenshot file + lightbox E2E.
+	fixturePNG := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 	plan := player.ExecutionPlan{Cases: []player.RunCase{{
 		FeaturePath: "login.feature",
 		Name:        "Failed login",
@@ -56,15 +58,16 @@ func TestWriteReportE2EFixture(t *testing.T) {
 			StepRecords: []player.StepRecord{
 				{Index: 0, Line: 3, Keyword: "Когда", Text: `открыт "https://example.com"`, Status: "passed", DurationMS: 200},
 				{Index: 1, Line: 4, Keyword: "Когда", Text: `кликаю "#missing"`, Selector: "#missing", Status: "failed", DurationMS: 100, Error: "element not found",
-					PageContext: "Example\nhttps://example.com",
-					DOMSnapshot: "<html><body><button id=\"missing\">Login</button></body></html>",
+					PageContext:  "Example\nhttps://example.com",
+					DOMSnapshot:  "<html><body><button id=\"missing\">Login</button></body></html>",
 					A11ySnapshot: "button \"Login\"",
+					ScreenshotPNG: fixturePNG,
 				},
 			},
 			TraceZIP: fixtureTraceZIP(),
 		}},
 	}
-	if err := WriteHTML(out, result, HTMLOptions{
+	if _, _, err := WriteHTMLModePair(out, result, HTMLOptions{
 		Plan: plan, Locale: "ru", ProjectRoot: projectRoot,
 		BridgeURL: "http://127.0.0.1:19999",
 		PreviousSummary: &RunSummaryDetailed{

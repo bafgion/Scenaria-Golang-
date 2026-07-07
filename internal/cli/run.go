@@ -192,13 +192,14 @@ func writeRunReports(opts runOptions, plan player.ExecutionPlan, result player.E
 	}
 	if opts.htmlPath != "" {
 		root := paths.InferProjectRoot(opts.targets)
-		if writeErr := report.WriteHTML(opts.htmlPath, result, report.HTMLOptions{
+		htmlOpts := report.HTMLOptions{
 			Plan:            plan,
 			ProjectRoot:     root,
 			LightMode:       opts.htmlLight,
 			ReportDir:       filepath.Dir(opts.htmlPath),
 			PreviousSummary: prevSummary,
-		}); writeErr != nil {
+		}
+		if _, _, writeErr := report.WriteHTMLModePair(opts.htmlPath, result, htmlOpts); writeErr != nil {
 			return writeErr
 		}
 		fmt.Printf("Wrote HTML report: %s\n", opts.htmlPath)

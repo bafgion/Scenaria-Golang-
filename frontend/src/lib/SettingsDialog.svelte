@@ -27,6 +27,8 @@
   export let selectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   export let selectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
   export let navWaitUntil = 'domcontentloaded'
+  export let htmlReportOpenMode: 'full' | 'light' = 'full'
+  export let projectOpen = false
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
 
   export let onSave: () => void
@@ -182,6 +184,7 @@
     else if (/селектор|selector|testid|css|стратег|strateg/.test(compact)) tab = 'selectors'
     else if (/плагин|plugin|vanessa|runner/.test(compact)) tab = 'plugins'
     else if (/редактор|editor|monaco|шрифт|font|миникарт|minimap|перенос|wrap|tab|fold|sticky|подсказк|hint|сценари|scenario/.test(compact)) tab = 'editor'
+    else if (/отч[её]т|report|html/.test(compact)) tab = 'record'
     else if (/интерфейс|interface|ui|панел|panel|toolbar|шаг|step|обновлен|update/.test(compact)) tab = 'ui'
   }
 
@@ -367,6 +370,19 @@
               <p class="setting-run-warning">{extremeRunWarning}</p>
             {/if}
           </section>
+
+          {#if projectOpen}
+            <section class="setting-section">
+              <h4 class="setting-section-title">{tr('settings.sections.reports.title')}</h4>
+              <p class="setting-section-desc">{tr('settings.sections.reports.desc')}</p>
+              <SettingCard title={tr('settings.cards.htmlReportOpen.title')} description={tr('settings.cards.htmlReportOpen.description')}>
+                <select bind:value={htmlReportOpenMode}>
+                  <option value="full">{tr('settings.cards.htmlReportOpen.full')}</option>
+                  <option value="light">{tr('settings.cards.htmlReportOpen.light')}</option>
+                </select>
+              </SettingCard>
+            </section>
+          {/if}
         {:else if tab === 'selectors'}
           <section class="setting-section">
             <h4 class="setting-section-title">{tr('settings.sections.selectors.title')}</h4>

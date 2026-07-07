@@ -20,6 +20,10 @@
     </div>
     <div id="ci-compare" class="ci-compare"></div>
     <div class="toolbar">
+      <div class="mode-switch" role="group" aria-label="Report mode">
+        <button type="button" id="mode-full" class="mode-option" data-mode="full">Full</button>
+        <button type="button" id="mode-light" class="mode-option" data-mode="light">Light</button>
+      </div>
       <button type="button" id="toggle-sidebar">Scenarios</button>
       <button type="button" id="export-failed">Export failed .feature</button>
     </div>
@@ -28,30 +32,41 @@
     <aside class="panel sidebar" id="sidebar">
       <div class="panel-head">Scenarios</div>
       <div class="filters">
-        <input id="filter-search" type="search" placeholder="Поиск…">
-        <label><input type="checkbox" id="filter-failed"> Только упавшие</label>
-        <input id="filter-tag" type="text" placeholder="Фильтр по тегу (@smoke)">
-        <input id="filter-duration" type="number" min="0" step="100" placeholder="Мин. длительность (ms)">
+        <input id="filter-search" type="search" placeholder="Search..." aria-label="Search scenarios">
+        <label class="check-filter"><input type="checkbox" id="filter-failed" aria-label="Failed only"> <span>Failed only</span></label>
+        <input id="filter-tag" type="text" placeholder="Filter by tag (@smoke)" aria-label="Filter by tag">
+        <input id="filter-duration" type="number" min="0" step="100" placeholder="Min duration (ms)" aria-label="Minimum duration in milliseconds">
       </div>
       <div class="scenario-list" id="scenario-list"></div>
     </aside>
     <main class="panel">
       <div class="panel-head panel-head-tabs">
         <span id="timeline-title">Timeline</span>
-        <div class="tabs">
-          <button type="button" id="tab-timeline" class="tab active" data-tab="timeline">Timeline</button>
-          <button type="button" id="tab-actionlog" class="tab" data-tab="actionlog">Action log</button>
-          <button type="button" id="tab-trace" class="tab" data-tab="trace" hidden>Trace</button>
+        <div class="tabs" role="tablist" aria-label="Report views">
+          <button type="button" id="tab-timeline" class="tab active" data-tab="timeline" role="tab" aria-controls="timeline">Timeline</button>
+          <button type="button" id="tab-actionlog" class="tab" data-tab="actionlog" role="tab" aria-controls="actionlog">Action log</button>
+          <button type="button" id="tab-trace" class="tab" data-tab="trace" role="tab" aria-controls="traceview" hidden>Trace</button>
         </div>
       </div>
-      <div class="timeline-wrap" id="timeline"><div class="empty">…</div></div>
-      <div class="timeline-wrap" id="actionlog" hidden></div>
-      <div class="timeline-wrap" id="traceview" hidden></div>
+      <div class="timeline-wrap" id="timeline" role="tabpanel" aria-labelledby="tab-timeline"><div class="empty">...</div></div>
+      <div class="timeline-wrap" id="actionlog" role="tabpanel" aria-labelledby="tab-actionlog" hidden></div>
+      <div class="timeline-wrap" id="traceview" role="tabpanel" aria-labelledby="tab-trace" hidden></div>
     </main>
     <aside class="panel inspector-panel open" id="inspector-panel">
-      <div class="panel-head">Inspector</div>
-      <div class="inspector" id="inspector"><div class="empty">Выберите шаг</div></div>
+      <div class="panel-head panel-head-row">
+        <span id="inspector-title">Inspector</span>
+        <button type="button" id="close-inspector" class="icon-btn inspector-close" aria-label="Close inspector">×</button>
+      </div>
+      <div class="inspector" id="inspector"><div class="empty">Select a step</div></div>
     </aside>
+  </div>
+  <div id="screenshot-lightbox" class="screenshot-lightbox" hidden aria-hidden="true">
+    <button type="button" class="screenshot-lightbox-backdrop" aria-label="Close screenshot preview"></button>
+    <div class="screenshot-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="screenshot-lightbox-caption">
+      <button type="button" class="screenshot-lightbox-close icon-btn" aria-label="Close">×</button>
+      <img id="screenshot-lightbox-img" class="screenshot-lightbox-img" src="" alt="">
+      <p id="screenshot-lightbox-caption" class="screenshot-lightbox-caption"></p>
+    </div>
   </div>
   <script id="scenaria-report-data" type="application/json">__JSON__</script>
   <script>__JS__</script>

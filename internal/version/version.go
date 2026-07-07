@@ -4,7 +4,7 @@ import "github.com/bafgion/scenaria-golang/internal/brand"
 
 const (
 	AppName = brand.Name
-	Version = "0.28.1"
+	Version = "0.29.0"
 	Module  = "github.com/bafgion/scenaria-golang"
 )
 

@@ -94,6 +94,8 @@ export function ListVanessaRunDirs(arg1:number):Promise<Array<string>>;
 
 export function LoadFeatureDraft(arg1:string):Promise<string>;
 
+export function LoadProjectConfig():Promise<gui.ProjectConfigDTO>;
+
 export function LoadRecents():Promise<gui.RecentsDTO>;
 
 export function LoadSettings():Promise<gui.AppSettingsDTO>;
@@ -185,6 +187,8 @@ export function SaveFeature(arg1:string,arg2:string):Promise<void>;
 export function SaveFeatureDraft(arg1:string,arg2:string):Promise<void>;
 
 export function SaveHTTPAuth(arg1:gui.HTTPAuthRequest):Promise<void>;
+
+export function SaveProjectConfig(arg1:gui.ProjectConfigDTO):Promise<void>;
 
 export function SaveSettings(arg1:gui.AppSettingsDTO):Promise<void>;
 

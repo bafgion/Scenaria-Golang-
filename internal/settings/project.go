@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ProjectConfig struct {
-	DefaultRunner string `json:"default_runner"`
-	FeaturesRoot  string `json:"features_root"`
-	BaseURL       string `json:"base_url"`
-	VAParamsBase  string `json:"va_params_base"`
-	NavWaitUntil  string `json:"nav_wait_until,omitempty"`
+	DefaultRunner      string `json:"default_runner"`
+	FeaturesRoot       string `json:"features_root"`
+	BaseURL            string `json:"base_url"`
+	VAParamsBase       string `json:"va_params_base"`
+	NavWaitUntil       string `json:"nav_wait_until,omitempty"`
+	HTMLReportOpenMode string `json:"html_report_open_mode,omitempty"` // "full" or "light"
 }
 
 func DefaultProjectConfig() ProjectConfig {
@@ -52,7 +54,16 @@ func LoadProjectConfig(projectRoot string) (ProjectConfig, error) {
 	if cfg.VAParamsBase == "" {
 		cfg.VAParamsBase = ".scenaria/va-params.base.json"
 	}
+	cfg.HTMLReportOpenMode = NormalizeHTMLReportOpenMode(cfg.HTMLReportOpenMode)
 	return cfg, nil
+}
+
+// NormalizeHTMLReportOpenMode returns "full" or "light".
+func NormalizeHTMLReportOpenMode(mode string) string {
+	if strings.EqualFold(strings.TrimSpace(mode), "light") {
+		return "light"
+	}
+	return "full"
 }
 
 func SaveProjectConfig(projectRoot string, cfg ProjectConfig) error {

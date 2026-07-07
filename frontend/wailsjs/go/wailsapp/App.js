@@ -186,6 +186,10 @@ export function LoadFeatureDraft(arg1) {
   return window['go']['wailsapp']['App']['LoadFeatureDraft'](arg1);
 }
 
+export function LoadProjectConfig() {
+  return window['go']['wailsapp']['App']['LoadProjectConfig']();
+}
+
 export function LoadRecents() {
   return window['go']['wailsapp']['App']['LoadRecents']();
 }
@@ -368,6 +372,10 @@ export function SaveFeatureDraft(arg1, arg2) {
 
 export function SaveHTTPAuth(arg1) {
   return window['go']['wailsapp']['App']['SaveHTTPAuth'](arg1);
+}
+
+export function SaveProjectConfig(arg1) {
+  return window['go']['wailsapp']['App']['SaveProjectConfig'](arg1);
 }
 
 export function SaveSettings(arg1) {

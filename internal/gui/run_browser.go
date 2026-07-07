@@ -311,7 +311,7 @@ func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan playe
 	}
 	if req.HTMLPath != "" {
 		bridgeURL, bridgeToken := s.ReportBridgeCredentials()
-		if err := report.WriteHTML(req.HTMLPath, result, report.HTMLOptions{
+		htmlOpts := report.HTMLOptions{
 			Plan:            plan,
 			ProjectRoot:     projectRoot,
 			LightMode:       req.HTMLLightMode,
@@ -320,7 +320,8 @@ func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan playe
 			Locale:          req.ReportLocale,
 			ReportDir:       filepath.Dir(req.HTMLPath),
 			PreviousSummary: prevSummary,
-		}); err != nil {
+		}
+		if _, _, err := report.WriteHTMLModePair(req.HTMLPath, result, htmlOpts); err != nil {
 			return err
 		}
 	}

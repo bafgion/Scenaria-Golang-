@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.28.1; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.29.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -235,7 +235,7 @@
 | **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
 | **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
 | **0.28.1** | OTP/first-run browser, runner hardening, Phase 18 audit, HTML report artifacts, `assert-enabled`/`disabled` — **released** |
-| **0.29.0** | Phase 19: checkout UI state, regex text, wait-enabled, numbers — **planned** |
+| **0.29.0** | Phase 19 checkout DSL, HTML report viewer hardening, screenshot lightbox, full/light report pair — **released** |
 
 ---
 
@@ -896,7 +896,7 @@
 
 ## Фаза 19 — Runner DSL: состояние UI и чекаут (P1)
 
-Статус: **в работе** (19.2–19.4 done, осталось 19.5 референс на стенд). Контекст: e-commerce чекаут (напр. 2MOOD)
+Статус: **done** (v0.29.0; осталось 19.5 референс на стенд). Контекст: e-commerce чекаут (напр. 2MOOD)
 
 ### 19.1 Сделано (v0.28.1)
 
@@ -970,3 +970,21 @@
 - [x] **Retry policy hardening** - separate action retry from assertion retry, add jittered backoff, and avoid retrying deterministic assertion mismatches.
 - [x] **Long Wails operations async model** - migrate Run/Validate/Export/plugin operations toward start/cancel/status events instead of long pending binding calls.
 - [x] **Monaco model/provider cleanup** - Save As URI, stale async writes, provider disposables, per-tab diagnostics, and model release are hardened.
+
+### 20.2 HTML report UI/UX audit - report.html viewer hardening
+
+- [x] **P1 Mobile layout overlap** - `internal/report/html_assets/viewer.css`: at <=720px the inspector stays `.open` and overlays header/timeline; toolbar, inspector, timeline cards, and action sections overlap. Fixed with grid body rows, mobile bottom-drawer inspector, and no hard-coded header offset.
+- [x] **P1 Native filter controls** - `viewer.css`/`viewer.html`: `#filter-failed` inherits `.filters input { width:100% }`, renders as a tiny native checkbox centered in a 275px-wide box, and uses `appearance:auto`/`accent-color:auto`. Fixed with scoped input CSS, `.check-filter`, custom checkbox state, and focus-visible styling.
+- [x] **P1 Locale consistency** - `viewer.js`: RU locale still exposes English UI strings (`Timeline`, `Action log`, `Inspector`, `Gherkin`, `Selector`, `Copy selector`, `Copy Gherkin`, `Copy re-run`, `Export failed .feature`). Fixed with runtime RU/EN locale overrides for visible report controls/actions.
+- [x] **P2 Broken mojibake fallbacks** - `viewer.html` contains mojibake fallback text/placeholders before JS localization. Fixed by replacing fallback markup with clean ASCII text.
+- [x] **P2 Header responsiveness** - `viewer.css`: header uses wrapped flex with variable height, but `.layout` assumes `height: calc(100vh - 52px)` and inspector fixed `top:52px`. Fixed by switching body to `auto minmax(0, 1fr)` grid rows and removing hard-coded `52px` offsets.
+- [x] **P2 Controls visual polish** - buttons/links/inputs lack a shared focus-visible treatment and disabled/loading states; number input exposes native spinner styling. Fixed shared focus-visible treatment, normalized filter controls, and number input spinner handling.
+- [x] **P2 Interaction discoverability** - mobile has no obvious way to close the inspector or return to scenario list after selecting a step. Fixed with explicit inspector close button, drawer reopen on step/action/trace selection, and sidebar auto-close on scenario selection.
+- [x] **P2 Full/light mode switch inside report** - HTML report can be generated in full and light modes, but the opened report only shows the current payload. Added paired artifact links (`report.html` / `report.light.html`), segmented full/light control, disabled state when the pair is missing, URL hash state preservation, Go coverage, and Playwright E2E.
+- [x] **P3 Accessibility pass** - add labels/aria for filter fields and timeline step buttons, keyboard navigation for scenarios/steps/tabs, and verify contrast/focus order in dark and light report modes. Fixed with localized ARIA labels, tablist/tabpanel roles, keyboard activation for scenario/step/action rows, arrow-key tab navigation, and E2E assertions.
+- [x] **P3 Visual regression coverage** - add Playwright screenshots for report viewer at desktop (~1280), tablet (~900), and mobile (~390) plus assertions for no horizontal overflow and no major panel overlap. Fixed with viewport smoke tests that capture screenshots and assert no overflow/header overlap at desktop, tablet, and mobile sizes.
+- [x] **P2 Screenshot lightbox** - inspector thumbnail opens full-size overlay preview (Escape/backdrop/close button).
+- [x] **P2 Cyrillic data URLs** - `data:text/html` paths with non-ASCII normalize encoding in step DSL resolver.
+- [x] **P2 Project report open mode** - `html_report_open_mode` in `.scenaria/project.json` + Settings dialog (full vs light default).
+- [x] **P2 Light report failed screenshots** - always write full/light HTML pair; embed screenshots for failed steps even in light mode.
+- [x] **P3 Custom scrollbars** - dark-theme scrollbar styling in report viewer.

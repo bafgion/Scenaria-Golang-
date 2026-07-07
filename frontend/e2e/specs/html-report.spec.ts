@@ -25,10 +25,132 @@ test.describe('HTML report viewer', () => {
     await expect(page.locator('.step-node.active')).toHaveAttribute('data-idx', '0')
   })
 
+  test('filter checkbox uses custom compact styling', async ({ page }) => {
+    await page.goto(reportURL)
+    const box = page.locator('#filter-failed')
+    await expect(box).toBeVisible()
+    const styles = await box.evaluate((el) => {
+      const cs = window.getComputedStyle(el)
+      const rect = el.getBoundingClientRect()
+      return {
+        appearance: cs.appearance,
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      }
+    })
+    expect(styles.appearance).toBe('none')
+    expect(styles.width).toBeLessThanOrEqual(20)
+    expect(styles.height).toBeLessThanOrEqual(20)
+  })
+
+  test('mobile inspector is a closable bottom drawer', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 760 })
+    await page.goto(reportURL)
+    const inspector = page.locator('#inspector-panel')
+    await expect(inspector).toBeVisible()
+    const initial = await inspector.evaluate((el) => {
+      const cs = window.getComputedStyle(el)
+      const rect = el.getBoundingClientRect()
+      return { top: Math.round(rect.top), height: Math.round(rect.height), transform: cs.transform }
+    })
+    expect(initial.top).toBeGreaterThan(180)
+    expect(initial.height).toBeLessThanOrEqual(560)
+
+    await page.locator('#close-inspector').click()
+    await expect(inspector).not.toHaveClass(/open/)
+    await page.locator('.step-node').first().click()
+    await expect(inspector).toHaveClass(/open/)
+  })
+
+  test('mode switch opens paired light report and preserves state', async ({ page }) => {
+    await page.goto(reportURL)
+    await page.locator('#tab-actionlog').click()
+    await page.locator('#actionlog tr[data-idx="0"]').click()
+    await expect(page.locator('#inspector')).toContainText('Шаг #1')
+
+    await expect(page.locator('#mode-full')).toHaveClass(/active/)
+    await expect(page.locator('#mode-light')).toBeEnabled()
+    await page.locator('#mode-light').click()
+    await page.waitForURL(/sample\.light\.html#state=/)
+
+    await expect(page.locator('#mode-light')).toHaveClass(/active/)
+    await expect(page.locator('#tab-actionlog')).toHaveClass(/active/)
+    await expect(page.locator('.step-node.active')).toHaveAttribute('data-idx', '0')
+    await expect(page.locator('#inspector')).toContainText('Шаг #1')
+  })
+
+  test('keyboard and aria affordances work for scenarios, tabs, and steps', async ({ page }) => {
+    await page.goto(reportURL)
+    await expect(page.locator('#filter-search')).toHaveAttribute('aria-label')
+    await expect(page.locator('#filter-failed')).toHaveAttribute('aria-label')
+    await expect(page.locator('#tab-timeline')).toHaveAttribute('role', 'tab')
+    await expect(page.locator('#tab-timeline')).toHaveAttribute('aria-selected', 'true')
+
+    const scenario = page.locator('.scenario-item').first()
+    await expect(scenario).toHaveAttribute('role', 'button')
+    await expect(scenario).toHaveAttribute('tabindex', '0')
+    await scenario.focus()
+    await page.keyboard.press('Enter')
+    await expect(scenario).toHaveAttribute('aria-selected', 'true')
+
+    await page.locator('#tab-timeline').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.locator('#tab-actionlog')).toHaveAttribute('aria-selected', 'true')
+    await page.keyboard.press('ArrowLeft')
+    await expect(page.locator('#tab-timeline')).toHaveAttribute('aria-selected', 'true')
+
+    await page.locator('.step-node[data-idx="0"]').focus()
+    await page.keyboard.press(' ')
+    await expect(page.locator('.step-node.active')).toHaveAttribute('data-idx', '0')
+    await expect(page.locator('.step-node.active')).toHaveAttribute('aria-current', 'step')
+  })
+
+  for (const viewport of [
+    { name: 'desktop', width: 1280, height: 800 },
+    { name: 'tablet', width: 900, height: 760 },
+    { name: 'mobile', width: 390, height: 760 },
+  ]) {
+    test(`visual layout smoke at ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height })
+      await page.goto(reportURL)
+      await expect(page.locator('.step-node.failed.active')).toBeVisible({ timeout: 10_000 })
+      const metrics = await page.evaluate(() => {
+        const header = document.querySelector('header')!.getBoundingClientRect()
+        const inspector = document.querySelector('#inspector-panel')!.getBoundingClientRect()
+        const html = document.documentElement
+        return {
+          horizontalOverflow: html.scrollWidth > html.clientWidth,
+          inspectorOverHeader: inspector.top < header.bottom && inspector.bottom > header.top,
+          timelineVisible: !!document.querySelector('.step-node.active'),
+        }
+      })
+      expect(metrics.horizontalOverflow).toBe(false)
+      expect(metrics.inspectorOverHeader).toBe(false)
+      expect(metrics.timelineVisible).toBe(true)
+      const screenshot = await page.screenshot({ fullPage: false })
+      expect(screenshot.length).toBeGreaterThan(20_000)
+    })
+  }
+
   test('failed-only filter hides passed scenarios', async ({ page }) => {
     await page.goto(reportURL)
     await page.locator('#filter-failed').check()
     await expect(page.locator('.scenario-item')).toHaveCount(1)
+  })
+
+  test('screenshot lightbox opens and closes from inspector', async ({ page }) => {
+    await page.goto(reportURL)
+    await expect(page.locator('.step-node.failed.active')).toBeVisible({ timeout: 10_000 })
+    const thumb = page.locator('#inspector .screenshot-open')
+    await expect(thumb).toBeVisible()
+    await thumb.click()
+    const lightbox = page.locator('#screenshot-lightbox')
+    await expect(lightbox).toBeVisible()
+    await expect(lightbox).toHaveAttribute('aria-hidden', 'false')
+    await expect(page.locator('#screenshot-lightbox-img')).toHaveAttribute('src', /screenshots\//)
+    await expect(page.locator('#screenshot-lightbox-caption')).toContainText('Шаг #2')
+    await page.keyboard.press('Escape')
+    await expect(lightbox).toBeHidden()
   })
 
   test('inspector shows page context and CI compare', async ({ page }) => {

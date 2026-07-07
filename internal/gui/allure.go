@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/report"
+	"github.com/bafgion/scenaria-golang/internal/settings"
 )
 
 var (
@@ -138,6 +140,16 @@ func (s *Service) OpenHTMLReport(path string) RunResult {
 		}
 		path = filepath.Join(root, path)
 	}
+	if _, err := os.Stat(path); err != nil {
+		return RunResult{Error: fmt.Sprintf("report not found: %s", path)}
+	}
+	openMode := "full"
+	if root := s.ProjectPath(); root != "" {
+		if cfg, err := settings.LoadProjectConfig(root); err == nil {
+			openMode = cfg.HTMLReportOpenMode
+		}
+	}
+	path = report.PreferredHTMLReportPath(path, openMode)
 	if _, err := os.Stat(path); err != nil {
 		return RunResult{Error: fmt.Sprintf("report not found: %s", path)}
 	}

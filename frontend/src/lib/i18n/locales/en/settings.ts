@@ -21,6 +21,10 @@ export const settings = {
     run: {
       title: 'Run',
     },
+    reports: {
+      title: 'Reports',
+      desc: 'Saved to .scenaria/project.json for the current project.',
+    },
     selectors: {
       title: 'Strategy priority',
       desc: 'When recording and picking selectors, {brand} tries strategies top to bottom. More stable ones should be higher.',
@@ -108,6 +112,12 @@ export const settings = {
     loops: {
       title: 'Loop iteration limit',
       description: 'Maximum repeats for “Repeat” / “While” blocks.',
+    },
+    htmlReportOpen: {
+      title: 'HTML report when opening',
+      description: 'Which variant to open from the results panel: full or light. If the file is not generated yet, the available one is opened.',
+      full: 'Full (screenshots, trace, DOM)',
+      light: 'Light (faster, smaller)',
     },
     fontSize: {
       title: 'Font size',

@@ -678,6 +678,26 @@ export namespace gui {
 	        this.summaryJson = source["summaryJson"];
 	    }
 	}
+	export class ProjectConfigDTO {
+	    baseUrl: string;
+	    htmlReportOpenMode: string;
+	    navWaitUntil: string;
+	    defaultRunner: string;
+	    featuresRoot: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProjectConfigDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseUrl = source["baseUrl"];
+	        this.htmlReportOpenMode = source["htmlReportOpenMode"];
+	        this.navWaitUntil = source["navWaitUntil"];
+	        this.defaultRunner = source["defaultRunner"];
+	        this.featuresRoot = source["featuresRoot"];
+	    }
+	}
 	export class ProjectInfo {
 	    path: string;
 	    features: string[];

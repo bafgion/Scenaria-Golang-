@@ -271,6 +271,14 @@ func (a *App) SaveVanessaSettingsJSON(content string) error {
 	return a.svc.SaveVanessaSettingsJSON(content)
 }
 
+func (a *App) LoadProjectConfig() (gui.ProjectConfigDTO, error) {
+	return a.svc.LoadProjectConfig()
+}
+
+func (a *App) SaveProjectConfig(dto gui.ProjectConfigDTO) error {
+	return a.svc.SaveProjectConfig(dto)
+}
+
 func (a *App) SearchSteps(query string) []gui.StepCatalogEntry {
 	return a.svc.SearchSteps(query)
 }

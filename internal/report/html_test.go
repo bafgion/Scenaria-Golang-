@@ -173,6 +173,134 @@ func TestWriteHTMLWithBridgeURL(t *testing.T) {
 	}
 }
 
+func TestHTMLModePairPaths(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		light     bool
+		wantFull  string
+		wantLight string
+	}{
+		{name: "full report", path: filepath.Join("out", "report.html"), wantFull: filepath.Join("out", "report.html"), wantLight: filepath.Join("out", "report.light.html")},
+		{name: "light report explicit", path: filepath.Join("out", "report.light.html"), light: true, wantFull: filepath.Join("out", "report.html"), wantLight: filepath.Join("out", "report.light.html")},
+		{name: "light report generic", path: filepath.Join("out", "report.html"), light: true, wantFull: filepath.Join("out", "report.full.html"), wantLight: filepath.Join("out", "report.html")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			full, light := htmlModePairPaths(tt.path, tt.light)
+			if full != tt.wantFull || light != tt.wantLight {
+				t.Fatalf("got full=%q light=%q, want full=%q light=%q", full, light, tt.wantFull, tt.wantLight)
+			}
+		})
+	}
+}
+
+func TestWriteHTMLModePairAddsCrossLinks(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "report.html")
+	result := player.ExecutionResult{
+		Mode: "browser", Files: 1, Scenarios: 1, Steps: 1,
+		ScenarioResults: []player.ScenarioResult{{
+			FeaturePath: "a.feature",
+			Scenario:    "S",
+			Status:      "passed",
+			StepRecords: []player.StepRecord{{Index: 0, Text: "ok", Status: "passed"}},
+		}},
+	}
+	full, light, err := WriteHTMLModePair(path, result, HTMLOptions{Locale: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullRaw, err := os.ReadFile(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lightRaw, err := os.ReadFile(light)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullText := string(fullRaw)
+	lightText := string(lightRaw)
+	for _, want := range []string{`"current":"full"`, `"light_href":"report.light.html"`, `"light_available":true`} {
+		if !strings.Contains(fullText, want) {
+			t.Fatalf("full report missing %q", want)
+		}
+	}
+	for _, want := range []string{`"current":"light"`, `"full_href":"report.html"`, `"full_available":true`} {
+		if !strings.Contains(lightText, want) {
+			t.Fatalf("light report missing %q", want)
+		}
+	}
+}
+
+func TestWriteHTMLModePairWhenLightDefault(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "report.html")
+	result := player.ExecutionResult{
+		Mode: "browser", Files: 1, Scenarios: 1, Steps: 1,
+		ScenarioResults: []player.ScenarioResult{{
+			FeaturePath: "a.feature",
+			Scenario:    "S",
+			Status:      "passed",
+			StepRecords: []player.StepRecord{{Index: 0, Text: "ok", Status: "passed"}},
+		}},
+	}
+	full, light, err := WriteHTMLModePair(path, result, HTMLOptions{LightMode: true, Locale: "ru"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(light) != "report.html" {
+		t.Fatalf("light path = %q", light)
+	}
+	if filepath.Base(full) != "report.full.html" {
+		t.Fatalf("full path = %q", full)
+	}
+	lightRaw, err := os.ReadFile(light)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(lightRaw), `"full_href":"report.full.html"`) {
+		t.Fatal("light report should link to full sibling")
+	}
+	if !strings.Contains(string(lightRaw), `"full_available":true`) {
+		t.Fatal("full sibling should be marked available")
+	}
+}
+
+func TestLightReportEmbedsFailedStepScreenshot(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "report.light.html")
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	failedStep := 1
+	result := player.ExecutionResult{
+		Mode: "browser", Files: 1, Scenarios: 1, Steps: 2,
+		ScenarioResults: []player.ScenarioResult{{
+			FeaturePath: "a.feature",
+			Scenario:    "S",
+			Status:      "failed",
+			FailedStep:  &failedStep,
+			StepRecords: []player.StepRecord{
+				{Index: 0, Text: "ok", Status: "passed"},
+				{Index: 1, Text: "fail", Status: "failed", ScreenshotPNG: png},
+			},
+		}},
+	}
+	if err := WriteHTML(path, result, HTMLOptions{LightMode: true}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, `"screenshot":"screenshots/`) {
+		t.Fatalf("light report missing failed step screenshot ref: %s", text)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "screenshots", "000_a__S__step_001.png")); err != nil {
+		t.Fatalf("failed step screenshot file missing: %v", err)
+	}
+}
+
 func TestInferStepStatus(t *testing.T) {
 	fs := 1
 	if inferStepStatus("failed", 0, &fs) != "passed" {

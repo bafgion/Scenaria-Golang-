@@ -17,8 +17,35 @@
   --accent: #8ab4f8;
   --sidebar-w: 300px;
   --inspector-w: 360px;
+  --report-header-h: 0px;
+  --scrollbar-track: #0f1117;
+  --scrollbar-thumb: #3a3f4b;
+  --scrollbar-thumb-hover: #4a5060;
 }
 * { box-sizing: border-box; }
+html { color-scheme: dark; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
 body {
   margin: 0;
   font-family: "Segoe UI", system-ui, sans-serif;
@@ -26,6 +53,8 @@ body {
   color: var(--text);
   height: 100vh;
   overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 header {
   display: flex;
@@ -53,11 +82,44 @@ button, .btn {
   cursor: pointer;
 }
 button:hover { background: #2f3542; }
+button:disabled, .btn.disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+button:focus-visible, .btn:focus-visible, input:focus-visible, select:focus-visible, .scenario-item:focus-visible, .step-node:focus-visible, .action-log tr:focus-visible, .trace-event-row:focus-visible, .trace-step-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 button.primary { background: #1a73e8; border-color: #1a73e8; }
+.mode-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #171a22;
+}
+.mode-option {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  min-width: 54px;
+}
+.mode-option + .mode-option { border-left: 1px solid var(--border); }
+.mode-option.active {
+  background: #1a73e8;
+  color: #fff;
+}
+.mode-option:not(.active):not(:disabled):hover {
+  color: var(--text);
+  background: #252a35;
+}
 .layout {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr var(--inspector-w);
-  height: calc(100vh - 52px);
+  min-height: 0;
+  overflow: hidden;
 }
 .panel {
   border-right: 1px solid var(--border);
@@ -75,8 +137,19 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
   letter-spacing: .04em;
   color: var(--muted);
 }
+.panel-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+.inspector-close { display: none; }
 .filters { padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
-.filters input, .filters select {
+.filters input:not([type="checkbox"]), .filters select {
   width: 100%;
   background: #0f1117;
   border: 1px solid var(--border);
@@ -84,6 +157,52 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 13px;
+}
+.filters input[type="number"]::-webkit-outer-spin-button,
+.filters input[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+}
+.filters input[type="number"] {
+  -moz-appearance: textfield;
+}
+.check-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.filters input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #0f1117;
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+.filters input[type="checkbox"]::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  transform: scale(0);
+  transition: transform .12s ease;
+  background: var(--bg);
+}
+.filters input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.filters input[type="checkbox"]:checked::after {
+  transform: scale(1);
 }
 .scenario-list { overflow: auto; flex: 1; }
 .scenario-item {
@@ -168,9 +287,114 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
   word-break: break-word;
 }
 .screenshot {
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  object-position: left top;
   border-radius: 8px;
   border: 1px solid var(--border);
+  background: #0f1117;
+}
+.screenshot-section {
+  margin-bottom: 16px;
+}
+.screenshot-open {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+  border-radius: 8px;
+}
+.screenshot-open:hover .screenshot-thumb,
+.screenshot-open:focus-visible .screenshot-thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.screenshot-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.screenshot-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.screenshot-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.screenshot-lightbox[hidden] {
+  display: none !important;
+}
+body.screenshot-lightbox-open {
+  overflow: hidden;
+}
+.screenshot-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: rgba(8, 10, 14, 0.88);
+  cursor: zoom-out;
+}
+.screenshot-lightbox-dialog {
+  position: relative;
+  z-index: 1;
+  max-width: min(96vw, 1400px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.screenshot-lightbox-img {
+  pointer-events: auto;
+  max-width: min(96vw, 1400px);
+  max-height: calc(92vh - 48px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0f1117;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+.screenshot-lightbox-caption {
+  pointer-events: auto;
+  margin: 0;
+  max-width: min(96vw, 900px);
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+}
+.screenshot-lightbox-close {
+  pointer-events: auto;
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #252a35;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.screenshot-lightbox-close:hover {
+  background: #2f3542;
 }
 .tip {
   background: #1f2430;
@@ -284,20 +508,43 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
 .trace-event .ms { color: var(--muted); font-size: 11px; }
 @media print {
   .sidebar, .toolbar, .filters, #toggle-sidebar, #export-failed { display: none !important; }
-  .layout { grid-template-columns: 1fr !important; height: auto; }
+  .layout { grid-template-columns: 1fr !important; height: auto; overflow: visible; }
   .panel.inspector-panel { position: static; transform: none; box-shadow: none; }
-  body { overflow: visible; height: auto; }
+  body { overflow: visible; height: auto; display: block; }
 }
 @media (max-width: 1100px) {
   .layout { grid-template-columns: 260px 1fr; }
-  .panel.inspector-panel { position: fixed; right: 0; top: 52px; bottom: 0; width: min(100%, 360px); z-index: 10; box-shadow: -4px 0 24px rgba(0,0,0,.4); transform: translateX(100%); transition: transform .2s; }
+  .panel.inspector-panel { position: fixed; right: 0; top: var(--report-header-h); bottom: 0; width: min(100%, 360px); z-index: 10; box-shadow: -4px 0 24px rgba(0,0,0,.4); transform: translateX(100%); transition: transform .2s; background: var(--bg); }
   .panel.inspector-panel.open { transform: translateX(0); }
+  .inspector-close { display: inline-grid; }
 }
 @media (max-width: 720px) {
   :root { --sidebar-w: 100%; }
+  header { align-items: flex-start; gap: 8px 12px; padding: 10px 12px; }
+  header h1 { flex: 1 1 100%; }
+  .meta, .stats, .ci-compare, .toolbar { flex: 1 1 100%; }
+  .stats { flex-wrap: wrap; gap: 8px 12px; }
+  .toolbar { margin-left: 0; }
+  .toolbar button { flex: 1 1 150px; }
   .layout { grid-template-columns: 1fr; }
   .panel.sidebar { display: none; }
-  .panel.sidebar.mobile-open { display: flex; position: fixed; inset: 52px 0 0 0; z-index: 9; background: var(--bg); }
+  .panel.sidebar.mobile-open { display: flex; position: fixed; inset: 0; z-index: 9; background: var(--bg); }
+  .panel.inspector-panel {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: min(72vh, 560px, calc(100vh - var(--report-header-h)));
+    border-top: 1px solid var(--border);
+    border-left: none;
+    transform: translateY(100%);
+    box-shadow: 0 -6px 24px rgba(0,0,0,.45);
+  }
+  .panel.inspector-panel.open { transform: translateY(0); }
+  .panel-head-tabs { align-items: flex-start; flex-direction: column; }
+  .panel-head-tabs .tabs { width: 100%; overflow-x: auto; padding-bottom: 2px; }
+  .tab { white-space: nowrap; }
 }
 </style>
 </head>
@@ -315,6 +562,10 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     </div>
     <div id="ci-compare" class="ci-compare"></div>
     <div class="toolbar">
+      <div class="mode-switch" role="group" aria-label="Report mode">
+        <button type="button" id="mode-full" class="mode-option" data-mode="full">Full</button>
+        <button type="button" id="mode-light" class="mode-option" data-mode="light">Light</button>
+      </div>
       <button type="button" id="toggle-sidebar">Scenarios</button>
       <button type="button" id="export-failed">Export failed .feature</button>
     </div>
@@ -323,32 +574,43 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     <aside class="panel sidebar" id="sidebar">
       <div class="panel-head">Scenarios</div>
       <div class="filters">
-        <input id="filter-search" type="search" placeholder="Поиск…">
-        <label><input type="checkbox" id="filter-failed"> Только упавшие</label>
-        <input id="filter-tag" type="text" placeholder="Фильтр по тегу (@smoke)">
-        <input id="filter-duration" type="number" min="0" step="100" placeholder="Мин. длительность (ms)">
+        <input id="filter-search" type="search" placeholder="Search..." aria-label="Search scenarios">
+        <label class="check-filter"><input type="checkbox" id="filter-failed" aria-label="Failed only"> <span>Failed only</span></label>
+        <input id="filter-tag" type="text" placeholder="Filter by tag (@smoke)" aria-label="Filter by tag">
+        <input id="filter-duration" type="number" min="0" step="100" placeholder="Min duration (ms)" aria-label="Minimum duration in milliseconds">
       </div>
       <div class="scenario-list" id="scenario-list"></div>
     </aside>
     <main class="panel">
       <div class="panel-head panel-head-tabs">
         <span id="timeline-title">Timeline</span>
-        <div class="tabs">
-          <button type="button" id="tab-timeline" class="tab active" data-tab="timeline">Timeline</button>
-          <button type="button" id="tab-actionlog" class="tab" data-tab="actionlog">Action log</button>
-          <button type="button" id="tab-trace" class="tab" data-tab="trace" hidden>Trace</button>
+        <div class="tabs" role="tablist" aria-label="Report views">
+          <button type="button" id="tab-timeline" class="tab active" data-tab="timeline" role="tab" aria-controls="timeline">Timeline</button>
+          <button type="button" id="tab-actionlog" class="tab" data-tab="actionlog" role="tab" aria-controls="actionlog">Action log</button>
+          <button type="button" id="tab-trace" class="tab" data-tab="trace" role="tab" aria-controls="traceview" hidden>Trace</button>
         </div>
       </div>
-      <div class="timeline-wrap" id="timeline"><div class="empty">…</div></div>
-      <div class="timeline-wrap" id="actionlog" hidden></div>
-      <div class="timeline-wrap" id="traceview" hidden></div>
+      <div class="timeline-wrap" id="timeline" role="tabpanel" aria-labelledby="tab-timeline"><div class="empty">...</div></div>
+      <div class="timeline-wrap" id="actionlog" role="tabpanel" aria-labelledby="tab-actionlog" hidden></div>
+      <div class="timeline-wrap" id="traceview" role="tabpanel" aria-labelledby="tab-trace" hidden></div>
     </main>
     <aside class="panel inspector-panel open" id="inspector-panel">
-      <div class="panel-head">Inspector</div>
-      <div class="inspector" id="inspector"><div class="empty">Выберите шаг</div></div>
+      <div class="panel-head panel-head-row">
+        <span id="inspector-title">Inspector</span>
+        <button type="button" id="close-inspector" class="icon-btn inspector-close" aria-label="Close inspector">×</button>
+      </div>
+      <div class="inspector" id="inspector"><div class="empty">Select a step</div></div>
     </aside>
   </div>
-  <script id="scenaria-report-data" type="application/json">{"version":"1","brand":"Scenaria","generated_at":"2026-07-07T10:54:40Z","mode":"browser","light_mode":false,"bridge_url":"http://127.0.0.1:19999","locale":"ru","report_dir":"C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\frontend\\e2e\\fixtures\\report","ci_compare":{"previous_at":"2026-06-01T10:00:00Z","new_failures":[{"path":"login.feature","scenario":"Failed login","status":"failed","previous_status":"passed"}]},"summary":{"files":1,"scenarios":1,"steps":2,"passed":0,"failed":1,"skipped":0},"scenarios":[{"id":"s0","feature_path":"login.feature","scenario":"Failed login","tags":["@smoke"],"status":"failed","message":"element not found","failed_step":1,"duration_ms":800,"steps":[{"index":0,"line":3,"keyword":"Когда","text":"открыт \"https://example.com\"","status":"passed","duration_ms":200,"network":"GET https://example.com/missing — HTTP 404","duration_sparkline":[180,170,200],"gherkin":"Когда открыт \"https://example.com\""},{"index":1,"line":4,"keyword":"Когда","text":"кликаю \"#missing\"","selector":"#missing","status":"failed","duration_ms":100,"error":"element not found","network":"GET https://example.com/missing — HTTP 404","page_context":"Example\nhttps://example.com","dom_snapshot":"\u003chtml\u003e\u003cbody\u003e\u003cbutton id=\"missing\"\u003eLogin\u003c/button\u003e\u003c/body\u003e\u003c/html\u003e","a11y_snapshot":"button \"Login\"","trace_offset_ms":200,"duration_sparkline":[120,80,100],"tips":["Для стабильности используйте data-testid вместо хрупких CSS/XPath селекторов."],"gherkin":"Когда кликаю \"#missing\""}],"trace_path":"traces\\login__Failed_login.zip","trace_command":"npx playwright show-trace \"traces\\\\login__Failed_login.zip\"","trace_events":[{"offset_ms":0,"title":"Frame.goto https://example.com","kind":"goto"},{"offset_ms":200,"title":"Frame.click #missing","kind":"click"}],"rerun_command":"scenaria run \"login.feature\" --scenario \"Failed login\"","history":{"last_status":"failed","last_at":"2026-06-02T09:00:00Z","changed":false},"history_runs":[{"status":"failed","at":"2026-06-02T09:00:00Z","failed_step":0,"duration_ms":500,"step_durations":[170,80]},{"status":"passed","at":"2026-06-01T09:00:00Z","duration_ms":600,"step_durations":[180,120]}],"regressions":[{"step":1,"text":"кликаю \"#missing\"","kind":"step_changed","previous_at":"2026-06-02T09:00:00Z","detail":"was step #1, now #2"}],"duration_sparkline":[600,500,800],"run_diff":{"columns":[{"label":"06-01T09:00","at":"2026-06-01T09:00:00Z","status":"passed"},{"label":"06-02T09:00","at":"2026-06-02T09:00:00Z","status":"failed"},{"label":"now","status":"failed","current":true}],"rows":[{"index":0,"text":"открыт \"https://example.com\"","cells":["passed","failed","passed"]},{"index":1,"text":"кликаю \"#missing\"","cells":["passed","skipped","failed"]}]}}],"flaky":{"scenarios":[{"path":"login.feature::Failed login","failures":1,"passes":1,"total":2,"flaky":true,"last_failed_at":"2026-06-02T09:00:00Z"}]},"slow_steps":[{"scenario_path":"login.feature::Failed login","step":0,"text":"открыт \"https://example.com\"","duration_ms":200},{"scenario_path":"login.feature::Failed login","step":1,"text":"кликаю \"#missing\"","duration_ms":100}]}
+  <div id="screenshot-lightbox" class="screenshot-lightbox" hidden aria-hidden="true">
+    <button type="button" class="screenshot-lightbox-backdrop" aria-label="Close screenshot preview"></button>
+    <div class="screenshot-lightbox-dialog" role="dialog" aria-modal="true" aria-labelledby="screenshot-lightbox-caption">
+      <button type="button" class="screenshot-lightbox-close icon-btn" aria-label="Close">×</button>
+      <img id="screenshot-lightbox-img" class="screenshot-lightbox-img" src="" alt="">
+      <p id="screenshot-lightbox-caption" class="screenshot-lightbox-caption"></p>
+    </div>
+  </div>
+  <script id="scenaria-report-data" type="application/json">{"version":"1","brand":"Scenaria","generated_at":"2026-07-07T13:15:17Z","mode":"browser","light_mode":false,"bridge_url":"http://127.0.0.1:19999","locale":"ru","report_dir":"C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\frontend\\e2e\\fixtures\\report","mode_links":{"current":"full","full_href":"sample.html","light_href":"sample.light.html","full_available":true,"light_available":true},"ci_compare":{"previous_at":"2026-06-01T10:00:00Z","new_failures":[{"path":"login.feature","scenario":"Failed login","status":"failed","previous_status":"passed"}]},"summary":{"files":1,"scenarios":1,"steps":2,"passed":0,"failed":1,"skipped":0},"scenarios":[{"id":"s0","feature_path":"login.feature","scenario":"Failed login","tags":["@smoke"],"status":"failed","message":"element not found","failed_step":1,"duration_ms":800,"steps":[{"index":0,"line":3,"keyword":"Когда","text":"открыт \"https://example.com\"","status":"passed","duration_ms":200,"network":"GET https://example.com/missing — HTTP 404","duration_sparkline":[180,170,200],"gherkin":"Когда открыт \"https://example.com\""},{"index":1,"line":4,"keyword":"Когда","text":"кликаю \"#missing\"","selector":"#missing","status":"failed","duration_ms":100,"error":"element not found","network":"GET https://example.com/missing — HTTP 404","screenshot":"screenshots/000_login__Failed_login__step_001.png","page_context":"Example\nhttps://example.com","dom_snapshot":"\u003chtml\u003e\u003cbody\u003e\u003cbutton id=\"missing\"\u003eLogin\u003c/button\u003e\u003c/body\u003e\u003c/html\u003e","a11y_snapshot":"button \"Login\"","trace_offset_ms":200,"duration_sparkline":[120,80,100],"tips":["Для стабильности используйте data-testid вместо хрупких CSS/XPath селекторов."],"gherkin":"Когда кликаю \"#missing\""}],"trace_path":"traces\\login__Failed_login.zip","trace_command":"npx playwright show-trace \"traces\\\\login__Failed_login.zip\"","trace_events":[{"offset_ms":0,"title":"Frame.goto https://example.com","kind":"goto"},{"offset_ms":200,"title":"Frame.click #missing","kind":"click"}],"rerun_command":"scenaria run \"login.feature\" --scenario \"Failed login\"","history":{"last_status":"failed","last_at":"2026-06-02T09:00:00Z","changed":false},"history_runs":[{"status":"failed","at":"2026-06-02T09:00:00Z","failed_step":0,"duration_ms":500,"step_durations":[170,80]},{"status":"passed","at":"2026-06-01T09:00:00Z","duration_ms":600,"step_durations":[180,120]}],"regressions":[{"step":1,"text":"кликаю \"#missing\"","kind":"step_changed","previous_at":"2026-06-02T09:00:00Z","detail":"was step #1, now #2"}],"duration_sparkline":[600,500,800],"run_diff":{"columns":[{"label":"06-01T09:00","at":"2026-06-01T09:00:00Z","status":"passed"},{"label":"06-02T09:00","at":"2026-06-02T09:00:00Z","status":"failed"},{"label":"now","status":"failed","current":true}],"rows":[{"index":0,"text":"открыт \"https://example.com\"","cells":["passed","failed","passed"]},{"index":1,"text":"кликаю \"#missing\"","cells":["passed","skipped","failed"]}]}}],"flaky":{"scenarios":[{"path":"login.feature::Failed login","failures":1,"passes":1,"total":2,"flaky":true,"last_failed_at":"2026-06-02T09:00:00Z"}]},"slow_steps":[{"scenario_path":"login.feature::Failed login","step":0,"text":"открыт \"https://example.com\"","duration_ms":200},{"scenario_path":"login.feature::Failed login","step":1,"text":"кликаю \"#missing\"","duration_ms":100}]}
 </script>
   <script>/* Playwright trace.zip reader for offline HTML report (deflate + stored entries). */
 (function (root) {
@@ -499,6 +761,7 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       runDiff: 'Diff прогонов', traceAtStep: 'Trace на шаге', copyTraceSeek: 'Copy seek hint',
       domSnapshot: 'DOM', a11ySnapshot: 'Accessibility', traceTimeline: 'Trace timeline',
       stepTitle: 'Шаг #{n}', error: 'Ошибка', tips: 'Советы', screenshot: 'Скриншот',
+      screenshotExpand: 'Открыть скриншот', screenshotHint: 'Нажмите для увеличения', screenshotClose: 'Закрыть',
       lastRun: 'Прошлый прогон', changed: '(изменился)', actions: 'Действия',
       flakyHistory: 'Шаг падал {n} раз в недавней истории', stepCol: 'Шаг',
       when: 'Когда', status: 'Статус', message: 'Сообщение', stepInTrace: 'шаг #{n}',
@@ -526,6 +789,7 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       runDiff: 'Run diff', traceAtStep: 'Trace at step', copyTraceSeek: 'Copy seek hint',
       domSnapshot: 'DOM', a11ySnapshot: 'Accessibility', traceTimeline: 'Trace timeline',
       stepTitle: 'Step #{n}', error: 'Error', tips: 'Tips', screenshot: 'Screenshot',
+      screenshotExpand: 'Open screenshot', screenshotHint: 'Click to enlarge', screenshotClose: 'Close',
       lastRun: 'Previous run', changed: '(changed)', actions: 'Actions',
       flakyHistory: 'Step failed {n} times recently', stepCol: 'Step',
       when: 'When', status: 'Status', message: 'Message', stepInTrace: 'step #{n}',
@@ -543,6 +807,97 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       openTraceExternal: 'Open in trace.playwright.dev',
     },
   };
+  Object.assign(STRINGS.ru, {
+    scenarios: '\u0421\u0446\u0435\u043d\u0430\u0440\u0438\u0438',
+    timeline: '\u0428\u0430\u0433\u0438',
+    actionLog: '\u0416\u0443\u0440\u043d\u0430\u043b \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439',
+    inspector: '\u0418\u043d\u0441\u043f\u0435\u043a\u0442\u043e\u0440',
+    noFilter: '\u041d\u0435\u0442 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0435\u0432 \u043f\u043e \u0444\u0438\u043b\u044c\u0442\u0440\u0443',
+    pickScenario: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0439 \u0441\u043b\u0435\u0432\u0430',
+    pickStep: '\u041a\u043b\u0438\u043a\u043d\u0438\u0442\u0435 \u0448\u0430\u0433',
+    noStep: '\u041d\u0435\u0442 \u0448\u0430\u0433\u0430',
+    light: '\u041b\u0435\u0433\u043a\u0438\u0439 \u0440\u0435\u0436\u0438\u043c',
+    full: '\u041f\u043e\u043b\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c',
+    trimmed: '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442\u044b \u0443\u0440\u0435\u0437\u0430\u043d\u044b (\u043b\u0438\u043c\u0438\u0442 \u0440\u0430\u0437\u043c\u0435\u0440\u0430)',
+    regression: '\u0420\u0435\u0433\u0440\u0435\u0441\u0441\u0438\u044f',
+    history: '\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u043f\u0440\u043e\u0433\u043e\u043d\u043e\u0432',
+    openIde: '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0432 Scenaria IDE',
+    rerunIde: '\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u0432 IDE',
+    traceIde: '\u041e\u0442\u043a\u0440\u044b\u0442\u044c trace \u0432 IDE',
+    exportNoFailed: '\u041d\u0435\u0442 \u0443\u043f\u0430\u0432\u0448\u0438\u0445 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0435\u0432',
+    ciCompare: 'CI-\u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435',
+    newFailures: '\u041d\u043e\u0432\u044b\u0435 \u043f\u0430\u0434\u0435\u043d\u0438\u044f',
+    fixed: '\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e',
+    durationDelta: '\u0414\u0435\u043b\u044c\u0442\u0430 \u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u0438',
+    pageContext: '\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430',
+    traceOffset: '\u0421\u043c\u0435\u0449\u0435\u043d\u0438\u0435 \u0432 trace',
+    runDiff: '\u0421\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435 \u043f\u0440\u043e\u0433\u043e\u043d\u043e\u0432',
+    traceAtStep: 'Trace \u043d\u0430 \u0448\u0430\u0433\u0435',
+    copyTraceSeek: '\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c seek-\u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0443',
+    domSnapshot: 'DOM-\u0441\u043d\u0438\u043c\u043e\u043a',
+    a11ySnapshot: '\u0421\u043d\u0438\u043c\u043e\u043a \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u0438',
+    traceTimeline: '\u0422\u0430\u0439\u043c\u043b\u0430\u0439\u043d trace',
+    stepTitle: '\u0428\u0430\u0433 #{n}',
+    error: '\u041e\u0448\u0438\u0431\u043a\u0430',
+    tips: '\u0421\u043e\u0432\u0435\u0442\u044b',
+    screenshot: '\u0421\u043a\u0440\u0438\u043d\u0448\u043e\u0442',
+    screenshotExpand: '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0441\u043a\u0440\u0438\u043d\u0448\u043e\u0442',
+    screenshotHint: '\u041d\u0430\u0436\u043c\u0438\u0442\u0435 \u0434\u043b\u044f \u0443\u0432\u0435\u043b\u0438\u0447\u0435\u043d\u0438\u044f',
+    screenshotClose: '\u0417\u0430\u043a\u0440\u044b\u0442\u044c',
+    lastRun: '\u041f\u0440\u043e\u0448\u043b\u044b\u0439 \u043f\u0440\u043e\u0433\u043e\u043d',
+    changed: '(\u0438\u0437\u043c\u0435\u043d\u0438\u043b\u0441\u044f)',
+    actions: '\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f',
+    flakyHistory: '\u0428\u0430\u0433 \u043f\u0430\u0434\u0430\u043b {n} \u0440\u0430\u0437 \u0432 \u043d\u0435\u0434\u0430\u0432\u043d\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
+    stepCol: '\u0428\u0430\u0433',
+    when: '\u041a\u043e\u0433\u0434\u0430',
+    status: '\u0421\u0442\u0430\u0442\u0443\u0441',
+    message: '\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435',
+    stepInTrace: '\u0448\u0430\u0433 #{n}',
+    copySelector: '\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0435\u043b\u0435\u043a\u0442\u043e\u0440',
+    copyGherkin: '\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c Gherkin',
+    copyRerun: '\u041a\u043e\u043f\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u043f\u043e\u0432\u0442\u043e\u0440\u0430',
+    traceFile: '\u0424\u0430\u0439\u043b trace',
+    traceDrop: '\u041f\u0435\u0440\u0435\u0442\u0430\u0449\u0438\u0442\u0435 .zip trace \u0441\u044e\u0434\u0430 - offline-\u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440 \u0432\u043e \u0432\u043a\u043b\u0430\u0434\u043a\u0435 Trace',
+    traceZipRequired: '\u041d\u0443\u0436\u0435\u043d Playwright trace .zip',
+    traceDropOpen: '\u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 trace.playwright.dev \u0438 \u043f\u0435\u0440\u0435\u0442\u0430\u0449\u0438\u0442\u0435 \u0444\u0430\u0439\u043b: {name}',
+    filterFailedOnly: '\u0422\u043e\u043b\u044c\u043a\u043e \u0443\u043f\u0430\u0432\u0448\u0438\u0435',
+    searchPlaceholder: '\u041f\u043e\u0438\u0441\u043a...',
+    tagPlaceholder: '\u0424\u0438\u043b\u044c\u0442\u0440 \u043f\u043e \u0442\u0435\u0433\u0443 (@smoke)',
+    durationPlaceholder: '\u041c\u0438\u043d. \u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c (ms)',
+    exportFailed: '\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0443\u043f\u0430\u0432\u0448\u0438\u0445 .feature',
+    network: '\u0421\u0435\u0442\u044c',
+    gherkin: '\u0428\u0430\u0433 Gherkin',
+    selector: '\u0421\u0435\u043b\u0435\u043a\u0442\u043e\u0440',
+    traceView: 'Trace',
+    traceViewEmpty: 'Trace \u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0442\u043e\u043b\u044c\u043a\u043e \u0434\u043b\u044f \u0443\u043f\u0430\u0432\u0448\u0438\u0445 \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0435\u0432 \u0441 \u0430\u0440\u0445\u0438\u0432\u043e\u043c',
+    traceViewTrimmed: '\u0421\u043e\u0431\u044b\u0442\u0438\u044f trace \u0443\u0440\u0435\u0437\u0430\u043d\u044b - \u043e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u0444\u0430\u0439\u043b \u0447\u0435\u0440\u0435\u0437 trace.playwright.dev \u0438\u043b\u0438 IDE',
+    traceZipParseFailed: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u044c trace.zip',
+    traceImported: 'Trace \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d: {n} \u0441\u043e\u0431\u044b\u0442\u0438\u0439',
+    openTraceExternal: '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0432 trace.playwright.dev',
+    modeFull: '\u041f\u043e\u043b\u043d\u044b\u0439',
+    modeLight: '\u041b\u0435\u0433\u043a\u0438\u0439',
+    modeUnavailable: '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u0433\u0435\u043d\u0435\u0440\u0438\u0440\u0443\u0439\u0442\u0435 paired HTML-\u043e\u0442\u0447\u0435\u0442 \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0440\u0435\u0436\u0438\u043c\u0430',
+    searchLabel: '\u041f\u043e\u0438\u0441\u043a \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0435\u0432',
+    failedOnlyLabel: '\u0422\u043e\u043b\u044c\u043a\u043e \u0443\u043f\u0430\u0432\u0448\u0438\u0435',
+    tagFilterLabel: '\u0424\u0438\u043b\u044c\u0442\u0440 \u043f\u043e \u0442\u0435\u0433\u0443',
+    durationFilterLabel: '\u041c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u0430\u044f \u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c \u0432 \u043c\u0438\u043b\u043b\u0438\u0441\u0435\u043a\u0443\u043d\u0434\u0430\u0445',
+  });
+  Object.assign(STRINGS.en, {
+    durationDelta: 'Duration delta',
+    screenshotExpand: 'Open screenshot',
+    screenshotHint: 'Click to enlarge',
+    screenshotClose: 'Close',
+    traceDrop: 'Drop .zip trace here - offline viewing in Trace tab',
+    searchPlaceholder: 'Search...',
+    traceViewTrimmed: 'Trace events were trimmed - open the file in trace.playwright.dev or the IDE',
+    modeFull: 'Full',
+    modeLight: 'Light',
+    modeUnavailable: 'Generate the paired HTML report for this mode first',
+    searchLabel: 'Search scenarios',
+    failedOnlyLabel: 'Failed only',
+    tagFilterLabel: 'Filter by tag',
+    durationFilterLabel: 'Minimum duration in milliseconds',
+  });
   function t(key) {
     const loc = DATA.locale === 'en' ? 'en' : 'ru';
     return (STRINGS[loc] || STRINGS.ru)[key] || key;
@@ -569,6 +924,57 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
 
   const $ = (sel) => document.querySelector(sel);
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function screenshotLightboxEl() {
+    return $('#screenshot-lightbox');
+  }
+
+  function openScreenshotLightbox(src, caption) {
+    const box = screenshotLightboxEl();
+    if (!box || !src) return;
+    const img = $('#screenshot-lightbox-img');
+    const cap = $('#screenshot-lightbox-caption');
+    const backdrop = box.querySelector('.screenshot-lightbox-backdrop');
+    const closeBtn = box.querySelector('.screenshot-lightbox-close');
+    if (img) {
+      img.src = src;
+      img.alt = caption || t('screenshot');
+    }
+    if (cap) cap.textContent = caption || '';
+    if (backdrop) backdrop.setAttribute('aria-label', t('screenshotClose'));
+    if (closeBtn) closeBtn.setAttribute('aria-label', t('screenshotClose'));
+    box.hidden = false;
+    box.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('screenshot-lightbox-open');
+    closeBtn?.focus();
+  }
+
+  function closeScreenshotLightbox() {
+    const box = screenshotLightboxEl();
+    if (!box || box.hidden) return;
+    box.hidden = true;
+    box.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('screenshot-lightbox-open');
+    const img = $('#screenshot-lightbox-img');
+    if (img) img.removeAttribute('src');
+  }
+
+  function bindScreenshotLightbox() {
+    const box = screenshotLightboxEl();
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = '1';
+    box.querySelector('.screenshot-lightbox-backdrop')?.addEventListener('click', closeScreenshotLightbox);
+    box.querySelector('.screenshot-lightbox-close')?.addEventListener('click', closeScreenshotLightbox);
+  }
+
+  function activateOnEnterSpace(el, fn) {
+    el.addEventListener('click', fn);
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      fn();
+    });
+  }
 
   function statusClass(s) {
     if (s === 'passed') return 'passed';
@@ -666,13 +1072,30 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     return (ms / 1000).toFixed(2) + 's';
   }
 
+  function updateHeaderHeightVar() {
+    const header = document.querySelector('header');
+    if (!header) return;
+    document.documentElement.style.setProperty('--report-header-h', Math.ceil(header.getBoundingClientRect().height) + 'px');
+  }
+
   function applyStaticLocale() {
     const search = $('#filter-search');
-    if (search) search.placeholder = t('searchPlaceholder');
+    if (search) {
+      search.placeholder = t('searchPlaceholder');
+      search.setAttribute('aria-label', t('searchLabel'));
+    }
     const tag = $('#filter-tag');
-    if (tag) tag.placeholder = t('tagPlaceholder');
+    if (tag) {
+      tag.placeholder = t('tagPlaceholder');
+      tag.setAttribute('aria-label', t('tagFilterLabel'));
+    }
     const dur = $('#filter-duration');
-    if (dur) dur.placeholder = t('durationPlaceholder');
+    if (dur) {
+      dur.placeholder = t('durationPlaceholder');
+      dur.setAttribute('aria-label', t('durationFilterLabel'));
+    }
+    const cb = $('#filter-failed');
+    if (cb) cb.setAttribute('aria-label', t('failedOnlyLabel'));
     const failedLbl = document.querySelector('label[for="filter-failed"]') || $('#filter-failed')?.parentElement;
     if (failedLbl && failedLbl.tagName === 'LABEL') {
       failedLbl.lastChild.textContent = ' ' + t('filterFailedOnly');
@@ -684,6 +1107,77 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     if (exp) exp.textContent = t('exportFailed');
     const toggle = $('#toggle-sidebar');
     if (toggle) toggle.textContent = t('scenarios');
+    const full = $('#mode-full');
+    if (full) full.textContent = t('modeFull');
+    const light = $('#mode-light');
+    if (light) light.textContent = t('modeLight');
+  }
+
+  function reportStateHash() {
+    const params = new URLSearchParams();
+    if (state.scenarioId) params.set('scenario', state.scenarioId);
+    if (state.stepIndex != null) params.set('step', String(state.stepIndex));
+    if (state.centerTab) params.set('tab', state.centerTab);
+    if (state.search) params.set('q', state.search);
+    if (state.filterFailed) params.set('failed', '1');
+    if (state.filterTag) params.set('tag', state.filterTag);
+    if (state.filterDurationMin) params.set('duration', String(state.filterDurationMin));
+    const raw = params.toString();
+    return raw ? '#state=' + raw : '';
+  }
+
+  function restoreReportStateFromHash() {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#state=')) return false;
+    const params = new URLSearchParams(hash.slice('#state='.length));
+    state.scenarioId = params.get('scenario') || null;
+    const step = params.get('step');
+    state.stepIndex = step == null ? null : Number(step);
+    state.centerTab = params.get('tab') || 'timeline';
+    state.search = params.get('q') || '';
+    state.filterFailed = params.get('failed') === '1';
+    state.filterTag = params.get('tag') || '';
+    state.filterDurationMin = Number(params.get('duration')) || 0;
+    const search = $('#filter-search');
+    if (search) search.value = state.search;
+    const failed = $('#filter-failed');
+    if (failed) failed.checked = state.filterFailed;
+    const tag = $('#filter-tag');
+    if (tag) tag.value = state.filterTag;
+    const dur = $('#filter-duration');
+    if (dur && state.filterDurationMin) dur.value = String(state.filterDurationMin);
+    const sc = (DATA.scenarios || []).find((x) => x.id === state.scenarioId);
+    if (!sc) return false;
+    if (!(sc.steps || []).some((st) => st.index === state.stepIndex)) {
+      state.stepIndex = (sc.steps || [])[0]?.index ?? null;
+    }
+    return true;
+  }
+
+  function modeHref(mode) {
+    const links = DATA.mode_links || {};
+    if (mode === 'full') return links.full_href || '';
+    return links.light_href || '';
+  }
+
+  function modeAvailable(mode) {
+    const links = DATA.mode_links || {};
+    if (mode === 'full') return !!links.full_available;
+    return !!links.light_available;
+  }
+
+  function applyModeSwitch() {
+    const links = DATA.mode_links || {};
+    const current = links.current || (DATA.light_mode ? 'light' : 'full');
+    document.querySelectorAll('.mode-option').forEach((btn) => {
+      const mode = btn.dataset.mode;
+      const active = mode === current;
+      const available = active || modeAvailable(mode);
+      btn.classList.toggle('active', active);
+      btn.disabled = !available;
+      btn.title = available ? '' : t('modeUnavailable');
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   function renderHistoryRuns(sc) {
@@ -723,11 +1217,13 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     applyStaticLocale();
     const sb = document.querySelector('.panel.sidebar .panel-head');
     if (sb) sb.textContent = t('scenarios');
-    const insp = document.querySelector('.inspector-panel .panel-head');
+    const insp = $('#inspector-title');
     if (insp) insp.textContent = t('inspector');
     $('#tab-timeline').textContent = t('timeline');
     $('#tab-actionlog').textContent = t('actionLog');
+    applyModeSwitch();
     updateCenterTabs();
+    updateHeaderHeightVar();
   }
 
   function scenarioTraceEvents(sc) {
@@ -758,7 +1254,10 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       state.centerTab = 'timeline';
     }
     document.querySelectorAll('.tab').forEach((x) => {
-      x.classList.toggle('active', x.dataset.tab === state.centerTab);
+      const active = x.dataset.tab === state.centerTab;
+      x.classList.toggle('active', active);
+      x.setAttribute('aria-selected', active ? 'true' : 'false');
+      x.tabIndex = active ? 0 : -1;
     });
     const tl = $('#timeline');
     const al = $('#actionlog');
@@ -835,12 +1334,14 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       el.addEventListener('click', () => {
         const ms = Number(el.dataset.ms);
         state.stepIndex = stepForTraceOffset(sc, ms);
+        $('#inspector-panel').classList.add('open');
         renderAllViews();
       });
     });
     wrap.querySelectorAll('.trace-step-row, .trace-step-marker').forEach((el) => {
       el.addEventListener('click', () => {
         state.stepIndex = Number(el.dataset.idx);
+        $('#inspector-panel').classList.add('open');
         renderAllViews();
       });
     });
@@ -856,7 +1357,8 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     list.innerHTML = items.map((sc) => {
       const tags = (sc.tags || []).slice(0, 3).map((t) => '<span class="badge">' + esc(t) + '</span>').join('');
       const spark = renderSparkline(sc.duration_sparkline);
-      return '<div class="scenario-item' + (sc.id === state.scenarioId ? ' active' : '') + '" data-id="' + esc(sc.id) + '">' +
+      const active = sc.id === state.scenarioId;
+      return '<div class="scenario-item' + (active ? ' active' : '') + '" role="button" tabindex="0" aria-selected="' + (active ? 'true' : 'false') + '" aria-label="' + esc(sc.scenario + ' — ' + sc.status) + '" data-id="' + esc(sc.id) + '">' +
         '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' +
         '<div class="title">' + esc(sc.scenario) + spark + '</div>' +
         '<div class="sub">' + esc(sc.feature_path) + '</div>' +
@@ -864,7 +1366,7 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       '</div>';
     }).join('');
     list.querySelectorAll('.scenario-item').forEach((el) => {
-      el.addEventListener('click', () => selectScenario(el.dataset.id));
+      activateOnEnterSpace(el, () => selectScenario(el.dataset.id));
     });
   }
 
@@ -877,6 +1379,7 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
       stepIndex = failed >= 0 ? failed : 0;
     }
     state.stepIndex = stepIndex;
+    $('#sidebar').classList.remove('mobile-open');
     renderScenarioList();
     renderAllViews();
     $('#inspector-panel').classList.add('open');
@@ -895,15 +1398,17 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     wrap.innerHTML = (spark ? '<div class="timeline-spark">' + spark + '</div>' : '') + '<div class="timeline">' + (sc.steps || []).map((st) => {
       const flaky = st.flaky_failures >= 2 ? '<span class="flaky-pill">flaky ×' + st.flaky_failures + '</span> ' : '';
       const spark = renderSparkline(st.duration_sparkline);
-      return '<div class="step-node ' + statusClass(st.status) + (st.flaky_failures >= 2 ? ' flaky' : '') + (st.index === state.stepIndex ? ' active' : '') + '" data-idx="' + st.index + '">' +
+      const active = st.index === state.stepIndex;
+      return '<div class="step-node ' + statusClass(st.status) + (st.flaky_failures >= 2 ? ' flaky' : '') + (active ? ' active' : '') + '" role="button" tabindex="0" aria-current="' + (active ? 'step' : 'false') + '" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + st.status) + '" data-idx="' + st.index + '">' +
         '<div class="line">#' + (st.index + 1) + (st.line ? ' · line ' + st.line : '') + ' ' + flaky + spark + '</div>' +
         '<div class="text">' + esc(st.gherkin || st.text) + '</div>' +
         (st.duration_ms ? '<div class="dur">' + st.duration_ms + ' ms</div>' : '') +
       '</div>';
     }).join('') + '</div>';
     wrap.querySelectorAll('.step-node').forEach((el) => {
-      el.addEventListener('click', () => {
+      activateOnEnterSpace(el, () => {
         state.stepIndex = Number(el.dataset.idx);
+        $('#inspector-panel').classList.add('open');
         renderAllViews();
       });
     });
@@ -919,14 +1424,15 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     const rows = (sc.steps || []).map((st) => {
       const cls = [statusClass(st.status), st.index === state.stepIndex ? 'active' : ''].filter(Boolean).join(' ');
       const spark = renderSparkline(st.duration_sparkline);
-      return '<tr class="' + cls + '" data-idx="' + st.index + '"><td>#' + (st.index + 1) + '</td><td>' + esc(st.status) +
+      return '<tr class="' + cls + '" role="button" tabindex="0" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + st.status) + '" data-idx="' + st.index + '"><td>#' + (st.index + 1) + '</td><td>' + esc(st.status) +
         '</td><td>' + esc(st.gherkin || st.text) + spark + '</td><td>' + (st.duration_ms || '—') + '</td></tr>';
     }).join('');
     wrap.innerHTML = '<table class="action-log"><thead><tr><th>#</th><th>Status</th><th>Step</th><th>ms</th></tr></thead><tbody>' +
       rows + '</tbody></table>';
     wrap.querySelectorAll('tr[data-idx]').forEach((el) => {
-      el.addEventListener('click', () => {
+      activateOnEnterSpace(el, () => {
         state.stepIndex = Number(el.dataset.idx);
+        $('#inspector-panel').classList.add('open');
         renderAllViews();
       });
     });
@@ -1038,7 +1544,12 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     }
     const shot = st.screenshot || (st.status === 'failed' ? sc.screenshot : '');
     if (shot) {
-      html += '<div class="section"><label>' + t('screenshot') + '</label><img class="screenshot" src="' + shot + '" alt="screenshot"></div>';
+      const caption = tf('stepTitle', { n: st.index + 1 });
+      html += '<div class="section screenshot-section"><label>' + t('screenshot') + '</label>' +
+        '<button type="button" class="screenshot-open" aria-label="' + esc(t('screenshotExpand')) + '">' +
+        '<img class="screenshot screenshot-thumb" src="' + esc(shot) + '" alt="' + esc(caption) + '" loading="lazy">' +
+        '</button>' +
+        '<p class="screenshot-hint">' + esc(t('screenshotHint')) + '</p></div>';
     }
     if (sc.history) {
       html += '<div class="section"><label>' + t('lastRun') + '</label><div class="history-box">' +
@@ -1135,6 +1646,13 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
         copy(hint);
       };
     }
+    const shotOpen = box.querySelector('.screenshot-open');
+    if (shotOpen) {
+      activateOnEnterSpace(shotOpen, () => {
+        const img = shotOpen.querySelector('img');
+        if (img && img.src) openScreenshotLightbox(img.getAttribute('src') || img.src, tf('stepTitle', { n: st.index + 1 }));
+      });
+    }
     bindTraceDrop();
     box.querySelectorAll('.trace-event').forEach((el) => {
       el.addEventListener('click', () => {
@@ -1202,6 +1720,23 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
     $('#toggle-sidebar').addEventListener('click', () => {
       $('#sidebar').classList.toggle('mobile-open');
     });
+    const closeInspector = $('#close-inspector');
+    if (closeInspector) {
+      closeInspector.addEventListener('click', () => {
+        $('#inspector-panel').classList.remove('open');
+      });
+    }
+    document.querySelectorAll('.mode-option').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        const links = DATA.mode_links || {};
+        const current = links.current || (DATA.light_mode ? 'light' : 'full');
+        if (mode === current || !modeAvailable(mode)) return;
+        const href = modeHref(mode);
+        if (!href) return;
+        window.location.href = href + reportStateHash();
+      });
+    });
     $('#export-failed').addEventListener('click', exportFailedFeature);
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -1216,7 +1751,35 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
 
   function bindKeyboardNav() {
     document.addEventListener('keydown', (e) => {
+      const lightbox = screenshotLightboxEl();
+      if (lightbox && !lightbox.hidden) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeScreenshotLightbox();
+        }
+        return;
+      }
       if (e.target && (e.target.matches('input, textarea, select') || e.target.isContentEditable)) return;
+      if (e.target && e.target.matches('.scenario-item') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const items = Array.from(document.querySelectorAll('.scenario-item'));
+        const idx = items.indexOf(e.target);
+        const next = e.key === 'ArrowDown' ? items[Math.min(idx + 1, items.length - 1)] : items[Math.max(idx - 1, 0)];
+        if (next) next.focus();
+        return;
+      }
+      if (e.target && e.target.matches('.tab') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const tabs = Array.from(document.querySelectorAll('.tab:not([hidden])'));
+        const idx = tabs.indexOf(e.target);
+        const next = e.key === 'ArrowRight' ? tabs[(idx + 1) % tabs.length] : tabs[(idx - 1 + tabs.length) % tabs.length];
+        if (next) {
+          next.focus();
+          next.click();
+        }
+        return;
+      }
+      if (e.target && e.target.matches('button, .mode-option, .scenario-item')) return;
       const sc = (DATA.scenarios || []).find((x) => x.id === state.scenarioId);
       if (!sc || !(sc.steps || []).length) return;
       const idx = (sc.steps || []).findIndex((x) => x.index === state.stepIndex);
@@ -1269,9 +1832,16 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
   }
 
   renderHeader();
+  window.addEventListener('resize', updateHeaderHeightVar);
+  bindScreenshotLightbox();
   bindFilters();
   renderScenarioList();
-  autoSelectFirstFailure();
+  if (restoreReportStateFromHash()) {
+    renderScenarioList();
+    renderAllViews();
+  } else {
+    autoSelectFirstFailure();
+  }
 })();
 </script>
 </body>

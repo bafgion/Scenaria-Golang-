@@ -38,11 +38,20 @@ type htmlReportPayload struct {
 	ReportDir        string         `json:"report_dir,omitempty"`
 	ArtifactsTrimmed bool           `json:"artifacts_trimmed,omitempty"`
 	ScreenshotDedup  int            `json:"screenshot_dedup,omitempty"`
+	ModeLinks        htmlModeLinks  `json:"mode_links"`
 	CICompare        *htmlCICompare `json:"ci_compare,omitempty"`
 	Summary          htmlSummary    `json:"summary"`
 	Scenarios        []htmlScenario `json:"scenarios"`
 	Flaky            htmlFlaky      `json:"flaky"`
 	SlowSteps        []htmlSlowStep `json:"slow_steps"`
+}
+
+type htmlModeLinks struct {
+	Current        string `json:"current"`
+	FullHref       string `json:"full_href,omitempty"`
+	LightHref      string `json:"light_href,omitempty"`
+	FullAvailable  bool   `json:"full_available"`
+	LightAvailable bool   `json:"light_available"`
 }
 
 type htmlSummary struct {
@@ -167,6 +176,7 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 		BridgeToken: strings.TrimSpace(opts.BridgeToken),
 		Locale:      normalizeReportLocale(opts.Locale),
 		ReportDir:   strings.TrimSpace(opts.ReportDir),
+		ModeLinks:   buildHTMLModeLinks(reportPath, opts.LightMode),
 		Summary: htmlSummary{
 			Files:     result.Files,
 			Scenarios: result.Scenarios,
@@ -191,8 +201,8 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 	screenshotsDir := filepath.Join(reportDir, "screenshots")
 	if !opts.LightMode {
 		_ = os.MkdirAll(tracesDir, 0o755)
-		_ = os.MkdirAll(screenshotsDir, 0o755)
 	}
+	_ = os.MkdirAll(screenshotsDir, 0o755)
 
 	flakySteps := flakyStepFailures(payload.Flaky.Steps)
 
@@ -223,6 +233,59 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 		payload.ReportDir = filepath.Dir(reportPath)
 	}
 	return payload, nil
+}
+
+func buildHTMLModeLinks(reportPath string, light bool) htmlModeLinks {
+	fullPath, lightPath := htmlModePairPaths(reportPath, light)
+	links := htmlModeLinks{
+		Current:        "full",
+		FullHref:       filepath.Base(fullPath),
+		LightHref:      filepath.Base(lightPath),
+		FullAvailable:  !light || fileExists(fullPath),
+		LightAvailable: light || fileExists(lightPath),
+	}
+	if light {
+		links.Current = "light"
+	}
+	if !links.FullAvailable {
+		links.FullHref = ""
+	}
+	if !links.LightAvailable {
+		links.LightHref = ""
+	}
+	return links
+}
+
+func htmlModePairPaths(reportPath string, light bool) (fullPath, lightPath string) {
+	dir := filepath.Dir(reportPath)
+	name := filepath.Base(reportPath)
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if ext == "" {
+		ext = ".html"
+	}
+	switch {
+	case strings.HasSuffix(stem, ".light"):
+		return filepath.Join(dir, strings.TrimSuffix(stem, ".light")+ext), reportPath
+	case strings.HasSuffix(stem, ".full"):
+		return reportPath, filepath.Join(dir, strings.TrimSuffix(stem, ".full")+".light"+ext)
+	case light:
+		return filepath.Join(dir, stem+".full"+ext), reportPath
+	default:
+		return reportPath, filepath.Join(dir, stem+".light"+ext)
+	}
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func shouldEmbedScreenshot(light bool, status string, hasPNG bool) bool {
+	if !hasPNG {
+		return false
+	}
+	return !light || status == "failed"
 }
 
 func findPlanCase(plan player.ExecutionPlan, sr player.ScenarioResult) *player.RunCase {
@@ -274,10 +337,10 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 	}
 	sc.RerunCommand = fmt.Sprintf("scenaria run %q --scenario %q", sr.FeaturePath, sr.Scenario)
 
+	if shouldEmbedScreenshot(light, sr.Status, len(sr.ScreenshotPNG) > 0) {
+		sc.Screenshot = writeScreenshotArtifact(screenshotsDir, artifactBase+"__scenario.png", sr.ScreenshotPNG)
+	}
 	if !light {
-		if len(sr.ScreenshotPNG) > 0 {
-			sc.Screenshot = writeScreenshotArtifact(screenshotsDir, artifactBase+"__scenario.png", sr.ScreenshotPNG)
-		}
 		if len(sr.TraceZIP) > 0 {
 			sc.TraceEvents = parseTraceActions(sr.TraceZIP, 80)
 			networkFails := parseTraceNetworkFailures(sr.TraceZIP, 24)
@@ -332,7 +395,7 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 			if flaky != nil {
 				step.FlakyFailures = flaky[rec.Index]
 			}
-			if !light && len(rec.ScreenshotPNG) > 0 {
+			if shouldEmbedScreenshot(light, rec.Status, len(rec.ScreenshotPNG) > 0) {
 				step.Screenshot = writeScreenshotArtifact(screenshotsDir, fmt.Sprintf("%s__step_%03d.png", artifactBase, rec.Index), rec.ScreenshotPNG)
 			}
 			step.Tips = stepTips(step.Selector, step.Error, step.Text)

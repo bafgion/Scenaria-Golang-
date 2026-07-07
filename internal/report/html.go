@@ -70,3 +70,24 @@ func WriteHTML(path string, result player.ExecutionResult, opts HTMLOptions) err
 	}
 	return nil
 }
+
+// WriteHTMLModePair writes full and light HTML reports with cross-links between them.
+// The light report is written next to path as "<name>.light.html" unless path already
+// points at a light report, in which case the full report is the matching base name.
+func WriteHTMLModePair(path string, result player.ExecutionResult, opts HTMLOptions) (fullPath, lightPath string, err error) {
+	fullPath, lightPath = htmlModePairPaths(path, opts.LightMode)
+	fullOpts := opts
+	fullOpts.LightMode = false
+	lightOpts := opts
+	lightOpts.LightMode = true
+	if err := WriteHTML(fullPath, result, fullOpts); err != nil {
+		return "", "", err
+	}
+	if err := WriteHTML(lightPath, result, lightOpts); err != nil {
+		return "", "", err
+	}
+	if err := WriteHTML(fullPath, result, fullOpts); err != nil {
+		return "", "", err
+	}
+	return fullPath, lightPath, nil
+}

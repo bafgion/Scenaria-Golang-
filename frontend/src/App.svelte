@@ -205,6 +205,8 @@
     ListScenarioTitles,
     StartVanessaRun,
     PollVanessaRun,
+    LoadProjectConfig,
+    SaveProjectConfig,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -452,6 +454,8 @@
   let settingsSelectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   let settingsSelectorInputStrategies: string[] = ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
   let settingsNavWaitUntil = 'domcontentloaded'
+  let settingsHtmlReportOpenMode: 'full' | 'light' = 'full'
+  let settingsProjectBaseline: 'full' | 'light' = 'full'
   let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
   let editorCursorLine = 1
   let stepsPanelTab: 'outline' | 'steps' = DEFAULT_EDITOR_SETTINGS.stepsPanelView
@@ -4227,6 +4231,17 @@
     const s = await LoadSettings()
     applySettingsFromDTO(s)
     settingsDialogBaseline = s
+    if (projectPath) {
+      try {
+        const pc = await LoadProjectConfig()
+        settingsHtmlReportOpenMode = pc.htmlReportOpenMode === 'light' ? 'light' : 'full'
+      } catch {
+        settingsHtmlReportOpenMode = 'full'
+      }
+    } else {
+      settingsHtmlReportOpenMode = 'full'
+    }
+    settingsProjectBaseline = settingsHtmlReportOpenMode
     showSettings = true
   }
 
@@ -4326,6 +4341,19 @@
     }
     if (recording || browserOpen) await syncRecordingOptions()
     else await persistSettings()
+    if (projectPath) {
+      try {
+        const pc = await LoadProjectConfig()
+        await SaveProjectConfig(
+          gui.ProjectConfigDTO.createFrom({
+            ...pc,
+            htmlReportOpenMode: settingsHtmlReportOpenMode,
+          }),
+        )
+      } catch {
+        /* project.json may be missing until init */
+      }
+    }
     monaco?.applyEditorSettings(editorSettings)
     if (editorSettings.scenarioHints) {
       await refreshEditorScenarioHints()
@@ -4360,6 +4388,7 @@
       applySettingsFromDTO(settingsDialogBaseline)
       monaco?.applyEditorSettings(editorSettings)
     }
+    settingsHtmlReportOpenMode = settingsProjectBaseline
     settingsDialogBaseline = null
     showSettings = false
   }
@@ -5858,6 +5887,8 @@
     bind:selectorClickStrategies={settingsSelectorClickStrategies}
     bind:selectorInputStrategies={settingsSelectorInputStrategies}
     bind:navWaitUntil={settingsNavWaitUntil}
+    bind:htmlReportOpenMode={settingsHtmlReportOpenMode}
+    projectOpen={!!projectPath}
     bind:pickerDuringRecording
     bind:uiLocale
     bind:editorSettings

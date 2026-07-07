@@ -1,7 +1,7 @@
 {
   "name": "scenaria-frontend",
   "private": true,
-  "version": "0.28.1-dev",
+  "version": "0.29.0-dev",
   "type": "module",
   "scripts": {
     "dev": "vite",
