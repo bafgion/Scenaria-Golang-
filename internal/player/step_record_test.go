@@ -35,6 +35,12 @@ func TestActionSelector(t *testing.T) {
 	if actionSelector(stepdsl.Action{Kind: "assert-text", Value1: "Hello", Value2: "#msg"}) != "#msg" {
 		t.Fatal("assert-text selector")
 	}
+	if actionSelector(stepdsl.Action{Kind: "assert-enabled", Value1: "#go"}) != "#go" {
+		t.Fatal("assert-enabled selector")
+	}
+	if actionSelector(stepdsl.Action{Kind: "assert-disabled", Value1: "#go"}) != "#go" {
+		t.Fatal("assert-disabled selector")
+	}
 	if actionSelector(stepdsl.Action{Kind: "remember-url", Value1: "u"}) != "u" {
 		t.Fatal("goto selector")
 	}

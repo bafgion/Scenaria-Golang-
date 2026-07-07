@@ -87,6 +87,8 @@ export const journal = {
   },
   catalog: {
     batchSelected: 'Выбрано {count} сценариев в папке',
+    refreshed: 'Список сценариев обновлён',
+    refreshedShort: 'Сценарии обновлены',
   },
   run: {
     noFailed: 'Нет упавших сценариев для перезапуска',

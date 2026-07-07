@@ -103,6 +103,18 @@ Without context, each run starts a clean browser.
 - Scenario variables: `--var KEY=value` or run dialog
 - `{{name}}` in steps — from tables, `запоминаю`, or env `{{env:VAR}}`
 
+## Assertions
+
+| Step | Purpose |
+|------|---------|
+| `вижу "selector"` / `I see "selector"` | Element is **visible** |
+| `не вижу "selector"` / `I don't see "selector"` | Element is **hidden** |
+| `проверяю что доступно "selector"` / `I see "selector" is enabled` | Visible and **actionable** (not disabled) |
+| `проверяю что недоступно "selector"` / `I see "selector" is disabled` | Visible but **not actionable** |
+| `проверяю текст "…" в "selector"` / `I check text "…" in "selector"` | Text inside element |
+
+`вижу` / `I see` does **not** check whether a button is clickable. Use the enabled/disabled steps for that.
+
 ## Step catalog
 
 Full step list: **F1** in IDE. Step phrasing follows the file `# language:` (Russian or English).

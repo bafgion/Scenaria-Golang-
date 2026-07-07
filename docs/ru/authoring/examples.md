@@ -19,6 +19,7 @@
 | `03-uslovnyy-shag.feature` | Блок **«Если вижу …»** |
 | `04-tablica-primerov.feature` | Структура сценария + таблица `Примеры:` (2 прогона) |
 | `05-testclient-kontekst.feature` | `Контекст:` + TestClient `DemoUser` |
+| `06-proverka-dostupnosti.feature` | `проверяю что доступно` / `недоступно` для кнопок (`@smoke`) |
 
 ## TestClient
 

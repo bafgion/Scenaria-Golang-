@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -19,23 +20,23 @@ var ErrRelaunchHeadless = errors.New("recorder: relaunch browser for headless ch
 
 // LiveSession controls an in-progress live recording (pause/resume/focus/undo).
 type LiveSession struct {
-	paused          atomic.Bool
-	headless        atomic.Bool
-	relaunch        atomic.Bool
-	captureEnabled   atomic.Bool
-	captureEver      atomic.Bool
-	recorderInjected atomic.Bool
-	recMu            sync.RWMutex
-	testRunHold      atomic.Int32
-	filterImportant bool
-	navOnly         bool
-	hoverRecord     bool
+	paused            atomic.Bool
+	headless          atomic.Bool
+	relaunch          atomic.Bool
+	captureEnabled    atomic.Bool
+	captureEver       atomic.Bool
+	recorderInjected  atomic.Bool
+	recMu             sync.RWMutex
+	testRunHold       atomic.Int32
+	filterImportant   bool
+	navOnly           bool
+	hoverRecord       bool
 	scrollBeforeClick bool
 	hoverRecordMinMs  int
-	resumeURL       string
-	mu       sync.Mutex
-	page     playwright.Page
-	steps    *[]RecordedStep
+	resumeURL         string
+	mu                sync.Mutex
+	page              playwright.Page
+	steps             *[]RecordedStep
 }
 
 func NewLiveSession() *LiveSession {
@@ -159,10 +160,12 @@ func (s *LiveSession) EndCapture() {
 	}
 	s.mu.Unlock()
 	if page != nil {
-		_, _ = page.Evaluate(`() => {
+		if _, err := page.Evaluate(`() => {
 			const r = window.__scenariaRecorder;
 			if (r) r.events = [];
-		}`, nil)
+		}`, nil); err != nil {
+			logx.Debug("recorder evaluate", "error", err)
+		}
 	}
 }
 
@@ -333,10 +336,12 @@ func (s *LiveSession) UndoLastStep() bool {
 	}
 	*s.steps = (*s.steps)[:len(*s.steps)-1]
 	if s.page != nil {
-		_, _ = s.page.Evaluate(`() => {
+		if _, err := s.page.Evaluate(`() => {
 			const r = window.__scenariaRecorder;
 			if (r && r.events.length) r.events.pop();
-		}`, nil)
+		}`, nil); err != nil {
+			logx.Debug("recorder evaluate", "error", err)
+		}
 	}
 	return true
 }

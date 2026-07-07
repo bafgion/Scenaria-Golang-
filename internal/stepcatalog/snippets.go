@@ -56,9 +56,9 @@ func categoryForAction(action string) string {
 		return "Файлы"
 	case "download_click", "assert_download_contains":
 		return "Файлы"
-	case "assert_visible", "assert_hidden", "assert_text", "assert_url", "assert_tab_count":
+	case "assert_visible", "assert_hidden", "assert_enabled", "assert_disabled", "assert_selected", "assert_text", "assert_text_regex", "assert_url", "assert_tab_count":
 		return "Проверки"
-	case "wait", "wait_for", "wait_for_hidden":
+	case "wait", "wait_for", "wait_for_hidden", "wait_for_enabled", "wait_for_disabled":
 		return "Ожидание"
 	case "close_browser":
 		return "Сессия"
@@ -102,19 +102,28 @@ var actionParams = map[string][]string{
 	"assert_download_contains":  {`text — подстрока в скачанном файле`},
 	"remember_text":             {`value — текст; variable — имя переменной`},
 	"remember_field":            {`selector — поле; variable — имя переменной`},
+	"remember_number":           {`selector — элемент с числом; variable — имя переменной`},
+	"assert_var_contains":       {`actual — фактическое значение (часто {{var}}); expected — ожидание`},
+	"assert_var_equals":         {`actual — фактическое значение; expected — ожидание (поддерживает {{total / 4}})`},
 	"remember_url":              {`variable — имя для текущего URL`},
 	"draw_signature":            {`selector — элемент canvas`},
 	"scroll_to":                 {`selector — элемент, к которому прокрутить`},
 	"assert_visible":            {`selector — видимый элемент`},
 	"assert_hidden":             {`selector — скрытый элемент`},
+	"assert_enabled":            {`selector — элемент доступен для клика (не disabled)`},
+	"assert_disabled":           {`selector — элемент виден, но недоступен для клика`},
+	"assert_selected":           {`selector — плитка/опция в выбранном состоянии`},
 	"assert_text":               {`text — ожидаемый текст; selector — контейнер`},
+	"assert_text_regex":         {`regex — шаблон; selector — контейнер`},
 	"assert_url":                {`url — ожидаемый адрес страницы`},
 	"wait":                      {`seconds — длительность паузы`},
 	"wait_for":                  {`selector — элемент, появление которого ждём`},
 	"wait_for_hidden":           {`selector — элемент, исчезновение которого ждём`},
+	"wait_for_enabled":          {`selector — элемент, доступность которого ждём`},
+	"wait_for_disabled":         {`selector — элемент, блокировку которого ждём`},
 	"switch_tab":                {`mode — title, url, index (номер с 1), first, new`, `value — фрагмент заголовка, URL или индекс (для title/url/index)`},
 	"assert_tab_count":          {`count — ожидаемое число вкладок`},
-	"if":                        {`condition — вижу / не вижу / url содержит / текст на странице`, `steps — вложенные шаги с отступом (таб или 2 пробела)`},
+	"if":                        {`condition — вижу / не вижу / доступно / недоступно / url содержит / текст на странице`, `steps — вложенные шаги с отступом (таб или 2 пробела)`},
 	"repeat":                    {`count — число повторений`, `steps — тело цикла с отступом`},
 	"while":                     {`condition — как в «Если»`, `steps — тело цикла; лимит итераций — max_loop_iterations в настройках`},
 	"for_each":                  {`selector — CSS селектор элементов списка`, `variable — имя переменной для {{имя}} во вложенных шагах`, `steps — тело цикла с отступом`},
@@ -150,6 +159,9 @@ var stepSnippets = []snippetDef{
 	{"запоминаю текст", `запоминаю текст "{{login}}" как "user_login"`, "Сохранить литерал в переменную (action: remember_text)"},
 	{"запоминаю url", `запоминаю url как "current_url"`, "Сохранить текущий URL (action: remember_url)"},
 	{"запоминаю значение поля", `запоминаю значение поля "input#email" как "user_email"`, "Сохранить значение поля в переменную (action: remember_field)"},
+	{"запоминаю число", `запоминаю число из ".order-total" как "total_amount"`, "Сохранить число из текста элемента — 7 180 ₽ → 7180 (action: remember_number)"},
+	{"проверяю переменную", `проверяю что "{{total}}" содержит "{{expected}}"`, "Сравнение переменных после подстановки (action: assert_var_contains)"},
+	{"проверяю равенство", `проверяю что "{{pay_amount}}" равно "{{expected_pay}}"`, "Строгое равенство переменных (action: assert_var_equals)"},
 	{"рисую подпись", `рисую подпись в "canvas"`, "Рисование подписи на canvas, ПЭП (action: draw_signature)"},
 	{"скроллю к", `скроллю к "section#contacts"`, "Прокрутка к элементу (action: scroll_to)"},
 	{"обновляю страницу", "обновляю страницу", "Перезагрузка страницы (action: reload)"},
@@ -164,17 +176,26 @@ var stepSnippets = []snippetDef{
 	{"проверяю что открыто", "проверяю что открыто 2 вкладки", "Проверить число открытых вкладок (action: assert_tab_count)"},
 	{"вижу", `вижу "h1.title"`, "Проверка видимости элемента (action: assert_visible)"},
 	{"не вижу", `не вижу ".modal-overlay"`, "Элемент скрыт или отсутствует (action: assert_hidden)"},
+	{"доступно", `проверяю что доступно "button#submit"`, "Элемент виден и доступен для клика — не disabled (action: assert_enabled)"},
+	{"недоступно", `проверяю что недоступно "button#submit"`, "Элемент виден, но недоступен для клика — disabled или перекрыт (action: assert_disabled)"},
+	{"выбрано", `проверяю что выбрано ".delivery-tile.active"`, "Плитка доставки/оплаты в выбранном состоянии (action: assert_selected)"},
 	{"проверяю текст", `проверяю текст "Успех" в ".message"`, "Проверка текста в элементе (action: assert_text)"},
+	{"проверяю текст regex", `проверяю что текст соответствует regex "Оплатить.*\\d+" в "[data-testid=pay]"`, "Проверка текста по регулярному выражению (action: assert_text_regex)"},
 	{"проверяю url", `проверяю url "https://site.com/profile"`, "Проверка текущего URL (action: assert_url)"},
 	{"жду", "жду 2 сек", "Пауза перед следующим шагом (action: wait)"},
 	{"жду мс", "жду 500 мс", "Короткая пауза в миллисекундах (action: wait)"},
 	{"жду появления", `жду появления "button.ready"`, "Ожидание появления элемента (action: wait_for)"},
+	{"жду доступности", `жду пока доступно "button#pay"`, "Ожидание доступности кнопки (action: wait_for_enabled)"},
+	{"жду недоступности", `жду пока недоступно "button#pay"`, "Ожидание блокировки элемента (action: wait_for_disabled)"},
 	{"жду исчезновения", `жду исчезновения ".spinner"`, "Ожидание скрытия лоадера или модалки (action: wait_for_hidden)"},
 	{"если вижу", "Если вижу \".cookie-banner\"\n\tнажимаю \"button.accept\"", "Условный блок: шаги внутри выполняются, если элемент виден (action: if)"},
 	{"если не вижу", "Если не вижу \".spinner\"\n\tнажимаю \"button.next\"", "Условный блок: шаги внутри выполняются, если элемент скрыт (action: if)"},
+	{"если доступно", "Если доступно \"button#pay\"\n\tнажимаю \"button#pay\"", "Условный блок: шаги внутри выполняются, если элемент доступен (action: if)"},
+	{"если недоступно", "Если недоступно \"button#pay\"\n\tнажимаю \"button.save\"", "Условный блок: шаги внутри выполняются, если элемент недоступен (action: if)"},
 	{"если url", "Если url содержит \"/shop\"\n\tнажимаю \"button.next\"", "Условный блок: шаги внутри выполняются, если URL содержит подстроку (action: if)"},
 	{"если текст", "Если текст на странице \"Готово\"\n\tнажимаю \"button.ok\"", "Условный блок: шаги внутри выполняются, если текст есть на странице (action: if)"},
 	{"повторяю", "Повторяю 3 раза\n\tнажимаю \"button.add\"", "Цикл с фиксированным числом повторений (action: repeat)"},
 	{"пока", "Пока вижу \"button.load-more\"\n\tнажимаю \"button.load-more\"", "Цикл «пока условие истинно»; лимит итераций — в настройках (action: while)"},
+	{"пока доступно", "Пока доступно \"button.load-more\"\n\tнажимаю \"button.load-more\"", "Цикл пока элемент доступен (action: while)"},
 	{"для каждого", "Для каждого \".product-card\" как \"card\"\n\tнажимаю \"{{card}} .buy-btn\"", "Цикл по каждому элементу списка; переменная доступна как {{card}} (action: for_each)"},
 }

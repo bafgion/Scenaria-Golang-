@@ -294,6 +294,17 @@
         name: isExamples ? 'examples' : 'e2e',
       }
     },
+    RefreshProject: async () => {
+      const root = E2E_PROJECT
+      const norm = root.replace(/\\/g, '/')
+      return {
+        path: root,
+        features: [`${norm}/smoke.feature`],
+        tags: ['@smoke'],
+        featureTags: { [`${norm}/smoke.feature`]: ['@smoke'] },
+        name: 'e2e',
+      }
+    },
     PickProjectFolder: async () => (e2eMode() === 'new-project' ? 'C:/e2e/new-project' : ''),
     PickOpenFile: asyncEmpty,
     PickOpenFiles: async () => {

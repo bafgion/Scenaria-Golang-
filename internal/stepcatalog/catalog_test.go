@@ -28,6 +28,10 @@ func TestSearchFilters(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected phone generator in search results")
 	}
+	results = stepcatalog.Search("доступно")
+	if len(results) == 0 {
+		t.Fatal("expected assert_enabled snippet in search results")
+	}
 }
 
 func TestEntryHasExampleAndParameters(t *testing.T) {

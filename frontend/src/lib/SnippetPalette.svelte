@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { createTranslator, locale } from './i18n'
   import { SearchSteps } from '../../wailsjs/go/wailsapp/App'
   import { asStepSearchQuery } from './stepSearch'
@@ -15,8 +15,10 @@
   let selected = 0
   let loading = true
   let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  let queryInput: HTMLInputElement | null = null
 
   onMount(async () => {
+    void tick().then(() => queryInput?.focus())
     try {
       entries = await SearchSteps('')
     } catch {
@@ -83,9 +85,9 @@
     <input
       class="palette-input"
       bind:value={query}
+      bind:this={queryInput}
       placeholder={tr('dialogs.steps.snippetPalette.searchPlaceholder')}
       on:input={onQueryInput}
-      autofocus
     />
     <ul class="palette-list snippet-grid">
       {#if loading}

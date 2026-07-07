@@ -14,8 +14,12 @@ var (
 	repeatHeaderRe  = regexp.MustCompile(`(?i)^(?:повторяю\s+(\d+)\s+раз(?:а)?|repeat\s+(\d+)\s+times?)$`)
 	whileHeaderRe   = regexp.MustCompile(`(?i)^(?:пока|while)\s+(.+)$`)
 	forEachHeaderRe = regexp.MustCompile(`(?i)^(?:для\s+каждого|for\s+each)\s+"` + quoted + `"\s+(?:как|as)\s+"` + quoted + `"$`)
-	visibleCondRe   = regexp.MustCompile(`(?i)^(?:вижу|i\s+see)\s+"` + quoted + `"$`)
-	hiddenCondRe    = regexp.MustCompile(`(?i)^(?:не\s+вижу|i\s+(?:do\s+not|don't)\s+see)\s+"` + quoted + `"$`)
+	visibleCondRe      = regexp.MustCompile(`(?i)^(?:вижу|i\s+see)\s+"` + quoted + `"$`)
+	hiddenCondRe       = regexp.MustCompile(`(?i)^(?:не\s+вижу|i\s+(?:do\s+not|don't)\s+see)\s+"` + quoted + `"$`)
+	enabledCondRe      = regexp.MustCompile(`(?i)^(?:доступно|enabled)\s+"` + quoted + `"$`)
+	enabledQuotedCondRe = regexp.MustCompile(`(?i)^"` + quoted + `"\s+is\s+enabled$`)
+	disabledCondRe     = regexp.MustCompile(`(?i)^(?:недоступно|disabled)\s+"` + quoted + `"$`)
+	disabledQuotedCondRe = regexp.MustCompile(`(?i)^"` + quoted + `"\s+is\s+disabled$`)
 	urlContainsRe   = regexp.MustCompile(`(?i)^url\s+(?:содержит|contains)\s+"` + quoted + `"$`)
 	pageTextRe      = regexp.MustCompile(`(?i)^(?:текст\s+на\s+странице|page\s+(?:text\s+)?contains?)\s+"` + quoted + `"$`)
 	testClientRe    = regexp.MustCompile(`(?i)^(?:я\s+подключаю|i\s+connect)\s+TestClient\s+"` + quoted + `"$`)
@@ -36,6 +40,14 @@ func parseCondition(expr string) (*Condition, error) {
 		return &Condition{Type: "visible", Selector: unquote(visibleCondRe.FindStringSubmatch(expr)[1])}, nil
 	case hiddenCondRe.MatchString(expr):
 		return &Condition{Type: "hidden", Selector: unquote(hiddenCondRe.FindStringSubmatch(expr)[1])}, nil
+	case enabledCondRe.MatchString(expr):
+		return &Condition{Type: "enabled", Selector: unquote(enabledCondRe.FindStringSubmatch(expr)[1])}, nil
+	case enabledQuotedCondRe.MatchString(expr):
+		return &Condition{Type: "enabled", Selector: unquote(enabledQuotedCondRe.FindStringSubmatch(expr)[1])}, nil
+	case disabledCondRe.MatchString(expr):
+		return &Condition{Type: "disabled", Selector: unquote(disabledCondRe.FindStringSubmatch(expr)[1])}, nil
+	case disabledQuotedCondRe.MatchString(expr):
+		return &Condition{Type: "disabled", Selector: unquote(disabledQuotedCondRe.FindStringSubmatch(expr)[1])}, nil
 	case urlContainsRe.MatchString(expr):
 		return &Condition{Type: "url_contains", Value: unquote(urlContainsRe.FindStringSubmatch(expr)[1])}, nil
 	case pageTextRe.MatchString(expr):

@@ -13,6 +13,11 @@ func TestParse_EnglishSteps(t *testing.T) {
 	}{
 		{`I open "https://example.com"`, "goto"},
 		{`I see "h1"`, "assert-visible"},
+		{`I see "#submit" is enabled`, "assert-enabled"},
+		{`I see "#submit" is disabled`, "assert-disabled"},
+		{`I see ".tile" is selected`, "assert-selected"},
+		{`I wait until "#pay" is enabled`, "wait-enabled"},
+		{`I check text matches regex "Pay.*\\d+" in "#pay"`, "assert-text-regex"},
 		{`I click "button.submit"`, "click"},
 		{`I type "hello" into "input[name=q]"`, "fill"},
 		{`I check text "OK" in ".msg"`, "assert-text"},

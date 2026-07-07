@@ -34,13 +34,13 @@ func (s *Service) Shutdown(ctx context.Context) {
 	}
 	s.CloseReportBridge()
 	s.CancelRun()
+	s.closeBrowserForced()
 
 	waitWaitGroup(ctx, &s.activePlaywright)
 	waitWaitGroup(ctx, &s.activeBackground)
 
 	s.cleanupTempFeatureDirs()
 	StopAllureServe()
-	s.closeBrowserForced()
 	playwrightrt.Shutdown()
 	logx.Debug("gui shutdown complete")
 }

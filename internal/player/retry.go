@@ -21,9 +21,10 @@ func isRetryableAction(kind string) bool {
 	case "click", "double-click", "hover", "fill", "check", "uncheck", "clear",
 		"select", "select-option", "press-in", "scroll-to", "scroll-into-view",
 		"drag-drop", "upload", "download-click",
-		"assert-visible", "assert-hidden", "assert-text", "assert-value", "assert-count",
+		"assert-visible", "assert-hidden", "assert-enabled", "assert-disabled", "assert-selected",
+		"assert-text", "assert-text-regex", "assert-value", "assert-count",
 		"assert-url", "assert-url-contains",
-		"wait-visible", "wait-hidden", "wait-url":
+		"wait-visible", "wait-hidden", "wait-enabled", "wait-disabled", "wait-url":
 		return true
 	default:
 		return false
@@ -44,10 +45,15 @@ func isRetryableStepError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	permanent := []string{
 		"text mismatch",
+		"expected text",
+		"expected \"",
 		"does not match",
 		"strict mode violation",
 		"not a valid",
 		"invalid selector",
+		"unsupported action kind",
+		"requires run context",
+		"no downloaded file recorded",
 	}
 	for _, needle := range permanent {
 		if strings.Contains(msg, needle) {
@@ -137,6 +143,9 @@ func sleepRetryBackoff(ctx context.Context, attempt int, base time.Duration) err
 	for i := 1; i < attempt; i++ {
 		delay *= 2
 	}
+	if jitter := retryJitter(delay); jitter > 0 {
+		delay += jitter
+	}
 	delay = capWaitDuration(ctx, delay)
 	if delay <= 0 {
 		return ctx.Err()
@@ -149,4 +158,15 @@ func sleepRetryBackoff(ctx context.Context, attempt int, base time.Duration) err
 	case <-timer.C:
 		return nil
 	}
+}
+
+func retryJitter(delay time.Duration) time.Duration {
+	if delay <= 0 {
+		return 0
+	}
+	max := delay / 4
+	if max <= 0 {
+		return 0
+	}
+	return time.Duration(time.Now().UnixNano() % int64(max))
 }

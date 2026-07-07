@@ -11,6 +11,8 @@ func (e *PlaywrightExecutor) ExecuteScenario(ctx context.Context, input Scenario
 	exec := NewStepExecutor(ExecutorOptions{
 		BaseURL:           e.options.BaseURL,
 		MaxLoopIterations: e.options.MaxLoopIterations,
+		MaxActionRetries:  e.options.MaxActionRetries,
+		RetryBackoff:      e.options.RetryBackoff,
 	})
 	prompt := e.options.PromptEmailCode
 	if prompt == nil {
@@ -40,6 +42,8 @@ func (e *PlaywrightExecutor) ExecuteScenarioOnSession(ctx context.Context, sessi
 	exec := NewStepExecutor(ExecutorOptions{
 		BaseURL:           e.options.BaseURL,
 		MaxLoopIterations: e.options.MaxLoopIterations,
+		MaxActionRetries:  e.options.MaxActionRetries,
+		RetryBackoff:      e.options.RetryBackoff,
 	})
 	prompt := e.options.PromptEmailCode
 	if prompt == nil {

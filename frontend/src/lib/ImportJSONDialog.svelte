@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { createTranslator, locale } from './i18n'
-  import { ImportJSON, PickOpenFile, PickSaveFile, ArtifactExists } from '../../wailsjs/go/wailsapp/App'
+  import { StartImportJSON, PickOpenFile, PickSaveFile, ArtifactExists } from '../../wailsjs/go/wailsapp/App'
+  import { startRunResultJob } from './asyncRunResult'
 
   export let projectPath = ''
   export let onClose: () => void = () => {}
@@ -76,11 +77,11 @@
     error = ''
     onLog(tr('dialogs.import.json.importing', { path: jsonPath }))
     try {
-      const result = await ImportJSON({
-        jsonPath,
-        outputPath: outputPath.trim(),
-        force: forceOverwrite,
-      })
+      const result = await startRunResultJob('import-json-finished', () => StartImportJSON({
+          jsonPath,
+          outputPath: outputPath.trim(),
+          force: forceOverwrite,
+        }))
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         error = result.error

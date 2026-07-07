@@ -10,6 +10,8 @@ const LUCIDE_BODIES: Record<string, string> = {
     '<path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/>',
   panel: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  refresh:
+    '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
   close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   save:
     '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
@@ -96,6 +98,7 @@ export const icons = {
   globe: lucideSvg('browser'),
   browser: lucideSvg('browser'),
   plus: lucideSvg('plus'),
+  refresh: lucideSvg('refresh'),
   external: lucideSvg('url'),
   home: lucideSvg('house'),
   chevronDown:

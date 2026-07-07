@@ -81,10 +81,11 @@ func (c *RunContext) StepRecords() []StepRecord {
 func actionSelector(action stepdsl.Action) string {
 	switch action.Kind {
 	case "click", "double-click", "hover", "clear", "check", "uncheck",
-		"download-click", "assert-visible", "assert-hidden", "wait-visible",
-		"wait-hidden", "remember-field", "drag-drop", "scroll-to":
+		"download-click", "assert-visible", "assert-hidden", "assert-enabled", "assert-disabled",
+		"assert-selected", "wait-visible", "wait-enabled", "wait-disabled",
+		"wait-hidden", "remember-field", "remember-number", "drag-drop", "scroll-to":
 		return action.Value1
-	case "fill", "fill-generated", "select", "press-in", "upload", "assert-text":
+	case "fill", "fill-generated", "select", "press-in", "upload", "assert-text", "assert-text-regex":
 		return action.Value2
 	case "goto", "remember-url", "assert-url", "wait-url":
 		return action.Value1

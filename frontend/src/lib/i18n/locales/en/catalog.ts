@@ -2,6 +2,7 @@ export const catalog = {
   title: 'SCENARIOS',
   searchPlaceholder: 'Search, @tag or tag:smoke',
   newScenario: 'New scenario',
+  refresh: 'Refresh list',
   batchMode: 'Select',
   batchSelected: 'Selected for run: {count}',
   outputPanel: 'Output panel',

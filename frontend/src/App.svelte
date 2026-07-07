@@ -124,17 +124,19 @@
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
+  import { startRunResultJob } from './lib/asyncRunResult'
   import { icons, toolbarIcons } from './lib/icons'
   import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff, WindowShow, WindowUnminimise } from '../wailsjs/runtime/runtime'
   import {
     Version,
     OpenProject,
+    RefreshProject,
     ReadFeature,
     SaveFeature,
     WriteTempFeature,
-    Run,
     CancelRun,
-    Validate,
+    StartRun,
+    StartValidate,
     ValidateFeature,
     ListTestClients,
     InitProject,
@@ -142,11 +144,11 @@
     PickProjectFolder,
     PickSaveFile,
     PickOpenFile,
-    RunPlugin,
+    StartRunPlugin,
     StartRecord,
     OpenBrowser,
     BeginRecordingCapture,
-    RecordBaseline,
+    StartRecordBaseline,
     PauseRecording,
     ResumeRecording,
     CancelRecording,
@@ -175,7 +177,7 @@
     ParseEditorSteps,
     ArtifactExists,
     OpenFolder,
-    ServeAllure,
+    StartServeAllure,
     AllureStatus,
     OpenHTMLReport,
     OpenTrace,
@@ -1679,9 +1681,13 @@
   function onFolderContextMenu(e: MouseEvent, node: CatalogNode) {
     e.preventDefault()
     const paths = collectFeaturePathsUnder(node)
-    if (!paths.length) return
     folderMenu = { x: e.clientX, y: e.clientY, dir: node.path, paths }
     contextMenu = null
+  }
+
+  function onExplorerContextMenu(e: MouseEvent) {
+    if ((e.target as Element | null)?.closest('.catalog-tree-row')) return
+    e.preventDefault()
   }
 
   function dismissFolderMenu() {
@@ -1712,6 +1718,11 @@
     batchSelected = [...folderMenu.paths]
     dismissFolderMenu()
     appendLog(tr('journal.catalog.batchSelected', { count: batchSelected.length }))
+  }
+
+  function folderMenuRefresh() {
+    dismissFolderMenu()
+    void refreshCatalog()
   }
 
   function openVanessaForFolder(dirPath: string, dry: boolean) {
@@ -2458,6 +2469,12 @@
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
+    if (e.code === 'F5' || e.key === 'F5') {
+      e.preventDefault()
+      e.stopPropagation()
+      void refreshCatalog()
+      return
+    }
     if (shouldIgnoreAppHotkey(e)) return
     const id = matchHotkey(e)
     if (!id) return
@@ -2548,6 +2565,38 @@
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+  }
+
+  function resizeStep(e: KeyboardEvent): number {
+    return e.shiftKey ? 40 : 12
+  }
+
+  function onSidebarSplitterKeydown(e: KeyboardEvent) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    sidebarWidth = clampSidebarWidth(sidebarWidth + (e.key === 'ArrowRight' ? resizeStep(e) : -resizeStep(e)))
+    void persistSettings()
+  }
+
+  function onPreviewSplitterKeydown(e: KeyboardEvent) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    previewWidth = Math.max(200, Math.min(720, previewWidth + (e.key === 'ArrowLeft' ? resizeStep(e) : -resizeStep(e))))
+    saveLayout({ previewWidth })
+  }
+
+  function onBottomSplitterKeydown(e: KeyboardEvent) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight + (e.key === 'ArrowUp' ? resizeStep(e) : -resizeStep(e)), window.innerHeight)
+    saveLayout({ bottomPanelHeight })
+  }
+
+  function onStepsSplitterKeydown(e: KeyboardEvent) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    stepsPanelHeight = clampStepsPanelHeight(stepsPanelHeight + (e.key === 'ArrowUp' ? resizeStep(e) : -resizeStep(e)), window.innerHeight)
+    void persistSettings()
   }
 
   function appendLog(line: string) {
@@ -2653,7 +2702,7 @@
 
   async function serveAllureReport(path = '') {
     appendLog(tr('journal.reports.allureServe'))
-    const result = await ServeAllure(path)
+    const result = await startRunResultJob('allure-serve-finished', () => StartServeAllure(path))
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
       appendLog(tr('journal.error.generic', { error: result.error }))
@@ -2802,12 +2851,32 @@
     }
   }
 
-  async function refreshProject() {
+  async function refreshCatalog() {
     if (!projectPath) return
-    const info = await OpenProject(projectPath)
+    try {
+      const info = await RefreshProject()
+      applyProjectScan(info)
+      projectScenarios = await ListScenarioTitles().catch(() => [])
+      appendLog(tr('journal.catalog.refreshed'))
+      setStatus(tr('journal.catalog.refreshedShort'), 'success')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      appendLog(tr('journal.error.generic', { error: msg }))
+      setStatus(msg, 'error')
+    }
+  }
+
+  function applyProjectScan(info: gui.ProjectInfo) {
+    if (info.path) projectPath = info.path
     features = info.features || []
     tags = info.tags || []
     featureTags = info.featureTags || {}
+  }
+
+  async function refreshProject() {
+    if (!projectPath) return
+    const info = await RefreshProject()
+    applyProjectScan(info)
     testClients = await ListTestClients().catch(() => [])
     projectScenarios = await ListScenarioTitles().catch(() => [])
     await refreshInstalledPlugins()
@@ -3456,37 +3525,37 @@
 
     const runSince = new Date().toISOString()
 
-    let result: Awaited<ReturnType<typeof Run>> = gui.RunResult.createFrom({ output: '', error: '', entries: [] })
+    let result: gui.RunResult = gui.RunResult.createFrom({ output: '', error: '', entries: [] })
     let runThrown: unknown = null
     let journalStreamed = false
     try {
-      result = await Run({
-        tag: runOpts.tag,
-        scenario: runOpts.scenario || '',
-        testClient: runOpts.testClient,
-        vars: parseVars(runOpts.vars),
-        dryRun: runOpts.dryRun,
-        headed: runOpts.headed,
-        engine: runOpts.dryRun ? '' : runOpts.engine,
-        installPlaywright: runOpts.installPW,
-        allureDir,
-        traceDir,
-        videoDir,
-        htmlPath,
-        junitPath,
-        summaryJson: summaryJsonPath,
-        browser: runOpts.dryRun ? '' : runOpts.browser || settingsBrowser || 'chromium',
-        workers: runOpts.workers || settingsWorkers || 1,
-        slowMo: runOpts.dryRun ? 0 : (runOpts.slowMo > 0 ? runOpts.slowMo : settingsSlowMo),
-        baseUrl: runOpts.dryRun ? '' : (runOpts.baseUrl || '').trim(),
-        startStep: runOpts.startStep ?? -1,
-        endStep: runOpts.endStep ?? -1,
-        continueOnFail: runOpts.continueOnFail,
-        htmlLightMode: runOpts.htmlLightMode,
-        reuseLiveBrowser: runOpts.reuseLiveBrowser,
-        reportLocale: $locale,
-        targets: diskTargets,
-      })
+      result = await startRunResultJob('run-finished', () => StartRun({
+          tag: runOpts.tag,
+          scenario: runOpts.scenario || '',
+          testClient: runOpts.testClient,
+          vars: parseVars(runOpts.vars),
+          dryRun: runOpts.dryRun,
+          headed: runOpts.headed,
+          engine: runOpts.dryRun ? '' : runOpts.engine,
+          installPlaywright: runOpts.installPW,
+          allureDir,
+          traceDir,
+          videoDir,
+          htmlPath,
+          junitPath,
+          summaryJson: summaryJsonPath,
+          browser: runOpts.dryRun ? '' : runOpts.browser || settingsBrowser || 'chromium',
+          workers: runOpts.workers || settingsWorkers || 1,
+          slowMo: runOpts.dryRun ? 0 : (runOpts.slowMo > 0 ? runOpts.slowMo : settingsSlowMo),
+          baseUrl: runOpts.dryRun ? '' : (runOpts.baseUrl || '').trim(),
+          startStep: runOpts.startStep ?? -1,
+          endStep: runOpts.endStep ?? -1,
+          continueOnFail: runOpts.continueOnFail,
+          htmlLightMode: runOpts.htmlLightMode,
+          reuseLiveBrowser: runOpts.reuseLiveBrowser,
+          reportLocale: $locale,
+          targets: diskTargets,
+        }))
       journalStreamed = runLogStreaming
     } catch (err) {
       runThrown = err
@@ -3645,11 +3714,11 @@
         setStatus(tr('journal.status.validateError'), 'error')
       }
     } else {
-      const result = await Validate({
-        browser: browserName || 'chromium',
-        skipBrowser: true,
-        targets,
-      })
+      const result = await startRunResultJob('validate-finished', () => StartValidate({
+          browser: browserName || 'chromium',
+          skipBrowser: true,
+          targets,
+        }))
       if (result.output) {
         validateCliLog = result.output.trimEnd()
         appendLog(validateCliLog)
@@ -3923,23 +3992,23 @@
   async function runPlugin(name: string, dry: boolean, opts: Partial<gui.PluginRunRequest> = {}) {
     const label = pluginLabel(installedPlugins.find((p) => p.name === name) || { name, id: name, vanessa: false } as gui.PluginEntryDTO)
     appendLog(dry ? tr('journal.plugin.runningDry', { label }) : tr('journal.plugin.running', { label }))
-    const result = await RunPlugin({
-      name,
-      dryRun: dry,
-      tag: opts.tag || '',
-      excludeTags: opts.excludeTags || [],
-      scenario: opts.scenario || '',
-      rerunFailedRunDir: opts.rerunFailedRunDir || '',
-      installEpf: opts.installEpf || false,
-      epfUrl: opts.epfUrl || '',
-      epfDest: opts.epfDest || '',
-      platformExe: opts.platformExe || '',
-      epfPath: opts.epfPath || '',
-      ibConnection: opts.ibConnection || '',
-      reportAllure: opts.reportAllure || false,
-      vaDir: opts.vaDir || '',
-      vaFiles: opts.vaFiles || '',
-    })
+    const result = await startRunResultJob('plugin-run-finished', () => StartRunPlugin({
+        name,
+        dryRun: dry,
+        tag: opts.tag || '',
+        excludeTags: opts.excludeTags || [],
+        scenario: opts.scenario || '',
+        rerunFailedRunDir: opts.rerunFailedRunDir || '',
+        installEpf: opts.installEpf || false,
+        epfUrl: opts.epfUrl || '',
+        epfDest: opts.epfDest || '',
+        platformExe: opts.platformExe || '',
+        epfPath: opts.epfPath || '',
+        ibConnection: opts.ibConnection || '',
+        reportAllure: opts.reportAllure || false,
+        vaDir: opts.vaDir || '',
+        vaFiles: opts.vaFiles || '',
+      }))
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(tr('journal.error.generic', { error: result.error }))
   }
@@ -3989,12 +4058,12 @@
     showRecord = false
     appendLog(tr('journal.record.baselineCreating'))
     try {
-      const result = await RecordBaseline({
-        output: payload.output || 'recorded.feature',
-        featureName: payload.featureName,
-        scenarioName: payload.scenarioName,
-        steps: payload.steps,
-      })
+      const result = await startRunResultJob('record-baseline-finished', () => StartRecordBaseline({
+          output: payload.output || 'recorded.feature',
+          featureName: payload.featureName,
+          scenarioName: payload.scenarioName,
+          steps: payload.steps,
+        }))
       if (result.output) appendLog(result.output.trimEnd())
       if (result.error) {
         appendLog(tr('journal.error.generic', { error: result.error }))
@@ -5070,13 +5139,14 @@
       <!-- Explorer -->
       {#if sidebarVisible}
         <div class="sidebar-column" class:onboarding-elevated={onboardingElevateSidebar} style="width: {layoutSidebarWidth + 4}px">
-        <aside class="explorer" style="width: {layoutSidebarWidth}px">
+        <aside class="explorer" style="width: {layoutSidebarWidth}px" on:contextmenu={onExplorerContextMenu}>
           <div class="explorer-header">
             <p class="zone-title">{tr('catalog.title')}</p>
             <div class="explorer-tools">
               <input class="explorer-search" value={sidebarSearch} placeholder={tr('catalog.searchPlaceholder')} on:input={onSidebarSearchInput} />
               <div class="explorer-tool-actions">
-                <button class="icon-btn" title={tr('catalog.newScenario')} on:click={newScenario}>{@html icons.plus}</button>
+                <button type="button" class="icon-btn" title={tr('catalog.refresh')} disabled={!projectPath} on:click={refreshCatalog}>{@html icons.refresh}</button>
+                <button type="button" class="icon-btn" title={tr('catalog.newScenario')} on:click={newScenario}>{@html icons.plus}</button>
                 <button class="icon-btn batch-toggle" class:active={batchMode} title={tr('catalog.folder.selectBatch')} on:click={toggleBatchMode}>
                   <span class="batch-toggle-icon" aria-hidden="true">{@html icons.validate}</span>
                   <span class="batch-label">{tr('catalog.batchMode')}</span>
@@ -5130,7 +5200,13 @@
             {/if}
           </div>
         </aside>
-        <div class="splitter-v" role="separator" on:mousedown={startResizeSidebar}></div>
+        <button
+          type="button"
+          class="splitter-v"
+          aria-label="Resize sidebar"
+          on:mousedown={startResizeSidebar}
+          on:keydown={onSidebarSplitterKeydown}
+        ></button>
         </div>
       {/if}
 
@@ -5353,7 +5429,13 @@
                     />
                 </div>
                 {#if stepsPanelVisible}
-                <div class="splitter-h" role="separator" on:mousedown={startResizeSteps}></div>
+                <button
+                  type="button"
+                  class="splitter-h"
+                  aria-label="Resize steps panel"
+                  on:mousedown={startResizeSteps}
+                  on:keydown={onStepsSplitterKeydown}
+                ></button>
                 <div class="steps-panel" class:collapsed={stepsPanelCollapsed} style="max-height: {stepsPanelCollapsed ? 24 : stepsPanelHeight}px">
                   <div
                     class="steps-header"
@@ -5432,7 +5514,13 @@
                 {/if}
               </div>
               {#if showPreviewPane && previewPaneMounted}
-                <div class="splitter-v" role="separator" on:mousedown={startResizePreview}></div>
+                <button
+                  type="button"
+                  class="splitter-v"
+                  aria-label="Resize preview"
+                  on:mousedown={startResizePreview}
+                  on:keydown={onPreviewSplitterKeydown}
+                ></button>
                 <div class="feature-preview-pane" style="width: {layoutPreviewWidth}px">
                   <div class="preview-header">{tr('editor.preview')}</div>
                   <FeaturePreview
@@ -5452,7 +5540,13 @@
 
   <!-- Bottom panel -->
   <div class="bottom-dock" class:collapsed={!bottomPanelOpen} class:onboarding-elevated={onboardingElevateBottom}>
-    <div class="splitter-h bottom-splitter" role="separator" on:mousedown={startResizeBottom}></div>
+    <button
+      type="button"
+      class="splitter-h bottom-splitter"
+      aria-label="Resize bottom panel"
+      on:mousedown={startResizeBottom}
+      on:keydown={onBottomSplitterKeydown}
+    ></button>
     <div class="bottom-panel" style="--panel-height: {bottomPanelHeight}px">
     <div class="panel-tabs">
       <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => openJournalTab(true)}>{tr('panels.journal')}</button>
@@ -5921,6 +6015,7 @@
     onVanessa={() => folderMenuVanessa(false)}
     onVanessaDry={() => folderMenuVanessa(true)}
     onSelectBatch={folderMenuSelectBatch}
+    onRefresh={folderMenuRefresh}
     onClose={dismissFolderMenu}
   />
 {/if}

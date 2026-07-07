@@ -156,6 +156,8 @@ export function RefactorReplaceInText(arg1:string,arg2:string,arg3:string,arg4:b
 
 export function RefactorUpdateStartURLs(arg1:string,arg2:string):Promise<gui.RefactorResult>;
 
+export function RefreshProject():Promise<gui.ProjectInfo>;
+
 export function RememberRecentFeature(arg1:string):Promise<void>;
 
 export function RememberRecentProject(arg1:string):Promise<void>;
@@ -196,7 +198,23 @@ export function SearchSteps(arg1:string):Promise<Array<gui.StepCatalogEntry>>;
 
 export function ServeAllure(arg1:string):Promise<gui.RunResult>;
 
+export function StartExport(arg1:gui.ExportRequest):Promise<string>;
+
+export function StartImportJSON(arg1:gui.ImportRequest):Promise<string>;
+
+export function StartInstallBrowserEngine(arg1:string):Promise<string>;
+
 export function StartRecord(arg1:gui.RecordRequest):Promise<void>;
+
+export function StartRecordBaseline(arg1:gui.BaselineRecordRequest):Promise<string>;
+
+export function StartRun(arg1:gui.RunRequest):Promise<string>;
+
+export function StartRunPlugin(arg1:gui.PluginRunRequest):Promise<string>;
+
+export function StartServeAllure(arg1:string):Promise<string>;
+
+export function StartValidate(arg1:gui.ValidateRequest):Promise<string>;
 
 export function StartVanessaRun(arg1:gui.PluginRunRequest):Promise<void>;
 

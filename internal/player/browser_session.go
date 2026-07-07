@@ -31,6 +31,8 @@ type PlaywrightExecutorOptions struct {
 	PromptEmailCode   EmailCodePrompter
 	CloseAfterRun     bool
 	StepScreenshots   bool
+	MaxActionRetries  int
+	RetryBackoff      time.Duration
 }
 
 type PlaywrightExecutor struct {
@@ -389,8 +391,8 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		return nil
 	case "fill":
 		locator := selector.ResolveChainedLocator(page, action.Value2)
-		if err := locator.Fill(action.Value1, playwright.LocatorFillOptions{Timeout: timeoutMs(ctx, ActionTimeoutMs)}); err != nil {
-			return fmt.Errorf("fill failed: %w", err)
+		if err := fillLocatorInput(ctx, locator, action.Value2, action.Value1, ""); err != nil {
+			return err
 		}
 		return nil
 	case "fill-generated":
@@ -401,7 +403,8 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		if err != nil {
 			return err
 		}
-		if err := selector.ResolveChainedLocator(page, action.Value2).Fill(value, playwright.LocatorFillOptions{Timeout: timeoutMs(ctx, ActionTimeoutMs)}); err != nil {
+		locator := selector.ResolveChainedLocator(page, action.Value2)
+		if err := fillLocatorInput(ctx, locator, action.Value2, value, action.Value1); err != nil {
 			return fmt.Errorf("fill generated failed: %w", err)
 		}
 		return nil
@@ -466,6 +469,26 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			return fmt.Errorf("expected element %q to be visible: %w", action.Value1, err)
 		}
 		return nil
+	case "assert-enabled":
+		if err := assertLocatorEnabledState(ctx, page, action.Value1, true); err != nil {
+			return err
+		}
+		return nil
+	case "assert-disabled":
+		if err := assertLocatorEnabledState(ctx, page, action.Value1, false); err != nil {
+			return err
+		}
+		return nil
+	case "assert-text-regex":
+		if err := assertLocatorTextMatchesRegex(ctx, page, action.Value1, action.Value2); err != nil {
+			return err
+		}
+		return nil
+	case "assert-selected":
+		if err := assertLocatorSelected(ctx, page, action.Value1); err != nil {
+			return err
+		}
+		return nil
 	case "assert-hidden":
 		if err := waitAllMatchesHidden(ctx, page, action.Value1, "expected element %q to be hidden"); err != nil {
 			return err
@@ -517,6 +540,16 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			State: playwright.WaitForSelectorStateVisible,
 		}); err != nil {
 			return fmt.Errorf("wait for visible failed: %w", err)
+		}
+		return nil
+	case "wait-enabled":
+		if err := waitForLocatorEnabledState(ctx, page, action.Value1, true); err != nil {
+			return fmt.Errorf("wait for enabled failed: %w", err)
+		}
+		return nil
+	case "wait-disabled":
+		if err := waitForLocatorEnabledState(ctx, page, action.Value1, false); err != nil {
+			return fmt.Errorf("wait for disabled failed: %w", err)
 		}
 		return nil
 	case "wait-hidden":
@@ -585,6 +618,36 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		runCtx.Remember(action.Value2, strings.TrimSpace(value))
 		return nil
+	case "remember-number":
+		if runCtx == nil {
+			return fmt.Errorf("remember-number requires run context")
+		}
+		locator := selector.ResolveChainedLocator(page, action.Value1)
+		if err := waitForLocator(ctx, locator, playwright.LocatorWaitForOptions{
+			State: playwright.WaitForSelectorStateVisible,
+		}); err != nil {
+			return fmt.Errorf("remember number failed: %w", err)
+		}
+		text, err := locator.InnerText()
+		if err != nil {
+			return fmt.Errorf("remember number failed: %w", err)
+		}
+		num, err := ParseNumberFromText(text)
+		if err != nil {
+			return fmt.Errorf("remember number failed: %w", err)
+		}
+		runCtx.Remember(action.Value2, num)
+		return nil
+	case "assert-var-contains":
+		if !strings.Contains(action.Value1, action.Value2) {
+			return fmt.Errorf("expected %q to contain %q", action.Value1, action.Value2)
+		}
+		return nil
+	case "assert-var-equals":
+		if action.Value1 != action.Value2 {
+			return fmt.Errorf("expected %q to equal %q", action.Value1, action.Value2)
+		}
+		return nil
 	case "remember-url":
 		if runCtx == nil {
 			return fmt.Errorf("remember-url requires run context")
@@ -641,7 +704,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 
 func actionNeedsPage(kind string) bool {
 	switch kind {
-	case "wait", "remember-text", "assert-download-contains", "close-browser":
+	case "wait", "remember-text", "assert-download-contains", "assert-var-contains", "assert-var-equals", "close-browser":
 		return false
 	default:
 		return true

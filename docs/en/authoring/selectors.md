@@ -2,6 +2,8 @@
 
 Scenaria uses **Playwright** locators. In steps, the selector is a quoted string: `нажимаю "#login"`, `вижу "text=Save"`.
 
+To assert a button is **clickable** (not just visible): `проверяю что доступно "#submit"` / `I see "#submit" is enabled`, or disabled: `проверяю что недоступно "#submit"` / `I see "#submit" is disabled`.
+
 ## Recording priority
 
 During live recording (`internal/selector/strategies.go`):

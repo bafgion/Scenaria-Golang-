@@ -19,6 +19,7 @@ Or **Project → Open project…** → select the `examples` folder.
 | `03-uslovnyy-shag.feature` | `Если вижу …` conditional block |
 | `04-tablica-primerov.feature` | Scenario outline + `Примеры:` table (2 runs) |
 | `05-testclient-kontekst.feature` | `Контекст:` + TestClient `DemoUser` |
+| `06-proverka-dostupnosti.feature` | `проверяю что доступно` / `недоступно` for buttons (`@smoke`) |
 
 ## TestClient demo
 

@@ -86,6 +86,8 @@ export const journal = {
   },
   catalog: {
     batchSelected: 'Selected {count} scenario(s) in folder',
+    refreshed: 'Scenario list refreshed',
+    refreshedShort: 'Scenarios refreshed',
   },
   run: {
     noFailed: 'No failed scenarios to rerun',

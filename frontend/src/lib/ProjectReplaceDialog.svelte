@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import { createTranslator, locale } from './i18n'
 
   export let findText = ''
@@ -9,6 +10,12 @@
   export let onClose: () => void = () => {}
 
   $: tr = createTranslator($locale)
+
+  let findInput: HTMLInputElement | null = null
+
+  onMount(() => {
+    void tick().then(() => findInput?.focus())
+  })
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
@@ -26,7 +33,7 @@
   <div class="palette find-replace" role="dialog" aria-modal="true" aria-label={tr('dialogs.project.replace.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>{tr('dialogs.project.replace.title')}</h3>
     <p class="hint">{tr('dialogs.project.replace.hint')}</p>
-    <label>{tr('dialogs.project.replace.find')} <input bind:value={findText} autofocus /></label>
+    <label>{tr('dialogs.project.replace.find')} <input bind:this={findInput} bind:value={findText} /></label>
     <label>{tr('dialogs.project.replace.replace')} <input bind:value={replaceText} /></label>
     <label class="check-row">
       <input type="checkbox" bind:checked={caseSensitive} /> {tr('dialogs.project.replace.caseSensitive')}

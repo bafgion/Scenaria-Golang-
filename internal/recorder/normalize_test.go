@@ -140,6 +140,21 @@ func TestNormalizeFragileCanvasClick(t *testing.T) {
 	}
 }
 
+func TestNormalizeUpgradesPhonePlaceholderToTel(t *testing.T) {
+	steps := []RecordedStep{
+		{
+			Action:   "fill",
+			Selector: `input[placeholder="+7 ("]`,
+			Value:    "9123456789",
+			Text:     "Телефон",
+		},
+	}
+	out := NormalizeSteps(steps)
+	if out[0].Selector != `input[type=tel]` {
+		t.Fatalf("selector: %q", out[0].Selector)
+	}
+}
+
 func TestNormalizeUpgradesGenericPlaceholderUsingFieldText(t *testing.T) {
 	steps := []RecordedStep{
 		{

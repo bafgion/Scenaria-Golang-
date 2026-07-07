@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import { createTranslator, locale } from './i18n'
   import type { PaletteCommand } from './paletteTypes'
 
@@ -9,6 +10,11 @@
 
   let query = ''
   let selected = 0
+  let queryInput: HTMLInputElement | null = null
+
+  onMount(() => {
+    void tick().then(() => queryInput?.focus())
+  })
 
   $: filtered = commands.filter((c) => {
     const q = query.trim().toLowerCase()
@@ -49,7 +55,7 @@
 <div class="palette-backdrop" role="presentation" on:click={onClose}>
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="palette command-palette" role="dialog" aria-modal="true" aria-label={tr('palette.commands.palette')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-    <input class="palette-input" bind:value={query} placeholder={tr('palette.searchPlaceholder')} autofocus />
+    <input class="palette-input" bind:this={queryInput} bind:value={query} placeholder={tr('palette.searchPlaceholder')} />
     <ul class="palette-list">
       {#each filtered as cmd, i}
         <li>

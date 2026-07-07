@@ -494,6 +494,7 @@ export const dialogs = {
       delete: 'Удалить',
     },
     folder: {
+      refresh: 'Обновить список',
       runAll: 'Запустить все .feature ({count})',
       dryRun: 'Dry-run папки',
       vanessa: 'Vanessa: папка…',

@@ -15,6 +15,21 @@ func TestServiceOpenProject(t *testing.T) {
 	}
 }
 
+func TestServiceRefreshProject(t *testing.T) {
+	root := t.TempDir()
+	svc := NewService()
+	if _, err := svc.OpenProject(root); err != nil {
+		t.Fatalf("OpenProject: %v", err)
+	}
+	info, err := svc.RefreshProject()
+	if err != nil {
+		t.Fatalf("RefreshProject: %v", err)
+	}
+	if info.Path != root {
+		t.Fatalf("unexpected path: %q", info.Path)
+	}
+}
+
 func TestSearchSteps(t *testing.T) {
 	svc := NewService()
 	entries := svc.SearchSteps("телефон")

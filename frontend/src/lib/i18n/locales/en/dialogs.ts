@@ -495,6 +495,7 @@ export const dialogs = {
       delete: 'Delete',
     },
     folder: {
+      refresh: 'Refresh list',
       runAll: 'Run all .feature ({count})',
       dryRun: 'Folder dry-run',
       vanessa: 'Vanessa: folder…',

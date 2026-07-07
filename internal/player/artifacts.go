@@ -47,22 +47,19 @@ func captureTraceZIP(session *browserSession, dir string, input ScenarioInput) [
 	if session == nil || strings.TrimSpace(dir) == "" {
 		return nil
 	}
-	session.mu.Lock()
-	traceEnabled := session.traceEnabled
-	traceStopped := session.traceStopped
-	bctx := session.context
-	session.mu.Unlock()
-	if !traceEnabled || traceStopped || bctx == nil {
-		return nil
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil
 	}
 	path := filepath.Join(dir, artifactBaseName(input)+".zip")
-	if err := bctx.Tracing().Stop(path); err != nil {
+	session.mu.Lock()
+	if !session.traceEnabled || session.traceStopped || session.context == nil {
+		session.mu.Unlock()
 		return nil
 	}
-	session.mu.Lock()
+	if err := session.context.Tracing().Stop(path); err != nil {
+		session.mu.Unlock()
+		return nil
+	}
 	session.traceStopped = true
 	session.mu.Unlock()
 	data, err := os.ReadFile(path)

@@ -125,12 +125,28 @@ func paramsForKind(kind string) []string {
 		return actionParameters("check")
 	case "assert-visible", "assert-hidden":
 		return actionParameters("assert_visible")
+	case "assert-enabled":
+		return actionParameters("assert_enabled")
+	case "assert-disabled":
+		return actionParameters("assert_disabled")
+	case "assert-selected":
+		return actionParameters("assert_selected")
 	case "assert-text":
 		return actionParameters("assert_text")
+	case "assert-text-regex":
+		return actionParameters("assert_text_regex")
+	case "assert-var-contains":
+		return actionParameters("assert_var_contains")
+	case "assert-var-equals":
+		return actionParameters("assert_var_equals")
 	case "assert-url", "assert-url-contains":
 		return actionParameters("assert_url")
 	case "wait-visible":
 		return actionParameters("wait_for")
+	case "wait-enabled":
+		return actionParameters("wait_for_enabled")
+	case "wait-disabled":
+		return actionParameters("wait_for_disabled")
 	case "wait-hidden":
 		return actionParameters("wait_for_hidden")
 	case "wait":
@@ -139,6 +155,8 @@ func paramsForKind(kind string) []string {
 		return actionParameters("remember_text")
 	case "remember-field":
 		return actionParameters("remember_field")
+	case "remember-number":
+		return actionParameters("remember_number")
 	case "remember-url":
 		return actionParameters("remember_url")
 	case "switch-tab":
@@ -176,11 +194,11 @@ func categoryForKind(kind string) string {
 		return "Навигация"
 	case "click", "double-click", "hover", "fill", "select", "upload", "clear", "check", "uncheck", "press", "press-in", "download-click", "draw-signature", "fill-generated", "prompt-email-code":
 		return "Формы и ввод"
-	case "assert-visible", "assert-hidden", "assert-text", "assert-url", "assert-url-contains", "assert-tab-count", "assert-download-contains":
+	case "assert-visible", "assert-hidden", "assert-enabled", "assert-disabled", "assert-selected", "assert-text", "assert-text-regex", "assert-var-contains", "assert-var-equals", "assert-url", "assert-url-contains", "assert-tab-count", "assert-download-contains":
 		return "Проверки"
-	case "wait-visible", "wait-hidden", "wait":
+	case "wait-visible", "wait-hidden", "wait-enabled", "wait-disabled", "wait":
 		return "Ожидание"
-	case "remember-text", "remember-field", "remember-url":
+	case "remember-text", "remember-field", "remember-number", "remember-url":
 		return "Переменные"
 	case "switch-tab", "close-tab", "scroll-to":
 		return "Вкладки"
@@ -211,12 +229,22 @@ func helpForKind(kind string) string {
 		return "Чекбокс"
 	case "assert-visible", "assert-hidden":
 		return "Проверка видимости элемента"
+	case "assert-enabled":
+		return "Проверка доступности элемента для клика"
+	case "assert-disabled":
+		return "Проверка что элемент недоступен для клика"
+	case "assert-selected":
+		return "Проверка выбранного состояния элемента"
 	case "assert-text":
 		return "Проверка текста в элементе"
+	case "assert-text-regex":
+		return "Проверка текста в элементе по regex"
+	case "assert-var-contains", "assert-var-equals":
+		return "Сравнение переменных сценария"
 	case "assert-url", "assert-url-contains":
 		return "Проверка текущего URL"
-	case "wait-visible", "wait-hidden":
-		return "Ожидание появления или скрытия элемента"
+	case "wait-visible", "wait-hidden", "wait-enabled", "wait-disabled":
+		return "Ожидание появления, скрытия или смены доступности элемента"
 	case "wait":
 		return "Пауза перед следующим шагом"
 	case "reload":
@@ -225,7 +253,7 @@ func helpForKind(kind string) string {
 		return "Кнопка «Назад» браузера"
 	case "close-browser":
 		return "Закрыть окно браузера"
-	case "remember-text", "remember-field", "remember-url":
+	case "remember-text", "remember-field", "remember-number", "remember-url":
 		return "Сохранить значение в переменную"
 	case "switch-tab":
 		return "Переключение вкладки"

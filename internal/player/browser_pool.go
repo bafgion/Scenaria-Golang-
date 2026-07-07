@@ -3,14 +3,18 @@ package player
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/logx"
 )
 
 type browserPool struct {
-	slots chan *browserPoolSlot
-	stops []func()
-	size  int
+	mu     sync.Mutex
+	slots  chan *browserPoolSlot
+	stops  []func()
+	size   int
+	closed bool
 }
 
 type browserPoolSlot struct {
@@ -70,10 +74,21 @@ func (p *browserPool) release(slot *browserPoolSlot) {
 	if p == nil || slot == nil {
 		return
 	}
+	p.mu.Lock()
+	closed := p.closed
+	p.mu.Unlock()
+	if closed {
+		return
+	}
 	if err := slot.session.resetForScenario(); err != nil {
 		logx.Debug("pool reset failed", "error", err)
+		slot.session.abortRun()
 	}
-	p.slots <- slot
+	select {
+	case p.slots <- slot:
+	default:
+		logx.Debug("pool release skipped", "error", "slot channel is full")
+	}
 }
 
 // abortActiveSessions marks idle pool workers cancelled so in-flight Playwright work stops promptly.
@@ -98,8 +113,19 @@ func (p *browserPool) Close() {
 	if p == nil {
 		return
 	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	p.closed = true
+	p.mu.Unlock()
 	for i := 0; i < len(p.stops); i++ {
-		<-p.slots
+		select {
+		case <-p.slots:
+		case <-time.After(2 * time.Second):
+			logx.Debug("browser pool close timed out waiting for idle slot", "index", i)
+		}
 	}
 	for _, stop := range p.stops {
 		stop()

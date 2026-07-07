@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { BrowserInstallStatus, InstallBrowserEngine, ListPlugins } from '../../wailsjs/go/wailsapp/App'
+  import { BrowserInstallStatus, StartInstallBrowserEngine, ListPlugins } from '../../wailsjs/go/wailsapp/App'
   import type { gui } from '../../wailsjs/go/models'
+  import { startRunResultJob } from './asyncRunResult'
   import { BRAND_NAME } from './brand'
   import SettingCard from './SettingCard.svelte'
   import { DEFAULT_EDITOR_SETTINGS, type EditorSettings } from './editorOptions'
@@ -151,7 +152,7 @@
     browserInstallBusy = true
     browserInstallProgress = tr('settings.browser.installing', { engine: browserStatus?.label || browser })
     try {
-      const result = await InstallBrowserEngine(browser)
+      const result = await startRunResultJob('browser-install-finished', () => StartInstallBrowserEngine(browser))
       if (result.output) {
         browserInstallProgress = result.output.trim()
         onInstallLog?.(result.output.trim())
@@ -727,4 +728,3 @@
     min-width: 24px;
   }
 </style>
-

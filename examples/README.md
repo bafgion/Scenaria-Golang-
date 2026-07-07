@@ -19,6 +19,7 @@
 | `02-perehod-po-ssylke.feature` | Переход по ссылке |
 | `03-uslovnyy-shag.feature` | Условный шаг `Если вижу` |
 | `04-tablica-primerov.feature` | Таблица примеров |
-| `05-testclient-kontekst.feature` | TestClient в контексте |
+| `07-chisla-i-peremennye.feature` | Числа, переменные, `{{total / 4}}` |
+| `08-demo-oshibki.feature` | **Демо падения** для HTML-отчёта (`@demo`, не `@smoke`) |
 
 См. [README.md](../README.md) и [документацию](../docs/README.md).

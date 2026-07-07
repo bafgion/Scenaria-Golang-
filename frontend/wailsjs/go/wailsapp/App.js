@@ -310,6 +310,10 @@ export function RefactorUpdateStartURLs(arg1, arg2) {
   return window['go']['wailsapp']['App']['RefactorUpdateStartURLs'](arg1, arg2);
 }
 
+export function RefreshProject() {
+  return window['go']['wailsapp']['App']['RefreshProject']();
+}
+
 export function RememberRecentFeature(arg1) {
   return window['go']['wailsapp']['App']['RememberRecentFeature'](arg1);
 }
@@ -390,8 +394,40 @@ export function ServeAllure(arg1) {
   return window['go']['wailsapp']['App']['ServeAllure'](arg1);
 }
 
+export function StartExport(arg1) {
+  return window['go']['wailsapp']['App']['StartExport'](arg1);
+}
+
+export function StartImportJSON(arg1) {
+  return window['go']['wailsapp']['App']['StartImportJSON'](arg1);
+}
+
+export function StartInstallBrowserEngine(arg1) {
+  return window['go']['wailsapp']['App']['StartInstallBrowserEngine'](arg1);
+}
+
 export function StartRecord(arg1) {
   return window['go']['wailsapp']['App']['StartRecord'](arg1);
+}
+
+export function StartRecordBaseline(arg1) {
+  return window['go']['wailsapp']['App']['StartRecordBaseline'](arg1);
+}
+
+export function StartRun(arg1) {
+  return window['go']['wailsapp']['App']['StartRun'](arg1);
+}
+
+export function StartRunPlugin(arg1) {
+  return window['go']['wailsapp']['App']['StartRunPlugin'](arg1);
+}
+
+export function StartServeAllure(arg1) {
+  return window['go']['wailsapp']['App']['StartServeAllure'](arg1);
+}
+
+export function StartValidate(arg1) {
+  return window['go']['wailsapp']['App']['StartValidate'](arg1);
 }
 
 export function StartVanessaRun(arg1) {

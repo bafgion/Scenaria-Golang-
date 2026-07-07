@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/browserconfig"
+	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -25,7 +26,7 @@ func runLiveBrowserSession(
 	if err != nil {
 		return fmt.Errorf("launch browser: %w", err)
 	}
-	defer browser.Close()
+	defer closeRecorderResource("browser", func() error { return browser.Close() })
 
 	contextOpts := browserconfig.NewContextOptions(headless, opts.HTTPCredentials)
 	bctx, err := browser.NewContext(contextOpts)
@@ -33,7 +34,7 @@ func runLiveBrowserSession(
 		return fmt.Errorf("create browser context: %w", err)
 	}
 	defer ReleasePickerBinding(bctx)
-	defer bctx.Close()
+	defer closeRecorderResource("context", func() error { return bctx.Close() })
 	if err := registerBrowserInitScripts(bctx, !opts.BrowseOnly); err != nil {
 		return fmt.Errorf("register browser init scripts: %w", err)
 	}
@@ -192,7 +193,7 @@ func runLiveBrowserSession(
 			return ErrRelaunchHeadless
 		}
 		for session.IsPaused() {
-			_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`, nil)
+			evaluateRecorderCleanup(page, `() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`)
 			if err := sleepContext(ctx, 100*time.Millisecond); err != nil {
 				return err
 			}
@@ -203,7 +204,7 @@ func runLiveBrowserSession(
 				return ErrRelaunchHeadless
 			}
 		}
-		_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`, nil)
+		evaluateRecorderCleanup(page, `() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`)
 		if opts.IdleTimeout > 0 && session.CaptureEnabled() && time.Since(lastEventAt) >= opts.IdleTimeout {
 			session.captureEnabled.Store(false)
 			session.paused.Store(false)
@@ -294,7 +295,25 @@ func syncBrowserToolbar(page playwright.Page, session *LiveSession, browseOnly b
 			stepCount: %d,
 		});
 	}`, recording, paused, browserOnly, session.RecordedStepCount())
-	_, _ = page.Evaluate(script)
+	evaluateRecorderCleanup(page, script)
+}
+
+func closeRecorderResource(resource string, closeFn func() error) {
+	if closeFn == nil {
+		return
+	}
+	if err := closeFn(); err != nil {
+		logx.Debug("recorder cleanup", "resource", resource, "error", err)
+	}
+}
+
+func evaluateRecorderCleanup(page playwright.Page, script string) {
+	if page == nil {
+		return
+	}
+	if _, err := page.Evaluate(script); err != nil {
+		logx.Debug("recorder evaluate", "error", err)
+	}
 }
 
 func takeToolbarAction(page playwright.Page) string {

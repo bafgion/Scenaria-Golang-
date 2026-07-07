@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
   import { createTranslator, locale } from './i18n'
 
   export let email = ''
@@ -8,6 +9,11 @@
   $: tr = createTranslator($locale)
 
   let code = ''
+  let codeInput: HTMLInputElement | null = null
+
+  onMount(() => {
+    void tick().then(() => codeInput?.focus())
+  })
 
   function submit() {
     onSubmit(code.trim())
@@ -26,7 +32,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label={tr('dialogs.otp.ariaLabel')} tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
     <h3>{tr('dialogs.otp.title')}</h3>
     {#if email}<p class="hint">{email}</p>{/if}
-    <input bind:value={code} placeholder={tr('dialogs.otp.placeholder')} autofocus />
+    <input bind:this={codeInput} bind:value={code} placeholder={tr('dialogs.otp.placeholder')} />
     <div class="modal-actions">
       <button type="button" class="primary" on:click={submit}>{tr('dialogs.common.ok')}</button>
       <button type="button" on:click={onCancel}>{tr('dialogs.common.cancel')}</button>

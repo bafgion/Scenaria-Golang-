@@ -21,6 +21,7 @@
 | **P0** | **Daily-use QA audit (Фаза 15)** | **done** |
 | **P1** | **Interactive HTML Report (Фаза 16)** | **done** |
 | **P0** | **Code audit Web UI stability (Фаза 17)** | **done** |
+| **P1** | **Runner DSL: UI state & checkout (Фаза 19)** | **в работе** |
 
 ---
 
@@ -233,7 +234,8 @@
 | **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
 | **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
 | **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
-| **0.28.1** | OTP/first-run browser, runner hardening, Phase 18 audit, HTML report artifacts — **released** |
+| **0.28.1** | OTP/first-run browser, runner hardening, Phase 18 audit, HTML report artifacts, `assert-enabled`/`disabled` — **released** |
+| **0.29.0** | Phase 19: checkout UI state, regex text, wait-enabled, numbers — **planned** |
 
 ---
 
@@ -889,3 +891,82 @@
 - [x] **Provider/command HMR disposables** - keep Monaco provider disposables in a global registry to avoid duplicate providers during `wails dev`.
 - [x] **Per-tab diagnostics state** - validation markers are stored per tab and restored on tab activation.
 - [x] **Large-file provider pressure** - completion provider now reuses one `model.getValue()` snapshot; byte-length threshold remains as follow-up if needed.
+
+---
+
+## Фаза 19 — Runner DSL: состояние UI и чекаут (P1)
+
+Статус: **в работе** (19.2–19.4 done, осталось 19.5 референс на стенд). Контекст: e-commerce чекаут (напр. 2MOOD)
+
+### 19.1 Сделано (v0.28.1)
+
+- [x] **`проверяю что доступно "…"`** / **`проверяю что недоступно "…"`** — `assert-enabled` / `assert-disabled`, Playwright `isEnabled()` (учитывает `disabled`, `aria-disabled`, перекрытие)
+- [x] EN: `I see "…" is enabled` / `I see "…" is disabled`
+- [x] Каталог F1, snippets, golden DSL, экспорт Playwright TS/Python, валидация селекторов
+- [x] Пример `examples/06-proverka-dostupnosti.feature` (data: HTML, disabled → enabled)
+- [x] Документация: `docs/ru|en/authoring/gherkin.md`, `selectors.md`, `examples.md`
+
+**Ограничение:** `вижу` проверяет только видимость; неактивная кнопка на экране проходит `вижу`, но не `проверяю что доступно`.
+
+### 19.2 P1 — асинхронное состояние и динамический текст
+
+- [x] **`жду пока доступно "selector"`** — `wait-enabled`, polling `isEnabled()`
+- [x] **`жду пока недоступно "selector"`** — `wait-disabled`
+- [x] **`проверяю что текст соответствует regex "…" в "…"`** — `assert-text-regex`
+- [x] **Условия в блоках:** `Если доступно`, `Если недоступно`, `Пока доступно` (+ EN `"…" is enabled/disabled`)
+- [x] **`проверяю что выбрано "selector"`** — `assert-selected` (`aria-selected`, `aria-checked`, `.active`)
+
+### 19.3 P2 — числа, переменные, связь полей
+
+- [x] **`запоминаю число из "selector" как "var"`** — `remember-number`, нормализация `7 180 ₽` → `7180`
+- [x] **Сравнение переменных:** `проверяю что "{{a}}" содержит "{{b}}"` / `равно` — `assert-var-contains` / `assert-var-equals`
+- [ ] **Связь сайдбар ↔ кнопка** (опционально) — через фиксированную корзину + `Примеры:` / `--var`
+- [x] **Арифметика в плейсхолдерах:** `{{total / 4}}`, `{{total}} / 4`, `(total - points) / 4` — целочисленное деление, работает в `assert-var-*`, `fill`, шагах с `{{…}}`
+
+### 19.4 P2 — запись и маски (flaky fill)
+
+- [x] **`fill-generated` + phone mask** — `PressSequentially` для `phone` / `input[type=tel]`
+- [x] **Нормализация при записи:** placeholder `+7 (` → `input[type=tel]`
+- [x] **Подсказка сценария:** hint `phone_mask_selector` для fragile placeholder на шаге телефона
+
+### 19.5 Референс-сценарий (чекаут, без привязки к прод)
+
+Целевое покрытие одного `.feature` на стенде с фиксированной корзиной:
+
+```gherkin
+# 1. Пустой чекаут → кнопка недоступна
+Тогда проверяю что недоступно "[data-testid=checkout-pay]"
+
+# 2. Заполнить контакты, доставку, оплату → доступна
+И проверяю что доступно "[data-testid=checkout-pay]"
+
+# 3. Сплит → текст и сумма на кнопке (подстроки или regex)
+И проверяю текст "Яндекс.Сплит" в "[data-testid=checkout-pay]"
+И проверяю текст "1 795" в "[data-testid=checkout-pay]"
+
+# 4. Итого в сайдбаре (фиксированные данные стенда)
+И проверяю текст "7 180" в ".order-summary"
+```
+
+Зависимости: стабильные `data-testid` на CTA, итого, плитках; тестовый стенд с предсказуемыми ценами/баллами.
+
+### 19.6 Файлы (план)
+
+`internal/stepdsl/{parser.go,en_patterns.go,testdata/steps_golden.json}`
+`internal/player/{browser_session.go,context.go}` — wait-enabled, regex assert, number parse
+`internal/gherkin/blocks.go` — условия enabled/disabled
+`internal/stepcatalog/snippets.go`
+`examples/` — чекаут-пример на стенд (после появления тестовых data-testid)
+`docs/ru|en/authoring/`
+
+### 20.1 GUI/backend reliability audit - Wails + Playwright hardening
+
+- [x] **Wails panic boundary** - wrap Wails-bound methods and background goroutines with recover so backend panics become `RunResult.Error` / emitted error events instead of crashing the desktop app.
+- [x] **Safe CLI stdout capture** - restore `os.Stdout`, close pipe handles, drain scanner, and convert panics to errors in `captureCLIStream`.
+- [x] **Shutdown live browser before waiting** - cancel/close recorder browser sessions before waiting on `activePlaywright` to avoid 8s shutdown hangs.
+- [x] **Parallel cancellation polish** - prevent browser pool deadlocks/leaks on reset failures, closed pool sends, and fail-fast cancellation races.
+- [x] **Trace artifact lifecycle lock** - stop trace recording under session ownership so `session.close()` cannot race with failed-artifact collection.
+- [x] **Recorder cleanup logging** - replace silent `Close`/`Evaluate` cleanup paths with low-noise debug logging.
+- [x] **Retry policy hardening** - separate action retry from assertion retry, add jittered backoff, and avoid retrying deterministic assertion mismatches.
+- [x] **Long Wails operations async model** - migrate Run/Validate/Export/plugin operations toward start/cancel/status events instead of long pending binding calls.
+- [x] **Monaco model/provider cleanup** - Save As URI, stale async writes, provider disposables, per-tab diagnostics, and model release are hardened.

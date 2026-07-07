@@ -114,6 +114,11 @@ type RunResult struct {
 	Entries []RunResultEntry `json:"entries,omitempty"`
 }
 
+type AsyncRunResultDTO struct {
+	JobID  string    `json:"jobId"`
+	Result RunResult `json:"result"`
+}
+
 type StepCatalogEntry struct {
 	Label       string   `json:"label"`
 	Action      string   `json:"action"`
@@ -320,6 +325,11 @@ func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	s.mu.Lock()
 	s.projectPath = path
 	s.mu.Unlock()
+	return s.projectInfo()
+}
+
+// RefreshProject rescans .feature files for the opened project without changing workspace state.
+func (s *Service) RefreshProject() (ProjectInfo, error) {
 	return s.projectInfo()
 }
 
@@ -779,7 +789,7 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 
 var captureStdoutMu sync.Mutex
 
-func captureCLIStream(onLine func(string), fn func() error) (string, error) {
+func captureCLIStream(onLine func(string), fn func() error) (out string, runErr error) {
 	captureStdoutMu.Lock()
 	defer captureStdoutMu.Unlock()
 
@@ -792,9 +802,11 @@ func captureCLIStream(onLine func(string), fn func() error) (string, error) {
 
 	var buf bytes.Buffer
 	done := make(chan struct{})
+	var scanErr error
 	go func() {
 		defer close(done)
 		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			buf.WriteString(line)
@@ -803,14 +815,26 @@ func captureCLIStream(onLine func(string), fn func() error) (string, error) {
 				onLine(line)
 			}
 		}
+		scanErr = scanner.Err()
 	}()
 
-	runErr := fn()
-	_ = w.Close()
-	os.Stdout = old
-	<-done
-	_ = r.Close()
-	return buf.String(), runErr
+	defer func() {
+		_ = w.Close()
+		os.Stdout = old
+		<-done
+		_ = r.Close()
+		out = buf.String()
+		if recovered := recover(); recovered != nil {
+			runErr = fmt.Errorf("cli panic: %v", recovered)
+			return
+		}
+		if runErr == nil && scanErr != nil {
+			runErr = fmt.Errorf("capture stdout: %w", scanErr)
+		}
+	}()
+
+	runErr = fn()
+	return "", runErr
 }
 
 func captureCLI(fn func() error) (string, error) {

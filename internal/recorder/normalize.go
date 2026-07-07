@@ -248,6 +248,10 @@ func upgradeFillSelector(step RecordedStep) RecordedStep {
 	if step.Action != "fill" || step.Selector == "" {
 		return step
 	}
+	if isPhonePlaceholderSelector(step.Selector) {
+		step.Selector = `input[type=tel]`
+		return step
+	}
 	if !selectorIsFragile(step.Selector) && !isGenericPlaceholder(step.Selector) {
 		return step
 	}
@@ -349,7 +353,27 @@ func isGenericPlaceholder(selector string) bool {
 	if _, ok := generic[ph]; ok {
 		return true
 	}
+	if isPhonePlaceholderText(ph) {
+		return true
+	}
 	return regexp.MustCompile(`(?i)^[дd_.\-/]{4,}$`).MatchString(ph)
+}
+
+func isPhonePlaceholderSelector(selector string) bool {
+	match := regexp.MustCompile(`(?i)placeholder="([^"]+)"`).FindStringSubmatch(selector)
+	if match == nil {
+		return false
+	}
+	ph := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(match[1])), " ", "")
+	return isPhonePlaceholderText(ph)
+}
+
+func isPhonePlaceholderText(ph string) bool {
+	ph = strings.ReplaceAll(ph, " ", "")
+	if strings.HasPrefix(ph, "+7(") || strings.HasPrefix(ph, "+7") || strings.HasPrefix(ph, "8(") {
+		return true
+	}
+	return regexp.MustCompile(`^\+7\d*[_()]+`).MatchString(ph) || regexp.MustCompile(`^8\([_\d]+`).MatchString(ph)
 }
 
 func isCheckboxValue(value string) bool {

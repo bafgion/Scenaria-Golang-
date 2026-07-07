@@ -1,6 +1,10 @@
 package wailsapp
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/gui"
+)
 
 func TestSearchStepsReturnsRichEntries(t *testing.T) {
 	app := NewApp()
@@ -57,7 +61,7 @@ func TestDescribeEditorLineBinding(t *testing.T) {
 
 func TestEventBindingTypes(t *testing.T) {
 	app := NewApp()
-	progress, result, runProgress := app.EventBindingTypes()
+	progress, result, runProgress, asyncResult := app.EventBindingTypes()
 	if progress.Percent != 0 || progress.Message != "" {
 		t.Fatalf("expected zero progress DTO, got %+v", progress)
 	}
@@ -67,6 +71,9 @@ func TestEventBindingTypes(t *testing.T) {
 	if runProgress.Phase != "" || runProgress.Index != 0 || runProgress.Total != 0 {
 		t.Fatalf("expected zero run progress DTO, got %+v", runProgress)
 	}
+	if asyncResult.JobID != "" || asyncResult.Result.Error != "" {
+		t.Fatalf("expected zero async result DTO, got %+v", asyncResult)
+	}
 }
 
 func TestRefactorReplaceDelegates(t *testing.T) {
@@ -74,5 +81,17 @@ func TestRefactorReplaceDelegates(t *testing.T) {
 	got := app.svc.RefactorReplaceInText("hello", "hello", "bye", false)
 	if got.Count != 1 || got.Text != "bye" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestStartValidateReturnsJobID(t *testing.T) {
+	app := NewApp()
+	first := app.StartValidate(gui.ValidateRequest{SkipBrowser: true})
+	second := app.StartValidate(gui.ValidateRequest{SkipBrowser: true})
+	if first == "" || second == "" {
+		t.Fatalf("expected job ids, got %q and %q", first, second)
+	}
+	if first == second {
+		t.Fatalf("expected unique job ids, got %q", first)
 	}
 }

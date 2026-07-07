@@ -181,6 +181,30 @@ func (c *RunContext) EvaluateCondition(cond *gherkin.Condition) bool {
 		}
 		visible, err := c.page.Locator(selector).IsVisible()
 		return err == nil && !visible
+	case "enabled":
+		selector, err := c.ResolveText(cond.Selector)
+		if err != nil {
+			return false
+		}
+		locator := c.page.Locator(selector)
+		visible, err := locator.IsVisible()
+		if err != nil || !visible {
+			return false
+		}
+		enabled, err := locator.IsEnabled()
+		return err == nil && enabled
+	case "disabled":
+		selector, err := c.ResolveText(cond.Selector)
+		if err != nil {
+			return false
+		}
+		locator := c.page.Locator(selector)
+		visible, err := locator.IsVisible()
+		if err != nil || !visible {
+			return false
+		}
+		enabled, err := locator.IsEnabled()
+		return err == nil && !enabled
 	case "url_contains":
 		value, err := c.ResolveText(cond.Value)
 		if err != nil {

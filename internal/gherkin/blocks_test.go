@@ -31,6 +31,23 @@ func TestBuildStepTree_WithNestedIf(t *testing.T) {
 	}
 }
 
+func TestDetectBlockHeadersEnabled(t *testing.T) {
+	step := Step{Line: 1, Text: `Если доступно "#pay"`}
+	header, err := detectBlockHeader(step, LangRU)
+	if err != nil || header == nil || header.Kind != BlockIf || header.Condition.Type != "enabled" {
+		t.Fatalf("unexpected enabled if header: %+v err=%v", header, err)
+	}
+	if header.Condition.Selector != "#pay" {
+		t.Fatalf("selector: %q", header.Condition.Selector)
+	}
+
+	step = Step{Line: 2, Text: `If "#pay" is enabled`}
+	header, err = detectBlockHeader(step, LangEN)
+	if err != nil || header == nil || header.Condition.Type != "enabled" {
+		t.Fatalf("unexpected EN enabled header: %+v err=%v", header, err)
+	}
+}
+
 func TestParseTestClientName(t *testing.T) {
 	name, err := ParseTestClientName([]Step{{Line: 1, Text: `я подключаю TestClient "Demo"`}})
 	if err != nil || name != "Demo" {

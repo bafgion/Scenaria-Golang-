@@ -100,10 +100,18 @@ func renderTSAction(step gherkin.Step, baseURL string) (string, error) {
 		return "await page.fill(" + strconv.Quote(action.Value2) + ", " + strconv.Quote(action.Value1) + ");", nil
 	case "assert-visible":
 		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeVisible();", nil
+	case "assert-enabled":
+		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeEnabled();", nil
+	case "assert-disabled":
+		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeDisabled();", nil
+	case "assert-selected":
+		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toHaveAttribute('aria-selected', 'true');", nil
 	case "assert-hidden":
 		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeHidden();", nil
 	case "assert-text":
 		return "await expect(page.locator(" + strconv.Quote(action.Value2) + ")).toContainText(" + strconv.Quote(action.Value1) + ");", nil
+	case "assert-text-regex":
+		return "await expect(page.locator(" + strconv.Quote(action.Value2) + ")).toHaveText(new RegExp(" + strconv.Quote(action.Value1) + "));", nil
 	case "assert-url":
 		return "expect(page.url()).toBe(" + strconv.Quote(action.Value1) + ");", nil
 	case "assert-url-contains":
@@ -118,6 +126,10 @@ func renderTSAction(step gherkin.Step, baseURL string) (string, error) {
 		return "await page.waitForTimeout(" + strconv.Itoa(ms) + ");", nil
 	case "wait-visible":
 		return "await page.locator(" + strconv.Quote(action.Value1) + ").waitFor({ state: 'visible' });", nil
+	case "wait-enabled":
+		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeEnabled();", nil
+	case "wait-disabled":
+		return "await expect(page.locator(" + strconv.Quote(action.Value1) + ")).toBeDisabled();", nil
 	case "wait-hidden":
 		return "await page.locator(" + strconv.Quote(action.Value1) + ").waitFor({ state: 'hidden' });", nil
 	case "reload":
@@ -140,8 +152,12 @@ func renderTSAction(step gherkin.Step, baseURL string) (string, error) {
 		return "await page.fill(" + strconv.Quote(action.Value1) + ", '');", nil
 	case "scroll-to":
 		return "await page.locator(" + strconv.Quote(action.Value1) + ").scrollIntoViewIfNeeded();", nil
-	case "remember-text", "remember-field", "remember-url":
+	case "remember-text", "remember-field", "remember-number", "remember-url":
 		return "// " + action.Kind + " (runtime variable)", nil
+	case "assert-var-contains":
+		return "// assert " + strconv.Quote(action.Value1) + " contains " + strconv.Quote(action.Value2), nil
+	case "assert-var-equals":
+		return "// assert " + strconv.Quote(action.Value1) + " equals " + strconv.Quote(action.Value2), nil
 	case "fill-generated":
 		return "await page.fill(" + strconv.Quote(action.Value2) + ", /* generated: " + action.Value1 + " */ '');", nil
 	case "switch-tab":
@@ -177,10 +193,18 @@ func renderPythonAction(step gherkin.Step, baseURL string) (string, error) {
 		return "page.fill(" + strconv.Quote(action.Value2) + ", " + strconv.Quote(action.Value1) + ")", nil
 	case "assert-visible":
 		return "assert page.locator(" + strconv.Quote(action.Value1) + ").is_visible()", nil
+	case "assert-enabled":
+		return "assert page.locator(" + strconv.Quote(action.Value1) + ").is_enabled()", nil
+	case "assert-disabled":
+		return "assert not page.locator(" + strconv.Quote(action.Value1) + ").is_enabled()", nil
+	case "assert-selected":
+		return "assert page.locator(" + strconv.Quote(action.Value1) + ").get_attribute('aria-selected') == 'true'", nil
 	case "assert-hidden":
 		return "assert not page.locator(" + strconv.Quote(action.Value1) + ").is_visible()", nil
 	case "assert-text":
 		return "assert " + strconv.Quote(action.Value1) + " in page.locator(" + strconv.Quote(action.Value2) + ").inner_text()", nil
+	case "assert-text-regex":
+		return "import re; assert re.search(" + strconv.Quote(action.Value1) + ", page.locator(" + strconv.Quote(action.Value2) + ").inner_text())", nil
 	case "assert-url":
 		return "assert page.url() == " + strconv.Quote(action.Value1), nil
 	case "assert-url-contains":
@@ -195,6 +219,10 @@ func renderPythonAction(step gherkin.Step, baseURL string) (string, error) {
 		return "page.wait_for_timeout(" + strconv.Itoa(ms) + ")", nil
 	case "wait-visible":
 		return "page.locator(" + strconv.Quote(action.Value1) + ").wait_for(state='visible')", nil
+	case "wait-enabled":
+		return "assert page.locator(" + strconv.Quote(action.Value1) + ").is_enabled()", nil
+	case "wait-disabled":
+		return "assert not page.locator(" + strconv.Quote(action.Value1) + ").is_enabled()", nil
 	case "wait-hidden":
 		return "page.locator(" + strconv.Quote(action.Value1) + ").wait_for(state='hidden')", nil
 	case "reload":
@@ -217,8 +245,12 @@ func renderPythonAction(step gherkin.Step, baseURL string) (string, error) {
 		return "page.fill(" + strconv.Quote(action.Value1) + ", '')", nil
 	case "scroll-to":
 		return "page.locator(" + strconv.Quote(action.Value1) + ").scroll_into_view_if_needed()", nil
-	case "remember-text", "remember-field", "remember-url":
+	case "remember-text", "remember-field", "remember-number", "remember-url":
 		return "# " + action.Kind + " (runtime variable)", nil
+	case "assert-var-contains":
+		return "# assert " + strconv.Quote(action.Value1) + " contains " + strconv.Quote(action.Value2), nil
+	case "assert-var-equals":
+		return "# assert " + strconv.Quote(action.Value1) + " equals " + strconv.Quote(action.Value2), nil
 	case "fill-generated":
 		return "page.fill(" + strconv.Quote(action.Value2) + ", generate_" + action.Value1 + "())", nil
 	case "switch-tab", "close-tab", "draw-signature", "assert-download-contains":

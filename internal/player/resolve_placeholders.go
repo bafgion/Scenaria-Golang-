@@ -18,6 +18,12 @@ func (c *RunContext) ResolveText(text string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if arith, arithChanged, err := c.resolveArithmeticText(resolved); err != nil {
+			return "", err
+		} else if arithChanged {
+			resolved = arith
+			changed = true
+		}
 		if !changed {
 			if strings.Contains(resolved, "{{") && strings.Contains(resolved, "}}") {
 				return "", fmt.Errorf("unresolved placeholder in %q", text)
@@ -27,6 +33,18 @@ func (c *RunContext) ResolveText(text string) (string, error) {
 		out = resolved
 	}
 	return "", fmt.Errorf("placeholder resolution exceeded %d passes", maxPlaceholderPasses)
+}
+
+func (c *RunContext) resolveArithmeticText(text string) (string, bool, error) {
+	trimmed := strings.TrimSpace(text)
+	if !looksLikeArithmeticExpression(trimmed) {
+		return text, false, nil
+	}
+	v, err := c.evaluateArithmeticExpression(trimmed)
+	if err != nil {
+		return text, false, nil
+	}
+	return formatExprInt(v), true, nil
 }
 
 func resolvePlaceholdersOnce(c *RunContext, text string) (string, bool, error) {
@@ -71,6 +89,13 @@ func (c *RunContext) resolvePlaceholderKey(key string) (string, error) {
 		}
 		return value, nil
 	}
+	if isPlaceholderExpression(key) {
+		return c.evaluatePlaceholderExpression(key)
+	}
+	return c.resolvePlainPlaceholderKey(key)
+}
+
+func (c *RunContext) resolvePlainPlaceholderKey(key string) (string, error) {
 	if value, ok := c.Variables[key]; ok {
 		if strings.Contains(value, "{{") {
 			return c.resolveNestedValue(key, value)

@@ -17,7 +17,7 @@ var (
 )
 
 var assertKinds = map[string]struct{}{
-	"assert-text": {}, "assert-visible": {}, "assert-hidden": {}, "assert-url": {},
+	"assert-text": {}, "assert-text-regex": {}, "assert-var-contains": {}, "assert-var-equals": {}, "assert-visible": {}, "assert-hidden": {}, "assert-enabled": {}, "assert-disabled": {}, "assert-selected": {}, "assert-url": {},
 	"assert-url-contains": {}, "assert-tab-count": {}, "assert-download-contains": {},
 }
 
@@ -27,7 +27,7 @@ var interactiveAfterGoto = map[string]struct{}{
 }
 
 var waitKinds = map[string]struct{}{
-	"wait": {}, "wait-visible": {}, "wait-hidden": {},
+	"wait": {}, "wait-visible": {}, "wait-hidden": {}, "wait-enabled": {}, "wait-disabled": {},
 }
 
 type ScenarioHintDTO struct {
@@ -88,6 +88,11 @@ func AnalyzeScenarioHints(text string) []ScenarioHintDTO {
 				hints = append(hints, *hint)
 			}
 		case "fill", "fill-generated", "type":
+			if action.Kind == "fill-generated" {
+				if hint := phoneMaskSelectorHint(action, i, steps); hint != nil {
+					hints = append(hints, *hint)
+				}
+			}
 			if hint := fillNoAssertHint(steps, i); hint != nil {
 				hints = append(hints, *hint)
 			}
@@ -260,12 +265,37 @@ func selectorFromAction(action stepdsl.Action) string {
 			return action.Value2
 		}
 		return action.Value1
-	case "fill-generated":
+	case "fill-generated", "remember-number":
 		return action.Value2
 	case "press-in":
 		return action.Value2
 	default:
 		return ""
+	}
+}
+
+func phoneMaskSelectorHint(action stepdsl.Action, index int, steps []parsedScenarioStep) *ScenarioHintDTO {
+	if !isPhoneGeneratorKind(action.Value1) {
+		return nil
+	}
+	sel := strings.ToLower(action.Value2)
+	if !strings.Contains(sel, "placeholder=") {
+		return nil
+	}
+	hint := scenarioHint(
+		"phone_mask_selector",
+		"Телефон по placeholder — лучше input[type=tel] или label:has-text(\"Телефон\")",
+		index, steps, "warning", false,
+	)
+	return &hint
+}
+
+func isPhoneGeneratorKind(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "phone", "tel", "телефон":
+		return true
+	default:
+		return false
 	}
 }
 

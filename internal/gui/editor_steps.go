@@ -83,7 +83,7 @@ func actionDisplayName(kind string) string {
 		return "Навести"
 	case "fill", "type":
 		return "Ввести"
-	case "assert-text", "assert-visible":
+	case "assert-text", "assert-text-regex", "assert-visible", "assert-enabled", "assert-disabled", "assert-selected":
 		return "Проверить"
 	case "press", "press-in":
 		return "Клавиша"
@@ -97,9 +97,9 @@ func actionDisplayName(kind string) string {
 
 func actionFields(a stepdsl.Action) (element, value string) {
 	switch a.Kind {
-	case "goto", "assert-visible", "remember-text", "remember-url":
+	case "goto", "assert-visible", "assert-enabled", "assert-disabled", "assert-selected", "remember-text", "remember-url":
 		value = a.Value1
-	case "assert-text":
+	case "assert-text", "assert-text-regex":
 		value = a.Value1
 		element = a.Value2
 	case "click", "hover", "double-click", "fill", "type", "press", "download-click":

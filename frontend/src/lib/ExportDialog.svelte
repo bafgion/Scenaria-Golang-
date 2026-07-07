@@ -2,11 +2,12 @@
   import { onMount } from 'svelte'
   import { createTranslator, locale } from './i18n'
   import {
-    Export,
+    StartExport,
     PreviewExport,
     PickSaveFile,
     ArtifactExists,
   } from '../../wailsjs/go/wailsapp/App'
+  import { startRunResultJob } from './asyncRunResult'
   import type { gui } from '../../wailsjs/go/models'
 
   export let inputPath = ''
@@ -103,13 +104,13 @@
     busy = true
     previewError = ''
     try {
-      const result = await Export({
-        inputPath,
-        output: outputPath.trim(),
-        format,
-        baseURL: baseURL.trim(),
-        force: forceOverwrite,
-      })
+      const result = await startRunResultJob('export-finished', () => StartExport({
+          inputPath,
+          output: outputPath.trim(),
+          format,
+          baseURL: baseURL.trim(),
+          force: forceOverwrite,
+        }))
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         onLog(`${tr('dialogs.export.errorPrefix')} ${result.error}`)

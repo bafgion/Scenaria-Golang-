@@ -77,10 +77,11 @@ func (v Validator) ValidateVisible(ctx context.Context, page playwright.Page, se
 func selectorsFromAction(action stepdsl.Action) []string {
 	switch action.Kind {
 	case "click", "double-click", "hover", "clear", "check", "uncheck", "scroll-to",
-		"assert-visible", "assert-hidden", "wait-visible", "wait-hidden", "press-in",
-		"download-click", "draw-signature", "remember-field":
+		"assert-visible", "assert-hidden", "assert-enabled", "assert-disabled", "assert-selected",
+		"wait-visible", "wait-hidden", "wait-enabled", "wait-disabled", "press-in",
+		"download-click", "draw-signature", "remember-field", "remember-number":
 		return []string{action.Value1}
-	case "fill", "select", "upload", "assert-text", "fill-generated", "prompt-email-code":
+	case "fill", "select", "upload", "assert-text", "assert-text-regex", "fill-generated", "prompt-email-code":
 		if action.Value2 != "" {
 			return []string{action.Value2}
 		}

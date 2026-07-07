@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gui"
@@ -21,10 +22,48 @@ type App struct {
 	otpMu   sync.Mutex
 	otpCode chan string
 	otpErr  chan error
+	jobSeq  atomic.Uint64
 }
 
 func NewApp() *App {
 	return &App{svc: gui.NewService()}
+}
+
+func panicRunResult(op string, r any) gui.RunResult {
+	return gui.RunResult{Error: fmt.Sprintf("%s panic: %v", op, r)}
+}
+
+func (a *App) safeRunResult(op string, fn func() gui.RunResult) (result gui.RunResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = panicRunResult(op, r)
+		}
+	}()
+	return fn()
+}
+
+func (a *App) safeGoRunResult(event string, fn func() gui.RunResult) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.emitEvent(event, panicRunResult(event, r))
+			}
+		}()
+		a.emitEvent(event, fn())
+	}()
+}
+
+func (a *App) nextJobID(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, a.jobSeq.Add(1))
+}
+
+func (a *App) startRunResultJob(prefix, finishedEvent string, fn func() gui.RunResult) string {
+	jobID := a.nextJobID(prefix)
+	go func() {
+		result := a.safeRunResult(prefix, fn)
+		a.emitEvent(finishedEvent, gui.AsyncRunResultDTO{JobID: jobID, Result: result})
+	}()
+	return jobID
 }
 
 func (a *App) Startup(ctx context.Context) {
@@ -128,6 +167,10 @@ func (a *App) OpenProject(path string) (gui.ProjectInfo, error) {
 	return a.svc.OpenProject(path)
 }
 
+func (a *App) RefreshProject() (gui.ProjectInfo, error) {
+	return a.svc.RefreshProject()
+}
+
 func (a *App) ProjectPath() string {
 	return a.svc.ProjectPath()
 }
@@ -157,7 +200,15 @@ func (a *App) InitProjectAt(path string) (string, error) {
 }
 
 func (a *App) Run(req gui.RunRequest) gui.RunResult {
-	return a.svc.Run(req, a.emitEvent)
+	return a.safeRunResult("run", func() gui.RunResult {
+		return a.svc.Run(req, a.emitEvent)
+	})
+}
+
+func (a *App) StartRun(req gui.RunRequest) string {
+	return a.startRunResultJob("run", "run-finished", func() gui.RunResult {
+		return a.svc.Run(req, a.emitEvent)
+	})
 }
 
 func (a *App) CancelRun() {
@@ -165,7 +216,15 @@ func (a *App) CancelRun() {
 }
 
 func (a *App) Validate(req gui.ValidateRequest) gui.RunResult {
-	return a.svc.Validate(req)
+	return a.safeRunResult("validate", func() gui.RunResult {
+		return a.svc.Validate(req)
+	})
+}
+
+func (a *App) StartValidate(req gui.ValidateRequest) string {
+	return a.startRunResultJob("validate", "validate-finished", func() gui.RunResult {
+		return a.svc.Validate(req)
+	})
 }
 
 func (a *App) ValidateFeature(text string) []gui.ValidationIssue {
@@ -229,7 +288,9 @@ func (a *App) CompletionsForLine(line string, column int, featureText string) gu
 }
 
 func (a *App) CheckUpdate() gui.RunResult {
-	return a.svc.CheckUpdate()
+	return a.safeRunResult("check update", func() gui.RunResult {
+		return a.svc.CheckUpdate()
+	})
 }
 
 func (a *App) CheckUpdateInfo() (gui.UpdateInfoDTO, error) {
@@ -237,8 +298,8 @@ func (a *App) CheckUpdateInfo() (gui.UpdateInfoDTO, error) {
 }
 
 // EventBindingTypes exposes DTOs used only in runtime.EventsEmit so wails generate keeps them in models.ts.
-func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDTO, player.RunProgressEvent) {
-	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}, player.RunProgressEvent{}
+func (a *App) EventBindingTypes() (gui.UpdateProgressDTO, gui.VanessaRunResultDTO, player.RunProgressEvent, gui.AsyncRunResultDTO) {
+	return gui.UpdateProgressDTO{}, gui.VanessaRunResultDTO{}, player.RunProgressEvent{}, gui.AsyncRunResultDTO{}
 }
 
 func (a *App) DownloadUpdate() {
@@ -279,7 +340,13 @@ func (a *App) OpenExternalURL(url string) error {
 	return a.svc.OpenExternalURL(url)
 }
 
-func (a *App) ValidateBrowser(req gui.ValidateRequest) ([]gui.ValidationIssue, error) {
+func (a *App) ValidateBrowser(req gui.ValidateRequest) (issues []gui.ValidationIssue, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			issues = nil
+			err = fmt.Errorf("validate browser panic: %v", r)
+		}
+	}()
 	return a.svc.ValidateBrowser(req)
 }
 
@@ -288,7 +355,15 @@ func (a *App) BrowserInstallStatus(engine string) gui.BrowserInstallStatusDTO {
 }
 
 func (a *App) InstallBrowserEngine(engine string) gui.RunResult {
-	return a.svc.InstallBrowserEngine(engine)
+	return a.safeRunResult("install browser engine", func() gui.RunResult {
+		return a.svc.InstallBrowserEngine(engine)
+	})
+}
+
+func (a *App) StartInstallBrowserEngine(engine string) string {
+	return a.startRunResultJob("install-browser-engine", "browser-install-finished", func() gui.RunResult {
+		return a.svc.InstallBrowserEngine(engine)
+	})
 }
 
 func (a *App) ListRunResults(limit int) ([]gui.RunResultEntry, error) {
@@ -424,7 +499,15 @@ func (a *App) SaveSettings(dto gui.AppSettingsDTO) error {
 }
 
 func (a *App) Export(req gui.ExportRequest) gui.RunResult {
-	return a.svc.Export(req)
+	return a.safeRunResult("export", func() gui.RunResult {
+		return a.svc.Export(req)
+	})
+}
+
+func (a *App) StartExport(req gui.ExportRequest) string {
+	return a.startRunResultJob("export", "export-finished", func() gui.RunResult {
+		return a.svc.Export(req)
+	})
 }
 
 func (a *App) PreviewExport(text string) gui.ExportPreview {
@@ -432,15 +515,33 @@ func (a *App) PreviewExport(text string) gui.ExportPreview {
 }
 
 func (a *App) ImportJSON(req gui.ImportRequest) gui.RunResult {
-	return a.svc.ImportJSON(req)
+	return a.safeRunResult("import json", func() gui.RunResult {
+		return a.svc.ImportJSON(req)
+	})
+}
+
+func (a *App) StartImportJSON(req gui.ImportRequest) string {
+	return a.startRunResultJob("import-json", "import-json-finished", func() gui.RunResult {
+		return a.svc.ImportJSON(req)
+	})
 }
 
 func (a *App) RunVanessa(dryRun bool) gui.RunResult {
-	return a.svc.RunVanessa(dryRun)
+	return a.safeRunResult("run vanessa", func() gui.RunResult {
+		return a.svc.RunVanessa(dryRun)
+	})
 }
 
 func (a *App) RunPlugin(req gui.PluginRunRequest) gui.RunResult {
-	return a.svc.RunPlugin(req)
+	return a.safeRunResult("run plugin", func() gui.RunResult {
+		return a.svc.RunPlugin(req)
+	})
+}
+
+func (a *App) StartRunPlugin(req gui.PluginRunRequest) string {
+	return a.startRunResultJob("run-plugin", "plugin-run-finished", func() gui.RunResult {
+		return a.svc.RunPlugin(req)
+	})
 }
 
 func (a *App) emitEvent(name string, payload any) {
@@ -452,6 +553,11 @@ func (a *App) emitEvent(name string, payload any) {
 
 func (a *App) StartVanessaRun(req gui.PluginRunRequest) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.emitEvent("vanessa-run-finished", gui.VanessaRunResultDTO{Error: fmt.Sprintf("vanessa run panic: %v", r)})
+			}
+		}()
 		a.emitEvent("vanessa-run-started", nil)
 		result := a.svc.RunVanessaPlugin(req)
 		a.emitEvent("vanessa-run-finished", result)
@@ -468,6 +574,11 @@ func (a *App) PollBrowserSession() gui.BrowserSessionDTO {
 
 func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.emitEvent("browser-closed", panicRunResult("open browser", r))
+			}
+		}()
 		emit := func(name string, payload any) {
 			a.emitEvent(name, payload)
 		}
@@ -478,6 +589,11 @@ func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
 
 func (a *App) StartRecord(req gui.RecordRequest) {
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				a.emitEvent("record-finished", panicRunResult("record", r))
+			}
+		}()
 		emit := func(name string, payload any) {
 			a.emitEvent(name, payload)
 		}
@@ -491,8 +607,14 @@ func (a *App) StartRecord(req gui.RecordRequest) {
 	}()
 }
 
-func (a *App) BeginRecordingCapture() (bool, error) {
-	started, err := a.svc.BeginRecordingCapture()
+func (a *App) BeginRecordingCapture() (started bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			started = false
+			err = fmt.Errorf("begin recording capture panic: %v", r)
+		}
+	}()
+	started, err = a.svc.BeginRecordingCapture()
 	if err != nil {
 		return false, err
 	}
@@ -505,15 +627,28 @@ func (a *App) BeginRecordingCapture() (bool, error) {
 }
 
 func (a *App) RecordBaseline(req gui.BaselineRecordRequest) gui.RunResult {
-	return a.svc.RecordBaseline(req)
+	return a.safeRunResult("record baseline", func() gui.RunResult {
+		return a.svc.RecordBaseline(req)
+	})
+}
+
+func (a *App) StartRecordBaseline(req gui.BaselineRecordRequest) string {
+	return a.startRunResultJob("record-baseline", "record-baseline-finished", func() gui.RunResult {
+		return a.svc.RecordBaseline(req)
+	})
 }
 
 func (a *App) PauseRecording()  { a.svc.PauseRecording() }
 func (a *App) ResumeRecording() { a.svc.ResumeRecording() }
 func (a *App) CancelRecording() { a.svc.CancelRecording() }
 func (a *App) CloseBrowser()    { a.svc.CloseBrowser() }
-func (a *App) StopRecordingCapture() error {
-	err := a.svc.StopRecordingCapture()
+func (a *App) StopRecordingCapture() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("stop recording capture panic: %v", r)
+		}
+	}()
+	err = a.svc.StopRecordingCapture()
 	if err == nil {
 		runtime.EventsEmit(a.ctx, "record-stopped", map[string]any{"reason": "manual"})
 	}
@@ -521,7 +656,9 @@ func (a *App) StopRecordingCapture() error {
 }
 
 func (a *App) OpenTrace(path string) gui.RunResult {
-	return a.svc.OpenTrace(path)
+	return a.safeRunResult("open trace", func() gui.RunResult {
+		return a.svc.OpenTrace(path)
+	})
 }
 
 func (a *App) FailedStepLine(featurePath, scenarioName string, leafIndex int) (int, error) {
@@ -620,7 +757,15 @@ func (a *App) OpenFolder(path string) error {
 }
 
 func (a *App) ServeAllure(dir string) gui.RunResult {
-	return a.svc.ServeAllure(dir)
+	return a.safeRunResult("serve allure", func() gui.RunResult {
+		return a.svc.ServeAllure(dir)
+	})
+}
+
+func (a *App) StartServeAllure(dir string) string {
+	return a.startRunResultJob("serve-allure", "allure-serve-finished", func() gui.RunResult {
+		return a.svc.ServeAllure(dir)
+	})
 }
 
 func (a *App) AllureStatus(dir string) gui.AllureStatusDTO {
@@ -628,18 +773,20 @@ func (a *App) AllureStatus(dir string) gui.AllureStatusDTO {
 }
 
 func (a *App) OpenHTMLReport(path string) gui.RunResult {
-	result := a.svc.OpenHTMLReport(path)
-	if result.Error != "" {
-		return result
-	}
-	absPath := strings.TrimSpace(result.Output)
-	if absPath == "" {
-		return gui.RunResult{Error: "report path is empty"}
-	}
-	if err := paths.OpenWithDefaultApp(absPath); err != nil {
-		return gui.RunResult{Error: fmt.Sprintf("open report: %v", err)}
-	}
-	return gui.RunResult{Output: absPath}
+	return a.safeRunResult("open html report", func() gui.RunResult {
+		result := a.svc.OpenHTMLReport(path)
+		if result.Error != "" {
+			return result
+		}
+		absPath := strings.TrimSpace(result.Output)
+		if absPath == "" {
+			return gui.RunResult{Error: "report path is empty"}
+		}
+		if err := paths.OpenWithDefaultApp(absPath); err != nil {
+			return gui.RunResult{Error: fmt.Sprintf("open report: %v", err)}
+		}
+		return gui.RunResult{Output: absPath}
+	})
 }
 
 // BeginSplashWindowChrome removes native title bar and system buttons during splash (Windows).

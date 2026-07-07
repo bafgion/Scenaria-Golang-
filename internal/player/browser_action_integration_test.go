@@ -196,6 +196,188 @@ func TestExecuteFillGenerated(t *testing.T) {
 	}
 }
 
+func TestExecuteAssertEnabledDisabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
+<button id="disabled" disabled>Send</button>
+<button id="enabled">OK</button>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	session, cleanup := newTestBrowserSession(t)
+	defer cleanup()
+
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "goto",
+		Value1: srv.URL,
+	}, "", nil); err != nil {
+		t.Fatalf("goto: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-disabled",
+		Value1: "#disabled",
+	}, "", nil); err != nil {
+		t.Fatalf("assert-disabled: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-enabled",
+		Value1: "#enabled",
+	}, "", nil); err != nil {
+		t.Fatalf("assert-enabled: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-enabled",
+		Value1: "#disabled",
+	}, "", nil); err == nil {
+		t.Fatal("expected assert-enabled to fail on disabled button")
+	}
+}
+
+func TestExecuteWaitEnabledDisabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
+<button id="pay" disabled>Pay</button>
+<script>setTimeout(() => { document.getElementById('pay').disabled = false; }, 200);</script>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	session, cleanup := newTestBrowserSession(t)
+	defer cleanup()
+
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "goto",
+		Value1: srv.URL,
+	}, "", nil); err != nil {
+		t.Fatalf("goto: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "wait-enabled",
+		Value1: "#pay",
+	}, "", nil); err != nil {
+		t.Fatalf("wait-enabled: %v", err)
+	}
+}
+
+func TestExecuteAssertTextRegexAndSelected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
+<button id="pay">Pay 1 795 via Split</button>
+<div id="tile" class="active" aria-selected="true">Delivery</div>
+<div id="plain">Plain</div>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	session, cleanup := newTestBrowserSession(t)
+	defer cleanup()
+
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "goto",
+		Value1: srv.URL,
+	}, "", nil); err != nil {
+		t.Fatalf("goto: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-text-regex",
+		Value1: `Pay.*\d+`,
+		Value2: "#pay",
+	}, "", nil); err != nil {
+		t.Fatalf("assert-text-regex: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-selected",
+		Value1: "#tile",
+	}, "", nil); err != nil {
+		t.Fatalf("assert-selected: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-selected",
+		Value1: "#plain",
+	}, "", nil); err == nil {
+		t.Fatal("expected assert-selected to fail on unselected element")
+	}
+}
+
+func TestExecuteRememberNumberAndAssertVars(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body>
+<div id="total">7 180 ₽</div>
+<div id="pay">Pay 1 795</div>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	session, cleanup := newTestBrowserSession(t)
+	defer cleanup()
+	runCtx := NewRunContext(map[string]string{}, 42, "")
+
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "goto",
+		Value1: srv.URL,
+	}, "", runCtx); err != nil {
+		t.Fatalf("goto: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "remember-number",
+		Value1: "#total",
+		Value2: "total_amount",
+	}, "", runCtx); err != nil {
+		t.Fatalf("remember-number total: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "remember-number",
+		Value1: "#pay",
+		Value2: "pay_amount",
+	}, "", runCtx); err != nil {
+		t.Fatalf("remember-number pay: %v", err)
+	}
+	if runCtx.Variables["total_amount"] != "7180" {
+		t.Fatalf("total_amount: %q", runCtx.Variables["total_amount"])
+	}
+	if runCtx.Variables["pay_amount"] != "1795" {
+		t.Fatalf("pay_amount: %q", runCtx.Variables["pay_amount"])
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-var-equals",
+		Value1: "7180",
+		Value2: "7180",
+	}, "", runCtx); err != nil {
+		t.Fatalf("assert-var-equals: %v", err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-var-contains",
+		Value1: runCtx.Variables["pay_amount"],
+		Value2: "795",
+	}, "", runCtx); err != nil {
+		t.Fatalf("assert-var-contains: %v", err)
+	}
+	expectedSplit, err := runCtx.ResolveText("{{total_amount / 4}}")
+	if err != nil || expectedSplit != "1795" {
+		t.Fatalf("arithmetic placeholder: %q %v", expectedSplit, err)
+	}
+	if err := executeAction(context.Background(), session, stepdsl.Action{
+		Kind:   "assert-var-equals",
+		Value1: runCtx.Variables["pay_amount"],
+		Value2: expectedSplit,
+	}, "", runCtx); err != nil {
+		t.Fatalf("assert-var-equals split amount: %v", err)
+	}
+}
+
+func TestNeedsSequentialFill(t *testing.T) {
+	if !needsSequentialFill(`input[type=tel]`, "") {
+		t.Fatal("tel selector should use sequential fill")
+	}
+	if !needsSequentialFill("#phone", "phone") {
+		t.Fatal("phone generator should use sequential fill")
+	}
+	if needsSequentialFill("#email", "first_name") {
+		t.Fatal("email should not use sequential fill")
+	}
+}
+
 func TestExecuteClick(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><button id="go">Go</button></body></html>`))
