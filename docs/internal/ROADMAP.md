@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.28.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.28.1 (в работе); **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -19,7 +19,7 @@
 | **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
 | **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
 | **P0** | **Daily-use QA audit (Фаза 15)** | **done** |
-| **P1** | **Interactive HTML Report (Фаза 16)** | **in progress** |
+| **P1** | **Interactive HTML Report (Фаза 16)** | **done** |
 | **P0** | **Code audit Web UI stability (Фаза 17)** | **done** |
 
 ---
@@ -233,6 +233,7 @@
 | **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
 | **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
 | **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
+| **0.28.1** | First-run browser/OTP UX, deferred browser events, Phase 16 closure — **master** |
 
 ---
 
@@ -266,12 +267,13 @@
 
 ## Следующие шаги (вне закрытых фаз)
 
-**Активно:** следующая фаза после [Фазы 15](#фаза-15--daily-use-qa-audit-v0260) (v0.26.0 — done).
+**Активно:** backlog Фазы 16 (полный HAR timeline per-step) + опциональные E2E.
 
 Опционально (backlog):
 
 - Flaky-run E2E с реальным прогоном (не mock)
 - Language workers Monaco (json/css/html) при необходимости
+- HAR / full network timeline per step в HTML report (live + trace: snippet на каждый шаг — **done** v0.28.1)
 
 ---
 
@@ -645,6 +647,8 @@
 
 ## Фаза 16 — Interactive HTML Report (Mini Trace Viewer)
 
+**Статус: done** (v0.28.0). Остаток — backlog (HAR per-step, optional per-step screenshots toggle).
+
 Цель: превратить `report.html` в практичный инструмент для QA — timeline шагов, inspector, сравнение с историей, интеграция с Playwright Trace.
 
 ### 16.1 MVP — структура и timeline (P1) — **done (частично)**
@@ -667,16 +671,15 @@
 
 ### 16.2 Сбор данных — расширение (P1)
 
-- [ ] Network snippet на шаг (HAR / failed request) из Playwright tracing
+- [x] Network snippet на шаг (failed request / HTTP ≥400) из live run и Playwright tracing
 - [x] Network snippet последнего failed request на упавшем шаге
-- [x] Network failures из trace.network (HTTP ≥400) на failed step
-- [ ] Скриншот на каждый шаг (опционально, full mode)
+- [x] Network failures из trace.network (HTTP ≥400) на каждый шаг по offset
+- [x] Скриншот на каждый шаг (опционально, full mode)
 - [x] Скриншот на каждый шаг при full HTML (не light mode)
 - [x] Скриншот viewport на упавшем шаге (full mode)
 - [ ] DOM snapshot / accessibility tree для failed step
 - [x] DOM snapshot + a11y tree (упрощённый) на failed step
 - [x] Page context (title + URL) на failed step
-- [ ] Теги и метаданные example-строк (outline index)
 - [x] Example index в payload и заголовке timeline
 - [x] Длительность сценария end-to-end (wall clock)
 
@@ -700,7 +703,7 @@
 - [x] Сжатие скриншотов (webp / jpeg quality)
 - [x] Toggle Full/Light в диалоге «Запустить» (GUI)
 - [x] CLI `--html-light`
-- [ ] Лимит размера embedded JSON; вынос крупных trace в `traces/` only
+- [ ] Лимит размера embedded JSON; вынос крупных trace в `traces/` only (zip на диске + trim `trace_events` в JSON — **done**; HAR в embed — backlog)
 - [x] Лимит embedded JSON (4 MiB) с `artifacts_trimmed` flag
 - [x] Поэтапный trim: screenshots → DOM/a11y → trace_events (zip остаётся в `traces/`)
 - [x] Дедупликация одинаковых скриншотов между шагами
@@ -719,9 +722,9 @@
 
 ### 16.6 QA workflow (P2)
 
-- [ ] Re-run scenario из IDE по клику в отчёте (deep link / custom protocol)
+- [ ] Re-run scenario из IDE по клику в отчёте (deep link / custom protocol) — [x] HTTP bridge `/rerun` + кнопка в viewer
 - [x] HTTP bridge localhost: Open in IDE / Re-run in IDE из HTML-отчёта
-- [ ] Jump to line в Monaco из inspector
+- [ ] Jump to line в Monaco из inspector — [x] bridge `/goto` + `gotoReportStep` в IDE
 - [x] Jump to line через bridge (кнопка «Open in Scenaria IDE»)
 - [x] Печать / PDF-friendly layout (`@media print`)
 - [x] i18n отчёта ru/en (`locale` в payload, строки в viewer)
@@ -731,7 +734,7 @@
 
 - [x] Unit: payload builder, step status inference, WriteHTML smoke
 - [x] Golden JSON snapshot (структура payload)
-- [ ] E2E: прогон example → открыть report.html → клик по failed step
+- [ ] E2E: прогон example → открыть report.html → клик по failed step — [x] `html-report.spec.ts` (fixture `example-report.html`)
 - [x] E2E: fixture из `examples/01-pervaya-proverka.feature` → `example-report.html`
 - [x] E2E: fixture `sample.html` + Playwright (timeline, action log, filter)
 - [x] Trace offset hint в inspector (кумулятивная длительность шагов)
@@ -782,6 +785,9 @@
 
 - [x] **Wails bindings:** `EventBindingTypes` — DTO уже в `models.ts` (`RunProgressEvent`, `UpdateProgressDTO`)
 - [x] **Chaos-тест** pool cancel при `workers>1` — `browser_pool_chaos_test.go`
+- [x] **Parallel cancel propagation** — `runCtx` на pool + `abortActiveSessions` + `failFastParallelCancel`
+- [x] **Step retry policy** — `runWithRetries` + `isRetryableStepError` (transient errors, expanded actions)
+- [x] **Silent browser cleanup** — `closeBrowserResource` вместо `_ = Close()` в session/trace/reset
 
 ### 17.4 Flaky / UX Web UI — открыто
 
@@ -809,6 +815,9 @@
 | EPIPE в консоли после Ctrl+C | Go exit раньше Node driver | [x] shutdown wait + drain |
 | Множественные перезапуски | OOM / crash Node | [x] единый `playwrightrt` + light HTML по умолчанию |
 | Отчёт не открывается при fail | skip write + `!result.error` в UI | [x] `finalizeGUIReports` + open on fail |
+| OTP-диалог не всплывает | `EmailCode()` после wait полей; тихий skip | [x] prompt first + `EmailCodeForStep` + `WindowShow` |
+| Браузер не открывается при первом запуске | нет проекта; ложный `browser-opened`; «Быстрый старт» → только диалог | [x] auto examples + deferred events + quickStart→`startRecord` |
+| «Идёт запись» до появления окна | pre-emit `record-started` в `StartRecord` | [x] emit после `OnBrowserOpened` |
 
 ### 17.7 Файлы изменений (фаза 17)
 
@@ -820,7 +829,8 @@
 `internal/plugin/install.go`
 `internal/wailsapp/app.go`
 `main.go`
-`frontend/src/lib/HttpAuthDialog.svelte`
+`frontend/src/App.svelte` (OTP, browser first-run, report handlers)
+`frontend/src/lib/i18n/locales/{ru,en}/journal.ts`
 `internal/settings/{project.go,nav_wait.go}`
 `internal/playwrightrt/runtime.go`
 `internal/gui/run_browser.go` (finalizeGUIReports, report on fail)

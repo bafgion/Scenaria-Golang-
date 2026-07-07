@@ -233,21 +233,53 @@ func fillSegmentedCode(ctx context.Context, page playwright.Page, locator playwr
 	})
 }
 
-func runEmailCode(ctx context.Context, page playwright.Page, action stepdsl.Action, runCtx *RunContext) error {
-	locator := page.Locator(action.Value2)
+func waitForOTPFields(ctx context.Context, locator playwright.Locator, minCount int) error {
+	if minCount < 1 {
+		minCount = 1
+	}
 	if err := waitForLocator(ctx, locator.First(), playwright.LocatorWaitForOptions{
 		State: playwright.WaitForSelectorStateVisible,
 	}); err != nil {
 		return fmt.Errorf("email code field not visible: %w", err)
 	}
-	if !otpFieldsVisible(locator, 1) {
-		return nil
+	if minCount == 1 {
+		if otpFieldsVisible(locator, 1) {
+			return nil
+		}
+		return fmt.Errorf("email code field not visible")
 	}
-	code, err := runCtx.EmailCode()
+	deadline := time.Now().Add(LocatorWaitTimeoutMs * time.Millisecond)
+	for {
+		if otpFieldsVisible(locator, minCount) {
+			return nil
+		}
+		if err := sleepContext(ctx, 100*time.Millisecond); err != nil {
+			return err
+		}
+		if time.Now().After(deadline) {
+			count, _ := locator.Count()
+			return fmt.Errorf("expected %d visible code field(s), found %d", minCount, count)
+		}
+	}
+}
+
+func runEmailCode(ctx context.Context, page playwright.Page, action stepdsl.Action, runCtx *RunContext) error {
+	locator := page.Locator(action.Value2)
+	minFields := action.IntVal
+	if minFields < 1 {
+		minFields = 1
+	}
+
+	// Prompt before waiting on the page so the IDE OTP dialog appears immediately.
+	code, err := runCtx.EmailCodeForStep(action.Value1)
 	if err != nil {
 		return err
 	}
-	_, _ = runCtx.ResolveEmailForCode(action.Value1, runCtx.PriorSteps())
+
+	if err := waitForOTPFields(ctx, locator, minFields); err != nil {
+		return err
+	}
+
 	digits := action.IntVal
 	if digits <= 0 {
 		digits = len(normalizeVerificationCode(code))

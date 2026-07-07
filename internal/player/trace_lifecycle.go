@@ -23,7 +23,7 @@ func discardTraceRecording(session *browserSession) {
 	if session.isClosed() || session.context == nil || session.traceStopped {
 		return
 	}
-	_ = session.context.Tracing().Stop()
+	closeBrowserResource("trace", func() error { return session.context.Tracing().Stop() })
 	session.traceStopped = true
 	if err := startTraceRecording(session); err == nil {
 		session.traceStopped = false

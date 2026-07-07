@@ -59,8 +59,13 @@ func (c *RunContext) completeLeafStep(idx int, selector string, started time.Tim
 		return
 	}
 	rec.Status = "passed"
-	if c != nil && c.stepScreenshots && session != nil {
-		rec.ScreenshotPNG = captureViewportScreenshot(session)
+	if session != nil {
+		if net := session.lastNetworkFailure(); net != "" {
+			rec.Network = net
+		}
+		if c != nil && c.stepScreenshots {
+			rec.ScreenshotPNG = captureViewportScreenshot(session)
+		}
 	}
 }
 

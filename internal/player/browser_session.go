@@ -69,26 +69,26 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 	ctxOpts := browserconfig.NewContextOptions(options.Headless, options.HTTPCredentials)
 	if strings.TrimSpace(options.VideoDir) != "" {
 		if err := os.MkdirAll(options.VideoDir, 0o755); err != nil {
-			_ = browser.Close()
+			closeBrowserResource("browser", func() error { return browser.Close() })
 			return nil, fmt.Errorf("create video dir: %w", err)
 		}
 		ctxOpts.RecordVideo = &playwright.RecordVideo{Dir: playwright.String(options.VideoDir)}
 	}
 	bctx, err := browser.NewContext(ctxOpts)
 	if err != nil {
-		_ = browser.Close()
+		closeBrowserResource("browser", func() error { return browser.Close() })
 		return nil, fmt.Errorf("create browser context: %w", err)
 	}
 	page, err := bctx.NewPage()
 	if err != nil {
-		_ = bctx.Close()
-		_ = browser.Close()
+		closeBrowserResource("context", func() error { return bctx.Close() })
+		closeBrowserResource("browser", func() error { return browser.Close() })
 		return nil, fmt.Errorf("create browser page: %w", err)
 	}
 	navWaitUntil, err := ParseNavWaitUntil(options.NavWaitUntil)
 	if err != nil {
-		_ = bctx.Close()
-		_ = browser.Close()
+		closeBrowserResource("context", func() error { return bctx.Close() })
+		closeBrowserResource("browser", func() error { return browser.Close() })
 		return nil, err
 	}
 	session := &browserSession{
@@ -229,11 +229,15 @@ func (s *browserSession) navigationWaitUntil() *playwright.WaitUntilState {
 func (s *browserSession) resetForScenario() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.isClosed() || s.context == nil {
+	if s.context == nil {
 		return fmt.Errorf("browser session is closed")
 	}
+	if s.isClosed() {
+		// Parallel cancel calls abortRun without tearing down the browser stack — allow pool reuse.
+		s.closed.Store(false)
+	}
 	if s.page != nil {
-		_ = s.page.Close()
+		closeBrowserResource("page", func() error { return s.page.Close() })
 		s.page = nil
 	}
 	page, err := s.context.NewPage()
@@ -252,10 +256,10 @@ func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
 		return nil
 	}
 	recorder := s.page.Video()
-	_ = s.page.Close()
+	closeBrowserResource("page", func() error { return s.page.Close() })
 	s.page = nil
 	if s.context != nil {
-		_ = s.context.Close()
+		closeBrowserResource("context", func() error { return s.context.Close() })
 		s.context = nil
 	}
 	s.videoRetained = true

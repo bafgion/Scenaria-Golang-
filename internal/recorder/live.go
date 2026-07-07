@@ -36,6 +36,7 @@ type LiveOptions struct {
 }
 
 type LiveCallbacks struct {
+	OnBrowserOpened func()
 	OnCaptureStart  func(resume bool)
 	OnCaptureStop   func(reason string)
 	OnPickerRequest func()

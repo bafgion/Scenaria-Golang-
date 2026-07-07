@@ -28,11 +28,11 @@ func TestEnrichStepsNetworkFromTrace(t *testing.T) {
 	enrichStepsNetworkFromTrace(steps, []htmlNetworkEvent{
 		{OffsetMS: 180, Snippet: "GET https://api.test/x — HTTP 500"},
 	})
+	if steps[0].Network == "" {
+		t.Fatal("expected network on passed step near trace event")
+	}
 	if steps[1].Network == "" {
 		t.Fatal("expected network on failed step")
-	}
-	if steps[0].Network != "" {
-		t.Fatal("passed step should not get trace network")
 	}
 }
 

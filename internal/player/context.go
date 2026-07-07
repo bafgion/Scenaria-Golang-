@@ -125,6 +125,11 @@ func (c *RunContext) GenerateByKind(kind string) (string, error) {
 }
 
 func (c *RunContext) EmailCode() (string, error) {
+	return c.EmailCodeForStep("")
+}
+
+// EmailCodeForStep resolves OTP from env/vars or prompts the user (stepEmail is shown in the GUI when set).
+func (c *RunContext) EmailCodeForStep(stepEmail string) (string, error) {
 	if code := strings.TrimSpace(os.Getenv("SCENARIA_EMAIL_CODE")); code != "" {
 		return code, nil
 	}
@@ -132,7 +137,7 @@ func (c *RunContext) EmailCode() (string, error) {
 		return code, nil
 	}
 	if c.PromptEmailCode != nil {
-		email, _ := c.ResolveEmailForCode("", c.PriorSteps())
+		email, _ := c.ResolveEmailForCode(stepEmail, c.PriorSteps())
 		return c.PromptEmailCode(email)
 	}
 	return "", fmt.Errorf("email verification code not set (use SCENARIA_EMAIL_CODE env, --var email_code=..., or interactive prompt)")

@@ -2,6 +2,8 @@ package player
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/logx"
@@ -17,14 +19,64 @@ const (
 func isRetryableAction(kind string) bool {
 	switch kind {
 	case "click", "double-click", "hover", "fill", "check", "uncheck", "clear",
-		"select", "press-in", "scroll-to", "drag-drop",
-		"assert-visible", "assert-hidden", "assert-text",
+		"select", "select-option", "press-in", "scroll-to", "scroll-into-view",
+		"drag-drop", "upload", "download-click",
+		"assert-visible", "assert-hidden", "assert-text", "assert-value", "assert-count",
 		"assert-url", "assert-url-contains",
-		"wait-visible", "wait-hidden":
+		"wait-visible", "wait-hidden", "wait-url":
 		return true
 	default:
 		return false
 	}
+}
+
+// isRetryableStepError reports transient Playwright / network failures worth retrying.
+func isRetryableStepError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if isRetryableGotoError(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	permanent := []string{
+		"text mismatch",
+		"does not match",
+		"strict mode violation",
+		"not a valid",
+		"invalid selector",
+	}
+	for _, needle := range permanent {
+		if strings.Contains(msg, needle) {
+			return false
+		}
+	}
+	transient := []string{
+		"timeout",
+		"timed out",
+		"interrupted",
+		"detached",
+		"stale",
+		"not attached",
+		"execution context",
+		"target closed",
+		"element is not visible",
+		"element is not enabled",
+		"element is outside of the viewport",
+		"waiting for",
+		"not stable",
+		"navigation",
+		"frame was detached",
+	}
+	for _, needle := range transient {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *StepExecutor) maxActionRetries() int {
@@ -48,6 +100,12 @@ func (e *StepExecutor) runAction(ctx context.Context, session *browserSession, a
 	if !isRetryableAction(action.Kind) {
 		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
 	}
+	return e.runWithRetries(ctx, action.Kind, func() error {
+		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
+	})
+}
+
+func (e *StepExecutor) runWithRetries(ctx context.Context, label string, fn func() error) error {
 	attempts := e.maxActionRetries() + 1
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -55,14 +113,17 @@ func (e *StepExecutor) runAction(ctx context.Context, session *browserSession, a
 			return err
 		}
 		if attempt > 0 {
-			logx.Debug("action retry", "kind", action.Kind, "attempt", attempt+1, "max", attempts)
+			logx.Debug("step retry", "kind", label, "attempt", attempt+1, "max", attempts, "error", lastErr)
 			if err := sleepRetryBackoff(ctx, attempt, e.retryBackoff()); err != nil {
 				return err
 			}
 		}
-		lastErr = executeAction(ctx, session, action, e.options.BaseURL, runCtx)
+		lastErr = fn()
 		if lastErr == nil {
 			return nil
+		}
+		if !isRetryableStepError(lastErr) {
+			return lastErr
 		}
 	}
 	return lastErr

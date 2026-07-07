@@ -1,5 +1,6 @@
 export const journal = {
   browser: {
+    launching: 'Launching browser… (first launch may take up to a minute)',
     opened:
       'Browser opened. Record steps only via the Record button (in the browser or Ctrl+R).',
     openingUrl: 'Opening browser: {url}',
@@ -47,6 +48,7 @@ export const journal = {
     closed: 'Project closed.',
     openFirst: 'Open a project first',
     openFirstForTest: 'Open a project first — otherwise test runs are unavailable',
+    autoOpenedExamples: 'Example scenarios opened — you can launch the browser and record',
     saveOrOpenFirst: 'Save the scenario or open a project first',
     scenarioCreated: 'Scenario created: {fileName}',
   },

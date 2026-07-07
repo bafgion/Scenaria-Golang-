@@ -64,6 +64,12 @@ Write-Host "==> Desktop smoke: $ExePath (CDP :$DebugPort)" -ForegroundColor Cyan
 
 $env:SCENARIA_DESKTOP_SMOKE = "1"
 $env:SCENARIA_DESKTOP_SMOKE_PORT = "$DebugPort"
+$smokeData = Join-Path $env:TEMP "scenaria-desktop-smoke"
+if (Test-Path $smokeData) {
+    Remove-Item -Recurse -Force $smokeData -ErrorAction SilentlyContinue
+}
+New-Item -ItemType Directory -Path $smokeData -Force | Out-Null
+$env:SCENARIA_APP_DATA = $smokeData
 
 $proc = Start-Process `
     -FilePath $ExePath `
@@ -133,6 +139,7 @@ try {
     }
     Remove-Item Env:SCENARIA_DESKTOP_SMOKE -ErrorAction SilentlyContinue
     Remove-Item Env:SCENARIA_DESKTOP_SMOKE_PORT -ErrorAction SilentlyContinue
+    Remove-Item Env:SCENARIA_APP_DATA -ErrorAction SilentlyContinue
 }
 
 if ($exitCode -ne 0) {

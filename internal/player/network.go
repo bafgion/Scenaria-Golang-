@@ -15,14 +15,23 @@ func wireNetworkFailureListener(session *browserSession) {
 		if req == nil {
 			return
 		}
-		snippet := formatFailedRequest(req)
-		if snippet == "" {
+		session.recordNetworkSnippet(formatFailedRequest(req))
+	})
+	session.page.OnResponse(func(resp playwright.Response) {
+		if resp == nil {
 			return
 		}
-		session.networkMu.Lock()
-		session.lastNetworkFail = snippet
-		session.networkMu.Unlock()
+		session.recordNetworkSnippet(formatHTTPErrorResponse(resp))
 	})
+}
+
+func (s *browserSession) recordNetworkSnippet(snippet string) {
+	if s == nil || snippet == "" {
+		return
+	}
+	s.networkMu.Lock()
+	s.lastNetworkFail = snippet
+	s.networkMu.Unlock()
 }
 
 func formatFailedRequest(req playwright.Request) string {
@@ -42,6 +51,33 @@ func formatFailedRequest(req playwright.Request) string {
 		return fmt.Sprintf("%s %s", method, url)
 	}
 	return fmt.Sprintf("%s %s — %s", method, url, failText)
+}
+
+func formatHTTPErrorResponse(resp playwright.Response) string {
+	if resp == nil {
+		return ""
+	}
+	status := resp.Status()
+	if status < 400 {
+		return ""
+	}
+	method := "GET"
+	url := ""
+	if req := resp.Request(); req != nil {
+		method = strings.TrimSpace(req.Method())
+		url = strings.TrimSpace(req.URL())
+	}
+	return formatHTTPErrorSnippet(method, url, status)
+}
+
+func formatHTTPErrorSnippet(method, url string, status int) string {
+	if status < 400 || url == "" {
+		return ""
+	}
+	if method == "" {
+		method = "GET"
+	}
+	return fmt.Sprintf("%s %s — HTTP %d", method, url, status)
 }
 
 func (s *browserSession) clearNetworkFailure() {

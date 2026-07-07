@@ -120,8 +120,18 @@ func (s *Service) OpenBrowser(req OpenBrowserRequest, emit func(string, any)) Ru
 	}, emit)
 }
 
-func (s *Service) liveRecordCallbacks(emit func(string, any)) recorder.LiveCallbacks {
+func (s *Service) liveRecordCallbacks(emit func(string, any), browseOnly bool, output string) recorder.LiveCallbacks {
 	return recorder.LiveCallbacks{
+		OnBrowserOpened: func() {
+			if emit == nil {
+				return
+			}
+			if browseOnly {
+				emit("browser-opened", nil)
+				return
+			}
+			emit("record-started", map[string]any{"resume": false, "output": output})
+		},
 		OnCaptureStart: func(resume bool) {
 			if emit != nil {
 				emit("record-started", map[string]any{"resume": resume})
@@ -326,7 +336,7 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 		TestClient:        testClient,
 		HTTPCredentials: httpCreds,
 		BrowseOnly:      req.BrowseOnly,
-		Callbacks: s.liveRecordCallbacks(emit),
+		Callbacks: s.liveRecordCallbacks(emit, req.BrowseOnly, output),
 	})
 
 	s.mu.Lock()

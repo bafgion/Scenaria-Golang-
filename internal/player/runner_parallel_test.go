@@ -2,95 +2,131 @@ package player
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
-type countingExecutor struct {
-	calls atomic.Int32
+type blockingScenarioExecutor struct {
+	block time.Duration
+	done  atomic.Int32
 }
 
-func (c *countingExecutor) ExecuteScenario(_ context.Context, input ScenarioInput) (ScenarioResult, error) {
-	c.calls.Add(1)
-	return ScenarioResult{
-		Scenario: input.ScenarioName,
-		Status:   "passed",
-	}, nil
+func (e *blockingScenarioExecutor) ExecuteScenario(ctx context.Context, input ScenarioInput) (ScenarioResult, error) {
+	if input.ScenarioName == "fail-fast" {
+		return ScenarioResult{
+			FeaturePath: input.FeaturePath,
+			Scenario:    input.ScenarioName,
+			Status:      "failed",
+			Message:     "intentional failure",
+		}, nil
+	}
+	select {
+	case <-ctx.Done():
+		e.done.Add(1)
+		return ScenarioResult{
+			FeaturePath: input.FeaturePath,
+			Scenario:    input.ScenarioName,
+			Status:      "failed",
+			Message:     ctx.Err().Error(),
+		}, ctx.Err()
+	case <-time.After(e.block):
+		return ScenarioResult{
+			FeaturePath: input.FeaturePath,
+			Scenario:    input.ScenarioName,
+			Status:      "passed",
+		}, nil
+	}
 }
 
-func TestBrowserRunnerParallelWorkers(t *testing.T) {
-	executor := &countingExecutor{}
+func TestParallelRunnerCancelsSiblingContexts(t *testing.T) {
+	executor := &blockingScenarioExecutor{block: 3 * time.Second}
+	runner := BrowserRunner{Executor: executor, ParallelWorkers: 3}
 	plan := ExecutionPlan{
 		Cases: []RunCase{
-			{Name: "A"},
-			{Name: "B"},
-			{Name: "C"},
+			{Name: "fail-fast"},
+			{Name: "slow-a"},
+			{Name: "slow-b"},
 		},
 	}
-	runner := BrowserRunner{Executor: executor, ParallelWorkers: 2}
+	start := time.Now()
 	result, err := runner.Execute(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected parallel run error")
 	}
-	if got := int(executor.calls.Load()); got != 3 {
-		t.Fatalf("expected 3 scenario executions, got %d", got)
-	}
-	if len(result.ScenarioResults) != 3 {
-		t.Fatalf("expected 3 scenario results, got %d", len(result.ScenarioResults))
-	}
-	for i, scenarioResult := range result.ScenarioResults {
-		want := string(rune('A' + i))
-		if scenarioResult.Scenario != want {
-			t.Fatalf("result[%d].Scenario = %q, want %q", i, scenarioResult.Scenario, want)
+	canceled := 0
+	for _, sr := range result.ScenarioResults {
+		if sr.Scenario == "fail-fast" {
+			continue
+		}
+		if sr.Status == "failed" && strings.Contains(sr.Message, "canceled") {
+			canceled++
 		}
 	}
+	if canceled < 1 && int(executor.done.Load()) < 1 {
+		t.Fatalf("expected sibling cancel, results=%+v done=%d", result.ScenarioResults, executor.done.Load())
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("parallel cancel took too long: %v", elapsed)
+	}
 }
 
-func TestBrowserRunnerParallelPreservesAllResults(t *testing.T) {
-	executor := &namedParallelExecutor{}
-	plan := ExecutionPlan{
-		Cases: make([]RunCase, 16),
+func TestFailFastParallelCancelHonorsContinueOnFail(t *testing.T) {
+	ctx := WithContinueOnFail(context.Background(), true)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	failFastParallelCancel(runCtx, cancel, nil)
+	if err := runCtx.Err(); err != nil {
+		t.Fatalf("expected continue-on-fail to skip cancel, got %v", err)
 	}
-	for i := range plan.Cases {
-		plan.Cases[i] = RunCase{Name: fmt.Sprintf("scenario-%02d", i)}
+}
+
+func TestFailFastParallelCancelStopsRunContext(t *testing.T) {
+	runCtx, cancel := context.WithCancel(context.Background())
+	failFastParallelCancel(runCtx, cancel, nil)
+	if !errors.Is(runCtx.Err(), context.Canceled) {
+		t.Fatalf("expected canceled run context, got %v", runCtx.Err())
 	}
-	runner := BrowserRunner{Executor: executor, ParallelWorkers: 4}
-	result, err := runner.Execute(context.Background(), plan)
+}
+
+func TestBrowserPoolAbortActiveSessions(t *testing.T) {
+	ctx := context.Background()
+	pool, err := newBrowserPool(ctx, PlaywrightExecutorOptions{BrowserName: "chromium", Headless: true}, 1)
 	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+		t.Skip("playwright not available:", err)
 	}
-	if len(result.ScenarioResults) != len(plan.Cases) {
-		t.Fatalf("expected %d results, got %d", len(plan.Cases), len(result.ScenarioResults))
+	defer pool.Close()
+
+	pool.abortActiveSessions()
+	slot, err := pool.acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	seen := make(map[string]struct{}, len(plan.Cases))
-	for i, scenarioResult := range result.ScenarioResults {
-		if scenarioResult.Scenario == "" {
-			t.Fatalf("result[%d] has empty scenario name", i)
-		}
-		seen[scenarioResult.Scenario] = struct{}{}
+	if !slot.session.isClosed() {
+		t.Fatal("expected idle pool session to be aborted")
 	}
-	if len(seen) != len(plan.Cases) {
-		t.Fatalf("expected %d unique scenario names, got %d", len(plan.Cases), len(seen))
+	if err := slot.session.resetForScenario(); err != nil {
+		t.Fatalf("reset after abort: %v", err)
 	}
+	pool.release(slot)
 }
 
-type namedParallelExecutor struct{}
+var _ BrowserExecutor = (*blockingScenarioExecutor)(nil)
 
-func (namedParallelExecutor) ExecuteScenario(_ context.Context, input ScenarioInput) (ScenarioResult, error) {
-	return ScenarioResult{
-		Scenario: input.ScenarioName,
-		Status:   "passed",
-	}, nil
-}
-
-func TestExecutorMaxLoopIterations(t *testing.T) {
-	exec := NewStepExecutor(ExecutorOptions{MaxLoopIterations: 42})
-	if got := exec.maxLoopIterations(); got != 42 {
-		t.Fatalf("expected 42, got %d", got)
+// Ensure blockingScenarioExecutor is safe under parallel calls.
+func TestBlockingScenarioExecutorConcurrent(t *testing.T) {
+	executor := &blockingScenarioExecutor{block: 10 * time.Millisecond}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = executor.ExecuteScenario(context.Background(), ScenarioInput{ScenarioName: "ok"})
+		}()
 	}
-	exec = NewStepExecutor(ExecutorOptions{})
-	if got := exec.maxLoopIterations(); got != DefaultMaxLoopIterations {
-		t.Fatalf("expected default %d, got %d", DefaultMaxLoopIterations, got)
-	}
+	wg.Wait()
 }

@@ -71,6 +71,9 @@ func runLiveBrowserSession(
 	if _, err := page.Evaluate(selector.BrowserToolbarJS); err != nil {
 		return fmt.Errorf("inject browser toolbar: %w", err)
 	}
+	if opts.Callbacks.OnBrowserOpened != nil {
+		opts.Callbacks.OnBrowserOpened()
+	}
 	if !opts.BrowseOnly {
 		if err := applyRecorderConfig(page, opts, session); err != nil {
 			return fmt.Errorf("configure recorder: %w", err)

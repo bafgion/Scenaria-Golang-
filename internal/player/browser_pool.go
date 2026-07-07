@@ -76,6 +76,24 @@ func (p *browserPool) release(slot *browserPoolSlot) {
 	p.slots <- slot
 }
 
+// abortActiveSessions marks idle pool workers cancelled so in-flight Playwright work stops promptly.
+func (p *browserPool) abortActiveSessions() {
+	if p == nil || p.size <= 0 {
+		return
+	}
+	for i := 0; i < p.size; i++ {
+		select {
+		case slot := <-p.slots:
+			if slot != nil && slot.session != nil {
+				slot.session.abortRun()
+			}
+			p.slots <- slot
+		default:
+			return
+		}
+	}
+}
+
 func (p *browserPool) Close() {
 	if p == nil {
 		return

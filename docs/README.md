@@ -7,7 +7,7 @@
 | **English** | [docs/en/index.md](en/index.md) |
 | **Русский** | [docs/ru/index.md](ru/index.md) |
 
-Current release: **v0.28.0** (see [releases](https://github.com/bafgion/Scenaria-Golang-/releases)).
+Current release: **v0.28.1** (see [releases](https://github.com/bafgion/Scenaria-Golang-/releases)).
 
 ---
 

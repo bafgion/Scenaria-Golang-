@@ -58,8 +58,26 @@ export async function disconnectDesktop(): Promise<void> {
   }
 }
 
+export async function resetRunDialogConfirmed(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const api = (window as unknown as {
+      go?: { wailsapp?: { App?: { LoadSettings: () => Promise<Record<string, unknown>>; SaveSettings: (s: Record<string, unknown>) => Promise<void> } } }
+    }).go?.wailsapp?.App
+    if (!api?.LoadSettings || !api?.SaveSettings) return
+    const settings = await api.LoadSettings()
+    settings.runDialogConfirmed = false
+    await api.SaveSettings(settings)
+  })
+}
+
 export async function dismissBlockingDialogs(p: Page): Promise<void> {
   for (let i = 0; i < 4; i++) {
+    const update = p.getByRole('dialog', { name: /обновлени|update/i })
+    if (await update.isVisible().catch(() => false)) {
+      await update.getByRole('button', { name: /Закрыть|Close/i }).click()
+      await p.waitForTimeout(250)
+      continue
+    }
     const confirm = p.locator('.modal-backdrop.modal-layer-confirm')
     if ((await confirm.count()) === 0) return
     const openOther = p.getByRole('alertdialog', { name: 'Открыть другой проект' })

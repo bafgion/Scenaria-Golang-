@@ -125,7 +125,7 @@
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
   import { icons, toolbarIcons } from './lib/icons'
-  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime'
+  import { EventsOn, EventsOff, OnFileDrop, OnFileDropOff, WindowShow, WindowUnminimise } from '../wailsjs/runtime/runtime'
   import {
     Version,
     OpenProject,
@@ -892,6 +892,8 @@
       unsubscribers.push(
         EventsOn('otp-prompt', (email: string) => {
           otpEmail = email || ''
+          WindowUnminimise()
+          WindowShow()
           showOtp = true
         }),
       )
@@ -4291,6 +4293,20 @@
     }
   }
 
+  async function ensureProjectForBrowser(): Promise<boolean> {
+    if (projectPath) return true
+    const examples = await BundledExamplesPath()
+    if (examples) {
+      await openProjectAt(examples)
+      appendLog(tr('journal.project.autoOpenedExamples'))
+      openJournalTab()
+      return true
+    }
+    appendLog(tr('journal.project.openFirst'))
+    openProjectDialog()
+    return false
+  }
+
   function beginRecord() {
     if (playing) {
       appendLog(tr('journal.record.waitForTest'))
@@ -4305,10 +4321,7 @@
   }
 
   async function openBrowser() {
-    if (!projectPath) {
-      appendLog(tr('journal.project.openFirst'))
-      return
-    }
+    if (!(await ensureProjectForBrowser())) return
     if (browserOpen || recording) {
       await focusBrowser()
       return
@@ -4316,6 +4329,8 @@
     prepareRecordDialogDefaults({ inheritTestClient: false })
     recordURL = recordStartURL()
     showRecord = false
+    openJournalTab()
+    setStatus(tr('journal.browser.launching'), 'busy')
     if (recordURL) {
       appendLog(tr('journal.browser.openingUrl', { url: recordURL }))
     } else {
@@ -4486,8 +4501,13 @@
     recordingTargetPath = ''
     lastRecordTarget = ''
     if (result.output) appendLog(result.output)
-    if (result.error) appendLog(tr('journal.record.error', { message: result.error || tr('journal.record.unknownError') }))
-    else if (kind === 'record') {
+    if (result.error) {
+      appendLog(tr('journal.record.error', { message: result.error || tr('journal.record.unknownError') }))
+      if (kind === 'browse') {
+        setStatus(tr('journal.status.showBrowserFailed'), 'error')
+        openJournalTab()
+      }
+    } else if (kind === 'record') {
       appendLog(tr('journal.browser.closedSaveHint'))
       if (recordTarget && !isUntitled(recordTarget)) {
         await showPostRecordBanner(recordTarget)
@@ -4650,14 +4670,14 @@
     monaco?.insertAtCursor(template)
   }
 
-  function quickStart() {
-    if (!projectPath) {
-      appendLog(tr('journal.project.openFirstForTest'))
-      openProjectDialog()
-      return
-    }
-    recordURL = startURL
-    beginRecord()
+  async function quickStart() {
+    if (!(await ensureProjectForBrowser())) return
+    recordURL = startURL || 'https://example.com'
+    prepareRecordDialogDefaults({ inheritTestClient: true })
+    openJournalTab()
+    setStatus(tr('journal.browser.launching'), 'busy')
+    appendLog(tr('journal.record.started'))
+    await startRecord({ headed: false })
   }
 
   function dismissWelcomeChecklist() {
@@ -4859,7 +4879,7 @@
       <button class="menu-trigger" data-tour="menu-run-trigger" on:click={(e) => toggleMenu('run', e)}>{tr('menus.runMenu')}</button>
       {#if openMenu === 'run'}
         <div class="menu-dropdown" data-tour="menu-run-dropdown">
-          <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())} disabled={!projectPath}>{tr('menus.browser')}<span class="menu-shortcut">Ctrl+B</span></button>
+          <button class="menu-item" on:click={() => runMenuAction(() => void openBrowser())}>{tr('menus.browser')}<span class="menu-shortcut">Ctrl+B</span></button>
           <button class="menu-item" on:click={() => runMenuAction(beginRecord)} disabled={!projectPath}>{tr('menus.record')}<span class="menu-shortcut">Ctrl+R</span></button>
           <button class="menu-item" on:click={openBaselineRecordDialog} disabled={!projectPath}>{tr('menus.recordFromSteps')}</button>
           <button class="menu-item" on:click={stopRecord} disabled={!recording && !browserOpen && !playing}>{tr('menus.stop')}</button>
@@ -5086,7 +5106,7 @@
         <div class="action-bar" class:compact={actionBarCompact} use:observeActionBar>
           <div class="quick-toolbar">
             <div class="toolbar-row primary">
-              <button class="tool-btn primary" title={tr('toolbar.browser') + ' (Ctrl+B)'} on:click={() => void openBrowser()} disabled={!projectPath}>
+              <button class="tool-btn primary" title={tr('toolbar.browser') + ' (Ctrl+B)'} on:click={() => void openBrowser()}>
                 {@html toolbarIcons.browser()}<span>{tr('toolbar.browser')}</span>
               </button>
               <button

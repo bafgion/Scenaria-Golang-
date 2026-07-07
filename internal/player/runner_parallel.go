@@ -145,14 +145,14 @@ func (r BrowserRunner) executeParallelWithPool(
 		paths.ConfigurePlaywrightBrowsersForEngine(exec.options.BrowserName)
 	}
 
-	pool, err := newBrowserPool(ctx, exec.options, workers)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	pool, err := newBrowserPool(runCtx, exec.options, workers)
 	if err != nil {
 		return result, err
 	}
 	defer pool.Close()
-
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	results := make([]ScenarioResult, len(plan.Cases))
 	sem := make(chan struct{}, workers)
@@ -203,9 +203,7 @@ func (r BrowserRunner) executeParallelWithPool(
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = err
-					if !ContinueOnFail(runCtx) {
-						cancel()
-					}
+					failFastParallelCancel(runCtx, cancel, pool)
 				}
 				results[i] = ScenarioResult{
 					FeaturePath: rc.FeaturePath,
@@ -228,9 +226,7 @@ func (r BrowserRunner) executeParallelWithPool(
 					} else {
 						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
 					}
-					if !ContinueOnFail(runCtx) {
-						cancel()
-					}
+					failFastParallelCancel(runCtx, cancel, pool)
 				}
 				if err != nil && runResult.Scenario == "" {
 					runResult = ScenarioResult{
@@ -341,9 +337,7 @@ func (r BrowserRunner) executeParallel(
 					} else {
 						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
 					}
-					if !ContinueOnFail(runCtx) {
-						cancel()
-					}
+					failFastParallelCancel(runCtx, cancel, nil)
 				}
 				if err != nil {
 					if runResult.Scenario == "" {

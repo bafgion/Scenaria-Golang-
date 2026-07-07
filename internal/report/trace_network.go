@@ -163,18 +163,9 @@ func enrichStepsNetworkFromTrace(steps []htmlStep, failures []htmlNetworkEvent) 
 	if len(steps) == 0 || len(failures) == 0 {
 		return
 	}
-	failIdx := -1
-	for _, st := range steps {
-		if st.Status == "failed" {
-			failIdx = st.Index
-			break
-		}
-	}
+	const maxDeltaMS = int64(3000)
 	for i := range steps {
 		if steps[i].Network != "" {
-			continue
-		}
-		if failIdx >= 0 && steps[i].Index != failIdx {
 			continue
 		}
 		off := steps[i].TraceOffsetMS
@@ -190,7 +181,7 @@ func enrichStepsNetworkFromTrace(steps []htmlStep, failures []htmlNetworkEvent) 
 				best = f.Snippet
 			}
 		}
-		if best != "" && bestDelta <= 3000 {
+		if best != "" && bestDelta <= maxDeltaMS {
 			steps[i].Network = best
 		}
 	}

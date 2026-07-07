@@ -45,6 +45,9 @@ func Check(currentVersion string) (*Info, error) {
 }
 
 func CheckInstallDir(currentVersion, installDir string) (*Info, error) {
+	if SkipRemoteReleaseCheck(installDir) {
+		return localUpToDateInfo(currentVersion), nil
+	}
 	release, err := fetchReleasePayload(&http.Client{Timeout: 20 * time.Second})
 	if err != nil {
 		return nil, err

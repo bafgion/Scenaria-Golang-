@@ -546,7 +546,15 @@
         if (mode === 'record-idle') {
           setTimeout(() => emitE2E('record-stopped', { reason: 'idle', idleSeconds: 30 }), 400)
         }
+        return
       }
+      liveRecord.browserOpen = true
+      liveRecord.recording = true
+      liveRecord.captureEver = true
+      liveRecord.paused = false
+      liveRecord.steps = []
+      emitE2E('browser-opened', '')
+      emitE2E('record-started', { resume: false, output: `${E2E_PROJECT}/examples/smoke.feature` })
     },
     BeginRecordingCapture: async () => {
       if (!liveRecord.browserOpen) {

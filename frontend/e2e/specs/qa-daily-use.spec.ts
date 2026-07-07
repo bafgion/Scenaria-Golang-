@@ -25,21 +25,23 @@ test.beforeEach(async ({ page }) => {
 })
 
 test.describe('1. Onboarding', () => {
-  test('1.1 welcome checklist and quick start does not open browser without project', async ({ page }) => {
+  test('1.1 welcome checklist and quick start auto-opens examples and starts recording', async ({ page }) => {
     await bootApp(page)
     await expect(page.getByRole('button', { name: 'Открыть проект' })).toBeVisible()
     await expect(page.getByText('Записать сценарий')).toBeVisible()
     await page.getByRole('button', { name: 'Быстрый старт' }).click()
-    await expect(page.getByRole('dialog', { name: 'Открыть проект' })).toBeVisible()
-    await page.getByRole('dialog', { name: 'Открыть проект' }).getByRole('button', { name: 'Отмена' }).click()
     await openJournal(page)
-    await expect(page.locator('.panel-body.text-panel')).toContainText('Сначала откройте проект')
+    await expect(page.locator('.panel-body.text-panel')).toContainText('Открыты примеры сценариев')
+    await expect(page.locator('.panel-body.text-panel')).toContainText('Запись начата')
+    await expect(page.locator('.status-bar .recording-target')).toContainText('Запись')
   })
 
-  test('1.2 quick start without project opens project dialog', async ({ page }) => {
+  test('1.2 Ctrl+B without project auto-opens examples and launches browser', async ({ page }) => {
     await bootApp(page)
-    await page.getByRole('button', { name: 'Быстрый старт' }).click()
-    await expect(page.getByRole('dialog', { name: 'Открыть проект' })).toBeVisible()
+    await page.keyboard.press('Control+KeyB')
+    await openJournal(page)
+    await expect(page.locator('.panel-body.text-panel')).toContainText('Открыты примеры сценариев')
+    await expect(page.locator('.browser-overlay')).toBeVisible()
   })
 
   test('1.3 new project wizard creates feature tab', async ({ page }) => {

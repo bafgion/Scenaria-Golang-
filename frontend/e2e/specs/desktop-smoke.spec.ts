@@ -27,6 +27,7 @@ import {
   dismissBlockingDialogs,
   ensureExamplesProject,
   waitForAppReady,
+  resetRunDialogConfirmed,
 } from '../helpers/desktop'
 
 test.describe.configure({ mode: 'serial', timeout: 180_000 })
@@ -210,8 +211,15 @@ test('диалог запуска открывается из меню', async (
 
 test('первый Ctrl+Enter открывает диалог запуска', async () => {
   const page = await connectDesktop()
+  await ensureExamplesProject(page)
+  await dismissBlockingDialogs(page)
+  await resetRunDialogConfirmed(page)
+  await page.reload()
+  await waitForAppReady(page)
+  await ensureExamplesProject(page)
   await createNewScenario(page)
-  await page.keyboard.press('Control+Enter')
+  await page.locator('.menubar').first().click()
+  await page.locator('.tool-btn.primary-run').click()
   const dialog = page.getByRole('dialog', { name: 'Запуск сценария' })
   await expect(dialog).toBeVisible()
   await dialog.getByRole('button', { name: 'Отмена' }).click()

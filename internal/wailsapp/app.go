@@ -29,6 +29,7 @@ func NewApp() *App {
 
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	paths.ConfigurePlaywrightBrowsers()
 	player.SetEmailCodePrompt(a.promptEmailCode)
 	player.SetOTPCancelHook(a.CancelOTP)
 	_ = a.svc.EnsureReportBridge(a.emitReportGoto, a.emitReportRerun, a.emitReportTrace)
@@ -68,6 +69,8 @@ func (a *App) promptEmailCode(email string) (string, error) {
 	a.otpErr = make(chan error, 1)
 	a.otpMu.Unlock()
 
+	runtime.WindowUnminimise(a.ctx)
+	runtime.WindowShow(a.ctx)
 	runtime.EventsEmit(a.ctx, "otp-prompt", email)
 
 	defer a.clearOTPChannels()
@@ -468,7 +471,6 @@ func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
 		emit := func(name string, payload any) {
 			a.emitEvent(name, payload)
 		}
-		emit("browser-opened", nil)
 		result := a.svc.OpenBrowser(req, emit)
 		emit("browser-closed", result)
 	}()
@@ -480,9 +482,6 @@ func (a *App) StartRecord(req gui.RecordRequest) {
 			a.emitEvent(name, payload)
 		}
 		req.BrowseOnly = false
-		if !a.svc.HasLiveBrowser() {
-			emit("record-started", map[string]any{"resume": false, "output": req.Output})
-		}
 		result := a.svc.RecordLive(req, emit)
 		if !a.svc.HasLiveBrowser() {
 			emit("record-finished", result)

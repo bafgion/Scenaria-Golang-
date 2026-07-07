@@ -4,12 +4,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/brand"
 )
 
 // AppDataDir is the single Scenaria application data root (settings, artifact mirrors, caches).
 func AppDataDir() string {
+	if override := strings.TrimSpace(os.Getenv("SCENARIA_APP_DATA")); override != "" {
+		return override
+	}
 	if runtime.GOOS == "windows" {
 		if base := os.Getenv("APPDATA"); base != "" {
 			return filepath.Join(base, brand.AppDataDir)
