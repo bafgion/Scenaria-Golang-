@@ -103,7 +103,6 @@ func (s *Service) ImportJSON(req ImportRequest) RunResult {
 }
 
 func (s *Service) OpenBrowser(req OpenBrowserRequest, emit func(string, any)) RunResult {
-	req.TestClient = ""
 	return s.RecordLive(RecordRequest{
 		URL:              req.URL,
 		Output:           req.Output,
@@ -334,9 +333,9 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 		ScrollBeforeClick: appCfg.ScrollBeforeClick,
 		HoverRecordMinMs:  appCfg.HoverRecordMinMs,
 		TestClient:        testClient,
-		HTTPCredentials: httpCreds,
-		BrowseOnly:      req.BrowseOnly,
-		Callbacks: s.liveRecordCallbacks(emit, req.BrowseOnly, output),
+		HTTPCredentials:   httpCreds,
+		BrowseOnly:        req.BrowseOnly,
+		Callbacks:         s.liveRecordCallbacks(emit, req.BrowseOnly, output),
 	})
 
 	s.mu.Lock()

@@ -11,15 +11,11 @@ func captureViewportScreenshot(session *browserSession) []byte {
 }
 
 func capturePageScreenshot(session *browserSession, fullPage bool) []byte {
-	if session == nil {
+	page, err := session.currentPage()
+	if err != nil {
 		return nil
 	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.isClosed() || session.page == nil {
-		return nil
-	}
-	data, err := session.page.Screenshot(playwright.PageScreenshotOptions{
+	data, err := page.Screenshot(playwright.PageScreenshotOptions{
 		FullPage: playwright.Bool(fullPage),
 	})
 	if err != nil {

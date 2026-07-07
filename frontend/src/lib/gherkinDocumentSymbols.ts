@@ -1,6 +1,7 @@
 import type * as Monaco from 'monaco-editor'
 import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
 import { getCachedFeatureSymbols } from './featureSymbolCache'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export type FeatureSymbolKind =
   | 'feature'
@@ -275,7 +276,7 @@ export function registerGherkinDocumentSymbols(monaco: typeof Monaco) {
   }
   documentSymbolsRegistered = true
 
-  monaco.languages.registerDocumentSymbolProvider('scenaria-feature', {
+  const disposable = monaco.languages.registerDocumentSymbolProvider('scenaria-feature', {
     provideDocumentSymbols(model) {
       if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
         return []
@@ -288,4 +289,5 @@ export function registerGherkinDocumentSymbols(monaco: typeof Monaco) {
       )
     },
   })
+  replaceMonacoDisposables('gherkin-document-symbols', [disposable])
 }

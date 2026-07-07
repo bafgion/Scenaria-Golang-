@@ -2,6 +2,7 @@ package allure
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/bafgion/scenaria-golang/internal/player"
@@ -35,8 +36,8 @@ func TestWriteResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read dir: %v", err)
 	}
-	if len(entries) != 3 {
-		t.Fatalf("expected 2 results + 1 attachment, got %d files", len(entries))
+	if len(entries) != 4 {
+		t.Fatalf("expected marker + 2 results + 1 attachment, got %d files", len(entries))
 	}
 }
 
@@ -57,8 +58,8 @@ func TestWriteResultsWithTrace(t *testing.T) {
 		t.Fatalf("WriteResults: %v", err)
 	}
 	entries, _ := os.ReadDir(dir)
-	if len(entries) != 2 {
-		t.Fatalf("expected result + trace attachment, got %d", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("expected marker + result + trace attachment, got %d", len(entries))
 	}
 }
 
@@ -81,8 +82,19 @@ func TestWriteResultsUniqueTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 result files after clean, got %d", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("expected marker + 2 result files after clean, got %d", len(entries))
+	}
+}
+
+func TestWriteResultsRefusesUnmarkedNonEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "external-result.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := WriteResults(dir, player.ExecutionResult{})
+	if err == nil {
+		t.Fatal("expected unmarked non-empty dir to be rejected")
 	}
 }
 

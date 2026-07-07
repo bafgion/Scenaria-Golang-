@@ -310,12 +310,13 @@ func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan playe
 		}
 	}
 	if req.HTMLPath != "" {
+		bridgeURL, bridgeToken := s.ReportBridgeCredentials()
 		if err := report.WriteHTML(req.HTMLPath, result, report.HTMLOptions{
 			Plan:            plan,
 			ProjectRoot:     projectRoot,
 			LightMode:       req.HTMLLightMode,
-			BridgeURL:       s.ReportBridgeURL(),
-			BridgeToken:     s.ReportBridgeToken(),
+			BridgeURL:       bridgeURL,
+			BridgeToken:     bridgeToken,
 			Locale:          req.ReportLocale,
 			ReportDir:       filepath.Dir(req.HTMLPath),
 			PreviousSummary: prevSummary,

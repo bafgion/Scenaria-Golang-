@@ -4,6 +4,7 @@ import { getCachedFeatureSymbols } from './featureSymbolCache'
 import type { FeatureSymbol } from './gherkinDocumentSymbols'
 import { scenarioAtLine } from './scenarioAtLine'
 import { t } from './i18n'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export type RunCodeLensPayload = {
   scenario: string
@@ -111,7 +112,7 @@ export function registerGherkinCodeLens(monacoInstance: typeof Monaco, handlers:
   if (providerRegistered) return
   providerRegistered = true
 
-  monacoInstance.editor.registerCommand(
+  const command = monacoInstance.editor.registerCommand(
     RUN_SCENARIO_COMMAND,
     async (_accessor, payload: RunCodeLensPayload) => {
       if (!payload || !activeHandlers?.isEnabled()) return
@@ -119,7 +120,7 @@ export function registerGherkinCodeLens(monacoInstance: typeof Monaco, handlers:
     },
   )
 
-  monacoInstance.languages.registerCodeLensProvider('scenaria-feature', {
+  const provider = monacoInstance.languages.registerCodeLensProvider('scenaria-feature', {
     provideCodeLenses(model) {
       if (!activeHandlers?.isEnabled() || !shouldUseHeavyLanguageFeatures(model.getLineCount())) {
         return { lenses: [], dispose: () => {} }
@@ -133,6 +134,7 @@ export function registerGherkinCodeLens(monacoInstance: typeof Monaco, handlers:
       return codeLens
     },
   })
+  replaceMonacoDisposables('gherkin-code-lens', [command, provider])
 }
 
 export function refreshGherkinCodeLens(editor: Monaco.editor.ICodeEditor | null) {

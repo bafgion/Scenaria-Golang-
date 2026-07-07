@@ -300,6 +300,9 @@
   /** Закрыть вкладку — освободить модель и память Monaco. */
   export function releaseTab(path: string) {
     if (!monacoApi || !path) return
+    if (editor?.getModel() === tabModels.getModel(monacoApi, path)) {
+      editor.setModel(null)
+    }
     tabViewStates.drop(path)
     tabModels.release(monacoApi, path)
     if (activeTabPath === path) {
@@ -332,9 +335,11 @@
     applyingExternal = true
     suppressMarkerSync = true
     const ed = editor
+    const model = editor.getModel()
+    const tabPath = activeTabPath
     return new Promise((resolve) => {
       window.setTimeout(() => {
-        if (ed && ed === editor) {
+        if (ed && ed === editor && model && editor.getModel() === model && activeTabPath === tabPath) {
           replaceModelText(ed, text, 'set-content')
           value = text
         }

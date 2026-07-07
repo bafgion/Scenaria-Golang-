@@ -49,6 +49,12 @@ func (v Validator) ValidateFeature(path string, feature *gherkin.Feature) ([]Val
 }
 
 func (v Validator) ValidateVisible(ctx context.Context, page playwright.Page, selector string, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := ValidateSyntax(selector); err != nil {
 		return err
 	}
@@ -61,6 +67,9 @@ func (v Validator) ValidateVisible(ctx context.Context, page playwright.Page, se
 		Timeout: playwright.Float(float64(timeout.Milliseconds())),
 	}); err != nil {
 		return fmt.Errorf("selector %q is not visible: %w", selector, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return nil
 }

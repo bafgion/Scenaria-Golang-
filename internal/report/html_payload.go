@@ -15,87 +15,87 @@ import (
 
 // HTMLOptions configures interactive HTML report generation.
 type HTMLOptions struct {
-	Plan        player.ExecutionPlan
-	ProjectRoot string
-	LightMode   bool
-	BridgeURL    string
-	BridgeToken  string
-	Locale      string
-	ReportDir        string
-	MaxJSONBytes     int
-	PreviousSummary  *RunSummaryDetailed
+	Plan            player.ExecutionPlan
+	ProjectRoot     string
+	LightMode       bool
+	BridgeURL       string
+	BridgeToken     string
+	Locale          string
+	ReportDir       string
+	MaxJSONBytes    int
+	PreviousSummary *RunSummaryDetailed
 }
 
 type htmlReportPayload struct {
-	Version     string              `json:"version"`
-	Brand       string              `json:"brand"`
-	GeneratedAt string              `json:"generated_at"`
-	Mode        string              `json:"mode"`
-	LightMode        bool                `json:"light_mode"`
-	BridgeURL        string              `json:"bridge_url,omitempty"`
-	BridgeToken      string              `json:"bridge_token,omitempty"`
-	Locale           string              `json:"locale,omitempty"`
-	ReportDir        string              `json:"report_dir,omitempty"`
-	ArtifactsTrimmed bool                `json:"artifacts_trimmed,omitempty"`
-	ScreenshotDedup  int                 `json:"screenshot_dedup,omitempty"`
-	CICompare        *htmlCICompare      `json:"ci_compare,omitempty"`
-	Summary          htmlSummary         `json:"summary"`
-	Scenarios   []htmlScenario      `json:"scenarios"`
-	Flaky       htmlFlaky           `json:"flaky"`
-	SlowSteps   []htmlSlowStep      `json:"slow_steps"`
+	Version          string         `json:"version"`
+	Brand            string         `json:"brand"`
+	GeneratedAt      string         `json:"generated_at"`
+	Mode             string         `json:"mode"`
+	LightMode        bool           `json:"light_mode"`
+	BridgeURL        string         `json:"bridge_url,omitempty"`
+	BridgeToken      string         `json:"bridge_token,omitempty"`
+	Locale           string         `json:"locale,omitempty"`
+	ReportDir        string         `json:"report_dir,omitempty"`
+	ArtifactsTrimmed bool           `json:"artifacts_trimmed,omitempty"`
+	ScreenshotDedup  int            `json:"screenshot_dedup,omitempty"`
+	CICompare        *htmlCICompare `json:"ci_compare,omitempty"`
+	Summary          htmlSummary    `json:"summary"`
+	Scenarios        []htmlScenario `json:"scenarios"`
+	Flaky            htmlFlaky      `json:"flaky"`
+	SlowSteps        []htmlSlowStep `json:"slow_steps"`
 }
 
 type htmlSummary struct {
-	Files    int `json:"files"`
+	Files     int `json:"files"`
 	Scenarios int `json:"scenarios"`
-	Steps    int `json:"steps"`
-	Passed   int `json:"passed"`
-	Failed   int `json:"failed"`
-	Skipped  int `json:"skipped"`
+	Steps     int `json:"steps"`
+	Passed    int `json:"passed"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
 }
 
 type htmlScenario struct {
-	ID            string          `json:"id"`
-	FeaturePath   string          `json:"feature_path"`
-	Scenario      string          `json:"scenario"`
-	Tags          []string        `json:"tags,omitempty"`
-	ExampleIndex  int             `json:"example_index,omitempty"`
-	Status        string          `json:"status"`
-	Message       string          `json:"message,omitempty"`
-	FailedStep    *int            `json:"failed_step,omitempty"`
-	DurationMS    int64           `json:"duration_ms"`
-	Steps         []htmlStep      `json:"steps"`
-	Screenshot    string          `json:"screenshot,omitempty"`
-	TracePath     string          `json:"trace_path,omitempty"`
-	TraceCommand  string              `json:"trace_command,omitempty"`
-	TraceEvents   []htmlTraceEvent    `json:"trace_events,omitempty"`
-	RerunCommand  string              `json:"rerun_command,omitempty"`
-	History       *htmlHistory        `json:"history,omitempty"`
-	HistoryRuns   []htmlHistoryEntry  `json:"history_runs,omitempty"`
-	Regressions       []htmlRegression    `json:"regressions,omitempty"`
-	DurationSparkline []int               `json:"duration_sparkline,omitempty"`
-	RunDiff           *htmlRunDiff        `json:"run_diff,omitempty"`
+	ID                string             `json:"id"`
+	FeaturePath       string             `json:"feature_path"`
+	Scenario          string             `json:"scenario"`
+	Tags              []string           `json:"tags,omitempty"`
+	ExampleIndex      int                `json:"example_index,omitempty"`
+	Status            string             `json:"status"`
+	Message           string             `json:"message,omitempty"`
+	FailedStep        *int               `json:"failed_step,omitempty"`
+	DurationMS        int64              `json:"duration_ms"`
+	Steps             []htmlStep         `json:"steps"`
+	Screenshot        string             `json:"screenshot,omitempty"`
+	TracePath         string             `json:"trace_path,omitempty"`
+	TraceCommand      string             `json:"trace_command,omitempty"`
+	TraceEvents       []htmlTraceEvent   `json:"trace_events,omitempty"`
+	RerunCommand      string             `json:"rerun_command,omitempty"`
+	History           *htmlHistory       `json:"history,omitempty"`
+	HistoryRuns       []htmlHistoryEntry `json:"history_runs,omitempty"`
+	Regressions       []htmlRegression   `json:"regressions,omitempty"`
+	DurationSparkline []int              `json:"duration_sparkline,omitempty"`
+	RunDiff           *htmlRunDiff       `json:"run_diff,omitempty"`
 }
 
 type htmlStep struct {
-	Index      int      `json:"index"`
-	Line       int      `json:"line,omitempty"`
-	Keyword    string   `json:"keyword,omitempty"`
-	Text       string   `json:"text"`
-	Selector   string   `json:"selector,omitempty"`
-	Status     string   `json:"status"`
-	DurationMS int64    `json:"duration_ms,omitempty"`
-	Error          string   `json:"error,omitempty"`
-	Network        string   `json:"network,omitempty"`
-	Screenshot     string   `json:"screenshot,omitempty"`
-	FlakyFailures  int      `json:"flaky_failures,omitempty"`
+	Index             int      `json:"index"`
+	Line              int      `json:"line,omitempty"`
+	Keyword           string   `json:"keyword,omitempty"`
+	Text              string   `json:"text"`
+	Selector          string   `json:"selector,omitempty"`
+	Status            string   `json:"status"`
+	DurationMS        int64    `json:"duration_ms,omitempty"`
+	Error             string   `json:"error,omitempty"`
+	Network           string   `json:"network,omitempty"`
+	Screenshot        string   `json:"screenshot,omitempty"`
+	FlakyFailures     int      `json:"flaky_failures,omitempty"`
 	PageContext       string   `json:"page_context,omitempty"`
 	DOMSnapshot       string   `json:"dom_snapshot,omitempty"`
 	A11ySnapshot      string   `json:"a11y_snapshot,omitempty"`
 	TraceOffsetMS     int64    `json:"trace_offset_ms,omitempty"`
 	DurationSparkline []int    `json:"duration_sparkline,omitempty"`
 	Tips              []string `json:"tips,omitempty"`
-	Gherkin    string   `json:"gherkin,omitempty"`
+	Gherkin           string   `json:"gherkin,omitempty"`
 }
 
 type htmlHistory struct {
@@ -106,19 +106,19 @@ type htmlHistory struct {
 }
 
 type htmlHistoryEntry struct {
-	Status     string `json:"status"`
-	At         string `json:"at"`
-	Message    string `json:"message,omitempty"`
-	FailedStep     *int   `json:"failed_step,omitempty"`
-	DurationMS     int    `json:"duration_ms,omitempty"`
-	StepDurations  []int  `json:"step_durations,omitempty"`
+	Status        string `json:"status"`
+	At            string `json:"at"`
+	Message       string `json:"message,omitempty"`
+	FailedStep    *int   `json:"failed_step,omitempty"`
+	DurationMS    int    `json:"duration_ms,omitempty"`
+	StepDurations []int  `json:"step_durations,omitempty"`
 }
 
 type htmlCICompare struct {
-	PreviousAt      string             `json:"previous_at,omitempty"`
-	NewFailures     []htmlCIItem       `json:"new_failures,omitempty"`
-	Fixed           []htmlCIItem       `json:"fixed,omitempty"`
-	DurationDeltas  []htmlCIDuration   `json:"duration_deltas,omitempty"`
+	PreviousAt     string           `json:"previous_at,omitempty"`
+	NewFailures    []htmlCIItem     `json:"new_failures,omitempty"`
+	Fixed          []htmlCIItem     `json:"fixed,omitempty"`
+	DurationDeltas []htmlCIDuration `json:"duration_deltas,omitempty"`
 }
 
 type htmlCIItem struct {
@@ -188,8 +188,10 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 
 	reportDir := filepath.Dir(reportPath)
 	tracesDir := filepath.Join(reportDir, "traces")
+	screenshotsDir := filepath.Join(reportDir, "screenshots")
 	if !opts.LightMode {
 		_ = os.MkdirAll(tracesDir, 0o755)
+		_ = os.MkdirAll(screenshotsDir, 0o755)
 	}
 
 	flakySteps := flakyStepFailures(payload.Flaky.Steps)
@@ -197,7 +199,7 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 	payload.Scenarios = make([]htmlScenario, 0, len(result.ScenarioResults))
 	for i, sr := range result.ScenarioResults {
 		casePlan := findPlanCase(opts.Plan, sr)
-		sc := buildHTMLScenario(sr, casePlan, i, tracesDir, opts.LightMode, flakySteps)
+		sc := buildHTMLScenario(sr, casePlan, i, tracesDir, screenshotsDir, opts.LightMode, flakySteps)
 		sc.History = lookupHistory(history, sr)
 		sc.HistoryRuns = lookupHistoryRuns(history, sr, 5)
 		sc.Regressions = computeRegressions(sc)
@@ -247,7 +249,7 @@ func flakyStepFailures(stats []runstatus.StepFlakyStat) map[string]map[int]int {
 	return out
 }
 
-func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index int, tracesDir string, light bool, flakySteps map[string]map[int]int) htmlScenario {
+func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index int, tracesDir, screenshotsDir string, light bool, flakySteps map[string]map[int]int) htmlScenario {
 	sc := htmlScenario{
 		ID:          fmt.Sprintf("s%d", index),
 		FeaturePath: sr.FeaturePath,
@@ -265,7 +267,8 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 	}
 	scenarioPath := sr.FeaturePath + "::" + sr.Scenario
 	traceHints := scenarioHasTrace(sr, light)
-	sc.Steps = buildHTMLSteps(sr, casePlan, flakySteps[scenarioPath], light, traceHints)
+	artifactBase := fmt.Sprintf("%03d_%s", index, safeArtifactName(sr.FeaturePath, sr.Scenario))
+	sc.Steps = buildHTMLSteps(sr, casePlan, flakySteps[scenarioPath], light, traceHints, screenshotsDir, artifactBase)
 	if sc.DurationMS <= 0 {
 		sc.DurationMS = sumStepDuration(sc.Steps)
 	}
@@ -273,7 +276,7 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 
 	if !light {
 		if len(sr.ScreenshotPNG) > 0 {
-			sc.Screenshot = embedScreenshot(sr.ScreenshotPNG)
+			sc.Screenshot = writeScreenshotArtifact(screenshotsDir, artifactBase+"__scenario.png", sr.ScreenshotPNG)
 		}
 		if len(sr.TraceZIP) > 0 {
 			sc.TraceEvents = parseTraceActions(sr.TraceZIP, 80)
@@ -302,25 +305,25 @@ func scenarioHasTrace(sr player.ScenarioResult, light bool) bool {
 	return !light && sr.Status == "failed" && len(sr.TraceZIP) > 0
 }
 
-func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky map[int]int, light bool, traceHints bool) []htmlStep {
+func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky map[int]int, light bool, traceHints bool, screenshotsDir, artifactBase string) []htmlStep {
 	if len(sr.StepRecords) > 0 {
 		out := make([]htmlStep, 0, len(sr.StepRecords))
 		var offset int64
 		for _, rec := range sr.StepRecords {
 			step := htmlStep{
-				Index:         rec.Index,
-				Line:          rec.Line,
-				Keyword:       rec.Keyword,
-				Text:          rec.Text,
-				Selector:      rec.Selector,
-				Status:        rec.Status,
-				DurationMS:    rec.DurationMS,
-				Error:         rec.Error,
-				Network:       rec.Network,
-				PageContext:   rec.PageContext,
-				DOMSnapshot:   rec.DOMSnapshot,
-				A11ySnapshot:  rec.A11ySnapshot,
-				Gherkin:       gherkinLine(rec.Keyword, rec.Text),
+				Index:        rec.Index,
+				Line:         rec.Line,
+				Keyword:      rec.Keyword,
+				Text:         rec.Text,
+				Selector:     rec.Selector,
+				Status:       rec.Status,
+				DurationMS:   rec.DurationMS,
+				Error:        rec.Error,
+				Network:      rec.Network,
+				PageContext:  rec.PageContext,
+				DOMSnapshot:  rec.DOMSnapshot,
+				A11ySnapshot: rec.A11ySnapshot,
+				Gherkin:      gherkinLine(rec.Keyword, rec.Text),
 			}
 			if traceHints {
 				step.TraceOffsetMS = offset
@@ -330,7 +333,7 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 				step.FlakyFailures = flaky[rec.Index]
 			}
 			if !light && len(rec.ScreenshotPNG) > 0 {
-				step.Screenshot = embedScreenshot(rec.ScreenshotPNG)
+				step.Screenshot = writeScreenshotArtifact(screenshotsDir, fmt.Sprintf("%s__step_%03d.png", artifactBase, rec.Index), rec.ScreenshotPNG)
 			}
 			step.Tips = stepTips(step.Selector, step.Error, step.Text)
 			out = append(out, step)

@@ -52,7 +52,7 @@ func TestBuildHTMLStepsTraceOffset(t *testing.T) {
 			{Index: 1, Status: "failed", DurationMS: 50, PageContext: "Title\nhttps://x"},
 		},
 	}
-	steps := buildHTMLSteps(sr, nil, nil, true, true)
+	steps := buildHTMLSteps(sr, nil, nil, true, true, "", "test")
 	if steps[1].TraceOffsetMS != 100 {
 		t.Fatalf("offset want 100 got %d", steps[1].TraceOffsetMS)
 	}

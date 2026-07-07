@@ -8,6 +8,7 @@ import {
 } from './gherkinHintActionsHelpers'
 import { EDITOR_MARKER_OWNER } from './gherkinEditorMarkers'
 import { t } from './i18n'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export { findHintForMarker, markerCode, rangeTouchesMarker } from './gherkinHintActionsHelpers'
 
@@ -31,16 +32,16 @@ export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers:
   if (providerRegistered) return
   providerRegistered = true
 
-  monacoInstance.editor.registerCommand('scenaria.hint.fix', async (_accessor, hintId: string, stepIndex: number) => {
+  const fixCommand = monacoInstance.editor.registerCommand('scenaria.hint.fix', async (_accessor, hintId: string, stepIndex: number) => {
     const hint = findHintByArgs(hintId, stepIndex)
     if (hint) await activeHandlers?.onFix(hint)
   })
-  monacoInstance.editor.registerCommand('scenaria.hint.dismiss', (_accessor, hintId: string, stepIndex: number) => {
+  const dismissCommand = monacoInstance.editor.registerCommand('scenaria.hint.dismiss', (_accessor, hintId: string, stepIndex: number) => {
     const hint = findHintByArgs(hintId, stepIndex)
     if (hint) activeHandlers?.onDismiss(hint)
   })
 
-  monacoInstance.languages.registerCodeActionProvider(
+  const provider = monacoInstance.languages.registerCodeActionProvider(
     'scenaria-feature',
     {
       provideCodeActions: (model, range) => {
@@ -106,4 +107,5 @@ export function registerHintCodeActions(monacoInstance: typeof Monaco, handlers:
       providedCodeActionKinds: [HINT_QUICK_FIX_KIND],
     },
   )
+  replaceMonacoDisposables('gherkin-hint-actions', [fixCommand, dismissCommand, provider])
 }

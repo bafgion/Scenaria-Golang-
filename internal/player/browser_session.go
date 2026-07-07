@@ -46,19 +46,19 @@ func (e *PlaywrightExecutor) NavWaitUntil() string {
 }
 
 type browserSession struct {
-	mu               sync.Mutex
-	networkMu        sync.Mutex
-	browser          playwright.Browser
-	context          playwright.BrowserContext
-	page             playwright.Page
-	closed           atomic.Bool
-	external         bool
-	traceEnabled     bool
-	traceStopped     bool
-	videoEnabled     bool
-	videoRetained    bool
-	navWaitUntil     *playwright.WaitUntilState
-	lastNetworkFail  string
+	mu              sync.Mutex
+	networkMu       sync.Mutex
+	browser         playwright.Browser
+	context         playwright.BrowserContext
+	page            playwright.Page
+	closed          atomic.Bool
+	external        bool
+	traceEnabled    bool
+	traceStopped    bool
+	videoEnabled    bool
+	videoRetained   bool
+	navWaitUntil    *playwright.WaitUntilState
+	lastNetworkFail string
 }
 
 func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOptions) (*browserSession, error) {
@@ -226,6 +226,30 @@ func (s *browserSession) navigationWaitUntil() *playwright.WaitUntilState {
 	return playwright.WaitUntilStateDomcontentloaded
 }
 
+func (s *browserSession) currentPage() (playwright.Page, error) {
+	if s == nil {
+		return nil, fmt.Errorf("browser session is closed")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.isClosed() || s.page == nil {
+		return nil, fmt.Errorf("browser page is not available")
+	}
+	return s.page, nil
+}
+
+func (s *browserSession) currentPageAndNavWait() (playwright.Page, *playwright.WaitUntilState, error) {
+	if s == nil {
+		return nil, nil, fmt.Errorf("browser session is closed")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.isClosed() || s.page == nil {
+		return nil, nil, fmt.Errorf("browser page is not available")
+	}
+	return s.page, s.navigationWaitUntil(), nil
+}
+
 func (s *browserSession) resetForScenario() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -330,19 +354,21 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	session.mu.Lock()
-	if session.isClosed() {
-		session.mu.Unlock()
+	var page playwright.Page
+	var navWait *playwright.WaitUntilState
+	if actionNeedsPage(action.Kind) {
+		var err error
+		page, navWait, err = session.currentPageAndNavWait()
+		if err != nil {
+			return err
+		}
+	} else if session == nil || session.isClosed() {
 		return fmt.Errorf("browser session is closed")
 	}
-	page := session.page
 	if action.Kind == "goto" {
-		navWait := session.navigationWaitUntil()
-		session.mu.Unlock()
 		url := stepdsl.ResolveURL(action.Value1, baseURL)
 		return pageGoto(ctx, page, url, navWait)
 	}
-	defer session.mu.Unlock()
 
 	switch action.Kind {
 	case "click":
@@ -517,7 +543,7 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 	case "reload":
 		if _, err := page.Reload(playwright.PageReloadOptions{
-			WaitUntil: session.navigationWaitUntil(),
+			WaitUntil: navWait,
 			Timeout:   timeoutMs(ctx, NavTimeoutMs),
 		}); err != nil {
 			return fmt.Errorf("reload failed: %w", err)
@@ -525,14 +551,14 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		return nil
 	case "go-back":
 		if _, err := page.GoBack(playwright.PageGoBackOptions{
-			WaitUntil: session.navigationWaitUntil(),
+			WaitUntil: navWait,
 			Timeout:   timeoutMs(ctx, NavTimeoutMs),
 		}); err != nil {
 			return fmt.Errorf("go back failed: %w", err)
 		}
 		return nil
 	case "close-browser":
-		session.closeWhileLocked(true)
+		session.closeLocked(true)
 		return nil
 	case "remember-text":
 		if runCtx == nil {
@@ -594,16 +620,31 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		}
 		return runEmailCode(ctx, page, action, runCtx)
 	case "switch-tab":
+		session.mu.Lock()
+		defer session.mu.Unlock()
 		return switchTab(session, action, runCtx)
 	case "close-tab":
+		session.mu.Lock()
+		defer session.mu.Unlock()
 		return closeCurrentTab(session, runCtx)
 	case "assert-tab-count":
+		session.mu.Lock()
+		defer session.mu.Unlock()
 		if len(session.openPages()) != action.IntVal {
 			return fmt.Errorf("expected %d tab(s), got %d", action.IntVal, len(session.openPages()))
 		}
 		return nil
 	default:
 		return fmt.Errorf("unsupported action kind %q", action.Kind)
+	}
+}
+
+func actionNeedsPage(kind string) bool {
+	switch kind {
+	case "wait", "remember-text", "assert-download-contains", "close-browser":
+		return false
+	default:
+		return true
 	}
 }
 

@@ -13,6 +13,27 @@ import (
 )
 
 func (s *Service) ValidateBrowser(req ValidateRequest) ([]ValidationIssue, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if s.validateCancel != nil {
+		s.validateCancel()
+	}
+	s.validateGen++
+	myGen := s.validateGen
+	s.validateCancel = cancel
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.validateGen == myGen {
+			s.validateCancel = nil
+		}
+		s.mu.Unlock()
+		cancel()
+	}()
+	return s.ValidateBrowserContext(ctx, req)
+}
+
+func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateRequest) ([]ValidationIssue, error) {
 	path := s.ProjectPath()
 	if path == "" {
 		return nil, fmt.Errorf("open a project folder first")
@@ -44,6 +65,9 @@ func (s *Service) ValidateBrowser(req ValidateRequest) ([]ValidationIssue, error
 
 	out := make([]ValidationIssue, 0)
 	for _, featurePath := range targets {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
 		feature, err := store.Load(featurePath)
 		if err != nil {
 			out = append(out, ValidationIssue{Line: 1, Message: err.Error(), Status: "missing"})
@@ -74,7 +98,7 @@ func (s *Service) ValidateBrowser(req ValidateRequest) ([]ValidationIssue, error
 			out = append(out, fileIssues...)
 			continue
 		}
-		stepResults, err := validator.ValidateFeatureInBrowserDetailed(context.Background(), featurePath, feature, selector.BrowserValidateOptions{
+		stepResults, err := validator.ValidateFeatureInBrowserDetailed(ctx, featurePath, feature, selector.BrowserValidateOptions{
 			BrowserName: browserName,
 			Headless:    headless,
 			BaseURL:     baseURL,

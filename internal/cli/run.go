@@ -44,6 +44,7 @@ type runOptions struct {
 	startStep         int
 	endStep           int
 	navWaitUntil      string
+	navWaitExplicit   bool
 	continueOnFail    bool
 }
 
@@ -397,6 +398,7 @@ func parseRunOptions(args []string) (runOptions, error) {
 			}
 			i++
 			opts.navWaitUntil = args[i]
+			opts.navWaitExplicit = true
 		case "--continue-on-fail":
 			opts.continueOnFail = true
 		default:
@@ -416,8 +418,10 @@ func parseRunOptions(args []string) (runOptions, error) {
 	if opts.htmlPath != "" && !opts.htmlFull {
 		opts.htmlLight = true
 	}
-	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
-		opts.navWaitUntil = settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
+	if !opts.navWaitExplicit {
+		if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
+			opts.navWaitUntil = settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
+		}
 	}
 	return opts, nil
 }
@@ -454,9 +458,12 @@ func buildRunner(opts runOptions, plan player.ExecutionPlan) (player.Runner, err
 	case "playwright":
 		appCfg, _ := settings.LoadDefaultAppSettings()
 		httpCreds := player.ResolveRunHTTPCredentials(opts.baseURL, plan, appCfg)
-		navWait := settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
-		if navWait == "" {
-			navWait = opts.navWaitUntil
+		navWait := opts.navWaitUntil
+		if !opts.navWaitExplicit {
+			navWait = settings.ResolveNavWaitUntil(paths.InferProjectRoot(opts.targets), appCfg)
+			if navWait == "" {
+				navWait = opts.navWaitUntil
+			}
 		}
 		if _, err := player.ParseNavWaitUntil(navWait); err != nil {
 			return nil, err

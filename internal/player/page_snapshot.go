@@ -8,15 +8,11 @@ import (
 const maxSnapshotRunes = 6000
 
 func captureDOMSnapshot(session *browserSession) string {
-	if session == nil {
+	page, err := session.currentPage()
+	if err != nil {
 		return ""
 	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.isClosed() || session.page == nil {
-		return ""
-	}
-	html, err := session.page.Content()
+	html, err := page.Content()
 	if err != nil {
 		return ""
 	}
@@ -25,15 +21,11 @@ func captureDOMSnapshot(session *browserSession) string {
 }
 
 func captureA11ySnapshot(session *browserSession) string {
-	if session == nil {
+	page, err := session.currentPage()
+	if err != nil {
 		return ""
 	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.isClosed() || session.page == nil {
-		return ""
-	}
-	raw, err := session.page.Evaluate(a11ySnapshotJS)
+	raw, err := page.Evaluate(a11ySnapshotJS)
 	if err != nil || raw == nil {
 		return ""
 	}

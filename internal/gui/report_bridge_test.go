@@ -83,6 +83,41 @@ func TestReportBridgeRejectsMissingToken(t *testing.T) {
 	}
 }
 
+func TestReportBridgeRotatesToken(t *testing.T) {
+	root := t.TempDir()
+	svc := NewService()
+	if _, err := svc.OpenProject(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.EnsureReportBridge(nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer svc.CloseReportBridge()
+	oldToken := svc.ReportBridgeToken()
+	if oldToken == "" {
+		t.Fatal("empty old token")
+	}
+	_, newToken := svc.ReportBridgeCredentials()
+	if newToken == "" || newToken == oldToken {
+		t.Fatalf("token was not rotated: old=%q new=%q", oldToken, newToken)
+	}
+	body := []byte(`{"feature_path":"x.feature"}`)
+	req, err := http.NewRequest(http.MethodPost, svc.ReportBridgeURL()+"/goto", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scenaria-Bridge-Token", oldToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old token status %d", resp.StatusCode)
+	}
+}
+
 func TestReportBridgeRerun(t *testing.T) {
 	root := t.TempDir()
 	svc := NewService()
@@ -169,6 +204,30 @@ func TestReportBridgeCORSOptions(t *testing.T) {
 	}
 	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "null" {
 		t.Fatalf("allow-origin %q", got)
+	}
+}
+
+func TestReportBridgeCORSOptionsRejectsRemoteOrigin(t *testing.T) {
+	svc := NewService()
+	if err := svc.EnsureReportBridge(nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer svc.CloseReportBridge()
+	req, err := http.NewRequest(http.MethodOptions, svc.ReportBridgeURL()+"/goto", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://evil.example")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("options status %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unexpected allow-origin %q", got)
 	}
 }
 

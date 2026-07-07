@@ -51,6 +51,12 @@ func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, fe
 }
 
 func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path string, feature *gherkin.Feature, opts BrowserValidateOptions) ([]StepValidation, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	startURL := firstGotoURL(feature, opts.BaseURL, path)
 	if startURL == "" {
 		return nil, nil
@@ -102,13 +108,16 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 	if err != nil {
 		return nil, err
 	}
-	if _, err := page.Goto(startURL); err != nil {
+	if _, err := page.Goto(startURL, playwright.PageGotoOptions{Timeout: playwright.Float(float64(opts.Timeout.Milliseconds()))}); err != nil {
 		return nil, fmt.Errorf("goto %q: %w", startURL, err)
 	}
 
 	issues := make([]StepValidation, 0)
 	for _, runnable := range gherkin.ExpandFeatureAtPath(feature, path) {
 		for _, step := range gherkin.FlattenSteps(runnable.Steps) {
+			if err := ctx.Err(); err != nil {
+				return issues, err
+			}
 			if step.Block != "" {
 				continue
 			}
@@ -119,7 +128,7 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 			stepText := strings.TrimSpace(step.Keyword + " " + step.Text)
 			if action.Kind == "goto" {
 				url := stepdsl.ResolveURL(action.Value1, opts.BaseURL)
-				if _, err := page.Goto(url); err != nil {
+				if _, err := page.Goto(url, playwright.PageGotoOptions{Timeout: playwright.Float(float64(opts.Timeout.Milliseconds()))}); err != nil {
 					issues = append(issues, StepValidation{
 						Line:     step.Line,
 						StepText: stepText,
@@ -176,6 +185,12 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 }
 
 func (v Validator) validateHidden(ctx context.Context, page playwright.Page, selector string, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := ValidateSyntax(selector); err != nil {
 		return err
 	}
@@ -188,6 +203,9 @@ func (v Validator) validateHidden(ctx context.Context, page playwright.Page, sel
 		Timeout: playwright.Float(float64(timeout.Milliseconds())),
 	}); err != nil {
 		return fmt.Errorf("selector %q is still visible: %w", selector, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return nil
 }

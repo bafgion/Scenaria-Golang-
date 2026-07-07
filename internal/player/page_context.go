@@ -3,16 +3,12 @@ package player
 import "strings"
 
 func capturePageContext(session *browserSession) string {
-	if session == nil {
+	page, err := session.currentPage()
+	if err != nil {
 		return ""
 	}
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	if session.isClosed() || session.page == nil {
-		return ""
-	}
-	title, _ := session.page.Title()
-	url := session.page.URL()
+	title, _ := page.Title()
+	url := page.URL()
 	title = strings.TrimSpace(title)
 	url = strings.TrimSpace(url)
 	switch {

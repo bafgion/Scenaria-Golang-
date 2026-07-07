@@ -14,7 +14,9 @@ export function registerFeatureLanguage(monaco: typeof Monaco) {
   }
   registered = true
 
-  monaco.languages.register({ id: 'scenaria-feature' })
+  if (!monaco.languages.getLanguages().some((lang) => lang.id === 'scenaria-feature')) {
+    monaco.languages.register({ id: 'scenaria-feature' })
+  }
 
   monaco.languages.setMonarchTokensProvider('scenaria-feature', {
     defaultToken: 'text',

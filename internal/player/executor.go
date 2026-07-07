@@ -34,7 +34,9 @@ func NewStepExecutor(options ExecutorOptions) *StepExecutor {
 
 func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession, steps []gherkin.Step, runCtx *RunContext) error {
 	if runCtx != nil {
-		runCtx.SetPage(session.page)
+		if page, err := session.currentPage(); err == nil {
+			runCtx.SetPage(page)
+		}
 	}
 	for _, step := range steps {
 		if err := ctx.Err(); err != nil {
@@ -161,7 +163,11 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 	if err != nil {
 		return err
 	}
-	locators, err := session.page.Locator(selector).Count()
+	page, err := session.currentPage()
+	if err != nil {
+		return err
+	}
+	locators, err := page.Locator(selector).Count()
 	if err != nil {
 		return fmt.Errorf("for_each locator failed: %w", err)
 	}
@@ -172,7 +178,7 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		if index >= e.maxLoopIterations() {
 			return fmt.Errorf("превышен лимит итераций for_each (%d)", e.maxLoopIterations())
 		}
-		locator := session.page.Locator(selector).Nth(index)
+		locator := page.Locator(selector).Nth(index)
 		text, _ := locator.InnerText()
 		text = strings.TrimSpace(text)
 		if text == "" {

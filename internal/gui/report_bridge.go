@@ -2,6 +2,7 @@ package gui
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -53,6 +54,20 @@ func newBridgeToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func (b *reportBridge) rotateToken() (string, error) {
+	if b == nil {
+		return "", nil
+	}
+	token, err := newBridgeToken()
+	if err != nil {
+		return "", err
+	}
+	b.mu.Lock()
+	b.token = token
+	b.mu.Unlock()
+	return token, nil
 }
 
 func startReportBridge(onGoto func(ReportGotoRequest), onRerun func(ReportRerunRequest), onTrace func(ReportTraceRequest)) (*reportBridge, error) {
@@ -155,7 +170,21 @@ func (s *Service) ReportBridgeToken() string {
 	if s.reportBridge == nil {
 		return ""
 	}
-	return s.reportBridge.token
+	return s.reportBridge.tokenValue()
+}
+
+// ReportBridgeCredentials rotates the bridge token and returns credentials for a newly written report.
+func (s *Service) ReportBridgeCredentials() (string, string) {
+	s.reportBridgeMu.Lock()
+	defer s.reportBridgeMu.Unlock()
+	if s.reportBridge == nil {
+		return "", ""
+	}
+	token, err := s.reportBridge.rotateToken()
+	if err != nil {
+		return s.reportBridge.URL(), ""
+	}
+	return s.reportBridge.URL(), token
 }
 
 // CloseReportBridge stops the report bridge HTTP server.
@@ -173,6 +202,15 @@ func (b *reportBridge) URL() string {
 		return ""
 	}
 	return b.baseURL
+}
+
+func (b *reportBridge) tokenValue() string {
+	if b == nil {
+		return ""
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.token
 }
 
 func setReportBridgeCORS(w http.ResponseWriter, r *http.Request) {
@@ -207,15 +245,40 @@ func allowedBridgeOrigin(r *http.Request) string {
 }
 
 func (b *reportBridge) authorize(r *http.Request) bool {
-	if b == nil || b.token == "" {
+	if b == nil || r == nil {
 		return false
 	}
-	return r.Header.Get(bridgeTokenHeader) == b.token
+	got := r.Header.Get(bridgeTokenHeader)
+	b.mu.Lock()
+	token := b.token
+	b.mu.Unlock()
+	if token == "" || len(got) != len(token) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+func rejectDisallowedBridgeOrigin(w http.ResponseWriter, r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return false
+	}
+	if allowedBridgeOrigin(r) != "" {
+		return false
+	}
+	http.Error(w, "origin not allowed", http.StatusForbidden)
+	return true
 }
 
 func (b *reportBridge) handleGoto(w http.ResponseWriter, r *http.Request) {
 	setReportBridgeCORS(w, r)
 	if r.Method == http.MethodOptions {
+		if rejectDisallowedBridgeOrigin(w, r) {
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -247,6 +310,9 @@ func (b *reportBridge) handleGoto(w http.ResponseWriter, r *http.Request) {
 func (b *reportBridge) handleRerun(w http.ResponseWriter, r *http.Request) {
 	setReportBridgeCORS(w, r)
 	if r.Method == http.MethodOptions {
+		if rejectDisallowedBridgeOrigin(w, r) {
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -279,6 +345,9 @@ func (b *reportBridge) handleRerun(w http.ResponseWriter, r *http.Request) {
 func (b *reportBridge) handleTrace(w http.ResponseWriter, r *http.Request) {
 	setReportBridgeCORS(w, r)
 	if r.Method == http.MethodOptions {
+		if rejectDisallowedBridgeOrigin(w, r) {
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

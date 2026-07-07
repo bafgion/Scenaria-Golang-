@@ -18,10 +18,10 @@ type StepRecord struct {
 	DurationMS    int64  `json:"duration_ms,omitempty"`
 	Error         string `json:"error,omitempty"`
 	Network       string `json:"network,omitempty"`
-	PageContext    string `json:"page_context,omitempty"`
-	DOMSnapshot    string `json:"dom_snapshot,omitempty"`
-	A11ySnapshot   string `json:"a11y_snapshot,omitempty"`
-	ScreenshotPNG  []byte `json:"-"`
+	PageContext   string `json:"page_context,omitempty"`
+	DOMSnapshot   string `json:"dom_snapshot,omitempty"`
+	A11ySnapshot  string `json:"a11y_snapshot,omitempty"`
+	ScreenshotPNG []byte `json:"-"`
 }
 
 func (c *RunContext) beginLeafStep(step gherkin.Step) int {
@@ -80,12 +80,12 @@ func (c *RunContext) StepRecords() []StepRecord {
 
 func actionSelector(action stepdsl.Action) string {
 	switch action.Kind {
-	case "click", "double-click", "hover", "fill", "clear", "select-option",
-		"check", "uncheck", "press-in", "download-click", "upload",
-		"assert-visible", "assert-hidden", "assert-text", "assert-value",
-		"assert-count", "wait-visible", "wait-hidden", "remember-field",
-		"remember-text", "drag", "scroll-into-view":
+	case "click", "double-click", "hover", "clear", "check", "uncheck",
+		"download-click", "assert-visible", "assert-hidden", "wait-visible",
+		"wait-hidden", "remember-field", "drag-drop", "scroll-to":
 		return action.Value1
+	case "fill", "fill-generated", "select", "press-in", "upload", "assert-text":
+		return action.Value2
 	case "goto", "remember-url", "assert-url", "wait-url":
 		return action.Value1
 	default:

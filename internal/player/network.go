@@ -8,16 +8,17 @@ import (
 )
 
 func wireNetworkFailureListener(session *browserSession) {
-	if session == nil || session.page == nil {
+	page, err := session.currentPage()
+	if err != nil {
 		return
 	}
-	session.page.OnRequestFailed(func(req playwright.Request) {
+	page.OnRequestFailed(func(req playwright.Request) {
 		if req == nil {
 			return
 		}
 		session.recordNetworkSnippet(formatFailedRequest(req))
 	})
-	session.page.OnResponse(func(resp playwright.Response) {
+	page.OnResponse(func(resp playwright.Response) {
 		if resp == nil {
 			return
 		}

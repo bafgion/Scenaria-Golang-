@@ -2,7 +2,9 @@ package player
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/paths"
@@ -32,16 +34,46 @@ func ApplyTestClient(page playwright.Page, client *settings.TestClient) error {
 		}
 	}
 	if len(client.LocalStorage) > 0 {
-		script := "(() => {"
-		for key, value := range client.LocalStorage {
-			script += fmt.Sprintf("localStorage.setItem(%q, %q);", key, value)
+		script, err := localStorageInitScript(client.BaseURL, client.LocalStorage)
+		if err != nil {
+			return err
 		}
-		script += "})()"
-		if _, err := page.Evaluate(script); err != nil {
-			return fmt.Errorf("apply test client local storage: %w", err)
+		if err := page.Context().AddInitScript(playwright.Script{Content: playwright.String(script)}); err != nil {
+			return fmt.Errorf("register test client local storage: %w", err)
+		}
+		if sameOrigin(page.URL(), client.BaseURL) || strings.TrimSpace(client.BaseURL) == "" {
+			if _, err := page.Evaluate(script); err != nil {
+				return fmt.Errorf("apply test client local storage: %w", err)
+			}
 		}
 	}
 	return nil
+}
+
+func localStorageInitScript(baseURL string, values map[string]string) (string, error) {
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("encode test client local storage: %w", err)
+	}
+	origin := originFromURL(baseURL)
+	originJSON, err := json.Marshal(origin)
+	if err != nil {
+		return "", fmt.Errorf("encode test client origin: %w", err)
+	}
+	return fmt.Sprintf(`(() => {
+  const expectedOrigin = %s;
+  if (expectedOrigin && window.location.origin !== expectedOrigin) return;
+  const values = %s;
+  for (const [key, value] of Object.entries(values)) {
+    localStorage.setItem(key, value);
+  }
+})()`, string(originJSON), string(payload)), nil
+}
+
+func sameOrigin(currentURL, baseURL string) bool {
+	current := originFromURL(currentURL)
+	target := originFromURL(baseURL)
+	return current != "" && target != "" && current == target
 }
 
 func loadTestClientForFeature(projectRoot, name string) (*settings.TestClient, error) {
@@ -113,7 +145,12 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 	failed := false
 	var runCtx *RunContext
 	if input.TestClient != nil {
-		if err := ApplyTestClient(session.page, input.TestClient); err != nil {
+		page, err := session.currentPage()
+		if err != nil {
+			failed = true
+			result.Status = "failed"
+			result.Message = err.Error()
+		} else if err := ApplyTestClient(page, input.TestClient); err != nil {
 			failed = true
 			result.Status = "failed"
 			result.Message = err.Error()
@@ -147,4 +184,3 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 	result.DurationMS = time.Since(started).Milliseconds()
 	return result, nil
 }
-

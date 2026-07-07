@@ -110,6 +110,10 @@ func runLiveBrowserSession(
 			opts.Callbacks.OnStepRecorded(index, line)
 		}
 	}
+	poll := time.NewTicker(100 * time.Millisecond)
+	defer poll.Stop()
+	nextEvaluateAt := time.Now()
+	idlePolls := 0
 
 	for {
 		select {
@@ -120,7 +124,11 @@ func runLiveBrowserSession(
 				opts.Callbacks.OnBrowserLost()
 			}
 			return context.Canceled
-		case <-time.After(50 * time.Millisecond):
+		case <-poll.C:
+		}
+		now := time.Now()
+		if now.Before(nextEvaluateAt) {
+			continue
 		}
 		if !session.BrowserAlive() {
 			if opts.Callbacks.OnBrowserLost != nil {
@@ -129,15 +137,13 @@ func runLiveBrowserSession(
 			return context.Canceled
 		}
 		if session.TestRunHeld() {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(100 * time.Millisecond):
-			}
+			nextEvaluateAt = time.Now().Add(250 * time.Millisecond)
 			continue
 		}
+		nextEvaluateAt = time.Now().Add(100 * time.Millisecond)
 		syncBrowserToolbar(page, session, opts.BrowseOnly)
 		if action := takeToolbarAction(page); action != "" {
+			idlePolls = 0
 			switch action {
 			case "stop":
 				if session.CaptureEnabled() {
@@ -187,10 +193,8 @@ func runLiveBrowserSession(
 		}
 		for session.IsPaused() {
 			_, _ = page.Evaluate(`() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`, nil)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(100 * time.Millisecond):
+			if err := sleepContext(ctx, 100*time.Millisecond); err != nil {
+				return err
 			}
 			if session.RelaunchPending() {
 				if u := page.URL(); u != "" {
@@ -213,14 +217,16 @@ func runLiveBrowserSession(
 		}
 
 		if !session.CaptureEnabled() {
-			time.Sleep(200 * time.Millisecond)
+			nextEvaluateAt = time.Now().Add(500 * time.Millisecond)
 			continue
 		}
 
+		urlChanged := false
 		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
 			session.AppendGotoStep(currentURL, stepNotify)
 			lastURL = currentURL
 			lastEventAt = time.Now()
+			urlChanged = true
 		}
 
 		raw, err := page.Evaluate(`() => {
@@ -247,7 +253,31 @@ func runLiveBrowserSession(
 			}
 			session.AppendCoalescedStep(step, stepNotify)
 		}
-		time.Sleep(200 * time.Millisecond)
+		if len(events) > 0 || urlChanged {
+			idlePolls = 0
+			nextEvaluateAt = time.Now().Add(100 * time.Millisecond)
+		} else {
+			idlePolls++
+			if idlePolls >= 5 {
+				nextEvaluateAt = time.Now().Add(750 * time.Millisecond)
+			} else {
+				nextEvaluateAt = time.Now().Add(300 * time.Millisecond)
+			}
+		}
+	}
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 

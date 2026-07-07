@@ -487,6 +487,7 @@
   $: flakyStepByPath = flakyStepHints(flakyMetrics)
   let editorSteps: EditorStepRow[] = []
   let editorValidationIssues: gui.ValidationIssue[] = []
+  let editorValidationByTab: Record<string, gui.ValidationIssue[]> = {}
   let validatePanelIssues: gui.ValidationIssue[] = []
   let projectArtifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
 
@@ -762,6 +763,7 @@
   }
 
   async function resetWorkspaceForOnboarding() {
+    cancelPendingFeatureLoads()
     if (projectPath) {
       try {
         await teardownDesktopSession()
@@ -785,6 +787,7 @@
     batchSelected = []
     batchMode = false
     editorValidationIssues = []
+    editorValidationByTab = {}
     clearEditorValidation()
     openMenu = ''
     bottomPanelOpen = false
@@ -2018,6 +2021,7 @@
     batchSelected = []
     batchMode = false
     editorValidationIssues = []
+    editorValidationByTab = {}
     postRecordPath = ''
     postRecordStepCount = 0
     postRecordBaselineText = ''
@@ -2052,6 +2056,7 @@
     batchSelected = []
     batchMode = false
     editorValidationIssues = []
+    editorValidationByTab = {}
     appendLog(tr('journal.project.closed'))
     syncIdleStatus()
     schedulePersistSession()
@@ -2970,11 +2975,18 @@
     return ok
   }
 
+  let loadFeatureGeneration = 0
+
+  function cancelPendingFeatureLoads() {
+    loadFeatureGeneration++
+  }
+
   async function loadFeature(path: string, opts?: { skipRecordingGuard?: boolean }) {
     if (!opts?.skipRecordingGuard) {
       const allowed = await ensureRecordingTabSwitchAllowed(path)
       if (!allowed) return
     }
+    const generation = ++loadFeatureGeneration
     const leavingTab = activeTab
     if (leavingTab && !isWelcome && leavingTab !== path) {
       syncTabContent(leavingTab)
@@ -2988,6 +3000,7 @@
       if (tabNeedsDiskReload(existing)) {
         try {
           text = await ReadFeature(path)
+          if (generation !== loadFeatureGeneration) return
           tabs = tabs.map((t) =>
             t.path === path ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
           )
@@ -2996,6 +3009,7 @@
           return
         }
       }
+      if (generation !== loadFeatureGeneration) return
       welcomeTabVisible = false
       activeTab = path
       await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
@@ -3006,10 +3020,12 @@
     }
     try {
       const diskContent = await ReadFeature(path)
+      if (generation !== loadFeatureGeneration) return
       let content = diskContent
       let dirty = false
       try {
         const draft = await LoadFeatureDraft(path)
+        if (generation !== loadFeatureGeneration) return
         if (draft && draft.trim() !== diskContent.trim()) {
           content = draft
           dirty = true
@@ -3018,6 +3034,7 @@
       } catch {
         /* no draft */
       }
+      if (generation !== loadFeatureGeneration) return
       tabs = [...tabs, { path, content, dirty }]
       warnManyOpenTabs()
       welcomeTabVisible = false
@@ -3036,6 +3053,7 @@
 
   function selectTab(path: string) {
     if (path === WELCOME_KEY) {
+      cancelPendingFeatureLoads()
       if (recording && !recordPaused) {
         appendLog(tr('journal.record.pauseToWelcome'))
         setStatus(tr('journal.status.recordingActive'), 'busy')
@@ -3110,6 +3128,7 @@
       } else {
         welcomeTabVisible = true
         activeTab = WELCOME_KEY
+        cancelPendingFeatureLoads()
         void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
         clearEditorValidation()
       }
@@ -3154,6 +3173,8 @@
         t.path === oldPath ? { path: picked, content: text, dirty: false, draft: undefined } : t,
       )
       activeTab = picked
+      await applyEditorText(text, { saved: true, switchTab: true, tabPath: picked, skipValidate: true })
+      monaco?.releaseTab(oldPath)
       await rememberFeature(picked)
       await refreshProject()
       appendLog(tr('journal.file.savedAs', { name: basename(picked) }))
@@ -3216,6 +3237,9 @@
   }
 
   function clearEditorValidation() {
+    if (activeTab && activeTab !== WELCOME_KEY) {
+      delete editorValidationByTab[activeTab]
+    }
     editorValidationIssues = []
     stepStatusError = false
     monaco?.setMarkers([])
@@ -3236,6 +3260,9 @@
       const issues = await ValidateFeature(textAtStart)
       if (generation !== validateGeneration || tabAtStart !== activeTab) return
       editorValidationIssues = issues || []
+      if (tabAtStart) {
+        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: editorValidationIssues }
+      }
       monaco?.setMarkers(editorValidationIssues)
       await refreshEditorSteps()
       if (generation !== validateGeneration || tabAtStart !== activeTab) return
@@ -3248,6 +3275,9 @@
     } catch {
       if (generation !== validateGeneration || tabAtStart !== activeTab) return
       editorValidationIssues = []
+      if (tabAtStart) {
+        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: [] }
+      }
       await refreshEditorSteps()
     }
     if (generation !== validateGeneration || tabAtStart !== activeTab) return
@@ -3798,7 +3828,10 @@
   ) {
     editorText = text
     if (options?.switchTab) {
+      const markerPath = options.tabPath ?? null
+      editorValidationIssues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
       monaco?.activateTab(options.tabPath ?? null, text)
+      monaco?.setMarkers(editorValidationIssues)
       if (options?.saved) {
         markActiveTabSaved(text, options.tabPath ?? activeTab)
       } else if (options?.tabPath) {

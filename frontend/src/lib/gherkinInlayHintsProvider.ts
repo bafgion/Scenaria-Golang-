@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import { formatStepInlayLabel, inlayHintColumn, type StepInlayRow } from './gherkinInlayHints'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export type InlayHintsHandlers = {
   isEnabled: () => boolean
@@ -35,7 +36,7 @@ export function registerGherkinInlayHints(monacoInstance: typeof Monaco, handler
   if (providerRegistered) return
   providerRegistered = true
 
-  monacoInstance.languages.registerInlayHintsProvider('scenaria-feature', {
+  const disposable = monacoInstance.languages.registerInlayHintsProvider('scenaria-feature', {
     provideInlayHints(model, _range, token) {
       const current = activeHandlers
       if (!current || token.isCancellationRequested || !current.isEnabled()) {
@@ -45,6 +46,7 @@ export function registerGherkinInlayHints(monacoInstance: typeof Monaco, handler
       return { hints, dispose: () => {} }
     },
   })
+  replaceMonacoDisposables('gherkin-inlay-hints', [disposable])
 }
 
 export function refreshGherkinInlayHints(editor: Monaco.editor.ICodeEditor | null) {

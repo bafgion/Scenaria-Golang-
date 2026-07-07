@@ -33,7 +33,7 @@ func (s *browserSession) watchContext(ctx context.Context) func() {
 		case <-done:
 		}
 	}()
-	return func() { close(done) }
+	return func() { once.Do(func() { close(done) }) }
 }
 
 // abortRun stops new steps without closing Playwright sockets (prevents Node EPIPE crashes).

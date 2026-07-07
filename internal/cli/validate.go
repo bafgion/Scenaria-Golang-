@@ -25,6 +25,15 @@ type validateOptions struct {
 }
 
 func RunValidate(args []string) error {
+	ctx, stop := InterruptContext()
+	defer stop()
+	return RunValidateContext(ctx, args)
+}
+
+func RunValidateContext(ctx context.Context, args []string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	opts, err := parseValidateOptions(args)
 	if err != nil {
 		return err
@@ -49,8 +58,8 @@ func RunValidate(args []string) error {
 
 	validator := selector.Validator{}
 	type caseResult struct {
-		Path    string `json:"path"`
-		Success bool   `json:"success"`
+		Path    string   `json:"path"`
+		Success bool     `json:"success"`
 		Issues  []string `json:"issues"`
 	}
 	results := make([]caseResult, 0, len(files))
@@ -77,7 +86,7 @@ func RunValidate(args []string) error {
 			issues = append(issues, fmt.Sprintf("line %d: selector %q: %s", issue.Line, issue.Selector, issue.Message))
 		}
 		if opts.browser && len(issues) == 0 {
-			browserIssues, browserErr := validator.ValidateFeatureInBrowser(context.Background(), path, feature, selector.BrowserValidateOptions{
+			browserIssues, browserErr := validator.ValidateFeatureInBrowser(ctx, path, feature, selector.BrowserValidateOptions{
 				BrowserName: opts.browserName,
 				Headless:    opts.headless,
 				BaseURL:     opts.baseURL,

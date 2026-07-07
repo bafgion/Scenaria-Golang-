@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export type FeatureFormatter = (text: string) => Promise<string>
 
@@ -8,10 +9,14 @@ export function registerGherkinFormatProvider(monaco: typeof Monaco, format: Fea
   if (providerRegistered) return
   providerRegistered = true
 
-  monaco.languages.registerDocumentFormattingEditProvider('scenaria-feature', {
+  const disposable = monaco.languages.registerDocumentFormattingEditProvider('scenaria-feature', {
     provideDocumentFormattingEdits: async (model) => {
+      const version = model.getVersionId()
       const original = model.getValue()
       const formatted = await format(original)
+      if (model.getVersionId() !== version) {
+        return []
+      }
       if (formatted === original) {
         return []
       }
@@ -23,4 +28,5 @@ export function registerGherkinFormatProvider(monaco: typeof Monaco, format: Fea
       ]
     },
   })
+  replaceMonacoDisposables('gherkin-format', [disposable])
 }

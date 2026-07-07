@@ -10,6 +10,7 @@ import {
   usesSnippetTabStops,
 } from './gherkinCompletionSnippets'
 import { defaultStepKeyword, detectFeatureGherkinLanguage, type FeatureGherkinLanguage } from './featureGherkinLang'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 export type CompletionFetcher = (line: string, column: number, featureText: string) => Promise<gui.StepCompletionsDTO>
 
@@ -41,7 +42,7 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
   }
   providerRegistered = true
 
-  monaco.languages.registerCompletionItemProvider('scenaria-feature', {
+  const disposable = monaco.languages.registerCompletionItemProvider('scenaria-feature', {
     triggerCharacters: [' ', '"', "'", '.', '@'],
     provideCompletionItems: async (model, position) => {
       if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
@@ -49,10 +50,11 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
       }
       const line = model.getLineContent(position.lineNumber)
       const runeColumn = monacoColumnToRuneIndex(line, position.column - 1)
-      const lang = detectFeatureGherkinLanguage(model.getValue())
+      const featureText = model.getValue()
+      const lang = detectFeatureGherkinLanguage(featureText)
       let result: gui.StepCompletionsDTO
       try {
-        result = await fetchCompletions(line, runeColumn, model.getValue())
+        result = await fetchCompletions(line, runeColumn, featureText)
       } catch {
         return { suggestions: [] }
       }
@@ -93,4 +95,5 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
       return { suggestions }
     },
   })
+  replaceMonacoDisposables('gherkin-completions', [disposable])
 }

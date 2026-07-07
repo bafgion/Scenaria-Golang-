@@ -1,42 +1,22 @@
 package report
 
 import (
-	"bytes"
-	"encoding/base64"
-	"image"
-	"image/jpeg"
-	_ "image/png"
+	"os"
+	"path/filepath"
+	"strings"
 )
 
-func embedScreenshot(data []byte) string {
-	if len(data) == 0 {
+func writeScreenshotArtifact(dir, name string, data []byte) string {
+	if len(data) == 0 || strings.TrimSpace(dir) == "" || strings.TrimSpace(name) == "" {
 		return ""
 	}
-	if jpg := pngToJPEGDataURL(data, 72); jpg != "" {
-		return jpg
-	}
-	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
-}
-
-func pngToJPEGDataURL(pngData []byte, quality int) string {
-	if quality < 1 {
-		quality = 1
-	}
-	if quality > 100 {
-		quality = 100
-	}
-	img, err := pngDecode(pngData)
-	if err != nil {
+	name = filepath.Base(name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ""
 	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return ""
 	}
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
-}
-
-func pngDecode(data []byte) (image.Image, error) {
-	img, _, err := image.Decode(bytes.NewReader(data))
-	return img, err
+	return filepath.ToSlash(filepath.Join(filepath.Base(dir), name))
 }

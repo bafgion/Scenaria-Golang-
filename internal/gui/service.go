@@ -24,23 +24,25 @@ import (
 
 // Service exposes project and runner operations without UI framework dependencies.
 type Service struct {
-	mu           sync.RWMutex
-	projectPath  string
-	liveSession  *recorder.LiveSession
-	recordCtx    context.Context
-	recordCancel context.CancelFunc
+	mu                sync.RWMutex
+	projectPath       string
+	liveSession       *recorder.LiveSession
+	recordCtx         context.Context
+	recordCancel      context.CancelFunc
 	recordEmit        func(string, any)
 	recordGen         uint64
 	recordIdleSeconds int
 	runCtx            context.Context
-	runCancel    context.CancelFunc
-	runGen       uint64
-	tempFeatureMu   sync.Mutex
-	tempFeatureDirs []string
-	reportBridgeMu  sync.Mutex
-	reportBridge    *reportBridge
-	activePlaywright sync.WaitGroup
-	activeBackground sync.WaitGroup
+	runCancel         context.CancelFunc
+	runGen            uint64
+	validateCancel    context.CancelFunc
+	validateGen       uint64
+	tempFeatureMu     sync.Mutex
+	tempFeatureDirs   []string
+	reportBridgeMu    sync.Mutex
+	reportBridge      *reportBridge
+	activePlaywright  sync.WaitGroup
+	activeBackground  sync.WaitGroup
 }
 
 func NewService() *Service {
@@ -48,38 +50,38 @@ func NewService() *Service {
 }
 
 type ProjectInfo struct {
-	Path         string              `json:"path"`
-	Features     []string            `json:"features"`
-	Tags         []string            `json:"tags"`
-	FeatureTags  map[string][]string `json:"featureTags"`
+	Path        string              `json:"path"`
+	Features    []string            `json:"features"`
+	Tags        []string            `json:"tags"`
+	FeatureTags map[string][]string `json:"featureTags"`
 }
 
 type RunRequest struct {
-	Tag        string            `json:"tag"`
-	Scenario   string            `json:"scenario"`
-	TestClient string            `json:"testClient"`
-	Vars       map[string]string `json:"vars"`
-	DryRun     bool              `json:"dryRun"`
-	Headed     bool              `json:"headed"`
-	Engine     string            `json:"engine"`
-	InstallPW  bool              `json:"installPlaywright"`
-	AllureDir  string            `json:"allureDir"`
-	TraceDir   string            `json:"traceDir"`
-	VideoDir   string            `json:"videoDir"`
-	HTMLPath      string            `json:"htmlPath"`
-	JUnitPath     string            `json:"junitPath"`
-	SummaryJSON   string            `json:"summaryJson"`
-	Targets       []string          `json:"targets"`
-	Browser       string            `json:"browser"`
-	Workers       int               `json:"workers"`
-	SlowMo        int               `json:"slowMo"`
-	BaseURL       string            `json:"baseUrl"`
-	StartStep     int               `json:"startStep"`
-	EndStep       int               `json:"endStep"`
-	ContinueOnFail bool             `json:"continueOnFail"`
-	HTMLLightMode  bool             `json:"htmlLightMode"`
-	ReuseLiveBrowser bool           `json:"reuseLiveBrowser"`
-	ReportLocale   string           `json:"reportLocale"`
+	Tag              string            `json:"tag"`
+	Scenario         string            `json:"scenario"`
+	TestClient       string            `json:"testClient"`
+	Vars             map[string]string `json:"vars"`
+	DryRun           bool              `json:"dryRun"`
+	Headed           bool              `json:"headed"`
+	Engine           string            `json:"engine"`
+	InstallPW        bool              `json:"installPlaywright"`
+	AllureDir        string            `json:"allureDir"`
+	TraceDir         string            `json:"traceDir"`
+	VideoDir         string            `json:"videoDir"`
+	HTMLPath         string            `json:"htmlPath"`
+	JUnitPath        string            `json:"junitPath"`
+	SummaryJSON      string            `json:"summaryJson"`
+	Targets          []string          `json:"targets"`
+	Browser          string            `json:"browser"`
+	Workers          int               `json:"workers"`
+	SlowMo           int               `json:"slowMo"`
+	BaseURL          string            `json:"baseUrl"`
+	StartStep        int               `json:"startStep"`
+	EndStep          int               `json:"endStep"`
+	ContinueOnFail   bool              `json:"continueOnFail"`
+	HTMLLightMode    bool              `json:"htmlLightMode"`
+	ReuseLiveBrowser bool              `json:"reuseLiveBrowser"`
+	ReportLocale     string            `json:"reportLocale"`
 }
 
 type ValidateRequest struct {
@@ -107,9 +109,9 @@ type PluginRunRequest struct {
 }
 
 type RunResult struct {
-	Output   string           `json:"output"`
-	Error    string           `json:"error"`
-	Entries  []RunResultEntry `json:"entries,omitempty"`
+	Output  string           `json:"output"`
+	Error   string           `json:"error"`
+	Entries []RunResultEntry `json:"entries,omitempty"`
 }
 
 type StepCatalogEntry struct {
@@ -136,40 +138,40 @@ type StepCompletionsDTO struct {
 }
 
 type AppSettingsDTO struct {
-	Browser           string `json:"browser"`
-	Headless          bool   `json:"headless"`
-	ParallelWorkers   int    `json:"parallelWorkers"`
-	SlowMo            int    `json:"slowMo"`
-	MaxLoopIterations int    `json:"maxLoopIterations"`
-	NavWaitUntil      string `json:"navWaitUntil"`
-	FilterRecording   bool   `json:"filterRecording"`
-	NavOnlyRecording  bool   `json:"navOnlyRecording"`
-	HoverRecord       bool   `json:"hoverRecord"`
-	ToolbarCompact    bool     `json:"toolbarCompact"`
-	StepsPanelVisible bool     `json:"stepsPanelVisible"`
-	StepsPanelHeight  int      `json:"stepsPanelHeight"`
-	SidebarWidth      int      `json:"sidebarWidth"`
-	RecentProjects    []string `json:"recentProjects"`
-	RecentFeatures    []string `json:"recentFeatures"`
-	SessionProject    string   `json:"sessionProject"`
-	OpenTabs          []string `json:"openTabs"`
-	ActiveTab         string   `json:"activeTab"`
-	UntitledTabs      []UntitledTabDTO `json:"untitledTabs"`
-	ScrollBeforeClick bool     `json:"scrollBeforeClick"`
-	HoverRecordMinMs        int      `json:"hoverRecordMinMs"`
-	SelectorClickStrategies []string `json:"selectorClickStrategies"`
-	SelectorInputStrategies []string `json:"selectorInputStrategies"`
-	CheckUpdatesOnStartup bool `json:"checkUpdatesOnStartup"`
-	Editor            settings.EditorSettings `json:"editor"`
-	ChecklistDismissed bool   `json:"checklistDismissed"`
-	WelcomePlayedSuccess bool `json:"welcomePlayedSuccess"`
-	OnboardingCompleted bool  `json:"onboardingCompleted"`
-	OnboardingDismissed bool  `json:"onboardingDismissed"`
-	OnboardingVersion   int   `json:"onboardingVersion"`
-	StartURL            string `json:"startUrl"`
-	RunDialogConfirmed  bool   `json:"runDialogConfirmed"`
-	PickerDuringRecording bool `json:"pickerDuringRecording"`
-	UILocale            string `json:"uiLocale"`
+	Browser                 string                  `json:"browser"`
+	Headless                bool                    `json:"headless"`
+	ParallelWorkers         int                     `json:"parallelWorkers"`
+	SlowMo                  int                     `json:"slowMo"`
+	MaxLoopIterations       int                     `json:"maxLoopIterations"`
+	NavWaitUntil            string                  `json:"navWaitUntil"`
+	FilterRecording         bool                    `json:"filterRecording"`
+	NavOnlyRecording        bool                    `json:"navOnlyRecording"`
+	HoverRecord             bool                    `json:"hoverRecord"`
+	ToolbarCompact          bool                    `json:"toolbarCompact"`
+	StepsPanelVisible       bool                    `json:"stepsPanelVisible"`
+	StepsPanelHeight        int                     `json:"stepsPanelHeight"`
+	SidebarWidth            int                     `json:"sidebarWidth"`
+	RecentProjects          []string                `json:"recentProjects"`
+	RecentFeatures          []string                `json:"recentFeatures"`
+	SessionProject          string                  `json:"sessionProject"`
+	OpenTabs                []string                `json:"openTabs"`
+	ActiveTab               string                  `json:"activeTab"`
+	UntitledTabs            []UntitledTabDTO        `json:"untitledTabs"`
+	ScrollBeforeClick       bool                    `json:"scrollBeforeClick"`
+	HoverRecordMinMs        int                     `json:"hoverRecordMinMs"`
+	SelectorClickStrategies []string                `json:"selectorClickStrategies"`
+	SelectorInputStrategies []string                `json:"selectorInputStrategies"`
+	CheckUpdatesOnStartup   bool                    `json:"checkUpdatesOnStartup"`
+	Editor                  settings.EditorSettings `json:"editor"`
+	ChecklistDismissed      bool                    `json:"checklistDismissed"`
+	WelcomePlayedSuccess    bool                    `json:"welcomePlayedSuccess"`
+	OnboardingCompleted     bool                    `json:"onboardingCompleted"`
+	OnboardingDismissed     bool                    `json:"onboardingDismissed"`
+	OnboardingVersion       int                     `json:"onboardingVersion"`
+	StartURL                string                  `json:"startUrl"`
+	RunDialogConfirmed      bool                    `json:"runDialogConfirmed"`
+	PickerDuringRecording   bool                    `json:"pickerDuringRecording"`
+	UILocale                string                  `json:"uiLocale"`
 }
 
 type UntitledTabDTO struct {
@@ -505,13 +507,35 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 func (s *Service) CancelRun() {
 	s.mu.Lock()
 	cancel := s.runCancel
+	validateCancel := s.validateCancel
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
+	if validateCancel != nil {
+		validateCancel()
+	}
 }
 
 func (s *Service) Validate(req ValidateRequest) RunResult {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	if s.validateCancel != nil {
+		s.validateCancel()
+	}
+	s.validateGen++
+	myGen := s.validateGen
+	s.validateCancel = cancel
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.validateGen == myGen {
+			s.validateCancel = nil
+		}
+		s.mu.Unlock()
+		cancel()
+	}()
+
 	path := s.ProjectPath()
 	if path == "" {
 		return RunResult{Error: "open a project folder first"}
@@ -527,7 +551,7 @@ func (s *Service) Validate(req ValidateRequest) RunResult {
 	} else if req.Browser != "" {
 		args = append(args, "--browser", req.Browser)
 	}
-	out, err := captureCLI(func() error { return cli.RunValidate(args) })
+	out, err := captureCLI(func() error { return cli.RunValidateContext(ctx, args) })
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -633,13 +657,13 @@ func (s *Service) LoadSettings() (AppSettingsDTO, error) {
 
 func defaultAppSettingsDTO() AppSettingsDTO {
 	return AppSettingsDTO{
-		Browser:           "chromium",
-		ParallelWorkers:   1,
-		MaxLoopIterations: 100,
-		StepsPanelVisible: true,
-		StepsPanelHeight:  160,
+		Browser:               "chromium",
+		ParallelWorkers:       1,
+		MaxLoopIterations:     100,
+		StepsPanelVisible:     true,
+		StepsPanelHeight:      160,
 		CheckUpdatesOnStartup: true,
-		Editor:            settings.DefaultEditorSettings(),
+		Editor:                settings.DefaultEditorSettings(),
 	}
 }
 
@@ -649,40 +673,40 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		height = 160
 	}
 	return AppSettingsDTO{
-		Browser:           cfg.Browser,
-		Headless:          cfg.Headless,
-		ParallelWorkers:   maxInt(1, cfg.ParallelWorkers),
-		SlowMo:            maxInt(0, cfg.SlowMo),
-		MaxLoopIterations: maxInt(1, cfg.MaxLoopIterations),
-		NavWaitUntil:        strings.TrimSpace(cfg.NavWaitUntil),
-		FilterRecording:   cfg.RecordingFilterMode,
-		NavOnlyRecording:    cfg.NavOnlyRecording,
-		HoverRecord:         cfg.RecordingHoverMode,
-		ToolbarCompact:      cfg.ToolbarCompact,
-		StepsPanelVisible:   cfg.StepsPanelVisible,
-		StepsPanelHeight:    height,
-		SidebarWidth:        clampSidebarWidth(cfg.SidebarWidth),
-		RecentProjects:      trimRecents(cfg.RecentProjects),
-		RecentFeatures:      trimRecents(cfg.RecentFeatures),
-		SessionProject:      strings.TrimSpace(cfg.SessionProject),
-		OpenTabs:            trimRecents(cfg.OpenTabs),
-		ActiveTab:           strings.TrimSpace(cfg.ActiveTab),
-		UntitledTabs:        untitledTabsFromCfg(cfg.UntitledTabs),
-		ScrollBeforeClick:   cfg.ScrollBeforeClick,
+		Browser:                 cfg.Browser,
+		Headless:                cfg.Headless,
+		ParallelWorkers:         maxInt(1, cfg.ParallelWorkers),
+		SlowMo:                  maxInt(0, cfg.SlowMo),
+		MaxLoopIterations:       maxInt(1, cfg.MaxLoopIterations),
+		NavWaitUntil:            strings.TrimSpace(cfg.NavWaitUntil),
+		FilterRecording:         cfg.RecordingFilterMode,
+		NavOnlyRecording:        cfg.NavOnlyRecording,
+		HoverRecord:             cfg.RecordingHoverMode,
+		ToolbarCompact:          cfg.ToolbarCompact,
+		StepsPanelVisible:       cfg.StepsPanelVisible,
+		StepsPanelHeight:        height,
+		SidebarWidth:            clampSidebarWidth(cfg.SidebarWidth),
+		RecentProjects:          trimRecents(cfg.RecentProjects),
+		RecentFeatures:          trimRecents(cfg.RecentFeatures),
+		SessionProject:          strings.TrimSpace(cfg.SessionProject),
+		OpenTabs:                trimRecents(cfg.OpenTabs),
+		ActiveTab:               strings.TrimSpace(cfg.ActiveTab),
+		UntitledTabs:            untitledTabsFromCfg(cfg.UntitledTabs),
+		ScrollBeforeClick:       cfg.ScrollBeforeClick,
 		HoverRecordMinMs:        maxInt(0, cfg.HoverRecordMinMs),
-		SelectorClickStrategies:   selector.NormalizeClickStrategies(cfg.SelectorClickStrategies),
+		SelectorClickStrategies: selector.NormalizeClickStrategies(cfg.SelectorClickStrategies),
 		SelectorInputStrategies: selector.NormalizeInputStrategies(cfg.SelectorInputStrategies),
-		CheckUpdatesOnStartup: settings.CheckUpdatesOnStartupEnabled(cfg),
-		Editor:              settings.NormalizeEditorSettings(cfg.Editor),
-		ChecklistDismissed:  cfg.ChecklistDismissed,
-		WelcomePlayedSuccess: cfg.WelcomePlayedSuccess,
-		OnboardingCompleted:  cfg.OnboardingCompleted,
-		OnboardingDismissed:  cfg.OnboardingDismissed,
-		OnboardingVersion:    cfg.OnboardingVersion,
-		StartURL:            strings.TrimSpace(cfg.StartURL),
-		RunDialogConfirmed:  cfg.RunDialogConfirmed,
-		PickerDuringRecording: cfg.PickerDuringRecording,
-		UILocale:            normalizeUILocale(cfg.UILocale),
+		CheckUpdatesOnStartup:   settings.CheckUpdatesOnStartupEnabled(cfg),
+		Editor:                  settings.NormalizeEditorSettings(cfg.Editor),
+		ChecklistDismissed:      cfg.ChecklistDismissed,
+		WelcomePlayedSuccess:    cfg.WelcomePlayedSuccess,
+		OnboardingCompleted:     cfg.OnboardingCompleted,
+		OnboardingDismissed:     cfg.OnboardingDismissed,
+		OnboardingVersion:       cfg.OnboardingVersion,
+		StartURL:                strings.TrimSpace(cfg.StartURL),
+		RunDialogConfirmed:      cfg.RunDialogConfirmed,
+		PickerDuringRecording:   cfg.PickerDuringRecording,
+		UILocale:                normalizeUILocale(cfg.UILocale),
 	}
 }
 
@@ -697,21 +721,21 @@ func (s *Service) SaveSettings(dto AppSettingsDTO) error {
 	}
 	existing, _ := settings.LoadDefaultAppSettings()
 	cfg := &settings.AppSettings{
-		Browser:             dto.Browser,
-		Headless:            dto.Headless,
-		ParallelWorkers:     maxInt(1, dto.ParallelWorkers),
-		SlowMo:              maxInt(0, dto.SlowMo),
-		MaxLoopIterations:   maxInt(1, dto.MaxLoopIterations),
-		NavWaitUntil:        strings.TrimSpace(dto.NavWaitUntil),
-		RecordingFilterMode: dto.FilterRecording,
-		NavOnlyRecording:      dto.NavOnlyRecording,
-		RecordingHoverMode:    dto.HoverRecord,
-		ToolbarCompact:        dto.ToolbarCompact,
-		StepsPanelVisible:     dto.StepsPanelVisible,
-		StepsPanelHeight:      height,
-		SidebarWidth:          clampSidebarWidth(dto.SidebarWidth),
-		RecentProjects:        trimRecents(dto.RecentProjects),
-		RecentFeatures:        trimRecents(dto.RecentFeatures),
+		Browser:                 dto.Browser,
+		Headless:                dto.Headless,
+		ParallelWorkers:         maxInt(1, dto.ParallelWorkers),
+		SlowMo:                  maxInt(0, dto.SlowMo),
+		MaxLoopIterations:       maxInt(1, dto.MaxLoopIterations),
+		NavWaitUntil:            strings.TrimSpace(dto.NavWaitUntil),
+		RecordingFilterMode:     dto.FilterRecording,
+		NavOnlyRecording:        dto.NavOnlyRecording,
+		RecordingHoverMode:      dto.HoverRecord,
+		ToolbarCompact:          dto.ToolbarCompact,
+		StepsPanelVisible:       dto.StepsPanelVisible,
+		StepsPanelHeight:        height,
+		SidebarWidth:            clampSidebarWidth(dto.SidebarWidth),
+		RecentProjects:          trimRecents(dto.RecentProjects),
+		RecentFeatures:          trimRecents(dto.RecentFeatures),
 		SessionProject:          strings.TrimSpace(dto.SessionProject),
 		OpenTabs:                trimRecents(dto.OpenTabs),
 		ActiveTab:               strings.TrimSpace(dto.ActiveTab),

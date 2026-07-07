@@ -28,29 +28,44 @@ func viewerScript() string {
 }
 
 func WriteHTML(path string, result player.ExecutionResult, opts HTMLOptions) error {
+	if !opts.LightMode {
+		if err := prepareHTMLArtifactDirs(path); err != nil {
+			return err
+		}
+	}
 	payload, err := buildHTMLPayload(result, opts, path)
 	if err != nil {
 		return fmt.Errorf("build html payload: %w", err)
 	}
 	payload.ScreenshotDedup = dedupeScreenshotURLs(&payload)
 	trimPayloadArtifacts(&payload, opts.MaxJSONBytes)
-	jsonBytes, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("encode html payload: %w", err)
-	}
-	html := strings.NewReplacer(
+	shell := strings.NewReplacer(
 		"__CSS__", viewerCSS,
 		"__JS__", viewerScript(),
-		"__JSON__", string(jsonBytes),
 	).Replace(viewerHTMLShell)
-	html = strings.Replace(html, "<title>Scenaria Report</title>", "<title>"+payload.Brand+" Report</title>", 1)
-
+	shell = strings.Replace(shell, "<title>Scenaria Report</title>", "<title>"+payload.Brand+" Report</title>", 1)
+	parts := strings.SplitN(shell, "__JSON__", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("html shell missing JSON placeholder")
+	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create html report dir %q: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, []byte(html), 0o644); err != nil {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("write html report %q: %w", path, err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(parts[0]); err != nil {
+		return fmt.Errorf("write html report %q: %w", path, err)
+	}
+	enc := json.NewEncoder(file)
+	if err := enc.Encode(payload); err != nil {
+		return fmt.Errorf("encode html payload: %w", err)
+	}
+	if _, err := file.WriteString(parts[1]); err != nil {
 		return fmt.Errorf("write html report %q: %w", path, err)
 	}
 	return nil

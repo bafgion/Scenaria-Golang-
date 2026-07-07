@@ -297,3 +297,16 @@ func TestParseRunOptionsRepeatedVar(t *testing.T) {
 		t.Fatalf("unexpected variables: %#v", opts.variables)
 	}
 }
+
+func TestParseRunOptionsNavWaitFlagIsExplicit(t *testing.T) {
+	opts, err := parseRunOptions([]string{"./features", "--nav-wait-until", "load"})
+	if err != nil {
+		t.Fatalf("parseRunOptions failed: %v", err)
+	}
+	if !opts.navWaitExplicit {
+		t.Fatal("expected nav wait flag to be marked explicit")
+	}
+	if opts.navWaitUntil != "load" {
+		t.Fatalf("expected explicit nav wait to survive settings resolution, got %q", opts.navWaitUntil)
+	}
+}

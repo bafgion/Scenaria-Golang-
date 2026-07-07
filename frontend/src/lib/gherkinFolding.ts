@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
+import { replaceMonacoDisposables } from './monacoDisposables'
 
 const BLOCK_OPEN_RE = /^(если|повторяю|пока|для каждого)(?:\s|$)/i
 const BLOCK_CLOSE_IF_RE = /^конец если(?:\s|$)/i
@@ -87,7 +88,7 @@ export function registerGherkinFolding(monaco: typeof Monaco) {
   }
   foldingRegistered = true
 
-  monaco.languages.registerFoldingRangeProvider('scenaria-feature', {
+  const disposable = monaco.languages.registerFoldingRangeProvider('scenaria-feature', {
     provideFoldingRanges(model) {
       if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
         return []
@@ -100,4 +101,5 @@ export function registerGherkinFolding(monaco: typeof Monaco) {
       }))
     },
   })
+  replaceMonacoDisposables('gherkin-folding', [disposable])
 }

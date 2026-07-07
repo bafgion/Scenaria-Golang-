@@ -1,6 +1,6 @@
 # Scenaria Go — Roadmap
 
-Статус: **master** v0.28.1 (в работе); **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+Статус: **master** v0.28.1; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
 
 ## Приоритеты
 
@@ -233,7 +233,7 @@
 | **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
 | **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
 | **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
-| **0.28.1** | First-run browser/OTP UX, deferred browser events, Phase 16 closure — **master** |
+| **0.28.1** | OTP/first-run browser, runner hardening, Phase 18 audit, HTML report artifacts — **released** |
 
 ---
 
@@ -834,3 +834,58 @@
 `internal/settings/{project.go,nav_wait.go}`
 `internal/playwrightrt/runtime.go`
 `internal/gui/run_browser.go` (finalizeGUIReports, report on fail)
+
+---
+
+## Фаза 18 — Audit hardening: Web UI / Recorder / Playwright (P0)
+
+Статус: **done** (v0.28.1). Источник: повторный senior Go audit Web UI части.
+
+### 18.1 P0 — исправлено
+
+- [x] **TestClient localStorage применяется не к тому origin** — `ApplyTestClient` регистрирует origin-scoped init script для будущих навигаций и применяет storage сразу только на совпадающем origin.
+- [x] **GUI OpenBrowser игнорирует выбранный TestClient** — убран принудительный reset `req.TestClient`.
+- [x] **CLI `--nav-wait-until` перетирается app settings** — флаг получает явный приоритет над настройками.
+- [x] **Неверные selectors в StepRecord** — `fill`, `select`, `assert-text`, `upload`, `press-in` берут selector из `Value2`.
+- [x] **`WatchContext` stop не идемпотентен** — stop-функция защищена `sync.Once`.
+
+### 18.2 P1 — reliability backlog
+
+- [x] **Parallel runner без goroutine-per-scenario** — `executeParallel*` использует fixed worker pool с `jobs/results`, порядок результатов сохраняется по индексу.
+- [x] **Playwright calls без долгого `session.mu`** — `executeAction` берет snapshot `page/navWait` под lock, Playwright RPC выполняет вне lock; state-changing tab/close операции остаются под lock.
+- [x] **Browser validation с context propagation** — CLI Ctrl+C и GUI Stop отменяют `ValidateFeatureInBrowser` / `ValidateBrowser`.
+- [x] **HTML full report memory pressure** — full HTML пишет screenshots в `screenshots/*.png`, trace zip уже хранится в `traces/*.zip`; payload больше не base64-кодирует screenshots.
+- [x] **Allure cleanup guard** — writer ставит marker `.scenaria-allure-results` и отказывается чистить непустой непомеченный каталог.
+- [x] **Report bridge token lifetime** — GUI HTML получает свежий bridge token при записи отчета; старые токены инвалидируются, сравнение constant-time, remote CORS preflight возвращает 403.
+- [x] **Recorder polling backoff** — основной loop переведен на `Ticker`, sleeps стали context-aware; polling меньше аллоцирует timers и быстрее реагирует на cancel.
+
+### 18.3 Файлы изменений
+
+`internal/player/{testclient.go,session_capture.go,browser_cleanup.go,step_record.go,runner_parallel.go,browser_session.go}`
+`internal/gui/{record.go,service.go,browser_validate.go,report_bridge.go,run_browser.go}`
+`internal/cli/{run.go,validate.go}`
+`internal/selector/{validate.go,browser_validate.go}`
+`internal/report/allure/{writer.go,allure_test.go}`
+`internal/report/{html_payload.go,html_image.go,html_test.go,html_ci_test.go}`
+`internal/recorder/live_session.go`
+`internal/player/{testclient_test.go,step_record_test.go}`
+`internal/cli/run_test.go`
+`internal/gui/report_bridge_test.go`
+
+### 18.4 Fresh audit follow-up — remaining hardening
+
+- [x] **Session page snapshot everywhere** — executor/testclient/for_each/network now use checked page snapshot helpers instead of direct `session.page` reads.
+- [x] **No long Playwright RPC under `session.mu`** — page context, DOM/a11y snapshots, screenshots now snapshot page under lock and run RPC outside lock.
+- [x] **Parallel job enqueue respects cancellation** — sender stops on `runCtx.Done()` and unscheduled results are filled as canceled.
+- [x] **Report artifact cleanup guard** — `screenshots/` and `traces/` are marker-guarded and cleaned before full HTML report writes.
+- [x] **Streaming HTML writer** — HTML shell and JSON payload are streamed to disk without building one full HTML string.
+- [x] **Recorder adaptive polling** — idle/no-capture recorder loop backs off heavy browser `Evaluate` calls while staying responsive after activity.
+
+### 18.5 Monaco Editor audit - Wails/Svelte hardening
+
+- [x] **Save As model URI mismatch** - after saving under a new path, switch Monaco to a model with the new URI and release the old model.
+- [x] **Out-of-order feature loading** - guard async `loadFeature`/Wails reads with a generation token so late responses cannot activate stale tabs.
+- [x] **Deferred setContent stale model write** - ensure delayed external edits apply only to the model/path captured at scheduling time.
+- [x] **Provider/command HMR disposables** - keep Monaco provider disposables in a global registry to avoid duplicate providers during `wails dev`.
+- [x] **Per-tab diagnostics state** - validation markers are stored per tab and restored on tab activation.
+- [x] **Large-file provider pressure** - completion provider now reuses one `model.getValue()` snapshot; byte-length threshold remains as follow-up if needed.

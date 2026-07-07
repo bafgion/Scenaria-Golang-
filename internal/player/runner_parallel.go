@@ -16,6 +16,11 @@ type BrowserRunner struct {
 	ParallelWorkers int
 }
 
+type indexedRunCase struct {
+	index   int
+	runCase RunCase
+}
+
 func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (ExecutionResult, error) {
 	if r.Executor == nil {
 		return ExecutionResult{}, fmt.Errorf("browser runner: executor is nil")
@@ -155,109 +160,107 @@ func (r BrowserRunner) executeParallelWithPool(
 	defer pool.Close()
 
 	results := make([]ScenarioResult, len(plan.Cases))
-	sem := make(chan struct{}, workers)
+	jobs := make(chan indexedRunCase)
 	var wg sync.WaitGroup
 	var firstErr error
 	var mu sync.Mutex
 
-	for index, runCase := range plan.Cases {
+	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
-		go func(i int, rc RunCase) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			for job := range jobs {
+				i, rc := job.index, job.runCase
+				if err := runCtx.Err(); err != nil {
+					failed := canceledScenarioResult(rc, err)
+					mu.Lock()
+					results[i] = failed
+					mu.Unlock()
+					recordScenarioRunStatus(runCtx, failed)
+					emitRunProgress(runCtx, RunProgressEvent{
+						Phase:       ProgressScenarioDone,
+						Index:       i + 1,
+						Total:       len(plan.Cases),
+						FeaturePath: rc.FeaturePath,
+						Scenario:    rc.Name,
+						Success:     false,
+						Message:     err.Error(),
+					})
+					continue
+				}
 
-			if err := runCtx.Err(); err != nil {
-				failed := ScenarioResult{
+				emitRunProgress(runCtx, RunProgressEvent{
+					Phase:       ProgressScenarioStart,
+					Index:       i + 1,
+					Total:       len(plan.Cases),
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
-					Status:      "failed",
-					Message:     err.Error(),
+				})
+
+				slot, err := pool.acquire(runCtx)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+						failFastParallelCancel(runCtx, cancel, pool)
+					}
+					results[i] = ScenarioResult{
+						FeaturePath: rc.FeaturePath,
+						Scenario:    rc.Name,
+						Status:      "failed",
+						Message:     err.Error(),
+					}
+					mu.Unlock()
+					continue
 				}
+				runResult, err := exec.ExecuteScenarioOnSession(runCtx, slot.session, scenarioInputFromCase(rc))
+				pool.release(slot)
+
 				mu.Lock()
-				results[i] = failed
+				scenarioFailed := err != nil || runResult.Status == "failed"
+				if scenarioFailed {
+					if firstErr == nil {
+						if err != nil {
+							firstErr = err
+						} else {
+							firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
+						}
+						failFastParallelCancel(runCtx, cancel, pool)
+					}
+					if err != nil && runResult.Scenario == "" {
+						runResult = ScenarioResult{
+							FeaturePath: rc.FeaturePath,
+							Scenario:    rc.Name,
+							Status:      "failed",
+							Message:     err.Error(),
+						}
+					} else if runResult.Status == "" {
+						runResult.Status = "failed"
+						if runResult.Message == "" && err != nil {
+							runResult.Message = err.Error()
+						}
+					}
+				}
+				results[i] = runResult
 				mu.Unlock()
-				recordScenarioRunStatus(runCtx, failed)
+
+				recordScenarioRunStatus(runCtx, runResult)
 				emitRunProgress(runCtx, RunProgressEvent{
 					Phase:       ProgressScenarioDone,
 					Index:       i + 1,
 					Total:       len(plan.Cases),
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
-					Success:     false,
-					Message:     err.Error(),
+					Success:     !scenarioFailed,
+					Message:     runResult.Message,
 				})
-				return
 			}
-
-			emitRunProgress(runCtx, RunProgressEvent{
-				Phase:       ProgressScenarioStart,
-				Index:       i + 1,
-				Total:       len(plan.Cases),
-				FeaturePath: rc.FeaturePath,
-				Scenario:    rc.Name,
-			})
-
-			slot, err := pool.acquire(runCtx)
-			if err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-					failFastParallelCancel(runCtx, cancel, pool)
-				}
-				results[i] = ScenarioResult{
-					FeaturePath: rc.FeaturePath,
-					Scenario:    rc.Name,
-					Status:      "failed",
-					Message:     err.Error(),
-				}
-				mu.Unlock()
-				return
-			}
-			runResult, err := exec.ExecuteScenarioOnSession(runCtx, slot.session, scenarioInputFromCase(rc))
-			pool.release(slot)
-
-			mu.Lock()
-			scenarioFailed := err != nil || runResult.Status == "failed"
-			if scenarioFailed {
-				if firstErr == nil {
-					if err != nil {
-						firstErr = err
-					} else {
-						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
-					}
-					failFastParallelCancel(runCtx, cancel, pool)
-				}
-				if err != nil && runResult.Scenario == "" {
-					runResult = ScenarioResult{
-						FeaturePath: rc.FeaturePath,
-						Scenario:    rc.Name,
-						Status:      "failed",
-						Message:     err.Error(),
-					}
-				} else if runResult.Status == "" {
-					runResult.Status = "failed"
-					if runResult.Message == "" && err != nil {
-						runResult.Message = err.Error()
-					}
-				}
-			}
-			results[i] = runResult
-			mu.Unlock()
-
-			recordScenarioRunStatus(runCtx, runResult)
-			emitRunProgress(runCtx, RunProgressEvent{
-				Phase:       ProgressScenarioDone,
-				Index:       i + 1,
-				Total:       len(plan.Cases),
-				FeaturePath: rc.FeaturePath,
-				Scenario:    rc.Name,
-				Success:     !scenarioFailed,
-				Message:     runResult.Message,
-			})
-		}(index, runCase)
+		}()
 	}
+	enqueueJobs(runCtx, jobs, plan.Cases)
+	close(jobs)
 	wg.Wait()
+	fillCanceledResults(runCtx, results, plan.Cases)
 
 	result.ScenarioResults = results
 	if firstErr != nil {
@@ -284,93 +287,91 @@ func (r BrowserRunner) executeParallel(
 	}
 
 	results := make([]ScenarioResult, len(plan.Cases))
-	sem := make(chan struct{}, workers)
+	jobs := make(chan indexedRunCase)
 	var wg sync.WaitGroup
 	var firstErr error
 	var mu sync.Mutex
 
-	for index, runCase := range plan.Cases {
+	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
-		go func(i int, rc RunCase) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			for job := range jobs {
+				i, rc := job.index, job.runCase
+				if err := runCtx.Err(); err != nil {
+					failed := canceledScenarioResult(rc, err)
+					mu.Lock()
+					results[i] = failed
+					mu.Unlock()
+					recordScenarioRunStatus(runCtx, failed)
+					emitRunProgress(runCtx, RunProgressEvent{
+						Phase:       ProgressScenarioDone,
+						Index:       i + 1,
+						Total:       len(plan.Cases),
+						FeaturePath: rc.FeaturePath,
+						Scenario:    rc.Name,
+						Success:     false,
+						Message:     err.Error(),
+					})
+					continue
+				}
 
-			if err := runCtx.Err(); err != nil {
-				failed := ScenarioResult{
+				emitRunProgress(runCtx, RunProgressEvent{
+					Phase:       ProgressScenarioStart,
+					Index:       i + 1,
+					Total:       len(plan.Cases),
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
-					Status:      "failed",
-					Message:     err.Error(),
-				}
+				})
+
+				runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
 				mu.Lock()
-				results[i] = failed
+				scenarioFailed := err != nil || runResult.Status == "failed"
+				if scenarioFailed {
+					if firstErr == nil {
+						if err != nil {
+							firstErr = err
+						} else {
+							firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
+						}
+						failFastParallelCancel(runCtx, cancel, nil)
+					}
+					if err != nil {
+						if runResult.Scenario == "" {
+							runResult = ScenarioResult{
+								FeaturePath: rc.FeaturePath,
+								Scenario:    rc.Name,
+								Status:      "failed",
+								Message:     err.Error(),
+							}
+						} else if runResult.Status == "" {
+							runResult.Status = "failed"
+							if runResult.Message == "" {
+								runResult.Message = err.Error()
+							}
+						}
+					}
+				}
+				results[i] = runResult
 				mu.Unlock()
-				recordScenarioRunStatus(runCtx, failed)
+
+				recordScenarioRunStatus(runCtx, runResult)
 				emitRunProgress(runCtx, RunProgressEvent{
 					Phase:       ProgressScenarioDone,
 					Index:       i + 1,
 					Total:       len(plan.Cases),
 					FeaturePath: rc.FeaturePath,
 					Scenario:    rc.Name,
-					Success:     false,
-					Message:     err.Error(),
+					Success:     !scenarioFailed,
+					Message:     runResult.Message,
 				})
-				return
 			}
-
-			emitRunProgress(runCtx, RunProgressEvent{
-				Phase:       ProgressScenarioStart,
-				Index:       i + 1,
-				Total:       len(plan.Cases),
-				FeaturePath: rc.FeaturePath,
-				Scenario:    rc.Name,
-			})
-
-			runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
-			mu.Lock()
-			scenarioFailed := err != nil || runResult.Status == "failed"
-			if scenarioFailed {
-				if firstErr == nil {
-					if err != nil {
-						firstErr = err
-					} else {
-						firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
-					}
-					failFastParallelCancel(runCtx, cancel, nil)
-				}
-				if err != nil {
-					if runResult.Scenario == "" {
-						runResult = ScenarioResult{
-							FeaturePath: rc.FeaturePath,
-							Scenario:    rc.Name,
-							Status:      "failed",
-							Message:     err.Error(),
-						}
-					} else if runResult.Status == "" {
-						runResult.Status = "failed"
-						if runResult.Message == "" {
-							runResult.Message = err.Error()
-						}
-					}
-				}
-			}
-			results[i] = runResult
-			mu.Unlock()
-
-			recordScenarioRunStatus(runCtx, runResult)
-			emitRunProgress(runCtx, RunProgressEvent{
-				Phase:       ProgressScenarioDone,
-				Index:       i + 1,
-				Total:       len(plan.Cases),
-				FeaturePath: rc.FeaturePath,
-				Scenario:    rc.Name,
-				Success:     !scenarioFailed,
-				Message:     runResult.Message,
-			})
-		}(index, runCase)
+		}()
 	}
+	enqueueJobs(runCtx, jobs, plan.Cases)
+	close(jobs)
 	wg.Wait()
+	fillCanceledResults(runCtx, results, plan.Cases)
 	result.ScenarioResults = results
 	if firstErr != nil {
 		logx.Warn("run failed", "run_id", runID, "error", firstErr)
@@ -592,5 +593,37 @@ func scenarioInputFromCase(runCase RunCase) ScenarioInput {
 		ProjectRoot:  runCase.ProjectRoot,
 		StartStep:    runCase.StartStep,
 		EndStep:      runCase.EndStep,
+	}
+}
+
+func canceledScenarioResult(runCase RunCase, err error) ScenarioResult {
+	return ScenarioResult{
+		FeaturePath: runCase.FeaturePath,
+		Scenario:    runCase.Name,
+		Status:      "failed",
+		Message:     err.Error(),
+	}
+}
+
+func enqueueJobs(ctx context.Context, jobs chan<- indexedRunCase, cases []RunCase) {
+	for index, runCase := range cases {
+		select {
+		case <-ctx.Done():
+			return
+		case jobs <- indexedRunCase{index: index, runCase: runCase}:
+		}
+	}
+}
+
+func fillCanceledResults(ctx context.Context, results []ScenarioResult, cases []RunCase) {
+	err := ctx.Err()
+	if err == nil {
+		return
+	}
+	for i := range results {
+		if results[i].Scenario != "" || i >= len(cases) {
+			continue
+		}
+		results[i] = canceledScenarioResult(cases[i], err)
 	}
 }
