@@ -126,6 +126,120 @@
     }
   }
 
+  let jobSeq = 0
+  const startAsyncJob = (prefix, finishedEvent, work) => {
+    const jobId = `${prefix}-${++jobSeq}`
+    void Promise.resolve()
+      .then(() => work())
+      .then((result) => {
+        emitE2E(finishedEvent, { jobId, result })
+      })
+      .catch((err) => {
+        emitE2E(finishedEvent, { jobId, result: { output: '', error: String(err) } })
+      })
+    return Promise.resolve(jobId)
+  }
+
+  const runImpl = async (opts) => {
+    lastRunRequest = opts
+    if (e2eMode() === 'demo-video') {
+      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      emitE2E('run-progress', {
+        phase: 'scenario_start',
+        index: 1,
+        total: 2,
+        featurePath: `${E2E_PROJECT}/smoke.feature`,
+        scenario: 'тест',
+      })
+      await delay(2000)
+      emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 2, success: true })
+      emitE2E('run-progress', {
+        phase: 'scenario_start',
+        index: 2,
+        total: 2,
+        featurePath: `${E2E_PROJECT}/login.feature`,
+        scenario: 'Неуспешный вход',
+      })
+      await delay(2000)
+      emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 2, success: false })
+      const at = new Date().toISOString()
+      return {
+        output: 'ok',
+        error: '',
+        entries: [
+          {
+            path: `${E2E_PROJECT}/smoke.feature::тест`,
+            success: true,
+            message: '',
+            runner: 'playwright',
+            at,
+          },
+          {
+            path: `${E2E_PROJECT}/login.feature::Неуспешный вход`,
+            success: false,
+            message: 'элемент не найден',
+            runner: 'playwright',
+            at,
+            failed_step: 1,
+          },
+        ],
+      }
+    }
+    if (e2eMode() === 'run-progress') {
+      emitE2E('run-progress', {
+        phase: 'scenario_start',
+        index: 1,
+        total: 3,
+        featurePath: `${E2E_PROJECT}/smoke.feature`,
+        scenario: 'тест',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 3, success: true })
+      emitE2E('run-progress', {
+        phase: 'scenario_start',
+        index: 2,
+        total: 3,
+        featurePath: `${E2E_PROJECT}/smoke.feature`,
+        scenario: 'второй',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 3, success: true })
+      emitE2E('run-progress', {
+        phase: 'scenario_start',
+        index: 3,
+        total: 3,
+        featurePath: `${E2E_PROJECT}/smoke.feature`,
+        scenario: 'третий',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      emitE2E('run-progress', { phase: 'scenario_done', index: 3, total: 3, success: true })
+      return { output: 'ok', error: '' }
+    }
+    if (e2eMode() === 'run-stream') {
+      emitE2E('run-log-line', { line: 'E2E_STREAM_LINE\n' })
+      await new Promise((resolve) => setTimeout(resolve, 80))
+      return { output: 'ok', error: '' }
+    }
+    if (e2eMode() === 'run-cancel') {
+      runCancelled = false
+      for (let i = 0; i < 40; i++) {
+        if (runCancelled) return { output: '', error: 'context canceled' }
+        emitE2E('run-log-line', { line: `progress ${i}\n` })
+        await new Promise((resolve) => setTimeout(resolve, 120))
+      }
+      return { output: 'ok', error: '' }
+    }
+    return { output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }
+  }
+
+  const validateImpl = async () => ({ output: 'Проверка завершена.', error: '' })
+  const exportImpl = async (opts) => ({ output: `exported to ${opts?.output || ''}`, error: '' })
+  const importJsonImpl = asyncOk
+  const serveAllureImpl = asyncOk
+  const recordBaselineImpl = asyncOk
+  const installBrowserImpl = async () => ({ output: 'Готово: mock', error: '' })
+  const runPluginImpl = asyncOk
+
   const liveRecord = {
     browserOpen: false,
     recording: false,
@@ -252,7 +366,9 @@
         detail: installed ? 'C:/mock/ms-playwright/chromium-1200/chrome-win64/chrome.exe' : '',
       }
     },
-    InstallBrowserEngine: async () => ({ output: 'Готово: mock', error: '' }),
+    InstallBrowserEngine: installBrowserImpl,
+    StartInstallBrowserEngine: (engine) =>
+      startAsyncJob('install-browser-engine', 'browser-install-finished', () => installBrowserImpl(engine)),
     SearchSteps: async () => sampleSteps,
     DescribeEditorLine: async (line) => {
       const text = String(line || '')
@@ -325,101 +441,13 @@
     },
     SaveFeature: asyncOk,
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
-    Run: async (opts) => {
-      lastRunRequest = opts
-      if (e2eMode() === 'demo-video') {
-        const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-        emitE2E('run-progress', {
-          phase: 'scenario_start',
-          index: 1,
-          total: 2,
-          featurePath: `${E2E_PROJECT}/smoke.feature`,
-          scenario: 'тест',
-        })
-        await delay(2000)
-        emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 2, success: true })
-        emitE2E('run-progress', {
-          phase: 'scenario_start',
-          index: 2,
-          total: 2,
-          featurePath: `${E2E_PROJECT}/login.feature`,
-          scenario: 'Неуспешный вход',
-        })
-        await delay(2000)
-        emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 2, success: false })
-        const at = new Date().toISOString()
-        return {
-          output: 'ok',
-          error: '',
-          entries: [
-            {
-              path: `${E2E_PROJECT}/smoke.feature::тест`,
-              success: true,
-              message: '',
-              runner: 'playwright',
-              at,
-            },
-            {
-              path: `${E2E_PROJECT}/login.feature::Неуспешный вход`,
-              success: false,
-              message: 'элемент не найден',
-              runner: 'playwright',
-              at,
-              failed_step: 1,
-            },
-          ],
-        }
-      }
-      if (e2eMode() === 'run-progress') {
-        emitE2E('run-progress', {
-          phase: 'scenario_start',
-          index: 1,
-          total: 3,
-          featurePath: `${E2E_PROJECT}/smoke.feature`,
-          scenario: 'тест',
-        })
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        emitE2E('run-progress', { phase: 'scenario_done', index: 1, total: 3, success: true })
-        emitE2E('run-progress', {
-          phase: 'scenario_start',
-          index: 2,
-          total: 3,
-          featurePath: `${E2E_PROJECT}/smoke.feature`,
-          scenario: 'второй',
-        })
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        emitE2E('run-progress', { phase: 'scenario_done', index: 2, total: 3, success: true })
-        emitE2E('run-progress', {
-          phase: 'scenario_start',
-          index: 3,
-          total: 3,
-          featurePath: `${E2E_PROJECT}/smoke.feature`,
-          scenario: 'третий',
-        })
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        emitE2E('run-progress', { phase: 'scenario_done', index: 3, total: 3, success: true })
-        return { output: 'ok', error: '' }
-      }
-      if (e2eMode() === 'run-stream') {
-        emitE2E('run-log-line', { line: 'E2E_STREAM_LINE\n' })
-        await new Promise((resolve) => setTimeout(resolve, 80))
-        return { output: 'ok', error: '' }
-      }
-      if (e2eMode() === 'run-cancel') {
-        runCancelled = false
-        for (let i = 0; i < 40; i++) {
-          if (runCancelled) return { output: '', error: 'context canceled' }
-          emitE2E('run-log-line', { line: `progress ${i}\n` })
-          await new Promise((resolve) => setTimeout(resolve, 120))
-        }
-        return { output: 'ok', error: '' }
-      }
-      return { output: opts?.dryRun ? 'Dry-run ok' : 'ok', error: '' }
-    },
+    Run: runImpl,
+    StartRun: (opts) => startAsyncJob('run', 'run-finished', () => runImpl(opts)),
     CancelRun: () => {
       runCancelled = true
     },
-    Validate: async () => ({ output: 'Проверка завершена.', error: '' }),
+    Validate: validateImpl,
+    StartValidate: (req) => startAsyncJob('validate', 'validate-finished', () => validateImpl(req)),
     ListTestClients: async () => [],
     ListPlugins: async () =>
       e2eMode() === 'with-plugins'
@@ -523,8 +551,10 @@
     DuplicateFeature: asyncOk,
     MoveFeature: asyncOk,
     RenameFeature: asyncOk,
-    Export: async (opts) => ({ output: `exported to ${opts?.output || ''}`, error: '' }),
-    RunPlugin: asyncOk,
+    Export: exportImpl,
+    StartExport: (opts) => startAsyncJob('export', 'export-finished', () => exportImpl(opts)),
+    RunPlugin: runPluginImpl,
+    StartRunPlugin: (req) => startAsyncJob('run-plugin', 'plugin-run-finished', () => runPluginImpl(req)),
     OpenBrowser: async () => {
       liveRecord.browserOpen = true
       liveRecord.recording = false
@@ -598,7 +628,9 @@
       paused: liveRecord.paused,
       stepCount: liveRecord.recording ? liveRecord.steps.length : 0,
     }),
-    RecordBaseline: asyncOk,
+    RecordBaseline: recordBaselineImpl,
+    StartRecordBaseline: (req) =>
+      startAsyncJob('record-baseline', 'record-baseline-finished', () => recordBaselineImpl(req)),
     PauseRecording: async () => {
       if (liveRecord.recording) {
         liveRecord.paused = true
@@ -661,7 +693,8 @@
     SubmitOTPCode: async () => true,
     CancelOTP: noop,
     OpenFolder: noop,
-    ServeAllure: asyncOk,
+    ServeAllure: serveAllureImpl,
+    StartServeAllure: (dir) => startAsyncJob('serve-allure', 'allure-serve-finished', () => serveAllureImpl(dir)),
     AllureStatus: async () => {
       if (e2eMode() === 'allure-missing') {
         return { installed: false, running: false, resultsDir: `${E2E_PROJECT}/.scenaria/allure-results` }
@@ -678,7 +711,8 @@
     StartVanessaRun: noop,
     PollVanessaRun: async () => ({ done: true, passed: 0, failed: 0, total: 0 }),
     HighlightFeature: noop,
-    ImportJSON: asyncOk,
+    ImportJSON: importJsonImpl,
+    StartImportJSON: (req) => startAsyncJob('import-json', 'import-json-finished', () => importJsonImpl(req)),
     InstallPlugin: asyncOk,
     IsRecordingPaused: async () => liveRecord.paused,
     HTTPAuthForHost: async () => null,
