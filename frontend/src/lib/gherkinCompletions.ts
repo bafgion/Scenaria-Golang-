@@ -12,12 +12,24 @@ import {
 import { defaultStepKeyword, detectFeatureGherkinLanguage, type FeatureGherkinLanguage } from './featureGherkinLang'
 import { replaceMonacoDisposables } from './monacoDisposables'
 
-export type CompletionFetcher = (line: string, column: number, featureText: string) => Promise<gui.StepCompletionsDTO>
+export type CompletionFetcher = (line: string, column: number, language: string) => Promise<gui.StepCompletionsDTO>
 
 const STEP_KEYWORD_RE =
   /^(?:Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+/i
 
 const KEYWORD_ONLY_RE = /^(?:Допустим|Дано|Когда|Тогда|И|Но|Given|When|Then|And|But)$/i
+
+function detectFeatureLanguageFromModel(model: Monaco.editor.ITextModel): FeatureGherkinLanguage {
+  const maxScan = Math.min(model.getLineCount(), 32)
+  const header: string[] = []
+  for (let lineNo = 1; lineNo <= maxScan; lineNo++) {
+    const line = model.getLineContent(lineNo).trim()
+    if (!line) continue
+    if (!line.startsWith('#')) break
+    header.push(line)
+  }
+  return detectFeatureGherkinLanguage(header.join('\n'))
+}
 
 export function formatInsertText(line: string, snippet: gui.StepCompletionSnippet, lang: FeatureGherkinLanguage): string {
   const trimmed = line.trimStart()
@@ -50,11 +62,10 @@ export function registerGherkinCompletions(monaco: typeof Monaco, fetchCompletio
       }
       const line = model.getLineContent(position.lineNumber)
       const runeColumn = monacoColumnToRuneIndex(line, position.column - 1)
-      const featureText = model.getValue()
-      const lang = detectFeatureGherkinLanguage(featureText)
+      const lang = detectFeatureLanguageFromModel(model)
       let result: gui.StepCompletionsDTO
       try {
-        result = await fetchCompletions(line, runeColumn, featureText)
+        result = await fetchCompletions(line, runeColumn, lang)
       } catch {
         return { suggestions: [] }
       }

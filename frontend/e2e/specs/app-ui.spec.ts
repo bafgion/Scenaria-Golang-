@@ -10,6 +10,7 @@ import {
   startRecordingFromDialog,
   statusMessage,
   stopRecording,
+  typeInEditor,
 } from '../helpers/app'
 
 test.beforeEach(async ({ page }) => {
@@ -106,6 +107,85 @@ test('unsaved close dialog appears when closing dirty tab', async ({ page }) => 
   await dialog.getByRole('button', { name: 'Отмена' }).click()
   await expect(dialog).toBeHidden()
   await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature' })).toBeVisible()
+})
+
+test('closing active tab activates the previous Monaco model', async ({ page }) => {
+  await bootApp(page)
+  await createNewScenario(page)
+  await typeInEditor(page, 'ACTIVE_TAB_ONE_MARKER')
+  await createNewScenario(page)
+  await typeInEditor(page, 'ACTIVE_TAB_TWO_MARKER')
+
+  await expect(page.locator('.editor-tab.file')).toHaveCount(2)
+  await page.locator('.editor-tab.file').nth(1).locator('.tab-close').click()
+
+  const dialog = page.getByRole('dialog', { name: 'Несохранённые изменения' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Не сохранять' }).click()
+  await expect(dialog).toBeHidden()
+
+  await expect(page.locator('.editor-tab.file')).toHaveCount(1)
+  await expect(page.locator('.editor-tab.file .tab-label')).toContainText('novyy-scenariy')
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'ACTIVE_TAB_ONE_MARKER' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'ACTIVE_TAB_TWO_MARKER' })).toHaveCount(0)
+})
+
+test('closing welcome tab activates the last feature tab', async ({ page }) => {
+  await bootApp(page)
+  await createNewScenario(page)
+  await typeInEditor(page, 'WELCOME_SWITCH_ONE')
+  await createNewScenario(page)
+  await typeInEditor(page, 'WELCOME_SWITCH_TWO')
+
+  await openMenuItem(page, 'Вид', 'Старт')
+  await expect(page.locator('.editor-tab.welcome')).toHaveAttribute('aria-selected', 'true')
+  await page.locator('.editor-tab.welcome .tab-close').click()
+
+  await expect(page.locator('.editor-tab.welcome')).toHaveCount(0)
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'WELCOME_SWITCH_TWO' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'WELCOME_SWITCH_ONE' })).toHaveCount(0)
+})
+
+test('undo and redo stay isolated per Monaco tab model', async ({ page }) => {
+  await bootApp(page)
+  await createNewScenario(page)
+  await typeInEditor(page, 'UNDO_REDO_TAB_ONE')
+  await createNewScenario(page)
+  await typeInEditor(page, 'UNDO_REDO_TAB_TWO')
+
+  const tabs = page.locator('.editor-tab.file')
+  await tabs.nth(0).click()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_ONE' })).toBeVisible()
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('Control+KeyA')
+  await page.keyboard.type('UNDO_REDO_TAB_ONE_REPLACED')
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_ONE_REPLACED' })).toBeVisible()
+  await page.keyboard.press('Control+KeyZ')
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_ONE' })).toBeVisible()
+  await page.keyboard.press('Control+Shift+KeyZ')
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_ONE_REPLACED' })).toBeVisible()
+
+  await tabs.nth(1).click()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_TWO' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNDO_REDO_TAB_ONE_REPLACED' })).toHaveCount(0)
+})
+
+test('forceActivate reloads an already active tab without changing selection', async ({ page }) => {
+  await bootApp(page, '?e2e=force-activate')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  const smokeTab = page.locator('.editor-tab.file', { hasText: 'smoke.feature' }).first()
+  await expect(smokeTab).toBeVisible({ timeout: 20_000 })
+  const smokePath = await smokeTab.getAttribute('title')
+  expect(smokePath).toBeTruthy()
+
+  await page.evaluate(async (path) => {
+    const hook = (window as unknown as { __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void> }).__e2eLoadFeature
+    if (hook && path) await hook(path, true)
+  }, smokePath)
+
+  await expect(page.locator('.editor-tab.file.active .tab-label', { hasText: 'smoke.feature' })).toBeVisible()
+  await expect(page.locator('.editor-tab.file')).toHaveCount(1)
 })
 
 test('about dialog shows version from mock', async ({ page }) => {
@@ -324,6 +404,112 @@ test('Ctrl+S saves feature from editor', async ({ page }) => {
   await page.keyboard.press('Control+KeyS')
   await expect(statusMessage(page)).toHaveText('Сохранено', { timeout: 10_000 })
   await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature *' })).toHaveCount(0)
+})
+
+test('stale validation response is ignored after text changes', async ({ page }) => {
+  await bootApp(page, '?e2e=validation-race')
+  await createNewScenario(page)
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('Control+A')
+  await page.keyboard.type('VALIDATION_STALE_BAD')
+  await page.waitForTimeout(400)
+  await page.locator('.workspace .monaco-editor .view-lines').click()
+  await page.keyboard.press('Control+A')
+  await page.keyboard.type('VALIDATION_STALE_GOOD')
+  await page.waitForTimeout(1600)
+  await expect(page.locator('.monaco-editor .squiggly-error')).toHaveCount(0)
+})
+
+test('stale editor change event does not switch the active tab', async ({ page }) => {
+  await bootApp(page, '?e2e=editor-change-race')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+
+  const smokeTab = page.locator('.editor-tab.file', { hasText: 'smoke.feature' }).first()
+  await expect(smokeTab).toBeVisible({ timeout: 20_000 })
+  const smokePath = await smokeTab.getAttribute('title')
+  expect(smokePath).toBeTruthy()
+
+  await createNewScenario(page)
+  await typeInEditor(page, 'EDITOR_CHANGE_KEEP_ACTIVE')
+
+  await page.evaluate((path) => {
+    const hook = (window as unknown as { __e2eEmitEditorChange?: (path: string | null, text: string) => void }).__e2eEmitEditorChange
+    if (hook) hook(path, 'STALE_EDITOR_CHANGE_EVENT')
+  }, smokePath)
+
+  await expect(page.locator('.editor-tab.file.active .tab-label', { hasText: 'novyy-scenariy.feature' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'EDITOR_CHANGE_KEEP_ACTIVE' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'STALE_EDITOR_CHANGE_EVENT' })).toHaveCount(0)
+})
+
+test('batch run clears stale filters from previous single run', async ({ page }) => {
+  await bootApp(page, '?e2e=batch-race')
+  await openTestProject(page)
+  await page.locator('.catalog-tree .catalog-tree-row.file[title^="smoke.feature"]').click()
+  await openMenuItem(page, 'Запись и тест', 'Запустить…')
+  const runDialog = page.getByRole('dialog', { name: 'Запуск сценария' })
+  await expect(runDialog).toBeVisible()
+  await runDialog.getByLabel('Тег').fill('@stale')
+  await runDialog.getByLabel('Сценарий (опционально)').fill('stale-single')
+  await runDialog.getByRole('button', { name: 'Запустить' }).click()
+  await expect(runDialog).toBeHidden({ timeout: 10_000 })
+
+  await page.locator('.explorer-tool-actions .batch-toggle').click()
+  await page.keyboard.press('Control+Enter')
+
+  await page.waitForFunction(() => {
+    const hook = (window as unknown as { __e2eLastRunRequest?: () => any }).__e2eLastRunRequest
+    const req = hook?.()
+    return !!req && Array.isArray(req.targets) && req.targets.length > 1
+  })
+
+  const request = await page.evaluate(() => (window as unknown as { __e2eLastRunRequest?: () => any }).__e2eLastRunRequest?.())
+  expect(request.tag).toBe('')
+  expect(request.scenario).toBe('')
+  expect(request.startStep).toBe(-1)
+  expect(request.endStep).toBe(-1)
+  expect(request.targets).toHaveLength(3)
+})
+
+test('save completion does not mutate another active tab', async ({ page }) => {
+  await bootApp(page, '?e2e=save-race')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await expect(editorLine(page, 'тест')).toBeVisible({ timeout: 20_000 })
+  await typeInEditor(page, 'SMOKE_SAVE_STALE')
+  await createNewScenario(page)
+  await typeInEditor(page, 'UNTITLED_SAVE_STALE')
+  await page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature' }).click()
+  await page.keyboard.press('Control+KeyS')
+  await page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature' }).click()
+  await expect(statusMessage(page)).toHaveText('Сохранено', { timeout: 10_000 })
+  await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature *' })).toHaveCount(0)
+  await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature *' })).toBeVisible()
+})
+
+test('disk reload completion does not mutate another active tab', async ({ page }) => {
+  await bootApp(page, '?e2e=reload-race')
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+  await page.waitForTimeout(1200)
+  await createNewScenario(page)
+  await typeInEditor(page, 'UNTITLED_RELOAD_KEEP')
+  await page.locator('.editor-tab.file .tab-label', { hasText: 'smoke.feature' }).click()
+
+  await page.evaluate(() => {
+    const hook = (window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale
+    if (hook) void hook()
+  })
+  await page.waitForTimeout(400)
+  await page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature' }).click()
+
+  const dialog = page.getByRole('alertdialog', { name: 'Файл изменён на диске' })
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+  await dialog.getByRole('button', { name: 'Перезагрузить' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'UNTITLED_RELOAD_KEEP' })).toBeVisible()
+  await expect(page.locator('.monaco-editor .view-line', { hasText: 'disk reload updated' })).toHaveCount(0)
 })
 
 test('Ctrl+Shift+O opens symbol outline in editor', async ({ page }) => {

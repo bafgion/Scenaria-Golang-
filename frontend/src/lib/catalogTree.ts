@@ -1,6 +1,7 @@
 /** Catalog tree — parity with Python app/mvc/models/catalog_model.py */
 
 import { t } from './i18n'
+import { canonicalFeaturePath } from './featurePath'
 
 export type RowKind = 'root' | 'dir' | 'file'
 export type EmptyKind = 'no_project' | 'missing' | 'no_files' | 'no_match'
@@ -33,7 +34,7 @@ export interface CatalogViewState {
 }
 
 function basename(path: string): string {
-  const norm = path.replace(/\\/g, '/')
+  const norm = canonicalFeaturePath(path)
   const i = norm.lastIndexOf('/')
   return i >= 0 ? norm.slice(i + 1) : norm
 }
@@ -44,7 +45,7 @@ function stem(path: string): string {
 }
 
 function normPath(path: string): string {
-  return path.replace(/\\/g, '/').toLowerCase()
+  return canonicalFeaturePath(path).toLowerCase()
 }
 
 export function countFeatureFiles(node: CatalogNode | null): number {
@@ -88,7 +89,7 @@ function fileMatchesFilter(
     return featureHasTag(tagsByPath.get(normPath(node.path)), tag)
   }
   if (!query) return true
-  const rel = node.path.replace(/\\/g, '/').toLowerCase()
+  const rel = canonicalFeaturePath(node.path).toLowerCase()
   return node.name.toLowerCase().includes(query) || rel.includes(query)
 }
 

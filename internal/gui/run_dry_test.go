@@ -24,7 +24,7 @@ func TestRunInProcess_DryRunWritesHTMLReport(t *testing.T) {
 		t.Fatalf("OpenProject: %v", err)
 	}
 
-	result, err := svc.runInProcess(context.Background(), RunRequest{
+	result, _, err := svc.runInProcess(context.Background(), RunRequest{
 		Targets:  []string{featurePath},
 		DryRun:   true,
 		HTMLPath: htmlPath,
@@ -50,7 +50,7 @@ func TestRunInProcess_DryRunSkipsReportWhenPathEmpty(t *testing.T) {
 	if _, err := svc.OpenProject(tmp); err != nil {
 		t.Fatalf("OpenProject: %v", err)
 	}
-	_, err := svc.runInProcess(context.Background(), RunRequest{
+	_, _, err := svc.runInProcess(context.Background(), RunRequest{
 		Targets: []string{featurePath},
 		DryRun:  true,
 	}, nil)

@@ -25,3 +25,17 @@ func TestDescribeEditorLineSkipsComment(t *testing.T) {
 		t.Fatal("expected no help for comment")
 	}
 }
+
+func TestDescribeEditorLine_RecoversSmartQuotes(t *testing.T) {
+	entry, ok := DescribeEditorLine(`Когда нажимаю “#login”`)
+	if !ok || entry.Label != "нажимаю" {
+		t.Fatalf("got %+v ok=%v", entry, ok)
+	}
+}
+
+func TestDescribeEditorLine_NoRawFallbackForBrokenStep(t *testing.T) {
+	_, ok := DescribeEditorLine(`Когда нажимаю "#login`)
+	if ok {
+		t.Fatal("expected no help for malformed step")
+	}
+}

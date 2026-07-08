@@ -32,4 +32,45 @@ describe('startRunResultJob', () => {
     await expect(resultPromise).resolves.toMatchObject({ output: 'ok', error: '' })
     expect(listeners.get('run-finished')).toHaveLength(0)
   })
+
+  it('accepts project-scoped event envelope payload', async () => {
+    const resultPromise = startRunResultJob('run-finished', async () => 'job-9')
+
+    emit('run-finished', {
+      projectVersion: 3,
+      payload: { jobId: 'job-9', result: { output: 'wrapped', error: '' } },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({ output: 'wrapped', error: '' })
+  })
+
+  it('ignores project-scoped event envelope from another project version', async () => {
+    const resultPromise = startRunResultJob('run-finished', async () => 'job-10', 4)
+
+    emit('run-finished', {
+      projectVersion: 3,
+      payload: { jobId: 'job-10', result: { output: 'stale', error: '' } },
+    })
+    emit('run-finished', {
+      projectVersion: 4,
+      payload: { jobId: 'job-10', result: { output: 'current', error: '' } },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({ output: 'current', error: '' })
+  })
+
+  it('handles project envelope with null payload', async () => {
+    const resultPromise = startRunResultJob('run-finished', async () => 'job-11', 7)
+
+    emit('run-finished', {
+      projectVersion: 6,
+      payload: null,
+    })
+    emit('run-finished', {
+      projectVersion: 7,
+      payload: { jobId: 'job-11', result: { output: 'ok', error: '' } },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({ output: 'ok', error: '' })
+  })
 })

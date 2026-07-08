@@ -12,6 +12,7 @@
 
   export let inputPath = ''
   export let featureText = ''
+  export let currentProjectVersion = 0
   export let onClose: () => void = () => {}
   export let onLog: (message: string) => void = () => {}
 
@@ -110,7 +111,7 @@
           format,
           baseURL: baseURL.trim(),
           force: forceOverwrite,
-        }))
+        }), currentProjectVersion)
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         onLog(`${tr('dialogs.export.errorPrefix')} ${result.error}`)

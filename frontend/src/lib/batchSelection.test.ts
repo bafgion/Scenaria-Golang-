@@ -4,6 +4,7 @@ import {
   buildBatchSelectedSet,
   isPathBatchSelected,
   resolveCatalogFileClickAction,
+  remapBatchSelectedPaths,
   selectAllFeaturesUnder,
   toggleBatchModeState,
   toggleBatchPath,
@@ -71,5 +72,11 @@ describe('batchSelection', () => {
     expect(resolveCatalogFileClickAction(false, true, false)).toBe('toggle-batch')
     expect(resolveCatalogFileClickAction(false, false, true)).toBe('toggle-batch')
     expect(resolveCatalogFileClickAction(false, false, false)).toBe('open')
+  })
+
+  it('remapBatchSelectedPaths prunes missing paths and refreshes canonical casing', () => {
+    const selected = ['C:\\project\\a.feature', '/project/shop/b.feature', '/project/missing.feature']
+    const remapped = remapBatchSelectedPaths(selected, ['c:/project/a.feature', '/project/shop/b.feature'])
+    expect(remapped).toEqual(['c:/project/a.feature', '/project/shop/b.feature'])
   })
 })

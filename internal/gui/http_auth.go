@@ -20,7 +20,7 @@ type HTTPAuthCredentials struct {
 }
 
 func (s *Service) loadAppSettings() (*settings.AppSettings, error) {
-	cfg, err := settings.LoadDefaultAppSettings()
+	cfg, err := s.settingsStore.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -31,11 +31,10 @@ func (s *Service) loadAppSettings() (*settings.AppSettings, error) {
 }
 
 func (s *Service) saveAppSettings(cfg *settings.AppSettings) error {
-	path := settings.DefaultAppSettingsPath()
-	if path == "" {
-		return fmt.Errorf("settings path is not configured")
-	}
-	return settings.SaveAppSettings(path, cfg)
+	return s.settingsStore.Update(func(current *settings.AppSettings) error {
+		*current = *cfg
+		return nil
+	})
 }
 
 func (s *Service) ListHTTPAuthHosts() ([]string, error) {
@@ -56,41 +55,37 @@ func (s *Service) HTTPAuthForHost(host string) (HTTPAuthCredentials, error) {
 }
 
 func (s *Service) SaveHTTPAuth(req HTTPAuthRequest) error {
-	cfg, err := s.loadAppSettings()
-	if err != nil {
-		return err
-	}
 	host := strings.TrimSpace(req.Host)
 	if host == "" {
 		return fmt.Errorf("host is required")
 	}
-	password := req.Password
-	if strings.TrimSpace(password) == "" {
-		if _, existing := httpauth.CredentialsForHost(host, cfg); existing != "" {
-			password = existing
+	return s.settingsStore.Update(func(cfg *settings.AppSettings) error {
+		password := req.Password
+		if strings.TrimSpace(password) == "" {
+			if _, existing := httpauth.CredentialsForHost(host, cfg); existing != "" {
+				password = existing
+			}
 		}
-	}
-	httpauth.StoreHostCredentials(host, req.Username, password, cfg)
-	return s.saveAppSettings(cfg)
+		httpauth.StoreHostCredentials(host, req.Username, password, cfg)
+		return nil
+	})
 }
 
 func (s *Service) RemoveHTTPAuth(host string) error {
-	cfg, err := s.loadAppSettings()
-	if err != nil {
-		return err
-	}
-	httpauth.RemoveHostCredentials(host, cfg)
-	return s.saveAppSettings(cfg)
+	return s.settingsStore.Update(func(cfg *settings.AppSettings) error {
+		httpauth.RemoveHostCredentials(host, cfg)
+		return nil
+	})
 }
 
 func (s *Service) PrepareRecordURL(url string) (string, error) {
-	cfg, err := s.loadAppSettings()
+	var clean string
+	err := s.settingsStore.Update(func(cfg *settings.AppSettings) error {
+		clean = httpauth.ApplyURLCredentials(url, cfg)
+		return nil
+	})
 	if err != nil {
 		return url, err
-	}
-	clean := httpauth.ApplyURLCredentials(url, cfg)
-	if err := s.saveAppSettings(cfg); err != nil {
-		return clean, err
 	}
 	return clean, nil
 }

@@ -1,8 +1,6 @@
 package gui
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -11,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
+	"github.com/bafgion/scenaria-golang/internal/logx"
+	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
-	"github.com/bafgion/scenaria-golang/internal/runstatus"
+	"github.com/bafgion/scenaria-golang/internal/report"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -24,29 +23,75 @@ import (
 
 // Service exposes project and runner operations without UI framework dependencies.
 type Service struct {
-	mu                sync.RWMutex
-	projectPath       string
-	liveSession       *recorder.LiveSession
-	recordCtx         context.Context
-	recordCancel      context.CancelFunc
-	recordEmit        func(string, any)
-	recordGen         uint64
-	recordIdleSeconds int
-	runCtx            context.Context
-	runCancel         context.CancelFunc
-	runGen            uint64
-	validateCancel    context.CancelFunc
-	validateGen       uint64
-	tempFeatureMu     sync.Mutex
-	tempFeatureDirs   []string
-	reportBridgeMu    sync.Mutex
-	reportBridge      *reportBridge
-	activePlaywright  sync.WaitGroup
-	activeBackground  sync.WaitGroup
+	mu                         sync.RWMutex
+	projectPath                string
+	projectSession             *ProjectSession
+	projectService             *ProjectService
+	editorAnalysisService      *EditorAnalysisService
+	reportService              *ReportService
+	runService                 *RunService
+	fileOps                    *FileOperationService
+	recorderService            *RecorderService
+	settingsService            *SettingsService
+	cliOps                     *CLIOps
+	projectVersion             uint64
+	runSession                 *RunSession
+	liveSession                *recorder.LiveSession
+	recordCtx                  context.Context
+	recordCancel               context.CancelFunc
+	recordEmit                 func(string, any)
+	recordGen                  uint64
+	recordSessionID            string
+	browserSessionID           string
+	recordTargetPath           string
+	lastClosedRecordSessionID  string
+	lastClosedBrowserSessionID string
+	recordIdleSeconds          int
+	runCtx                     context.Context
+	runCancel                  context.CancelFunc
+	runGen                     uint64
+	validateCancel             context.CancelFunc
+	validateGen                uint64
+	tempFeatureMu              sync.Mutex
+	tempFeatureDirs            []string
+	reportBridgeMu             sync.Mutex
+	reportBridge               *reportBridge
+	allureServe                allureServeState
+	activePlaywright           sync.WaitGroup
+	activeBackground           sync.WaitGroup
+	settingsStore              *settings.Store
+	projectFSMu                sync.RWMutex
 }
 
 func NewService() *Service {
-	return &Service{}
+	svc := &Service{settingsStore: settings.DefaultStore()}
+	svc.projectService = NewProjectService(svc.withProjectFSReadLock)
+	svc.editorAnalysisService = NewEditorAnalysisService()
+	svc.reportService = NewReportService(svc.ProjectPath)
+	svc.runService = NewRunService(svc.ProjectPath)
+	svc.fileOps = NewFileOperationService(svc.confineFeaturePath, svc.withProjectFSReadLock, svc.withProjectFSWriteLock)
+	svc.recorderService = NewRecorderService()
+	svc.settingsService = NewSettingsService(svc.settingsStore)
+	svc.cliOps = NewCLIOps()
+	return svc
+}
+
+// ProjectSession identifies active project ownership for long-running operations.
+type ProjectSession struct {
+	ID      string          `json:"id"`
+	Root    string          `json:"root"`
+	Version uint64          `json:"version"`
+	Context context.Context `json:"-"`
+	cancel  context.CancelFunc
+}
+
+// RunSession identifies one in-flight run and its immutable snapshot.
+type RunSession struct {
+	RunID           string          `json:"runId"`
+	ProjectVersion  uint64          `json:"projectVersion"`
+	RequestSnapshot RunRequest      `json:"requestSnapshot"`
+	Context         context.Context `json:"-"`
+	TempResources   []string        `json:"tempResources,omitempty"`
 }
 
 type ProjectInfo struct {
@@ -54,6 +99,7 @@ type ProjectInfo struct {
 	Features    []string            `json:"features"`
 	Tags        []string            `json:"tags"`
 	FeatureTags map[string][]string `json:"featureTags"`
+	Version     uint64              `json:"version"`
 }
 
 type RunRequest struct {
@@ -109,9 +155,16 @@ type PluginRunRequest struct {
 }
 
 type RunResult struct {
-	Output  string           `json:"output"`
-	Error   string           `json:"error"`
-	Entries []RunResultEntry `json:"entries,omitempty"`
+	Output      string           `json:"output"`
+	Error       string           `json:"error"`
+	Entries     []RunResultEntry `json:"entries,omitempty"`
+	ReportPath  string           `json:"reportPath,omitempty"`
+	HTMLPath    string           `json:"htmlPath,omitempty"`
+	JUnitPath   string           `json:"junitPath,omitempty"`
+	SummaryJSON string           `json:"summaryJson,omitempty"`
+	AllureDir   string           `json:"allureDir,omitempty"`
+	TraceDir    string           `json:"traceDir,omitempty"`
+	VideoDir    string           `json:"videoDir,omitempty"`
 }
 
 type AsyncRunResultDTO struct {
@@ -215,72 +268,11 @@ type FlakyMetricsDTO struct {
 }
 
 func (s *Service) ListRunResults(limit int) ([]RunResultEntry, error) {
-	path := s.ProjectPath()
-	if path == "" {
-		return []RunResultEntry{}, nil
-	}
-	store, err := runstatus.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	entries, err := store.List(limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]RunResultEntry, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, RunResultEntry{
-			Path:       e.Path,
-			Success:    e.Success,
-			Message:    e.Message,
-			Runner:     e.Runner,
-			At:         e.At,
-			FailedStep: e.FailedStep,
-		})
-	}
-	return out, nil
+	return s.runner().ListRunResults(limit)
 }
 
 func (s *Service) FlakyMetrics(historyLimit int) (FlakyMetricsDTO, error) {
-	path := s.ProjectPath()
-	if path == "" {
-		return FlakyMetricsDTO{}, nil
-	}
-	store, err := runstatus.Open(path)
-	if err != nil {
-		return FlakyMetricsDTO{}, err
-	}
-	if historyLimit <= 0 {
-		historyLimit = 200
-	}
-	entries, err := store.List(historyLimit)
-	if err != nil {
-		return FlakyMetricsDTO{}, err
-	}
-	scenarios, steps := runstatus.FlakyStats(entries)
-	out := FlakyMetricsDTO{
-		Scenarios: make([]FlakyScenarioDTO, 0, len(scenarios)),
-		Steps:     make([]FlakyStepDTO, 0, len(steps)),
-	}
-	for _, item := range scenarios {
-		out.Scenarios = append(out.Scenarios, FlakyScenarioDTO{
-			Path:       item.Path,
-			Failures:   item.Failures,
-			Passes:     item.Passes,
-			Total:      item.Total,
-			Flaky:      item.Flaky,
-			LastFailed: item.LastFailed,
-		})
-	}
-	for _, item := range steps {
-		out.Steps = append(out.Steps, FlakyStepDTO{
-			Path:       item.Path,
-			Step:       item.Step,
-			Failures:   item.Failures,
-			LastFailed: item.LastFailed,
-		})
-	}
-	return out, nil
+	return s.runner().FlakyMetrics(historyLimit)
 }
 
 func (s *Service) BundledExamplesPath() string {
@@ -310,6 +302,145 @@ func (s *Service) ProjectPath() string {
 	return s.projectPath
 }
 
+func (s *Service) ProjectVersion() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.projectVersion
+}
+
+func (s *Service) CurrentRunSession() *RunSession {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.runSession == nil {
+		return nil
+	}
+	copy := *s.runSession
+	copy.RequestSnapshot = cloneRunRequest(copy.RequestSnapshot)
+	copy.TempResources = append([]string(nil), copy.TempResources...)
+	return &copy
+}
+
+func (s *Service) editorAnalyzer() *EditorAnalysisService {
+	s.mu.RLock()
+	analysis := s.editorAnalysisService
+	s.mu.RUnlock()
+	if analysis != nil {
+		return analysis
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.editorAnalysisService == nil {
+		s.editorAnalysisService = NewEditorAnalysisService()
+	}
+	return s.editorAnalysisService
+}
+
+func (s *Service) reporter() *ReportService {
+	s.mu.RLock()
+	reporter := s.reportService
+	s.mu.RUnlock()
+	if reporter != nil {
+		return reporter
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reportService == nil {
+		s.reportService = NewReportService(s.ProjectPath)
+	}
+	return s.reportService
+}
+
+func (s *Service) runner() *RunService {
+	s.mu.RLock()
+	run := s.runService
+	s.mu.RUnlock()
+	if run != nil {
+		return run
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runService == nil {
+		s.runService = NewRunService(s.ProjectPath)
+	}
+	return s.runService
+}
+
+func (s *Service) fileOperator() *FileOperationService {
+	s.mu.RLock()
+	ops := s.fileOps
+	s.mu.RUnlock()
+	if ops != nil {
+		return ops
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fileOps == nil {
+		s.fileOps = NewFileOperationService(s.confineFeaturePath, s.withProjectFSReadLock, s.withProjectFSWriteLock)
+	}
+	return s.fileOps
+}
+
+func (s *Service) recorderOps() *RecorderService {
+	s.mu.RLock()
+	rec := s.recorderService
+	s.mu.RUnlock()
+	if rec != nil {
+		return rec
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.recorderService == nil {
+		s.recorderService = NewRecorderService()
+	}
+	return s.recorderService
+}
+
+func (s *Service) settingOps() *SettingsService {
+	s.mu.RLock()
+	settingsSvc := s.settingsService
+	s.mu.RUnlock()
+	if settingsSvc != nil {
+		return settingsSvc
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.settingsService == nil {
+		s.settingsService = NewSettingsService(s.settingsStore)
+	}
+	return s.settingsService
+}
+
+func (s *Service) cliRunner() *CLIOps {
+	s.mu.RLock()
+	ops := s.cliOps
+	s.mu.RUnlock()
+	if ops != nil {
+		return ops
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cliOps == nil {
+		s.cliOps = NewCLIOps()
+	}
+	return s.cliOps
+}
+
+func (s *Service) rotateProjectSessionLocked(path string) {
+	if s.projectSession != nil && s.projectSession.cancel != nil {
+		s.projectSession.cancel()
+	}
+	s.projectVersion++
+	projectCtx, projectCancel := context.WithCancel(context.Background())
+	s.projectSession = &ProjectSession{
+		ID:      fmt.Sprintf("project-%d", s.projectVersion),
+		Root:    path,
+		Version: s.projectVersion,
+		Context: projectCtx,
+		cancel:  projectCancel,
+	}
+	s.projectPath = path
+}
+
 func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -323,31 +454,48 @@ func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 		return ProjectInfo{}, fmt.Errorf("project path must be a directory")
 	}
 	s.mu.Lock()
-	s.projectPath = path
+	// Project switch is a lifecycle boundary: retire project-scoped async work.
+	if s.runCancel != nil {
+		s.runCancel()
+		s.runCancel = nil
+		s.runCtx = nil
+	}
+	if s.validateCancel != nil {
+		s.validateCancel()
+		s.validateCancel = nil
+	}
+	if s.recordCancel != nil {
+		s.recordCancel()
+		s.recordCancel = nil
+		s.recordCtx = nil
+	}
+	s.rotateProjectSessionLocked(path)
 	s.mu.Unlock()
 	return s.projectInfo()
 }
 
 // RefreshProject rescans .feature files for the opened project without changing workspace state.
 func (s *Service) RefreshProject() (ProjectInfo, error) {
+	started := time.Now()
+	defer logWailsTiming("RefreshProject", started)
 	return s.projectInfo()
 }
 
 func (s *Service) projectInfo() (ProjectInfo, error) {
 	s.mu.RLock()
 	path := s.projectPath
+	version := s.projectVersion
+	projectService := s.projectService
 	s.mu.RUnlock()
-	if path == "" {
-		return ProjectInfo{}, fmt.Errorf("no project opened")
+	if projectService == nil {
+		projectService = NewProjectService(s.withProjectFSReadLock)
+		s.mu.Lock()
+		if s.projectService == nil {
+			s.projectService = projectService
+		}
+		s.mu.Unlock()
 	}
-	store := scenario.NewFeatureStore()
-	files, err := store.Discover(path)
-	if err != nil {
-		return ProjectInfo{}, err
-	}
-	tags := collectProjectTags(store, files)
-	featureTags := collectFeatureTags(store, files)
-	return ProjectInfo{Path: path, Features: files, Tags: tags, FeatureTags: featureTags}, nil
+	return projectService.ProjectInfo(path, version)
 }
 
 func collectFeatureTags(store *scenario.FeatureStore, files []string) map[string][]string {
@@ -385,26 +533,11 @@ func collectProjectTags(store *scenario.FeatureStore, files []string) []string {
 }
 
 func (s *Service) ReadFeature(path string) (string, error) {
-	abs, err := s.confineFeaturePath(path)
-	if err != nil {
-		return "", err
-	}
-	payload, err := os.ReadFile(abs)
-	if err != nil {
-		return "", fmt.Errorf("read feature: %w", err)
-	}
-	return string(payload), nil
+	return s.fileOperator().ReadFeature(path)
 }
 
 func (s *Service) SaveFeature(path, content string) error {
-	abs, err := s.confineFeaturePath(path)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("save feature: %w", err)
-	}
-	return nil
+	return s.fileOperator().SaveFeature(path, content)
 }
 
 func (s *Service) WriteTempFeature(content string) (string, error) {
@@ -463,41 +596,114 @@ func (s *Service) InitProjectAt(path string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("project path must be a directory")
 	}
-	return captureCLI(func() error { return cli.RunInit([]string{path}) })
+	return s.cliRunner().InitProject(path)
 }
 
 // EventEmitter sends Wails runtime events during long GUI operations.
 type EventEmitter func(name string, payload any)
 
+func cloneRunRequest(req RunRequest) RunRequest {
+	cloned := req
+	if len(req.Targets) > 0 {
+		cloned.Targets = append([]string(nil), req.Targets...)
+	}
+	if len(req.Vars) > 0 {
+		cloned.Vars = make(map[string]string, len(req.Vars))
+		for k, v := range req.Vars {
+			cloned.Vars[k] = v
+		}
+	}
+	return cloned
+}
+
 func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
-	defer s.cleanupTempFeatureDirs()
 	s.activePlaywright.Add(1)
 	defer s.activePlaywright.Done()
+	req = cloneRunRequest(req)
+	logx.Debug("run request received", "targets", len(req.Targets), "dry_run", req.DryRun)
 	if len(req.Targets) == 0 && s.ProjectPath() == "" {
 		return RunResult{Error: "нет файлов для запуска — откройте сценарий или проект"}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultRunTimeout)
+	runID := fmt.Sprintf("run-%d", time.Now().UnixNano())
+	emitRunEvent := func(name string, payload any) {
+		if emit == nil {
+			return
+		}
+		switch name {
+		case "run-log-line":
+			switch line := payload.(type) {
+			case string:
+				emit(name, map[string]any{"line": line, "runId": runID})
+			case map[string]any:
+				line["runId"] = runID
+				emit(name, line)
+			default:
+				emit(name, map[string]any{"runId": runID})
+			}
+		case "run-progress":
+			if ev, ok := payload.(player.RunProgressEvent); ok {
+				emit(name, map[string]any{
+					"phase":       ev.Phase,
+					"index":       ev.Index,
+					"total":       ev.Total,
+					"featurePath": ev.FeaturePath,
+					"scenario":    ev.Scenario,
+					"success":     ev.Success,
+					"runId":       runID,
+				})
+				return
+			}
+			if m, ok := payload.(map[string]any); ok {
+				m["runId"] = runID
+				emit(name, m)
+				return
+			}
+			emit(name, map[string]any{"runId": runID})
+		case "run-results-changed":
+			emit(name, map[string]any{"runId": runID})
+		default:
+			emit(name, payload)
+		}
+	}
 	s.mu.Lock()
-	if s.runCancel != nil {
-		s.runCancel()
+	// Explicit concurrent run policy: reject overlapping runs; caller should CancelRun first.
+	if s.runCancel != nil && s.runCtx != nil && s.runCtx.Err() == nil {
+		s.mu.Unlock()
+		cancel()
+		return RunResult{Error: "запуск уже выполняется — нажмите «Стоп» и попробуйте снова"}
 	}
 	s.runGen++
 	myGen := s.runGen
+	projectVersion := s.projectVersion
 	s.runCtx = ctx
 	s.runCancel = cancel
+	s.runSession = &RunSession{
+		RunID:           runID,
+		ProjectVersion:  projectVersion,
+		RequestSnapshot: cloneRunRequest(req),
+		Context:         ctx,
+		TempResources:   s.tempFeatureDirsForTargets(req.Targets),
+	}
+	runTempResources := append([]string(nil), s.runSession.TempResources...)
 	s.mu.Unlock()
 	defer func() {
+		s.cleanupTempFeatureResources(runTempResources)
 		s.mu.Lock()
 		if s.runGen == myGen {
 			s.runCtx = nil
 			s.runCancel = nil
+			s.runSession = nil
+		} else {
+			logx.Debug("stale run cleanup skipped", "run_id", runID, "expected_gen", myGen, "current_gen", s.runGen)
 		}
 		s.mu.Unlock()
 		cancel()
 	}()
 
-	result, err := s.runInProcess(ctx, req, emit)
+	result, artifacts, err := s.runInProcess(ctx, req, emitRunEvent)
+	logx.Debug("run completed", "targets", len(req.Targets), "cases", result.Scenarios, "executed", len(result.ScenarioResults))
 	out := s.formatRunOutput(result, err)
 	runner := resolveGUIEngine(req, req.Targets)
 	if req.DryRun {
@@ -506,11 +712,85 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 	entries := scenarioResultsToEntries(result.ScenarioResults, runner)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return RunResult{Output: out, Error: "превышен лимит времени прогона (20 мин) — нажмите «Стоп» или упростите сценарий", Entries: entries}
+			return runResultWithArtifacts(RunResult{Output: out, Error: "превышен лимит времени прогона (20 мин) — нажмите «Стоп» или упростите сценарий", Entries: entries}, artifacts)
 		}
-		return RunResult{Output: out, Error: err.Error(), Entries: entries}
+		return runResultWithArtifacts(RunResult{Output: out, Error: err.Error(), Entries: entries}, artifacts)
 	}
-	return RunResult{Output: out, Entries: entries}
+	return runResultWithArtifacts(RunResult{Output: out, Entries: entries}, artifacts)
+}
+
+func runResultWithArtifacts(result RunResult, artifacts report.RunArtifactLayout) RunResult {
+	result.ReportPath = firstNonEmpty(artifacts.HTMLPath, result.ReportPath)
+	result.HTMLPath = firstNonEmpty(artifacts.HTMLPath, result.HTMLPath)
+	result.JUnitPath = firstNonEmpty(artifacts.JUnitPath, result.JUnitPath)
+	result.SummaryJSON = firstNonEmpty(artifacts.SummaryJSON, result.SummaryJSON)
+	result.AllureDir = firstNonEmpty(artifacts.AllureDir, result.AllureDir)
+	result.TraceDir = firstNonEmpty(artifacts.TraceDir, result.TraceDir)
+	result.VideoDir = firstNonEmpty(artifacts.VideoDir, result.VideoDir)
+	return result
+}
+
+func (s *Service) tempFeatureDirsForTargets(targets []string) []string {
+	if len(targets) == 0 {
+		return nil
+	}
+	s.tempFeatureMu.Lock()
+	defer s.tempFeatureMu.Unlock()
+	known := make(map[string]struct{}, len(s.tempFeatureDirs))
+	for _, dir := range s.tempFeatureDirs {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		known[abs] = struct{}{}
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, target := range targets {
+		targetAbs, err := filepath.Abs(target)
+		if err != nil {
+			continue
+		}
+		for dirAbs := range known {
+			rel, err := filepath.Rel(dirAbs, targetAbs)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+				continue
+			}
+			if _, exists := seen[dirAbs]; !exists {
+				seen[dirAbs] = struct{}{}
+				out = append(out, dirAbs)
+			}
+		}
+	}
+	return out
+}
+
+func (s *Service) cleanupTempFeatureResources(resources []string) {
+	if len(resources) == 0 {
+		return
+	}
+	set := make(map[string]struct{}, len(resources))
+	for _, resource := range resources {
+		if abs, err := filepath.Abs(resource); err == nil {
+			set[abs] = struct{}{}
+		}
+	}
+	for dir := range set {
+		_ = os.RemoveAll(dir)
+	}
+	s.tempFeatureMu.Lock()
+	kept := make([]string, 0, len(s.tempFeatureDirs))
+	for _, dir := range s.tempFeatureDirs {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		if _, remove := set[abs]; !remove {
+			kept = append(kept, dir)
+		}
+	}
+	s.tempFeatureDirs = kept
+	s.tempFeatureMu.Unlock()
 }
 
 // CancelRun aborts an in-progress GUI scenario run.
@@ -528,7 +808,7 @@ func (s *Service) CancelRun() {
 }
 
 func (s *Service) Validate(req ValidateRequest) RunResult {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultValidateTimeout)
 	s.mu.Lock()
 	if s.validateCancel != nil {
 		s.validateCancel()
@@ -541,6 +821,8 @@ func (s *Service) Validate(req ValidateRequest) RunResult {
 		s.mu.Lock()
 		if s.validateGen == myGen {
 			s.validateCancel = nil
+		} else {
+			logx.Debug("stale validate cleanup skipped", "expected_gen", myGen, "current_gen", s.validateGen)
 		}
 		s.mu.Unlock()
 		cancel()
@@ -561,7 +843,7 @@ func (s *Service) Validate(req ValidateRequest) RunResult {
 	} else if req.Browser != "" {
 		args = append(args, "--browser", req.Browser)
 	}
-	out, err := captureCLI(func() error { return cli.RunValidateContext(ctx, args) })
+	out, err := s.cliRunner().Validate(ctx, args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -569,7 +851,7 @@ func (s *Service) Validate(req ValidateRequest) RunResult {
 }
 
 func (s *Service) CheckUpdate() RunResult {
-	out, err := captureCLI(func() error { return cli.RunUpdate([]string{"--check"}) })
+	out, err := s.cliRunner().CheckUpdates()
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -639,8 +921,13 @@ func (s *Service) SearchSteps(query string) []StepCatalogEntry {
 	return out
 }
 
-func (s *Service) CompletionsForLine(line string, column int, featureText string) StepCompletionsDTO {
-	lang := string(gherkin.ParseLanguageTag(featureText))
+func (s *Service) CompletionsForLine(line string, column int, language string) StepCompletionsDTO {
+	started := time.Now()
+	defer logWailsTiming("CompletionsForLine", started)
+	lang := strings.TrimSpace(language)
+	if lang == "" {
+		lang = string(gherkin.LangRU)
+	}
 	result := stepcatalog.CompletionsForLineLang(line, column, lang)
 	out := StepCompletionsDTO{
 		Start: result.Start,
@@ -658,11 +945,7 @@ func (s *Service) CompletionsForLine(line string, column int, featureText string
 }
 
 func (s *Service) LoadSettings() (AppSettingsDTO, error) {
-	cfg, err := settings.LoadDefaultAppSettings()
-	if err != nil || cfg == nil {
-		return defaultAppSettingsDTO(), nil
-	}
-	return appSettingsFromCfg(cfg), nil
+	return s.settingOps().LoadSettings()
 }
 
 func defaultAppSettingsDTO() AppSettingsDTO {
@@ -721,124 +1004,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 }
 
 func (s *Service) SaveSettings(dto AppSettingsDTO) error {
-	path := settings.DefaultAppSettingsPath()
-	if path == "" {
-		return fmt.Errorf("settings path unavailable")
-	}
-	height := dto.StepsPanelHeight
-	if height < 80 {
-		height = 160
-	}
-	existing, _ := settings.LoadDefaultAppSettings()
-	cfg := &settings.AppSettings{
-		Browser:                 dto.Browser,
-		Headless:                dto.Headless,
-		ParallelWorkers:         maxInt(1, dto.ParallelWorkers),
-		SlowMo:                  maxInt(0, dto.SlowMo),
-		MaxLoopIterations:       maxInt(1, dto.MaxLoopIterations),
-		NavWaitUntil:            strings.TrimSpace(dto.NavWaitUntil),
-		RecordingFilterMode:     dto.FilterRecording,
-		NavOnlyRecording:        dto.NavOnlyRecording,
-		RecordingHoverMode:      dto.HoverRecord,
-		ToolbarCompact:          dto.ToolbarCompact,
-		StepsPanelVisible:       dto.StepsPanelVisible,
-		StepsPanelHeight:        height,
-		SidebarWidth:            clampSidebarWidth(dto.SidebarWidth),
-		RecentProjects:          trimRecents(dto.RecentProjects),
-		RecentFeatures:          trimRecents(dto.RecentFeatures),
-		SessionProject:          strings.TrimSpace(dto.SessionProject),
-		OpenTabs:                trimRecents(dto.OpenTabs),
-		ActiveTab:               strings.TrimSpace(dto.ActiveTab),
-		UntitledTabs:            untitledTabsToCfg(dto.UntitledTabs),
-		ScrollBeforeClick:       dto.ScrollBeforeClick,
-		HoverRecordMinMs:        normalizeHoverRecordMinMs(dto.HoverRecordMinMs),
-		SelectorClickStrategies: selector.NormalizeClickStrategies(dto.SelectorClickStrategies),
-		SelectorInputStrategies: selector.NormalizeInputStrategies(dto.SelectorInputStrategies),
-	}
-	checkUpdates := dto.CheckUpdatesOnStartup
-	cfg.CheckUpdatesOnStartup = &checkUpdates
-	cfg.Editor = settings.NormalizeEditorSettings(dto.Editor)
-	cfg.ChecklistDismissed = dto.ChecklistDismissed
-	cfg.WelcomePlayedSuccess = dto.WelcomePlayedSuccess
-	cfg.OnboardingCompleted = dto.OnboardingCompleted
-	cfg.OnboardingDismissed = dto.OnboardingDismissed
-	cfg.OnboardingVersion = dto.OnboardingVersion
-	cfg.StartURL = strings.TrimSpace(dto.StartURL)
-	cfg.RunDialogConfirmed = dto.RunDialogConfirmed
-	cfg.PickerDuringRecording = dto.PickerDuringRecording
-	cfg.UILocale = normalizeUILocale(dto.UILocale)
-	if existing != nil {
-		cfg.HTTPAuth = existing.HTTPAuth
-		if len(cfg.RecentProjects) == 0 {
-			cfg.RecentProjects = existing.RecentProjects
-		}
-		if len(cfg.RecentFeatures) == 0 {
-			cfg.RecentFeatures = existing.RecentFeatures
-		}
-	}
-	sidebarW := dto.SidebarWidth
-	if sidebarW < 120 && existing != nil && existing.SidebarWidth >= 120 {
-		sidebarW = existing.SidebarWidth
-	}
-	cfg.SidebarWidth = clampSidebarWidth(sidebarW)
-	if err := settings.SaveAppSettings(path, cfg); err != nil {
-		return fmt.Errorf("save settings: %w", err)
-	}
-	return nil
-}
-
-var captureStdoutMu sync.Mutex
-
-func captureCLIStream(onLine func(string), fn func() error) (out string, runErr error) {
-	captureStdoutMu.Lock()
-	defer captureStdoutMu.Unlock()
-
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	var buf bytes.Buffer
-	done := make(chan struct{})
-	var scanErr error
-	go func() {
-		defer close(done)
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			buf.WriteString(line)
-			buf.WriteByte('\n')
-			if onLine != nil {
-				onLine(line)
-			}
-		}
-		scanErr = scanner.Err()
-	}()
-
-	defer func() {
-		_ = w.Close()
-		os.Stdout = old
-		<-done
-		_ = r.Close()
-		out = buf.String()
-		if recovered := recover(); recovered != nil {
-			runErr = fmt.Errorf("cli panic: %v", recovered)
-			return
-		}
-		if runErr == nil && scanErr != nil {
-			runErr = fmt.Errorf("capture stdout: %w", scanErr)
-		}
-	}()
-
-	runErr = fn()
-	return "", runErr
-}
-
-func captureCLI(fn func() error) (string, error) {
-	return captureCLIStream(nil, fn)
+	return s.settingOps().SaveSettings(dto)
 }
 
 func maxInt(a, b int) int {
@@ -893,8 +1059,3 @@ func untitledTabsToCfg(in []UntitledTabDTO) []settings.UntitledTabSession {
 	}
 	return out
 }
-
-func runExport(args []string) error     { return cli.RunExport(args) }
-func runImportJSON(args []string) error { return cli.RunImportJSON(args) }
-func runRecord(args []string) error     { return cli.RunRecord(args) }
-func runVA(args []string) error         { return cli.RunVA(args) }

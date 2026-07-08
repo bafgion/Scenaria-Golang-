@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,10 @@ type importJSONOptions struct {
 }
 
 func RunImportJSON(args []string) error {
+	return RunImportJSONWithOutput(args, nil)
+}
+
+func RunImportJSONWithOutput(args []string, out io.Writer) error {
 	opts, err := parseImportJSONOptions(args)
 	if err != nil {
 		return err
@@ -34,7 +39,7 @@ func RunImportJSON(args []string) error {
 	if err := store.Save(opts.output, doc.Feature); err != nil {
 		return err
 	}
-	fmt.Printf("Imported %s -> %s\n", opts.input, opts.output)
+	cliPrintf(out, "Imported %s -> %s\n", opts.input, opts.output)
 	return nil
 }
 

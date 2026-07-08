@@ -43,8 +43,10 @@ func FromExecutionResultDetailed(result player.ExecutionResult) RunSummaryDetail
 		switch sr.Status {
 		case "passed":
 			out.Passed++
-		case "failed":
+		case "failed", "broken":
 			out.Failed++
+		case "canceled":
+			out.Skipped++
 		default:
 			out.Skipped++
 		}
@@ -68,7 +70,7 @@ func WriteRunSummaryDetailed(path string, summary RunSummaryDetailed) error {
 			return fmt.Errorf("create run summary dir %q: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
+	if err := writeAtomic(path, append(payload, '\n')); err != nil {
 		return fmt.Errorf("write run summary %q: %w", path, err)
 	}
 	return nil

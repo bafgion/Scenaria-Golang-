@@ -3,6 +3,7 @@ package wailsapp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,11 @@ type App struct {
 	jobSeq  atomic.Uint64
 }
 
+type projectEventEnvelope struct {
+	ProjectVersion uint64 `json:"projectVersion"`
+	Payload        any    `json:"payload,omitempty"`
+}
+
 func NewApp() *App {
 	return &App{svc: gui.NewService()}
 }
@@ -43,13 +49,14 @@ func (a *App) safeRunResult(op string, fn func() gui.RunResult) (result gui.RunR
 }
 
 func (a *App) safeGoRunResult(event string, fn func() gui.RunResult) {
+	projectVersion := a.svc.ProjectVersion()
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				a.emitEvent(event, panicRunResult(event, r))
+				a.emitProjectEventWithVersion(projectVersion, event, panicRunResult(event, r))
 			}
 		}()
-		a.emitEvent(event, fn())
+		a.emitProjectEventWithVersion(projectVersion, event, fn())
 	}()
 }
 
@@ -58,10 +65,11 @@ func (a *App) nextJobID(prefix string) string {
 }
 
 func (a *App) startRunResultJob(prefix, finishedEvent string, fn func() gui.RunResult) string {
+	projectVersion := a.svc.ProjectVersion()
 	jobID := a.nextJobID(prefix)
 	go func() {
 		result := a.safeRunResult(prefix, fn)
-		a.emitEvent(finishedEvent, gui.AsyncRunResultDTO{JobID: jobID, Result: result})
+		a.emitProjectEventWithVersion(projectVersion, finishedEvent, gui.AsyncRunResultDTO{JobID: jobID, Result: result})
 	}()
 	return jobID
 }
@@ -75,24 +83,28 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 func (a *App) emitReportGoto(req gui.ReportGotoRequest) {
-	if a.ctx == nil {
-		return
+	if req.ReportID == "" {
+		req.ReportID = fmt.Sprintf("report:%s:%s", req.FeaturePath, req.Scenario)
 	}
-	runtime.EventsEmit(a.ctx, "report-goto", req)
+	a.emitProjectEvent("report-goto", req)
 }
 
 func (a *App) emitReportRerun(req gui.ReportRerunRequest) {
-	if a.ctx == nil {
-		return
+	if req.ReportID == "" {
+		req.ReportID = fmt.Sprintf("report:%s:%s", req.FeaturePath, req.Scenario)
 	}
-	runtime.EventsEmit(a.ctx, "report-rerun", req)
+	a.emitProjectEvent("report-rerun", req)
 }
 
 func (a *App) emitReportTrace(req gui.ReportTraceRequest) {
-	if a.ctx == nil {
-		return
+	if req.ReportID == "" {
+		base := req.ReportDir
+		if base == "" {
+			base = filepath.Dir(req.TracePath)
+		}
+		req.ReportID = "report:" + strings.ReplaceAll(base, "\\", "/")
 	}
-	runtime.EventsEmit(a.ctx, "report-trace", req)
+	a.emitProjectEvent("report-trace", req)
 }
 
 // Shutdown tears down in-flight runs and browser sessions when the app exits.
@@ -104,13 +116,19 @@ func (a *App) Shutdown(ctx context.Context) {
 
 func (a *App) promptEmailCode(email string) (string, error) {
 	a.otpMu.Lock()
+	if a.otpCode != nil || a.otpErr != nil {
+		a.otpMu.Unlock()
+		return "", fmt.Errorf("otp prompt already active")
+	}
 	a.otpCode = make(chan string, 1)
 	a.otpErr = make(chan error, 1)
 	a.otpMu.Unlock()
 
-	runtime.WindowUnminimise(a.ctx)
-	runtime.WindowShow(a.ctx)
-	runtime.EventsEmit(a.ctx, "otp-prompt", email)
+	if a.ctx != nil {
+		runtime.WindowUnminimise(a.ctx)
+		runtime.WindowShow(a.ctx)
+	}
+	a.emitProjectEvent("otp-prompt", email)
 
 	defer a.clearOTPChannels()
 
@@ -200,14 +218,16 @@ func (a *App) InitProjectAt(path string) (string, error) {
 }
 
 func (a *App) Run(req gui.RunRequest) gui.RunResult {
+	projectVersion := a.svc.ProjectVersion()
 	return a.safeRunResult("run", func() gui.RunResult {
-		return a.svc.Run(req, a.emitEvent)
+		return a.svc.Run(req, a.emitterForProjectVersion(projectVersion))
 	})
 }
 
 func (a *App) StartRun(req gui.RunRequest) string {
+	projectVersion := a.svc.ProjectVersion()
 	return a.startRunResultJob("run", "run-finished", func() gui.RunResult {
-		return a.svc.Run(req, a.emitEvent)
+		return a.svc.Run(req, a.emitterForProjectVersion(projectVersion))
 	})
 }
 
@@ -291,8 +311,8 @@ func (a *App) DescribeEditorLine(line string) gui.StepCatalogEntry {
 	return entry
 }
 
-func (a *App) CompletionsForLine(line string, column int, featureText string) gui.StepCompletionsDTO {
-	return a.svc.CompletionsForLine(line, column, featureText)
+func (a *App) CompletionsForLine(line string, column int, language string) gui.StepCompletionsDTO {
+	return a.svc.CompletionsForLine(line, column, language)
 }
 
 func (a *App) CheckUpdate() gui.RunResult {
@@ -316,13 +336,13 @@ func (a *App) DownloadUpdate() {
 	}
 	go func() {
 		path, err := a.svc.DownloadUpdateProgress(func(p gui.UpdateProgressDTO) {
-			runtime.EventsEmit(a.ctx, "update-progress", p)
+			a.emitProjectEvent("update-progress", p)
 		})
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Error: err.Error()})
+			a.emitProjectEvent("update-finished", gui.RunResult{Error: err.Error()})
 			return
 		}
-		runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Output: path})
+		a.emitProjectEvent("update-finished", gui.RunResult{Output: path})
 	}()
 }
 
@@ -332,13 +352,13 @@ func (a *App) ApplyUpdate() {
 	}
 	go func() {
 		err := a.svc.ApplyUpdateProgress(func(p gui.UpdateProgressDTO) {
-			runtime.EventsEmit(a.ctx, "update-progress", p)
+			a.emitProjectEvent("update-progress", p)
 		})
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Error: err.Error()})
+			a.emitProjectEvent("update-finished", gui.RunResult{Error: err.Error()})
 			return
 		}
-		runtime.EventsEmit(a.ctx, "update-finished", gui.RunResult{Output: "restart"})
+		a.emitProjectEvent("update-finished", gui.RunResult{Output: "restart"})
 		time.Sleep(900 * time.Millisecond)
 		runtime.Quit(a.ctx)
 	}()
@@ -394,6 +414,10 @@ func (a *App) ParseEditorSteps(text string) []gui.EditorStepRow {
 	return a.svc.ParseEditorSteps(text)
 }
 
+func (a *App) AnalyzeEditorContent(text string, includeHints bool) gui.EditorAnalysisDTO {
+	return a.svc.AnalyzeEditorContent(text, includeHints)
+}
+
 func (a *App) ArtifactExists(path string) bool {
 	return a.svc.ArtifactExists(path)
 }
@@ -435,19 +459,19 @@ func (a *App) RefactorReplaceInText(text, find, replace string, caseSensitive bo
 }
 
 func (a *App) AnalyzeScenarioHints(text string) []gui.ScenarioHintDTO {
-	return gui.AnalyzeScenarioHints(text)
+	return a.svc.AnalyzeScenarioHints(text)
 }
 
 func (a *App) ApplyScenarioHintFix(req gui.ScenarioHintFixRequest) gui.RefactorResult {
-	return gui.ApplyScenarioHintFix(req)
+	return a.svc.ApplyScenarioHintFix(req)
 }
 
 func (a *App) ResolveRunFromLine(text string, line int) (gui.RunFromLineDTO, error) {
-	return gui.ResolveRunFromLine(text, line)
+	return a.svc.ResolveRunFromLine(text, line)
 }
 
 func (a *App) ResolveRunToLine(text string, line int) (gui.RunFromLineDTO, error) {
-	return gui.ResolveRunToLine(text, line)
+	return a.svc.ResolveRunToLine(text, line)
 }
 
 func (a *App) SaveFeatureDraft(featurePath, content string) error {
@@ -553,22 +577,40 @@ func (a *App) StartRunPlugin(req gui.PluginRunRequest) string {
 }
 
 func (a *App) emitEvent(name string, payload any) {
+	a.emitProjectEvent(name, payload)
+}
+
+func (a *App) emitterForProjectVersion(projectVersion uint64) func(string, any) {
+	return func(name string, payload any) {
+		a.emitProjectEventWithVersion(projectVersion, name, payload)
+	}
+}
+
+func (a *App) emitProjectEvent(name string, payload any) {
+	a.emitProjectEventWithVersion(a.svc.ProjectVersion(), name, payload)
+}
+
+func (a *App) emitProjectEventWithVersion(projectVersion uint64, name string, payload any) {
 	if a.ctx == nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, name, payload)
+	runtime.EventsEmit(a.ctx, name, projectEventEnvelope{
+		ProjectVersion: projectVersion,
+		Payload:        payload,
+	})
 }
 
 func (a *App) StartVanessaRun(req gui.PluginRunRequest) {
+	projectVersion := a.svc.ProjectVersion()
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				a.emitEvent("vanessa-run-finished", gui.VanessaRunResultDTO{Error: fmt.Sprintf("vanessa run panic: %v", r)})
+				a.emitProjectEventWithVersion(projectVersion, "vanessa-run-finished", gui.VanessaRunResultDTO{Error: fmt.Sprintf("vanessa run panic: %v", r)})
 			}
 		}()
-		a.emitEvent("vanessa-run-started", nil)
+		a.emitProjectEventWithVersion(projectVersion, "vanessa-run-started", nil)
 		result := a.svc.RunVanessaPlugin(req)
-		a.emitEvent("vanessa-run-finished", result)
+		a.emitProjectEventWithVersion(projectVersion, "vanessa-run-finished", result)
 	}()
 }
 
@@ -581,36 +623,56 @@ func (a *App) PollBrowserSession() gui.BrowserSessionDTO {
 }
 
 func (a *App) OpenBrowser(req gui.OpenBrowserRequest) {
+	projectVersion := a.svc.ProjectVersion()
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				a.emitEvent("browser-closed", panicRunResult("open browser", r))
+				a.emitProjectEventWithVersion(projectVersion, "browser-closed", map[string]any{
+					"result":           panicRunResult("open browser", r),
+					"browserSessionId": a.svc.CurrentBrowserSessionID(),
+				})
 			}
 		}()
 		emit := func(name string, payload any) {
-			a.emitEvent(name, payload)
+			a.emitProjectEventWithVersion(projectVersion, name, payload)
 		}
 		result := a.svc.OpenBrowser(req, emit)
-		emit("browser-closed", result)
+		emit("browser-closed", map[string]any{
+			"result":           result,
+			"browserSessionId": firstNonEmpty(a.svc.LastClosedBrowserSessionID(), a.svc.CurrentBrowserSessionID()),
+		})
 	}()
 }
 
 func (a *App) StartRecord(req gui.RecordRequest) {
+	projectVersion := a.svc.ProjectVersion()
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				a.emitEvent("record-finished", panicRunResult("record", r))
+				a.emitProjectEventWithVersion(projectVersion, "record-finished", map[string]any{
+					"result":           panicRunResult("record", r),
+					"recordSessionId":  a.svc.CurrentRecordSessionID(),
+					"browserSessionId": a.svc.CurrentBrowserSessionID(),
+				})
 			}
 		}()
 		emit := func(name string, payload any) {
-			a.emitEvent(name, payload)
+			a.emitProjectEventWithVersion(projectVersion, name, payload)
 		}
 		req.BrowseOnly = false
 		result := a.svc.RecordLive(req, emit)
 		if !a.svc.HasLiveBrowser() {
-			emit("record-finished", result)
+			emit("record-finished", map[string]any{
+				"result":           result,
+				"recordSessionId":  firstNonEmpty(a.svc.LastClosedRecordSessionID(), a.svc.CurrentRecordSessionID()),
+				"browserSessionId": firstNonEmpty(a.svc.LastClosedBrowserSessionID(), a.svc.CurrentBrowserSessionID()),
+			})
 		} else if result.Error != "" {
-			a.emitEvent("record-error", result.Error)
+			a.emitProjectEventWithVersion(projectVersion, "record-error", map[string]any{
+				"message":          result.Error,
+				"recordSessionId":  a.svc.CurrentRecordSessionID(),
+				"browserSessionId": a.svc.CurrentBrowserSessionID(),
+			})
 		}
 	}()
 }
@@ -626,11 +688,16 @@ func (a *App) BeginRecordingCapture() (started bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	payload := map[string]any{"append": true}
+	payload := map[string]any{
+		"append":           true,
+		"recordSessionId":  a.svc.CurrentRecordSessionID(),
+		"browserSessionId": a.svc.CurrentBrowserSessionID(),
+		"targetPath":       a.svc.CurrentRecordTargetPath(),
+	}
 	if !started {
 		payload["sync"] = true
 	}
-	runtime.EventsEmit(a.ctx, "record-started", payload)
+	a.emitEvent("record-started", payload)
 	return started, nil
 }
 
@@ -656,11 +723,19 @@ func (a *App) StopRecordingCapture() (err error) {
 			err = fmt.Errorf("stop recording capture panic: %v", r)
 		}
 	}()
-	err = a.svc.StopRecordingCapture()
-	if err == nil {
-		runtime.EventsEmit(a.ctx, "record-stopped", map[string]any{"reason": "manual"})
+	stopped, err := a.svc.StopRecordingCapture()
+	if err != nil {
+		return err
 	}
-	return err
+	if stopped {
+		a.emitEvent("record-stopped", map[string]any{
+			"reason":           "manual",
+			"recordSessionId":  a.svc.CurrentRecordSessionID(),
+			"browserSessionId": a.svc.CurrentBrowserSessionID(),
+			"targetPath":       a.svc.CurrentRecordTargetPath(),
+		})
+	}
+	return nil
 }
 
 func (a *App) OpenTrace(path string) gui.RunResult {
@@ -813,4 +888,13 @@ func (a *App) CenterAppWindow() {
 		runtime.WindowCenter(a.ctx)
 	}
 	centerAppWindow()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

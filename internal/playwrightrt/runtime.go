@@ -5,10 +5,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bafgion/scenaria-golang/internal/logx"
 	playwright "github.com/mxschmitt/playwright-go"
 )
 
-const stopDrainDelay = 75 * time.Millisecond
+const (
+	stopDrainDelay          = 75 * time.Millisecond
+	startupCancelDrainLimit = 5 * time.Second
+)
 
 // Runtime shares one Playwright Node driver per process (ref-counted).
 type Runtime struct {
@@ -107,12 +111,18 @@ func runPlaywright(ctx context.Context) (*playwright.Playwright, error) {
 	}()
 	select {
 	case <-ctx.Done():
+		logx.Debug("playwright startup cancelled, draining")
+		drainStart := time.Now()
 		select {
 		case r := <-ch:
 			if r.err == nil && r.pw != nil {
 				_ = r.pw.Stop()
 			}
-		case <-time.After(30 * time.Second):
+		case <-time.After(startupCancelDrainLimit):
+			logx.Warn("playwright startup cancel drain timed out",
+				"max_wait_ms", startupCancelDrainLimit.Milliseconds(),
+				"elapsed_ms", time.Since(drainStart).Milliseconds(),
+			)
 		}
 		return nil, ctx.Err()
 	case r := <-ch:

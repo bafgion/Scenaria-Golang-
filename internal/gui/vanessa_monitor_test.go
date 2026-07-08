@@ -41,10 +41,10 @@ func TestPollVanessaRun_WithJUnit(t *testing.T) {
 
 func TestPluginToVanessaRun_ScenarioAndFiles(t *testing.T) {
 	req := PluginRunRequest{
-		Tag:       "@smoke",
-		Scenario:  "Login",
-		VaDir:     "features/smoke",
-		VaFiles:   "a.feature,b.feature",
+		Tag:          "@smoke",
+		Scenario:     "Login",
+		VaDir:        "features/smoke",
+		VaFiles:      "a.feature,b.feature",
 		ReportAllure: true,
 	}
 	vReq := pluginToVanessaRun("/proj", req)

@@ -113,8 +113,36 @@ func TestReportBridgeRotatesToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("old token status %d", resp.StatusCode)
+	}
+}
+
+func TestReportBridgeDropsOldestTokenWhenBoundExceeded(t *testing.T) {
+	svc := NewService()
+	if err := svc.EnsureReportBridge(nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer svc.CloseReportBridge()
+
+	oldest := svc.ReportBridgeToken()
+	for i := 0; i < maxBridgeTokens; i++ {
+		_, _ = svc.ReportBridgeCredentials()
+	}
+
+	req, err := http.NewRequest(http.MethodPost, svc.ReportBridgeURL()+"/goto", bytes.NewReader([]byte(`{"feature_path":"x.feature"}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Scenaria-Bridge-Token", oldest)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected oldest token to expire, got %d", resp.StatusCode)
 	}
 }
 

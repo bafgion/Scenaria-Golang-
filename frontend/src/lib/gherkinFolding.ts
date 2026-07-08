@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor'
 import { shouldUseHeavyLanguageFeatures } from './editorLargeFile'
+import { getCachedBlockFoldingRanges } from './featureSymbolCache'
 import { replaceMonacoDisposables } from './monacoDisposables'
 
 const BLOCK_OPEN_RE = /^(если|повторяю|пока|для каждого)(?:\s|$)/i
@@ -93,7 +94,7 @@ export function registerGherkinFolding(monaco: typeof Monaco) {
       if (!shouldUseHeavyLanguageFeatures(model.getLineCount())) {
         return []
       }
-      const ranges = collectBlockFoldingRanges(model.getValue())
+      const ranges = getCachedBlockFoldingRanges(model.getValue(), model.getVersionId(), model.uri.toString())
       return ranges.map((range) => ({
         start: range.start,
         end: range.end,

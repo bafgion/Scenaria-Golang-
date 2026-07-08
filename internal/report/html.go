@@ -2,11 +2,7 @@ package report
 
 import (
 	_ "embed"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/player"
 )
@@ -37,57 +33,8 @@ func WriteHTML(path string, result player.ExecutionResult, opts HTMLOptions) err
 	if err != nil {
 		return fmt.Errorf("build html payload: %w", err)
 	}
-	payload.ScreenshotDedup = dedupeScreenshotURLs(&payload)
-	trimPayloadArtifacts(&payload, opts.MaxJSONBytes)
-	shell := strings.NewReplacer(
-		"__CSS__", viewerCSS,
-		"__JS__", viewerScript(),
-	).Replace(viewerHTMLShell)
-	shell = strings.Replace(shell, "<title>Scenaria Report</title>", "<title>"+payload.Brand+" Report</title>", 1)
-	parts := strings.SplitN(shell, "__JSON__", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("html shell missing JSON placeholder")
+	if opts.MaxJSONBytes > 0 {
+		trimPayloadArtifacts(&payload, opts.MaxJSONBytes)
 	}
-	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create html report dir %q: %w", dir, err)
-		}
-	}
-	file, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("write html report %q: %w", path, err)
-	}
-	defer file.Close()
-	if _, err := file.WriteString(parts[0]); err != nil {
-		return fmt.Errorf("write html report %q: %w", path, err)
-	}
-	enc := json.NewEncoder(file)
-	if err := enc.Encode(payload); err != nil {
-		return fmt.Errorf("encode html payload: %w", err)
-	}
-	if _, err := file.WriteString(parts[1]); err != nil {
-		return fmt.Errorf("write html report %q: %w", path, err)
-	}
-	return nil
-}
-
-// WriteHTMLModePair writes full and light HTML reports with cross-links between them.
-// The light report is written next to path as "<name>.light.html" unless path already
-// points at a light report, in which case the full report is the matching base name.
-func WriteHTMLModePair(path string, result player.ExecutionResult, opts HTMLOptions) (fullPath, lightPath string, err error) {
-	fullPath, lightPath = htmlModePairPaths(path, opts.LightMode)
-	fullOpts := opts
-	fullOpts.LightMode = false
-	lightOpts := opts
-	lightOpts.LightMode = true
-	if err := WriteHTML(fullPath, result, fullOpts); err != nil {
-		return "", "", err
-	}
-	if err := WriteHTML(lightPath, result, lightOpts); err != nil {
-		return "", "", err
-	}
-	if err := WriteHTML(fullPath, result, fullOpts); err != nil {
-		return "", "", err
-	}
-	return fullPath, lightPath, nil
+	return writeHTMLPayloadFile(path, payload)
 }

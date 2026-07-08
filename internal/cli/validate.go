@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -27,10 +28,14 @@ type validateOptions struct {
 func RunValidate(args []string) error {
 	ctx, stop := InterruptContext()
 	defer stop()
-	return RunValidateContext(ctx, args)
+	return RunValidateContextWithOutput(ctx, args, nil)
 }
 
 func RunValidateContext(ctx context.Context, args []string) error {
+	return RunValidateContextWithOutput(ctx, args, nil)
+}
+
+func RunValidateContextWithOutput(ctx context.Context, args []string, out io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -69,7 +74,7 @@ func RunValidateContext(ctx context.Context, args []string) error {
 		feature, parseErr := gherkin.ParseFeatureFile(path)
 		if parseErr != nil {
 			errorsCount++
-			fmt.Printf("✗ %s: %v\n", path, parseErr)
+			cliPrintf(out, "✗ %s: %v\n", path, parseErr)
 			results = append(results, caseResult{Path: path, Success: false, Issues: []string{parseErr.Error()}})
 			continue
 		}
@@ -104,14 +109,14 @@ func RunValidateContext(ctx context.Context, args []string) error {
 		}
 
 		if len(issues) == 0 {
-			fmt.Printf("✓ %s\n", path)
+			cliPrintf(out, "✓ %s\n", path)
 			results = append(results, caseResult{Path: path, Success: true})
 			continue
 		}
 
 		errorsCount += len(issues)
 		for _, issue := range issues {
-			fmt.Printf("✗ %s %s\n", path, issue)
+			cliPrintf(out, "✗ %s %s\n", path, issue)
 		}
 		results = append(results, caseResult{Path: path, Success: false, Issues: issues})
 	}
@@ -127,13 +132,13 @@ func RunValidateContext(ctx context.Context, args []string) error {
 		if err := os.WriteFile(opts.json, append(payload, '\n'), 0o644); err != nil {
 			return err
 		}
-		fmt.Printf("JSON: %s\n", opts.json)
+		cliPrintf(out, "JSON: %s\n", opts.json)
 	}
 
 	if errorsCount > 0 {
 		return fmt.Errorf("validation failed with %d issue(s)", errorsCount)
 	}
-	fmt.Printf("Validated %d file(s): no issues found\n", len(files))
+	cliPrintf(out, "Validated %d file(s): no issues found\n", len(files))
 	return nil
 }
 

@@ -2,18 +2,21 @@ package player
 
 import (
 	"context"
+	"sync"
 
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 )
 
 type runStatusHook struct {
-	store  *runstatus.Store
-	runner string
+	store   *runstatus.Store
+	runner  string
+	pending []runstatus.Entry
+	mu      sync.Mutex
 }
 
 type runStatusCtxKey struct{}
 
-// WithRunStatusHook enables incremental run_status.json writes after each scenario.
+// WithRunStatusHook buffers run_status rows during a run; call FlushRunStatus when the run ends.
 func WithRunStatusHook(ctx context.Context, store *runstatus.Store, runner string) context.Context {
 	if store == nil {
 		return ctx
@@ -32,5 +35,23 @@ func recordScenarioRunStatus(ctx context.Context, result ScenarioResult) {
 		return
 	}
 	entry := RunstatusEntry(result, h.runner)
-	_ = h.store.Record(entry)
+	h.mu.Lock()
+	h.pending = append(h.pending, entry)
+	h.mu.Unlock()
+}
+
+// FlushRunStatus writes buffered run_status rows in one batch.
+func FlushRunStatus(ctx context.Context) {
+	h, ok := runStatusHookFrom(ctx)
+	if !ok {
+		return
+	}
+	h.mu.Lock()
+	pending := h.pending
+	h.pending = nil
+	h.mu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+	_ = h.store.RecordBatch(pending)
 }

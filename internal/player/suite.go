@@ -9,16 +9,17 @@ import (
 )
 
 type RunCase struct {
+	CaseID       string
 	FeaturePath  string
 	Name         string
 	Tags         []string
 	ExampleIndex int
 	Steps        []gherkin.Step
-	TestClient  *settings.TestClient
-	Variables   map[string]string
-	ProjectRoot string
-	StartStep   int // 0-based leaf index; -1 = from first step
-	EndStep     int // 0-based leaf index; -1 = through last step
+	TestClient   *settings.TestClient
+	Variables    map[string]string
+	ProjectRoot  string
+	StartStep    int // 0-based leaf index; -1 = from first step
+	EndStep      int // 0-based leaf index; -1 = through last step
 }
 
 type ExecutionPlan struct {
@@ -61,16 +62,17 @@ func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables
 				continue
 			}
 			plan.Cases = append(plan.Cases, RunCase{
+				CaseID:       BuildCaseID(input.Path, runnable.Title, runnable.ExampleIndex),
 				FeaturePath:  input.Path,
 				Name:         runnable.Title,
 				Tags:         runnable.Tags,
 				ExampleIndex: runnable.ExampleIndex,
 				Steps:        runnable.Steps,
-				TestClient:  testClient,
-				Variables:   variables,
-				ProjectRoot: projectRoot,
-				StartStep:   -1,
-				EndStep:     -1,
+				TestClient:   testClient,
+				Variables:    variables,
+				ProjectRoot:  projectRoot,
+				StartStep:    -1,
+				EndStep:      -1,
 			})
 		}
 	}
@@ -92,10 +94,12 @@ func SummarizePlan(plan ExecutionPlan) (files int, scenarios int, steps int, res
 		}
 		steps += gherkin.CountLeafSteps(caseSteps)
 		results = append(results, ScenarioResult{
-			FeaturePath: runCase.FeaturePath,
-			Scenario:    runCase.Name,
-			Status:      "dry-run",
-			Message:     "шаги не выполнялись — только проверка плана",
+			FeaturePath:  runCase.FeaturePath,
+			Scenario:     runCase.Name,
+			CaseID:       runCase.CaseID,
+			ExampleIndex: runCase.ExampleIndex,
+			Status:       "dry-run",
+			Message:      "шаги не выполнялись — только проверка плана",
 		})
 	}
 	return len(seenFiles), len(plan.Cases), steps, results

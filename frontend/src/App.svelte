@@ -8,10 +8,19 @@
   import { buildCatalogViewState, buildCatalogStructure, buildCatalogViewStateFromBase, buildRunByPathMap, catalogStructureKey, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
   import {
     buildBatchSelectedSet,
+    remapBatchSelectedPaths,
     selectAllFeaturesUnder,
     toggleBatchPath,
   } from './lib/batchSelection'
-  import { debounce, deferToNextFrame } from './lib/uiScheduler'
+  import { debounce } from './lib/uiScheduler'
+  import { perfMark, perfNow } from './lib/perfMark'
+  import { clearFeatureSymbolCache, evictFeatureSymbolCache } from './lib/featureSymbolCache'
+  import { formatRunProgressLabel, shouldRefreshRunResultsFromProgress } from './controllers/wailsEventsController'
+  import { createProjectStore, type ProjectState } from './stores/projectStore'
+  import { createRunnerStore } from './stores/runnerStore'
+  import { createDiagnosticsStore } from './stores/diagnosticsStore'
+  import { createRecorderStore } from './stores/recorderStore'
+  import { createReportsStore } from './stores/reportsStore'
   import {
     MAX_OPEN_EDITOR_TABS,
     pathsToRetainModels,
@@ -19,6 +28,7 @@
     tabNeedsDiskReload,
     trimRetainedTabBodies,
   } from './lib/tabMemory'
+  import { reduceTabsAfterClose } from './stores/tabsStore'
   import SettingsDialog from './lib/SettingsDialog.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
   import type { PaletteCommand } from './lib/paletteTypes'
@@ -52,7 +62,7 @@
   import DuplicateFeatureDialog from './lib/DuplicateFeatureDialog.svelte'
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
-  import { upsertRecordedStepInText, removeLastRecordedStepFromText } from './lib/recordedStepEditor'
+  import { applyRecordStepEvent, type RecordStepEvent } from './lib/recordedStepOps'
   import { isUntitled, makeUntitledPath, syncUntitledCounterFromPaths, untitledLabel } from './lib/untitled'
   import {
     buildSessionTabsSnapshot,
@@ -60,7 +70,7 @@
     untitledContentMap,
   } from './lib/sessionTabs'
   import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
-  import { defaultRunForm, type RunForm } from './lib/runTypes'
+  import { batchRunFormFrom, defaultRunForm, runFormFromMode, type RunForm, type RunFormMode } from './lib/runTypes'
   import { formatLastRunSummary } from './lib/runSummary'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import {
@@ -88,6 +98,7 @@
   import { createTranslator, locale, setLocale, t, type Locale } from './lib/i18n'
   import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
   import { isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './lib/editorLargeFile'
+  import { isEditorAnalysisSnapshotVisible } from './lib/editorAnalysisSync'
   import {
     catalogIndentStep,
     clampSidebarWidth,
@@ -120,7 +131,7 @@
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
-  import { isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed } from './lib/recordingTarget'
+  import { isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath, shouldApplyLiveRecordedStep } from './lib/recordingTarget'
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
@@ -137,7 +148,7 @@
     CancelRun,
     StartRun,
     StartValidate,
-    ValidateFeature,
+    AnalyzeEditorContent,
     ListTestClients,
     InitProject,
     InitProjectAt,
@@ -215,8 +226,15 @@
   type EditorTab = { path: string; content: string; dirty: boolean; draft?: string; unloaded?: boolean }
   type EditorStepRow = gui.EditorStepRow
 
+  const projectStore = createProjectStore()
+  const runnerStore = createRunnerStore()
+  const diagnosticsStore = createDiagnosticsStore()
+  const recorderStore = createRecorderStore()
+  const reportsStore = createReportsStore()
+
   let version = ''
   let projectPath = ''
+  let currentProjectVersion = 0
   let features: string[] = []
   let tags: string[] = []
   let projectScenarios: string[] = []
@@ -354,6 +372,128 @@
       confirmDialog = null
     }
   }
+
+  type ProjectEventEnvelope<T> = {
+    projectVersion?: number
+    payload?: T | null
+  }
+
+  function unwrapProjectEvent<T>(raw: T | ProjectEventEnvelope<T>, emptyPayload?: T): { payload: T; projectVersion: number | null } {
+    if (raw && typeof raw === 'object') {
+      const envelopeRaw = raw as Record<string, unknown>
+      if ('projectVersion' in envelopeRaw || 'payload' in envelopeRaw) {
+        const envelope = raw as ProjectEventEnvelope<T>
+        const fallback = (emptyPayload ?? ({} as T))
+        const payload = envelope.payload == null ? fallback : (envelope.payload as T)
+        return {
+          payload,
+          projectVersion: typeof envelope.projectVersion === 'number' ? envelope.projectVersion : null,
+        }
+      }
+    }
+    return { payload: raw as T, projectVersion: null }
+  }
+
+  function syncRecorderSessionIds(recordSessionId: string | null | undefined, browserSessionId: string | null | undefined) {
+    recorderStore.setSessionIDs(recordSessionId ?? '', browserSessionId ?? '')
+  }
+
+  function unwrapRecordSessionEvent<T>(raw: T | ProjectEventEnvelope<T>) {
+    const unwrapped = unwrapProjectEvent(raw)
+    const payload = unwrapped.payload
+    if (payload && typeof payload === 'object') {
+      const payloadObj = payload as { recordSessionId?: string; browserSessionId?: string }
+      syncRecorderSessionIds(payloadObj.recordSessionId, payloadObj.browserSessionId)
+    }
+    return {
+      payload,
+      projectVersion: unwrapped.projectVersion,
+    }
+  }
+
+  function isStaleRecordSessionEvent(recordSessionId: string | null | undefined): boolean {
+    if (!recordSessionId) {
+      if (recording || activeRecordSessionId) {
+        logStaleEvent('record', 'missing-record-session-id')
+        return true
+      }
+      return false
+    }
+    if (!activeRecordSessionId) {
+      recorderStore.setSessionIDs(recordSessionId, '')
+      return false
+    }
+    const stale = activeRecordSessionId !== recordSessionId
+    if (stale) {
+      logStaleEvent('record', `event=${recordSessionId}, active=${activeRecordSessionId}`)
+    }
+    return stale
+  }
+
+  function isStaleBrowserSessionEvent(browserSessionId: string | null | undefined): boolean {
+    if (!browserSessionId) return false
+    if (!activeBrowserSessionId) {
+      recorderStore.setSessionIDs('', browserSessionId)
+      return false
+    }
+    const stale = activeBrowserSessionId !== browserSessionId
+    if (stale) {
+      logStaleEvent('browser', `event=${browserSessionId}, active=${activeBrowserSessionId}`)
+    }
+    return stale
+  }
+
+  const staleEventDebugKeys = new Set<string>()
+
+  function logStaleEvent(kind: string, details: string) {
+    const key = `${kind}:${details}`
+    if (staleEventDebugKeys.has(key)) return
+    staleEventDebugKeys.add(key)
+    console.debug(`[stale-event] ${kind} ignored (${details})`)
+  }
+
+  function isStaleProjectEvent(projectVersion: number | null): boolean {
+    const stale = projectVersion !== null && currentProjectVersion > 0 && projectVersion !== currentProjectVersion
+    if (stale) {
+      logStaleEvent('project', `event=${projectVersion}, current=${currentProjectVersion}`)
+    }
+    return stale
+  }
+
+  function isStaleRunEvent(runId: string | null | undefined): boolean {
+    if (!runId) return false
+    if (!activeRunEventId) {
+      runnerStore.setRunId(runId)
+      return false
+    }
+    const stale = activeRunEventId !== runId
+    if (stale) {
+      logStaleEvent('run', `event=${runId}, active=${activeRunEventId}`)
+    }
+    return stale
+  }
+
+  function setProjectState(next: Partial<ProjectState>) {
+    const merged: ProjectState = {
+      path: projectPath,
+      version: currentProjectVersion,
+      features: features,
+      tags: tags,
+      featureTags: featureTags,
+      ...next,
+    }
+    projectPath = merged.path
+    currentProjectVersion = merged.version
+    features = merged.features
+    tags = merged.tags
+    featureTags = merged.featureTags
+    projectStore.setProject(merged)
+  }
+
+  function resetProjectState() {
+    setProjectState({ path: '', version: 0, features: [], tags: [], featureTags: {} })
+  }
+
   let showHttpAuth = false
   let httpAuthHost = ''
   let showPickerStep = false
@@ -368,7 +508,6 @@
   let postRecordBaselineText = ''
   let showPostRecordDiff = false
   let recordStepPickerOpen = false
-  let flakyMetrics: gui.FlakyMetricsDTO | null = null
   let editorScenarioHints: gui.ScenarioHintDTO[] = []
   let editorHintsDismissed = new Set<string>()
   let contextMenu: { x: number; y: number; path: string } | null = null
@@ -387,6 +526,9 @@
   let runProgressTotal = 0
   let runLogStreaming = false
   let runCancelling = false
+  let activeRunEventId = ''
+  let activeRecordSessionId = ''
+  let activeBrowserSessionId = ''
   let stepsMenu: { x: number; y: number; line: number; step: gui.EditorStepRow } | null = null
   let sessionPersistTimer: ReturnType<typeof setTimeout> | null = null
   let draftAutosaveTimer: ReturnType<typeof setInterval> | null = null
@@ -483,16 +625,17 @@
 
   let recentProjects: string[] = []
   let recentFeatures: string[] = []
-  let runResults: gui.RunResultEntry[] = []
   let lastErrorEntry: gui.RunResultEntry | null = null
   let lastRunSince: string | null = null
   let lastRunBatchResults: gui.RunResultEntry[] = []
   let lastRunSummary = ''
   let paletteCommands: PaletteCommand[] = []
-  $: flakyByPath = flakyScenarioMap(flakyMetrics)
-  $: flakyStepByPath = flakyStepHints(flakyMetrics)
+  $: flakyByPath = flakyScenarioMap($reportsStore.flakyMetrics)
+  $: flakyStepByPath = flakyStepHints($reportsStore.flakyMetrics)
   let editorSteps: EditorStepRow[] = []
+  let editorStepsTextVersion = -1
   let editorValidationIssues: gui.ValidationIssue[] = []
+  let diagnosticsHints: gui.ScenarioHintDTO[] = []
   let editorValidationByTab: Record<string, gui.ValidationIssue[]> = {}
   let validatePanelIssues: gui.ValidationIssue[] = []
   let projectArtifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
@@ -505,6 +648,22 @@
     pendingUpdateCheckOnStartup = false
     void checkUpdatesOnStartup()
   }
+  $: playing = $runnerStore.playing
+  $: runProgressCurrent = $runnerStore.current
+  $: runProgressTotal = $runnerStore.total
+  $: playingLabel = $runnerStore.label
+  $: runLogStreaming = $runnerStore.logStreaming
+  $: runCancelling = $runnerStore.cancelling
+  $: activeRunEventId = $runnerStore.runId
+  $: browserOpen = $recorderStore.browserOpen
+  $: recording = $recorderStore.recording
+  $: recordPaused = $recorderStore.paused
+  $: recordingTargetPath = $recorderStore.targetPath
+  $: activeRecordSessionId = $recorderStore.recordSessionId
+  $: activeBrowserSessionId = $recorderStore.browserSessionId
+  $: editorValidationIssues = $diagnosticsStore.issues
+  $: diagnosticsHints = $diagnosticsStore.hints
+  $: editorScenarioHints = diagnosticsHints
 
   $: isWelcome = activeTab === WELCOME_KEY
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
@@ -644,10 +803,10 @@
     lastRunBatchResults.length > 0
       ? lastRunBatchResults
       : lastRunSince
-        ? filterRunResultsSince(runResults, lastRunSince)
-        : runResults
+        ? filterRunResultsSince($reportsStore.runResults, lastRunSince)
+        : $reportsStore.runResults
 
-  $: runByPath = buildRunByPathMap(runResults)
+  $: runByPath = buildRunByPathMap($reportsStore.runResults)
 
   $: tagsByPath = (() => {
     const map = new Map<string, string[]>()
@@ -776,10 +935,7 @@
       } catch {
         /* offline */
       }
-      projectPath = ''
-      features = []
-      tags = []
-      featureTags = {}
+      resetProjectState()
     }
     for (const t of tabs) {
       monaco?.releaseTab(t.path)
@@ -792,7 +948,7 @@
     monaco?.activateTab(null, '')
     batchSelected = []
     batchMode = false
-    editorValidationIssues = []
+    diagnosticsStore.setIssues([])
     editorValidationByTab = {}
     clearEditorValidation()
     openMenu = ''
@@ -899,15 +1055,20 @@
 
     try {
       unsubscribers.push(
-        EventsOn('otp-prompt', (email: string) => {
-          otpEmail = email || ''
+        EventsOn('otp-prompt', (raw: string | ProjectEventEnvelope<string>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw, '')
+          if (isStaleProjectEvent(projectVersion)) return
+          otpEmail = payload || ''
           WindowUnminimise()
           WindowShow()
           showOtp = true
         }),
       )
       unsubscribers.push(
-        EventsOn('browser-opened', () => {
+        EventsOn('browser-opened', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
           applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
           showRecord = false
           setStatus(tr('journal.status.browserOpen'), 'busy')
@@ -916,26 +1077,43 @@
         }),
       )
       unsubscribers.push(
-        EventsOn('browser-closed', (result: gui.RunResult) => {
+        EventsOn('browser-closed', (raw: ({ result?: gui.RunResult; browserSessionId?: string } | gui.RunResult) | ProjectEventEnvelope<{ result?: gui.RunResult; browserSessionId?: string } | gui.RunResult>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
+          if (isStaleBrowserSessionEvent(browserSessionId)) return
+          const result = typeof payload === 'object' && payload !== null && 'result' in payload ? payload.result : payload
+          dismissRecorderPicker()
           stopBrowserWatch()
-          handleRecordSessionEnd(result, 'browse')
+          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'browse')
         }),
       )
       unsubscribers.push(
-        EventsOn('browser-lost', () => {
+        EventsOn('browser-lost', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
           if (browserOpen || recording) {
+            dismissRecorderPicker()
             handleBrowserLost()
           }
         }),
       )
       unsubscribers.push(
-        EventsOn('toolbar-picker', () => {
+        EventsOn('toolbar-picker', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
           void pickElement()
         }),
       )
       unsubscribers.push(
-        EventsOn('record-started', async (payload: string | { append?: boolean; sync?: boolean; output?: string }) => {
+        EventsOn('record-started', async (raw: (string | { append?: boolean; sync?: boolean; output?: string; targetPath?: string; recordSessionId?: string; browserSessionId?: string }) | ProjectEventEnvelope<string | { append?: boolean; sync?: boolean; output?: string; targetPath?: string; recordSessionId?: string; browserSessionId?: string }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           const meta = typeof payload === 'object' && payload !== null ? payload : { append: false, output: payload }
+          if (isStaleRecordSessionEvent(typeof meta === 'object' ? meta.recordSessionId : '')) return
+          if (isStaleBrowserSessionEvent(typeof meta === 'object' ? meta.browserSessionId : '')) return
           const appendOnly = meta.append === true
           const syncOnly = meta.sync === true
           const wasRecording = recording
@@ -959,8 +1137,13 @@
           } catch (e: any) {
             appendLog(tr('journal.record.prepTabError', { error: String(e) }))
           }
-          if (!syncOnly && activeTab && !isWelcome) {
-            recordingTargetPath = normalizeRecordTabPath(activeTab)
+          if (!syncOnly) {
+            const targetFromEvent = typeof meta === 'object' ? meta.targetPath || '' : ''
+            if (targetFromEvent) {
+              recorderStore.setTargetPath(normalizeRecordTabPath(targetFromEvent))
+            } else if (activeTab && !isWelcome) {
+              recorderStore.setTargetPath(normalizeRecordTabPath(activeTab))
+            }
           }
           if (!appendOnly && !syncOnly) {
             appendLog(tr('journal.record.started'))
@@ -971,89 +1154,148 @@
         }),
       )
       unsubscribers.push(
-        EventsOn('record-stopped', (payload: { reason?: string; idleSeconds?: number } | null) => {
+        EventsOn('record-stopped', (raw: ({ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | null) | ProjectEventEnvelope<{ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | null>) => {
+          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string }>)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (payload && isStaleRecordSessionEvent(payload.recordSessionId)) return
+          if (payload && isStaleBrowserSessionEvent(payload.browserSessionId)) return
           handleRecordStopped(payload ?? undefined)
         }),
       )
       unsubscribers.push(
-        EventsOn('run-log-line', (payload: { line?: string } | string) => {
+        EventsOn('run-log-line', (raw: ({ line?: string; runId?: string } | string) | ProjectEventEnvelope<{ line?: string; runId?: string } | string>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           if (!runLogStreaming) return
+          const runId = typeof payload === 'string' ? '' : payload?.runId
+          if (isStaleRunEvent(runId)) return
           const line = typeof payload === 'string' ? payload : payload?.line
           if (line) appendLog(line)
         }),
       )
       unsubscribers.push(
-        EventsOn('run-progress', (payload: {
+        EventsOn('run-progress', (raw: ({
           phase?: string
           index?: number
           total?: number
           featurePath?: string
           scenario?: string
           success?: boolean
-        }) => {
+          runId?: string
+        }) | ProjectEventEnvelope<{
+          phase?: string
+          index?: number
+          total?: number
+          featurePath?: string
+          scenario?: string
+          success?: boolean
+          runId?: string
+        }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           if (!playing || !payload) return
-          const total = payload.total ?? runProgressTotal
-          const index = payload.index ?? runProgressCurrent
+          if (isStaleRunEvent(payload.runId)) return
+          const total = payload.total ?? $runnerStore.total
+          const index = payload.index ?? $runnerStore.current
           if (total > 0) {
-            runProgressTotal = total
-            runProgressCurrent = index
+            runnerStore.progress(total, index, $runnerStore.label)
           }
-          const name = payload.scenario || (payload.featurePath ? basename(payload.featurePath) : '')
-          if (name && total > 0) {
-            playingLabel = `${name} (${index}/${total})`
+          const label = formatRunProgressLabel(payload, total, index)
+          if (label) {
+            runnerStore.progress(Math.max(0, total), Math.max(0, index), label)
           }
-          if (payload.phase === 'scenario_done') {
-            void refreshRunResults()
+          if (shouldRefreshRunResultsFromProgress(payload)) {
+            scheduleRefreshRunResults()
           }
         }),
       )
       unsubscribers.push(
-        EventsOn('run-results-changed', () => {
-          void refreshRunResults()
+        EventsOn('run-results-changed', (raw: { runId?: string } | ProjectEventEnvelope<{ runId?: string }>) => {
+          const { payload, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (isStaleRunEvent(payload?.runId)) return
+          scheduleRefreshRunResults()
         }),
       )
       unsubscribers.push(
-        EventsOn('report-goto', (req: { feature_path: string; scenario: string; leaf_index: number; line: number }) => {
+        EventsOn('report-goto', (raw: { feature_path: string; scenario: string; leaf_index: number; line: number } | ProjectEventEnvelope<{ feature_path: string; scenario: string; leaf_index: number; line: number }>) => {
+          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           if (req) void gotoReportStep(req)
         }),
       )
       unsubscribers.push(
-        EventsOn('report-rerun', (req: { feature_path: string; scenario: string }) => {
+        EventsOn('report-rerun', (raw: { feature_path: string; scenario: string } | ProjectEventEnvelope<{ feature_path: string; scenario: string }>) => {
+          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           if (req) void rerunFromReport(req)
         }),
       )
       unsubscribers.push(
-        EventsOn('report-trace', (req: { trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number }) => {
+        EventsOn('report-trace', (raw: { trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number } | ProjectEventEnvelope<{ trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number }>) => {
+          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           if (req) void openTraceFromReport(req)
         }),
       )
       unsubscribers.push(
-        EventsOn('record-step', (payload: { index: number; line: string }) => {
-          void applyLiveRecordedStep(payload?.index ?? 0, payload?.line ?? '')
+        EventsOn('record-step', (raw: { op?: string; index?: number; line?: string; lines?: string[]; targetPath?: string; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ op?: string; index?: number; line?: string; lines?: string[]; targetPath?: string; recordSessionId?: string; browserSessionId?: string }>) => {
+          const { payload, projectVersion } = unwrapRecordSessionEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
+          if (isStaleRecordSessionEvent(payload?.recordSessionId)) return
+          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
+          const op = (payload?.op || 'upsert') as RecordStepEvent['op']
+          void applyRecordStepToTarget(
+            {
+              op,
+              index: payload?.index,
+              line: payload?.line,
+              lines: payload?.lines,
+            },
+            payload?.targetPath ?? '',
+          )
         }),
       )
       unsubscribers.push(
-        EventsOn('record-finished', async (result: gui.RunResult) => {
+        EventsOn('record-finished', async (raw: ({ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | gui.RunResult) | ProjectEventEnvelope<{ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | gui.RunResult>) => {
+          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string }>)
+          if (isStaleProjectEvent(projectVersion)) return
+          const recordSessionId = typeof payload === 'object' && payload !== null && 'recordSessionId' in payload ? payload.recordSessionId : ''
+          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
+          if (isStaleRecordSessionEvent(recordSessionId)) return
+          if (isStaleBrowserSessionEvent(browserSessionId)) return
+          const result = typeof payload === 'object' && payload !== null && 'result' in payload ? payload.result : payload
           stopBrowserWatch()
-          handleRecordSessionEnd(result, 'record')
+          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'record')
         }),
       )
       unsubscribers.push(
-        EventsOn('record-error', (message: string) => {
+        EventsOn('record-error', (raw: ({ message?: string; recordSessionId?: string; browserSessionId?: string } | string) | ProjectEventEnvelope<{ message?: string; recordSessionId?: string; browserSessionId?: string } | string>) => {
+          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { message?: string; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ message?: string; recordSessionId?: string; browserSessionId?: string }> | string)
+          if (isStaleProjectEvent(projectVersion)) return
+          const recordSessionId = typeof payload === 'object' && payload !== null && 'recordSessionId' in payload ? payload.recordSessionId : ''
+          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
+          if (isStaleRecordSessionEvent(recordSessionId)) return
+          if (isStaleBrowserSessionEvent(browserSessionId)) return
+          const message =
+            typeof payload === 'object' && payload !== null && 'message' in payload
+              ? payload.message ?? ''
+              : typeof payload === 'string'
+                ? payload
+                : ''
           stopBrowserWatch()
-          recording = false
-          recordPaused = false
-          browserOpen = false
+          recorderStore.reset()
           showRecord = false
           liveRecordStepLines = {}
-          recordingTargetPath = ''
           appendLog(tr('journal.record.error', { message: message || tr('journal.record.unknownError') }))
           setStatus(tr('journal.status.recordError'), 'error')
           syncIdleStatus()
         }),
       )
       unsubscribers.push(
-        EventsOn('vanessa-run-started', () => {
+        EventsOn('vanessa-run-started', (raw: unknown) => {
+          const { projectVersion } = unwrapProjectEvent(raw as Record<string, unknown>)
+          if (isStaleProjectEvent(projectVersion)) return
           vanessaRunning = true
           vanessaWatchDir = ''
           setStatus(tr('journal.status.vanessaRunning'), 'busy')
@@ -1062,7 +1304,9 @@
         }),
       )
       unsubscribers.push(
-        EventsOn('vanessa-run-finished', async (result: gui.VanessaRunResultDTO) => {
+        EventsOn('vanessa-run-finished', async (raw: gui.VanessaRunResultDTO | ProjectEventEnvelope<gui.VanessaRunResultDTO>) => {
+          const { payload: result, projectVersion } = unwrapProjectEvent(raw)
+          if (isStaleProjectEvent(projectVersion)) return
           stopVanessaPoll()
           vanessaRunning = false
           if (result.runDir) {
@@ -1110,6 +1354,25 @@
     unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
     unsubscribers.push(() => document.removeEventListener('visibilitychange', onVisibility))
+    if (new URLSearchParams(location.search).has('e2e')) {
+      ;(window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale = () =>
+        checkActiveTabDiskStale()
+      ;(window as unknown as {
+        __e2eEmitEditorChange?: (path: string | null, text: string) => void
+      }).__e2eEmitEditorChange = (path, text) => monaco?.emitEditorChangeForTest?.(path, text)
+      ;(window as unknown as {
+        __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
+      }).__e2eLoadFeature = (path, forceActivate = false) => loadFeature(path, { forceActivate })
+      unsubscribers.push(() => {
+        delete (window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale
+        delete (window as unknown as {
+          __e2eEmitEditorChange?: (path: string | null, text: string) => void
+        }).__e2eEmitEditorChange
+        delete (window as unknown as {
+          __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
+        }).__e2eLoadFeature
+      })
+    }
     } catch (err) {
       console.error('Startup failed', err)
     } finally {
@@ -1147,10 +1410,7 @@
     if (!proj) return
     try {
       const info = await OpenProject(proj)
-      projectPath = info.path
-      features = info.features || []
-      tags = info.tags || []
-      featureTags = info.featureTags || {}
+      applyProjectScan(info)
       testClients = await ListTestClients().catch(() => [])
     } catch {
       appendLog(tr('journal.session.projectNotFound', { path: proj }))
@@ -1378,9 +1638,9 @@
       { id: 'run', label: pc('run'), group: pg('run'), shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
       { id: 'run-current', label: pc('runCurrent'), group: pg('run'), shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
       { id: 'run-current-dry', label: pc('runCurrentDry'), group: pg('run'), run: () => runCurrentScenario(true) },
-      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog('', {}) },
-      { id: 'run-tag', label: pc('runTag'), group: pg('run'), run: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}) },
-      { id: 'playwright', label: pc('playwright'), group: pg('run'), run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }) },
+      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog('', {}, 'single') },
+      { id: 'run-tag', label: pc('runTag'), group: pg('run'), run: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}, 'tag') },
+      { id: 'playwright', label: pc('playwright'), group: pg('run'), run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }, 'single') },
       { id: 'dry', label: pc('dry'), group: pg('run'), run: () => runPrimary(true) },
       { id: 'batch', label: pc('batch'), group: pg('run'), run: () => toggleBatchMode() },
       { id: 'batch-run', label: pc('batchRun'), group: pg('run'), run: () => runBatchSelected(false) },
@@ -1479,20 +1739,23 @@
   const monacoInlayHintsHandlers = {
     isEnabled: () => editorSettings.inlayHints && !!activeTab && !isWelcome,
     getSteps: () => editorSteps,
+    isSnapshotCurrent: () => isEditorAnalysisSnapshotVisible(editorStepsTextVersion, editorTextVersion),
   }
 
   async function refreshEditorScenarioHints() {
     if (isWelcome || !editorSettings.scenarioHints) {
-      editorScenarioHints = []
+      diagnosticsStore.setHints([])
       return
     }
     try {
       const all = await AnalyzeScenarioHints(editorText)
-      editorScenarioHints = all
-        .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
-        .filter((h) => filterScenarioHints([h], editorSettings).length > 0)
+      diagnosticsStore.setHints(
+        all
+          .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
+          .filter((h) => filterScenarioHints([h], editorSettings).length > 0),
+      )
     } catch {
-      editorScenarioHints = []
+      diagnosticsStore.setHints([])
     }
   }
 
@@ -1555,7 +1818,7 @@
     if (editorSettings.scenarioHints && editorSettings.scenarioHintsAfterRecord) {
       await refreshEditorScenarioHints()
     } else {
-      editorScenarioHints = []
+      diagnosticsStore.setHints([])
     }
   }
 
@@ -1673,7 +1936,7 @@
   async function runFeatureFile(path: string, dryRun = false) {
     if (!path) return
     await loadFeature(path)
-    await executeRun({ ...lastRun, dryRun }, [path])
+    await executeRun(runFormFromMode(lastRun, 'single', { dryRun }), [path])
   }
 
   function onFileContextMenu(e: MouseEvent, path: string) {
@@ -1713,7 +1976,7 @@
     if (!folderMenu) return
     const paths = folderMenu.paths
     dismissFolderMenu()
-    void executeRun({ ...lastRun, dryRun }, paths)
+    void executeRun(runFormFromMode(lastRun, 'batch', { dryRun }), paths)
   }
 
   function folderMenuSelectBatch() {
@@ -1893,14 +2156,36 @@
     }
   }
 
+  let refreshRunResultsInFlight = false
+  let refreshRunResultsQueued = false
+
   async function refreshRunResults() {
-    try {
-      runResults = await ListRunResults(50)
-      flakyMetrics = await FlakyMetrics(200)
-    } catch {
-      runResults = []
-      flakyMetrics = null
+    if (refreshRunResultsInFlight) {
+      refreshRunResultsQueued = true
+      return
     }
+    refreshRunResultsInFlight = true
+    const started = perfNow()
+    try {
+      reportsStore.setData(await ListRunResults(50), await FlakyMetrics(200))
+    } catch {
+      reportsStore.setData([], null)
+    } finally {
+      refreshRunResultsInFlight = false
+      perfMark('refreshRunResults', started)
+      if (refreshRunResultsQueued) {
+        refreshRunResultsQueued = false
+        void refreshRunResults()
+      }
+    }
+  }
+
+  function scheduleRefreshRunResults() {
+    if (refreshRunResultsInFlight) {
+      refreshRunResultsQueued = true
+      return
+    }
+    void refreshRunResults()
   }
 
   function runResultFeaturePath(targetPath: string): string {
@@ -1918,7 +2203,7 @@
   ) {
     lastRunSince = runSince
     const batch = remapRunResultPaths(
-      filterRunResultsSince(runResults, runSince),
+      filterRunResultsSince($reportsStore.runResults, runSince),
       diskTargets,
       runTargets,
     )
@@ -1977,10 +2262,7 @@
     }
     try {
       const info = await OpenProject(path)
-      projectPath = info.path
-      features = info.features || []
-      tags = info.tags || []
-      featureTags = info.featureTags || {}
+      applyProjectScan(info)
       testClients = await ListTestClients().catch(() => [])
       await rememberProject(projectPath)
       const recents = await loadRecents()
@@ -2015,15 +2297,13 @@
     } catch {
       /* ignore */
     }
-    recording = false
-    browserOpen = false
-    recordPaused = false
+    recorderStore.reset()
     liveRecordStepLines = {}
-    recordingTargetPath = ''
   }
 
   async function resetWorkspaceForProjectSwitch() {
     await teardownDesktopSession()
+    clearFeatureSymbolCache()
     for (const t of tabs) {
       monaco?.releaseTab(t.path)
     }
@@ -2035,7 +2315,7 @@
     monaco?.activateTab(null, '')
     batchSelected = []
     batchMode = false
-    editorValidationIssues = []
+    diagnosticsStore.setIssues([])
     editorValidationByTab = {}
     postRecordPath = ''
     postRecordStepCount = 0
@@ -2055,10 +2335,8 @@
       if (!ok) return
     }
     await teardownDesktopSession()
-    projectPath = ''
-    features = []
-    tags = []
-    featureTags = {}
+    clearFeatureSymbolCache()
+    resetProjectState()
     for (const t of tabs) {
       monaco?.releaseTab(t.path)
     }
@@ -2070,7 +2348,7 @@
     monaco?.activateTab(null, '')
     batchSelected = []
     batchMode = false
-    editorValidationIssues = []
+    diagnosticsStore.setIssues([])
     editorValidationByTab = {}
     appendLog(tr('journal.project.closed'))
     syncIdleStatus()
@@ -2157,7 +2435,7 @@
   }
 
   async function rerunFailed() {
-    const source = lastRunBatchResults.length > 0 ? lastRunBatchResults : runResults
+    const source = lastRunBatchResults.length > 0 ? lastRunBatchResults : $reportsStore.runResults
     const failed = [...new Map(source.filter((e) => !e.success).map((e) => [e.path, e])).values()]
     if (!failed.length) {
       appendLog(tr('journal.run.noFailed'))
@@ -2183,7 +2461,7 @@
     const filePath = resolveLogicalRunTarget(rawPath, tabs, activeTab)
     if (!filePath) return
     if (activeTab !== filePath) await loadFeature(filePath)
-    await executeRun({ ...lastRun, dryRun: false, scenario }, [filePath])
+    await executeRun(runFormFromMode(lastRun, 'single', { dryRun: false, scenario }), [filePath])
   }
 
   function toggleBatchFeature(path: string) {
@@ -2197,10 +2475,7 @@
       return
     }
     batchMode = true
-    const tree = catalogViewState.tree
-    deferToNextFrame(() => {
-      if (batchMode) batchSelected = selectAllFeaturesUnder(tree)
-    })
+    batchSelected = selectAllFeaturesUnder(catalogViewState.tree)
   }
 
   function onCatalogToggleBatch(path: string) {
@@ -2234,16 +2509,17 @@
 
   async function runBatchSelected(dryRun = false) {
     if (!batchSelected.length) return
-    let opts: RunForm = { ...lastRun, dryRun }
+    let opts: RunForm = batchRunFormFrom(lastRun, dryRun)
+    appendLog(`[debug] batch selected count: ${batchSelected.length}`)
     if (
       batchSelected.length === 1 &&
       batchSelected[0] === activeTab &&
       !isWelcome
     ) {
       const scenario = scenarioAtLine(editorText, monaco?.getCursorLine() ?? 1)
-      if (scenario) opts = { ...opts, scenario }
+      if (scenario) opts = runFormFromMode(opts, 'single', { scenario })
     }
-    await executeRun(opts, batchSelected)
+    await executeRun(opts, [...batchSelected])
   }
 
   function runPrimary(dryRun = false) {
@@ -2256,10 +2532,10 @@
       return
     }
     if (!runDialogConfirmed) {
-      openRunDialog(dryRun ? tr('journal.run.mode.dryRun') : '', { dryRun })
+      openRunDialog(dryRun ? tr('journal.run.mode.dryRun') : '', { dryRun }, 'single')
       return
     }
-    void executeRun({ ...lastRun, dryRun })
+    void executeRun(runFormFromMode(lastRun, 'single', { dryRun }))
   }
 
   async function runScenarioAtLine(line: number, dryRun = false, scenarioOverride = '', partial = false) {
@@ -2281,7 +2557,7 @@
       }
     }
     monaco?.gotoLine(line)
-    const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
+    const runOpts = runFormFromMode(lastRun, 'step-range', { dryRun, scenario, startStep, endStep })
     const range = partialRunLogSuffix(startStep, endStep)
     const mode = runModeLabel(dryRun)
     if (partial && startStep >= 0) {
@@ -2304,7 +2580,7 @@
       endStep = resolved.endStep
     }
     monaco?.gotoLine(line)
-    const runOpts = { ...lastRun, dryRun, scenario, startStep, endStep }
+    const runOpts = runFormFromMode(lastRun, 'step-range', { dryRun, scenario, startStep, endStep })
     const range = partialRunLogSuffix(startStep, endStep)
     const mode = runModeLabel(dryRun)
     if (endStep >= 0 && scenario) {
@@ -2616,8 +2892,12 @@
     if (!import.meta.env.DEV) return
     const mode = new URLSearchParams(location.search).get('mock')
     if (mode !== 'python') return
-    projectPath = 'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target'
-    features = []
+    setProjectState({
+      path: 'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target',
+      features: [],
+      tags: [],
+      featureTags: {},
+    })
     recentFeatures = [
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/smoke.feature',
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/login.feature',
@@ -2695,18 +2975,23 @@
     await refreshAllureStatus()
   }
 
-  async function refreshEditorSteps() {
+  async function refreshEditorSteps(textSnapshot = editorText, textVersionSnapshot = editorTextVersion) {
     try {
-      editorSteps = await ParseEditorSteps(editorText)
+      const steps = await ParseEditorSteps(textSnapshot)
+      if (!isEditorAnalysisSnapshotVisible(textVersionSnapshot, editorTextVersion)) return
+      editorSteps = steps
+      editorStepsTextVersion = textVersionSnapshot
     } catch {
+      if (!isEditorAnalysisSnapshotVisible(textVersionSnapshot, editorTextVersion)) return
       editorSteps = []
+      editorStepsTextVersion = textVersionSnapshot
     }
     monaco?.refreshInlayHints()
   }
 
   async function serveAllureReport(path = '') {
     appendLog(tr('journal.reports.allureServe'))
-    const result = await startRunResultJob('allure-serve-finished', () => StartServeAllure(path))
+    const result = await startRunResultJob('allure-serve-finished', () => StartServeAllure(path), currentProjectVersion)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
       appendLog(tr('journal.error.generic', { error: result.error }))
@@ -2807,7 +3092,7 @@
     await loadFeature(featurePath)
     bottomPanelOpen = true
     bottomTab = 'journal'
-    await executeRun({ ...lastRun, dryRun: false, scenario: req.scenario, html: true }, [featurePath])
+    await executeRun(runFormFromMode(lastRun, 'single', { dryRun: false, scenario: req.scenario, html: true }), [featurePath])
   }
 
   async function gotoFailedStep(entry: gui.RunResultEntry) {
@@ -2871,16 +3156,22 @@
   }
 
   function applyProjectScan(info: gui.ProjectInfo) {
-    if (info.path) projectPath = info.path
-    features = info.features || []
-    tags = info.tags || []
-    featureTags = info.featureTags || {}
+    const raw = (info as unknown as { version?: number }).version
+    const version = typeof raw === 'number' && raw > 0 ? raw : currentProjectVersion
+    setProjectState({
+      path: info.path || projectPath,
+      version,
+      features: info.features || [],
+      tags: info.tags || [],
+      featureTags: info.featureTags || {},
+    })
   }
 
   async function refreshProject() {
     if (!projectPath) return
     const info = await RefreshProject()
     applyProjectScan(info)
+    batchSelected = remapBatchSelectedPaths(batchSelected, features)
     testClients = await ListTestClients().catch(() => [])
     projectScenarios = await ListScenarioTitles().catch(() => [])
     await refreshInstalledPlugins()
@@ -3001,24 +3292,28 @@
 
   async function checkActiveTabDiskStale() {
     if (isWelcome || !activeTab || isUntitled(activeTab) || playing || recording) return
-    const tab = tabs.find((t) => t.path === activeTab)
+    const pathAtStart = activeTab
+    const tab = tabs.find((t) => t.path === pathAtStart)
     if (!tab || tab.dirty) return
     const baseline = tab.draft ?? tab.content
     try {
-      const disk = await ReadFeature(activeTab)
+      const disk = await ReadFeature(pathAtStart)
       if (disk === baseline) return
       const ok = await askConfirm({
         title: tr('confirm.diskChanged.title'),
-        message: tr('confirm.diskChanged.message', { name: basename(activeTab) }),
+        message: tr('confirm.diskChanged.message', { name: basename(pathAtStart) }),
         confirmLabel: tr('confirm.diskChanged.confirmLabel'),
         danger: true,
       })
       if (!ok) return
+      const currentActive = activeTab
       tabs = tabs.map((t) =>
-        t.path === activeTab ? { ...t, content: disk, dirty: false, draft: undefined, unloaded: false } : t,
+        t.path === pathAtStart ? { ...t, content: disk, dirty: false, draft: undefined, unloaded: false } : t,
       )
-      await applyEditorText(disk, { saved: true, switchTab: true, tabPath: activeTab, skipValidate: true })
-      appendLog(tr('journal.file.reloaded', { name: basename(activeTab) }))
+      if (currentActive === pathAtStart) {
+        await applyEditorText(disk, { saved: true, switchTab: true, tabPath: pathAtStart, skipValidate: true })
+      }
+      appendLog(tr('journal.file.reloaded', { name: basename(pathAtStart) }))
     } catch {
       /* ignore */
     }
@@ -3026,25 +3321,17 @@
 
   async function ensureRecordingTabSwitchAllowed(path: string): Promise<boolean> {
     if (!recording || !recordingTargetPath) return true
-    if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) {
-      return true
-    }
-    if (skipRecordTabSwitchConfirm) {
-      recordingTargetPath = normalizeRecordTabPath(path)
-      appendLog(tr('journal.record.target', { name: basename(path) }))
-      return true
-    }
+    if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) return true
+    if (skipRecordTabSwitchConfirm) return true
     const ok = await askConfirm({
       title: tr('confirm.recordingActive.title'),
-      message: tr('confirm.recordingActive.message', { from: basename(recordingTargetPath), to: basename(path) }),
+      message: tr('confirm.recordingActive.message', {
+        from: basename(recordingTargetPath),
+        to: basename(path),
+      }),
       confirmLabel: tr('confirm.recordingActive.confirmLabel'),
-      danger: true,
       dontAskAgainLabel: tr('confirm.recordingActive.dontAskAgainLabel'),
     })
-    if (ok) {
-      recordingTargetPath = normalizeRecordTabPath(path)
-      appendLog(tr('journal.record.target', { name: basename(path) }))
-    }
     return ok
   }
 
@@ -3054,7 +3341,10 @@
     loadFeatureGeneration++
   }
 
-  async function loadFeature(path: string, opts?: { skipRecordingGuard?: boolean }) {
+  async function loadFeature(
+    path: string,
+    opts?: { skipRecordingGuard?: boolean; forceActivate?: boolean },
+  ) {
     if (!opts?.skipRecordingGuard) {
       const allowed = await ensureRecordingTabSwitchAllowed(path)
       if (!allowed) return
@@ -3066,7 +3356,7 @@
     }
     const existing = tabs.find((t) => t.path === path)
     if (existing) {
-      if (path === activeTab && !tabNeedsDiskReload(existing)) {
+      if (!opts?.forceActivate && path === activeTab && !tabNeedsDiskReload(existing)) {
         return
       }
       let text = tabEditorText(existing)
@@ -3143,8 +3433,7 @@
       trimTabsMemory()
       return
     }
-    if (path === activeTab) return
-    loadFeature(path)
+    loadFeature(path, { forceActivate: true })
   }
 
   function closeWelcomeTab() {
@@ -3152,8 +3441,8 @@
       welcomeTabVisible = false
       if (activeTab === WELCOME_KEY) {
         const next = tabs[tabs.length - 1]
-        activeTab = next.path
-        void loadFeature(next.path)
+        if (!next) return
+        void loadFeature(next.path, { forceActivate: true })
       }
       return
     }
@@ -3190,21 +3479,19 @@
   }
 
   function finalizeCloseTab(path: string) {
+    evictFeatureSymbolCache(path)
     monaco?.releaseTab(path)
-    tabs = tabs.filter((t) => t.path !== path)
+    const reduced = reduceTabsAfterClose(tabs, activeTab, path)
+    tabs = reduced.tabs
     trimTabsMemory()
-    if (activeTab === path) {
-      const next = tabs[tabs.length - 1]
-      if (next) {
-        activeTab = next.path
-        void loadFeature(next.path)
-      } else {
-        welcomeTabVisible = true
-        activeTab = WELCOME_KEY
-        cancelPendingFeatureLoads()
-        void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
-        clearEditorValidation()
-      }
+    if (reduced.openNextPath) {
+      void loadFeature(reduced.openNextPath)
+    } else if (reduced.showWelcome) {
+      welcomeTabVisible = true
+      activeTab = WELCOME_KEY
+      cancelPendingFeatureLoads()
+      void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
+      clearEditorValidation()
     }
     schedulePersistSession()
   }
@@ -3236,18 +3523,21 @@
 
   async function saveFeatureAs() {
     if (!activeTab || isWelcome) return
-    const picked = await PickSaveFile(tr('filePicker.saveAs'), basename(activeTab))
+    const pathAtStart = activeTab
+    const picked = await PickSaveFile(tr('filePicker.saveAs'), basename(pathAtStart))
     if (!picked) return
     try {
       const text = monaco?.getEditorText() ?? editorText
       await SaveFeature(picked, text)
-      const oldPath = activeTab
+      const stillActive = activeTab === pathAtStart
       tabs = tabs.map((t) =>
-        t.path === oldPath ? { path: picked, content: text, dirty: false, draft: undefined } : t,
+        t.path === pathAtStart ? { path: picked, content: text, dirty: false, draft: undefined } : t,
       )
-      activeTab = picked
-      await applyEditorText(text, { saved: true, switchTab: true, tabPath: picked, skipValidate: true })
-      monaco?.releaseTab(oldPath)
+      if (stillActive) {
+        activeTab = picked
+        await applyEditorText(text, { saved: true, switchTab: true, tabPath: picked, skipValidate: true })
+      }
+      monaco?.releaseTab(pathAtStart)
       await rememberFeature(picked)
       await refreshProject()
       appendLog(tr('journal.file.savedAs', { name: basename(picked) }))
@@ -3260,6 +3550,7 @@
 
   async function saveFeature() {
     if (!activeTab || isWelcome) return
+    const pathAtStart = activeTab
     if (isUntitled(activeTab)) {
       await saveFeatureAs()
       return
@@ -3269,23 +3560,30 @@
       if (editorSettings.formatOnSave) {
         await monaco?.formatDocument()
         text = monaco?.getEditorText() ?? text
-        editorText = text
+        if (activeTab === pathAtStart) {
+          editorText = text
+        }
       }
       const { text: autoFixed, count: autoFixCount } = await runScenarioHintsAutoFix(text)
       if (autoFixCount > 0) {
         text = autoFixed
-        editorText = text
-        await monaco?.setContent(text)
+        if (activeTab === pathAtStart) {
+          editorText = text
+          await monaco?.setContent(text)
+        }
         appendLog(tr('journal.hint.autoFixed', { count: autoFixCount }))
       }
-      await SaveFeature(activeTab, text)
-      markActiveTabSaved(text)
+      await SaveFeature(pathAtStart, text)
+      if (activeTab === pathAtStart) {
+        editorText = text
+      }
+      markActiveTabSaved(text, pathAtStart)
       try {
-        await ClearFeatureDraft(activeTab)
+        await ClearFeatureDraft(pathAtStart)
       } catch {
         /* ignore */
       }
-      appendLog(tr('journal.file.saved', { name: basename(activeTab) }))
+      appendLog(tr('journal.file.saved', { name: basename(pathAtStart) }))
       setStatus(tr('journal.status.saved'), 'success')
     } catch (e: any) {
       appendLog(tr('journal.file.saveError', { error: String(e) }))
@@ -3294,6 +3592,7 @@
   }
 
   let validateGeneration = 0
+  let editorTextVersion = 0
   let validateDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
   function scheduleValidateEditor(delayMs = 300) {
@@ -3313,10 +3612,17 @@
     if (activeTab && activeTab !== WELCOME_KEY) {
       delete editorValidationByTab[activeTab]
     }
-    editorValidationIssues = []
+    diagnosticsStore.setIssues([])
     stepStatusError = false
     monaco?.setMarkers([])
     if (statusMessage === tr('journal.status.scenarioError')) {
+      setStatus('', 'normal')
+    }
+  }
+
+  function syncStepStatusFromIssues(issues: gui.ValidationIssue[]) {
+    stepStatusError = issues.length > 0
+    if (!stepStatusError && statusMessage === tr('journal.status.scenarioError')) {
       setStatus('', 'normal')
     }
   }
@@ -3329,35 +3635,52 @@
     const generation = ++validateGeneration
     const tabAtStart = activeTab
     const textAtStart = editorText
+    const textVersionAtStart = editorTextVersion
+    const started = perfNow()
     try {
-      const issues = await ValidateFeature(textAtStart)
-      if (generation !== validateGeneration || tabAtStart !== activeTab) return
-      editorValidationIssues = issues || []
+      const analysis = await AnalyzeEditorContent(textAtStart, editorSettings.scenarioHints)
+      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      const issues = analysis?.issues || []
+      diagnosticsStore.setIssues(issues)
       if (tabAtStart) {
-        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: editorValidationIssues }
+        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: issues }
       }
-      monaco?.setMarkers(editorValidationIssues)
-      await refreshEditorSteps()
-      if (generation !== validateGeneration || tabAtStart !== activeTab) return
-      if (editorValidationIssues.length > 0) {
+      monaco?.setMarkers(issues)
+      if (isEditorAnalysisSnapshotVisible(textVersionAtStart, editorTextVersion)) {
+        editorSteps = analysis?.steps || []
+        editorStepsTextVersion = textVersionAtStart
+        monaco?.refreshInlayHints()
+      }
+      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      if (issues.length > 0) {
         stepStatusError = true
         setStatus(tr('journal.status.scenarioError'), 'error')
       } else {
-        stepStatusError = false
+        syncStepStatusFromIssues(issues)
+      }
+      if (editorSettings.scenarioHints) {
+        const hints = (analysis?.hints || [])
+          .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
+          .filter((h) => filterScenarioHints([h], editorSettings).length > 0)
+        diagnosticsStore.setHints(hints)
+      } else {
+        diagnosticsStore.setHints([])
       }
     } catch {
-      if (generation !== validateGeneration || tabAtStart !== activeTab) return
-      editorValidationIssues = []
+      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      diagnosticsStore.setIssues([])
       if (tabAtStart) {
         editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: [] }
       }
-      await refreshEditorSteps()
-    }
-    if (generation !== validateGeneration || tabAtStart !== activeTab) return
-    if (editorSettings.scenarioHints) {
-      await refreshEditorScenarioHints()
-    } else {
-      editorScenarioHints = []
+      if (isEditorAnalysisSnapshotVisible(textVersionAtStart, editorTextVersion)) {
+        editorSteps = []
+        editorStepsTextVersion = textVersionAtStart
+        monaco?.refreshInlayHints()
+      }
+      syncStepStatusFromIssues([])
+      diagnosticsStore.setHints([])
+    } finally {
+      perfMark('validateEditor', started)
     }
   }
 
@@ -3378,7 +3701,14 @@
     return editorValidationIssues
   }
 
-  async function onEditorChange(text: string) {
+  async function onEditorChange(event: { path: string | null; modelUri: string | null; text: string }) {
+    const activePath = isWelcome ? null : activeTab
+    const activeModelUri = monaco?.getActiveModelUri?.() ?? null
+    if (event.path !== activePath || event.modelUri !== activeModelUri) {
+      return
+    }
+    const text = event.text
+    editorTextVersion++
     editorText = text
     syncActiveTabContent()
     schedulePersistSession()
@@ -3411,16 +3741,18 @@
     return mergeScenarioNames(editorScenarioNames(), projectScenarios)
   }
 
-  function openRunDialog(title: string, defaults: Partial<RunForm>) {
+  function openRunDialog(title: string, defaults: Partial<RunForm>, mode: RunFormMode = 'single') {
     runDialogTitle = title
     runDialogScenarios = dialogScenarioNames()
     const cursorScenario = cursorScenarioName()
-    runForm = {
-      ...lastRun,
-      baseUrl: lastRun.baseUrl || startURL || '',
-      scenario: defaults.scenario ?? cursorScenario ?? lastRun.scenario ?? '',
+    const defaultScenario =
+      defaults.scenario ??
+      (mode === 'tag' || mode === 'batch' ? '' : cursorScenario || lastRun.scenario || '')
+    runForm = runFormFromMode(lastRun, mode, {
       ...defaults,
-    }
+      baseUrl: lastRun.baseUrl || startURL || '',
+      scenario: defaultScenario,
+    })
     showRun = true
   }
 
@@ -3459,7 +3791,7 @@
     }
     syncActiveTabContent()
 
-    let runTargets = targets
+    let runTargets = [...targets]
     if (runTargets.length === 0 && activeTab && !isWelcome) {
       runTargets = [activeTab]
     }
@@ -3494,7 +3826,7 @@
     bottomPanelOpen = true
     bottomTab = 'journal'
 
-    playingLabel =
+    const initialPlayingLabel =
       runTargets.length > 1
         ? tr('journal.run.scenariosCount', { count: runTargets.length })
         : runTargets.length === 1
@@ -3511,12 +3843,19 @@
 
     const summaryJsonPath = runOpts.summaryJson ? await scenariaSubdir('summary.json') : ''
 
-    playing = !runOpts.dryRun
+    const runIsPlaying = !runOpts.dryRun
     runningDryRun = runOpts.dryRun
-    runProgressCurrent = 0
-    runProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
-    runCancelling = false
-    runLogStreaming = true
+    const initialRunProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
+    runnerStore.setRunId('')
+    if (runIsPlaying) {
+      runnerStore.start('')
+      runnerStore.progress(initialRunProgressTotal, 0, initialPlayingLabel)
+    } else {
+      runnerStore.progress(initialRunProgressTotal, 0, initialPlayingLabel)
+      runnerStore.stop()
+    }
+    runnerStore.setCancelling(false)
+    runnerStore.setLogStreaming(true)
     setStatus(tr('journal.status.testRunning'), 'busy')
     const range = partialRunLogSuffix(runOpts.startStep ?? -1, runOpts.endStep ?? -1)
     if (targets.length) {
@@ -3559,18 +3898,17 @@
           reuseLiveBrowser: runOpts.reuseLiveBrowser,
           reportLocale: $locale,
           targets: diskTargets,
-        }))
+        }), currentProjectVersion)
       journalStreamed = runLogStreaming
     } catch (err) {
       runThrown = err
     } finally {
-      runLogStreaming = false
-      playing = false
+      runnerStore.setLogStreaming(false)
       runningDryRun = false
-      runCancelling = false
-      playingLabel = ''
-      runProgressCurrent = 0
-      runProgressTotal = 0
+      runnerStore.setCancelling(false)
+      runnerStore.setRunId('')
+      runnerStore.progress(0, 0, '')
+      runnerStore.stop()
     }
 
     if (runThrown) {
@@ -3638,10 +3976,14 @@
     await refreshArtifacts()
     await refreshAllureStatus()
     const runCancelled = /context canceled/i.test(result.error || '')
-    if (runOpts.html && htmlPath && !runCancelled) {
+    const allowPartialCanceledReport =
+      runCancelled &&
+      (result.entries?.some((e) => e.success || (e.message || '').trim().length > 0) ?? false)
+    const actualHtmlPath = (result.reportPath || result.htmlPath || htmlPath || '').trim()
+    if (runOpts.html && actualHtmlPath && (!runCancelled || allowPartialCanceledReport)) {
       try {
-        if (await ArtifactExists(htmlPath)) {
-          await openHtmlReport(htmlPath)
+        if (await ArtifactExists(actualHtmlPath)) {
+          await openHtmlReport(actualHtmlPath)
         }
       } catch {
         /* ignore */
@@ -3722,7 +4064,7 @@
           browser: browserName || 'chromium',
           skipBrowser: true,
           targets,
-        }))
+        }), currentProjectVersion)
       if (result.output) {
         validateCliLog = result.output.trimEnd()
         appendLog(validateCliLog)
@@ -3899,12 +4241,15 @@
     text: string,
     options?: { saved?: boolean; switchTab?: boolean; tabPath?: string | null; skipValidate?: boolean },
   ) {
+    editorTextVersion++
     editorText = text
     if (options?.switchTab) {
       const markerPath = options.tabPath ?? null
-      editorValidationIssues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
+      const issues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
+      diagnosticsStore.setIssues(issues)
+      syncStepStatusFromIssues(issues)
       monaco?.activateTab(options.tabPath ?? null, text)
-      monaco?.setMarkers(editorValidationIssues)
+      monaco?.setMarkers(issues)
       if (options?.saved) {
         markActiveTabSaved(text, options.tabPath ?? activeTab)
       } else if (options?.tabPath) {
@@ -3921,7 +4266,7 @@
       }
     }
     if (options?.skipValidate) {
-      void refreshEditorSteps()
+      void refreshEditorSteps(text, editorTextVersion)
       return
     }
     await validateEditor()
@@ -4012,7 +4357,7 @@
         reportAllure: opts.reportAllure || false,
         vaDir: opts.vaDir || '',
         vaFiles: opts.vaFiles || '',
-      }))
+      }), currentProjectVersion)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(tr('journal.error.generic', { error: result.error }))
   }
@@ -4067,7 +4412,7 @@
           featureName: payload.featureName,
           scenarioName: payload.scenarioName,
           steps: payload.steps,
-        }))
+        }), currentProjectVersion)
       if (result.output) appendLog(result.output.trimEnd())
       if (result.error) {
         appendLog(tr('journal.error.generic', { error: result.error }))
@@ -4146,7 +4491,11 @@
   }
 
   function normalizeUpdateProgress(raw: unknown): gui.UpdateProgressDTO {
-    const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const envelope =
+      raw && typeof raw === 'object' && 'payload' in (raw as Record<string, unknown>)
+        ? ((raw as Record<string, unknown>).payload as unknown)
+        : raw
+    const src = (envelope && typeof envelope === 'object' ? envelope : {}) as Record<string, unknown>
     const percent = Number(src.percent ?? src.Percent ?? 0)
     return gui.UpdateProgressDTO.createFrom({
       stage: src.stage ?? src.Stage ?? '',
@@ -4166,7 +4515,13 @@
       }
     }
     EventsOn('update-progress', onProgress)
-    EventsOn('update-finished', onFinished)
+    EventsOn('update-finished', (raw: unknown) => {
+      const envelope =
+        raw && typeof raw === 'object' && 'payload' in (raw as Record<string, unknown>)
+          ? ((raw as Record<string, unknown>).payload as unknown)
+          : raw
+      onFinished(envelope as gui.RunResult)
+    })
     return () => EventsOff('update-progress', 'update-finished')
   }
 
@@ -4358,7 +4713,7 @@
     if (editorSettings.scenarioHints) {
       await refreshEditorScenarioHints()
     } else {
-      editorScenarioHints = []
+      diagnosticsStore.setHints([])
     }
     if (editorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
     const saved = buildCurrentSettingsDTO()
@@ -4567,21 +4922,51 @@
     await monaco.activateTab(activeTab, text)
   }
 
-  async function applyLiveRecordedStep(index: number, line: string) {
-    if (!line.trim()) return
-    await recordEditorReadyPromise
-    const targetPath = recordingTargetPath || activeTab
-    if (targetPath && activeTab !== targetPath && !isWelcome) {
-      await loadFeature(targetPath, { skipRecordingGuard: true })
+  function dismissRecorderPicker() {
+    showPickerStep = false
+    pickerSelector = ''
+    pickerChoices = []
+  }
+
+  function shouldApplyRecordStepEvent(event: RecordStepEvent): boolean {
+    switch (event.op) {
+      case 'upsert':
+        return shouldApplyLiveRecordedStep(recording, event.line ?? '')
+      case 'reset':
+        return true
+      case 'delete':
+      case 'snapshot':
+        return recording || Object.keys(liveRecordStepLines).length > 0
+      default:
+        return false
     }
-    if (!line.trim() || isWelcome || !activeTab) return
+  }
+
+  async function applyRecordStepToTarget(event: RecordStepEvent, eventTargetPath = '') {
+    if (!shouldApplyRecordStepEvent(event)) return
+    await recordEditorReadyPromise
+    const targetPath = resolveRecordingTargetPath(eventTargetPath, recordingTargetPath)
+    if (!targetPath && event.op !== 'reset') return
     recordStepApplyChain = recordStepApplyChain.then(async () => {
-      if (!line.trim() || isWelcome || !activeTab) return
-      const sourceText = monaco?.getEditorText() ?? editorText
-      const result = upsertRecordedStepInText(sourceText, index, line, liveRecordStepLines)
+      const tab = tabs.find((t) => isSameRecordTab(t.path, targetPath))
+      const sourceText = tab
+        ? tabEditorText(tab)
+        : isSameRecordTab(activeTab, targetPath)
+          ? (monaco?.getEditorText() ?? editorText)
+          : ''
+      if (!tab && !sourceText && event.op !== 'reset') return
+      const result = applyRecordStepEvent(sourceText, event, liveRecordStepLines)
       liveRecordStepLines = result.lineByIndex
-      await applyEditorText(result.text, { skipValidate: true })
-      scheduleValidateEditor(150)
+      if (tab) {
+        tabs = tabs.map((t) =>
+          isSameRecordTab(t.path, targetPath) ? { ...t, draft: result.text, dirty: true } : t,
+        )
+      }
+      if (isSameRecordTab(activeTab, targetPath)) {
+        editorText = result.text
+        await monaco?.setContent(result.text)
+        scheduleValidateEditor(150)
+      }
     })
     await recordStepApplyChain
   }
@@ -4602,10 +4987,9 @@
   }
 
   function handleRecordStopped(payload?: { reason?: string; idleSeconds?: number }) {
-    recording = false
-    recordPaused = false
+    dismissRecorderPicker()
+    recorderStore.reset()
     liveRecordStepLines = {}
-    recordingTargetPath = ''
     void maybeShowPostRecordBannerAfterStop()
     if (payload?.reason === 'idle') {
       const sec = payload.idleSeconds ?? recordIdle ?? 30
@@ -4624,12 +5008,9 @@
   async function handleRecordSessionEnd(result: gui.RunResult, kind: 'record' | 'browse') {
     const recordTarget =
       (recordAppendTo || lastRecordTarget || (activeTab && !isWelcome ? activeTab : '')).trim().replace(/\\/g, '/')
-    recording = false
-    browserOpen = false
-    recordPaused = false
+    recorderStore.reset()
     showRecord = false
     liveRecordStepLines = {}
-    recordingTargetPath = ''
     lastRecordTarget = ''
     if (result.output) appendLog(result.output)
     if (result.error) {
@@ -4654,20 +5035,18 @@
     pauseToggleGuardUntil = Date.now() + 900
     if (recordPaused) {
       await ResumeRecording()
-      recordPaused = false
+      recorderStore.setRecording(recording, false)
       setStatus(tr('journal.status.recording'), 'busy')
     } else {
       await PauseRecording()
-      recordPaused = true
+      recorderStore.setRecording(recording, true)
       setStatus(tr('journal.status.paused'), 'busy')
     }
     void syncBrowserStateFromBackend()
   }
 
   function applyBrowserSessionState(s: { browserOpen: boolean; recording: boolean; paused: boolean }) {
-    browserOpen = s.browserOpen
-    recording = s.recording
-    recordPaused = s.paused
+    recorderStore.setBrowserState(s.browserOpen, s.recording, s.paused)
   }
 
   function handleBrowserLost() {
@@ -4723,7 +5102,7 @@
 
   async function stopRecord() {
     if (playing) {
-      runCancelling = true
+      runnerStore.setCancelling(true)
       setStatus(tr('journal.status.stoppingTest'), 'busy')
       appendLog(tr('journal.run.stopping'))
       await CancelRun()
@@ -4910,12 +5289,6 @@
       appendLog(tr('journal.record.undoNothing'))
       return
     }
-    const sourceText = monaco?.getEditorText() ?? editorText
-    const result = removeLastRecordedStepFromText(sourceText, liveRecordStepLines)
-    if (result) {
-      liveRecordStepLines = result.lineByIndex
-      await applyEditorText(result.text, { skipValidate: true })
-    }
     appendLog(tr('journal.record.undoDone'))
   }
 
@@ -4924,7 +5297,7 @@
     else if (step === 2) quickStart()
     else if (step === 3) {
       if (tabs.length === 0) newScenario()
-      else if (projectPath) executeRun({ ...lastRun, dryRun: false })
+      else if (projectPath) executeRun(runFormFromMode(lastRun, 'single', { dryRun: false }))
     }
   }
 
@@ -5039,14 +5412,14 @@
           </button>
           <button class="menu-item" on:click={rerunFailed} disabled={!projectPath}>{tr('menus.rerunFailed')}</button>
           <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>{tr('menus.runHistory')}</button>
-          <button class="menu-item" on:click={() => openRunDialog('', {})} disabled={isWelcome && !projectPath}>{tr('menus.runDialog')}</button>
-          <button class="menu-item" on:click={() => openRunDialog(tr('menus.runTag').replace('…', ''), {})} disabled={isWelcome && !projectPath}>
+          <button class="menu-item" on:click={() => openRunDialog('', {}, 'single')} disabled={isWelcome && !projectPath}>{tr('menus.runDialog')}</button>
+          <button class="menu-item" on:click={() => openRunDialog(tr('menus.runTag').replace('…', ''), {}, 'tag')} disabled={isWelcome && !projectPath}>
             {tr('menus.runTag')}
           </button>
           <button class="menu-item" data-tour="menu-dry-run" on:click={() => runPrimary(true)} disabled={isWelcome && !projectPath && !batchSelected.length}>{tr('menus.dryRun')}</button>
           <button
             class="menu-item"
-            on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true })}
+            on:click={() => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }, 'single')}
             disabled={isWelcome && !activeTab}
           >
             {tr('menus.playwright')}
@@ -5361,7 +5734,7 @@
               onInsertTemplate={insertTemplate}
               onOpenExamples={openExamples}
               onOpenRecentProject={openProjectAt}
-              onOpenRecentFeature={(path) => loadFeature(path)}
+              onOpenRecentFeature={(path) => loadFeature(path, { forceActivate: true })}
               onChecklistStep={onWelcomeChecklistStep}
             />
           {/if}
@@ -5747,6 +6120,7 @@
   <ExportDialog
     inputPath={exportInputPath}
     featureText={editorText}
+    {currentProjectVersion}
     onClose={() => (showExport = false)}
     onLog={appendLog}
   />
@@ -5862,6 +6236,7 @@
 {#if showImport}
   <ImportJSONDialog
     {projectPath}
+    {currentProjectVersion}
     onClose={() => (showImport = false)}
     onLog={appendLog}
     onImported={onImportComplete}
@@ -5994,7 +6369,7 @@
 
 {#if showRunHistory}
   <RunHistoryDialog
-    entries={runResults}
+    entries={$reportsStore.runResults}
     flakyByPath={flakyByPath}
     flakyStepByPath={flakyStepByPath}
     onOpenFeature={openFeatureFromHistory}

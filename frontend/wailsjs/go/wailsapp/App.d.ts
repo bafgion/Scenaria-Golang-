@@ -4,6 +4,8 @@ import {gui} from '../models';
 
 export function AllureStatus(arg1:string):Promise<gui.AllureStatusDTO>;
 
+export function AnalyzeEditorContent(arg1:string,arg2:boolean):Promise<gui.EditorAnalysisDTO>;
+
 export function AnalyzeScenarioHints(arg1:string):Promise<Array<gui.ScenarioHintDTO>>;
 
 export function ApplyScenarioHintFix(arg1:gui.ScenarioHintFixRequest):Promise<gui.RefactorResult>;

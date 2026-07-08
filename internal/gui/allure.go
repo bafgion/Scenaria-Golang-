@@ -13,11 +13,11 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/settings"
 )
 
-var (
-	allureServeMu  sync.Mutex
-	allureServeCmd *exec.Cmd
-	allureServeDir string
-)
+type allureServeState struct {
+	mu  sync.Mutex
+	cmd *exec.Cmd
+	dir string
+}
 
 func (s *Service) defaultAllureDir() (string, error) {
 	path := s.ProjectPath()
@@ -62,12 +62,12 @@ func (s *Service) AllureStatus(dir string) AllureStatusDTO {
 	if err == nil {
 		status.ResultsDir = resultsDir
 	}
-	allureServeMu.Lock()
-	status.Running = allureServeCmd != nil && allureServeCmd.Process != nil
-	if status.Running && allureServeDir != "" {
-		status.ResultsDir = allureServeDir
+	s.allureServe.mu.Lock()
+	status.Running = s.allureServe.cmd != nil && s.allureServe.cmd.Process != nil
+	if status.Running && s.allureServe.dir != "" {
+		status.ResultsDir = s.allureServe.dir
 	}
-	allureServeMu.Unlock()
+	s.allureServe.mu.Unlock()
 	return status
 }
 
@@ -81,10 +81,10 @@ func (s *Service) ServeAllure(dir string) RunResult {
 			Error: "allure CLI not found in PATH — install from https://docs.qameta.io/allure/#_installing_a_commandline",
 		}
 	}
-	allureServeMu.Lock()
-	if allureServeCmd != nil && allureServeCmd.Process != nil {
-		activeDir := allureServeDir
-		allureServeMu.Unlock()
+	s.allureServe.mu.Lock()
+	if s.allureServe.cmd != nil && s.allureServe.cmd.Process != nil {
+		activeDir := s.allureServe.dir
+		s.allureServe.mu.Unlock()
 		if activeDir == "" {
 			activeDir = resultsDir
 		}
@@ -92,62 +92,63 @@ func (s *Service) ServeAllure(dir string) RunResult {
 	}
 	cmd := exec.Command("allure", "serve", resultsDir)
 	if err := cmd.Start(); err != nil {
-		allureServeMu.Unlock()
+		s.allureServe.mu.Unlock()
 		return RunResult{Error: fmt.Sprintf("start allure serve: %v", err)}
 	}
-	allureServeCmd = cmd
-	allureServeDir = resultsDir
-	allureServeMu.Unlock()
+	s.allureServe.cmd = cmd
+	s.allureServe.dir = resultsDir
+	s.allureServe.mu.Unlock()
 	go func() {
 		_ = cmd.Wait()
-		allureServeMu.Lock()
-		if allureServeCmd == cmd {
-			allureServeCmd = nil
-			allureServeDir = ""
+		s.allureServe.mu.Lock()
+		if s.allureServe.cmd == cmd {
+			s.allureServe.cmd = nil
+			s.allureServe.dir = ""
 		}
-		allureServeMu.Unlock()
+		s.allureServe.mu.Unlock()
 	}()
 	return RunResult{Output: fmt.Sprintf("Allure serve: %s\n", resultsDir)}
 }
 
-// StopAllureServe terminates a background `allure serve` started from the GUI.
-func StopAllureServe() {
-	allureServeMu.Lock()
-	defer allureServeMu.Unlock()
-	if allureServeCmd != nil && allureServeCmd.Process != nil {
-		_ = allureServeCmd.Process.Kill()
+// stopAllureServe terminates a background `allure serve` started from this GUI service.
+func (s *Service) stopAllureServe() {
+	if s == nil {
+		return
 	}
-	allureServeCmd = nil
-	allureServeDir = ""
+	s.allureServe.mu.Lock()
+	defer s.allureServe.mu.Unlock()
+	if s.allureServe.cmd != nil && s.allureServe.cmd.Process != nil {
+		_ = s.allureServe.cmd.Process.Kill()
+	}
+	s.allureServe.cmd = nil
+	s.allureServe.dir = ""
 }
 
 func (s *Service) OpenHTMLReport(path string) RunResult {
 	path = strings.TrimSpace(path)
+	root := s.ProjectPath()
+	if root == "" {
+		return RunResult{Error: "open a project folder first"}
+	}
 	if path == "" {
-		root := s.ProjectPath()
-		if root == "" {
-			return RunResult{Error: "open a project folder first"}
-		}
 		resolved, err := paths.ScenariaArtifactPath(root, "report.html")
 		if err != nil {
 			return RunResult{Error: err.Error()}
 		}
 		path = resolved
 	} else if !filepath.IsAbs(path) {
-		root := s.ProjectPath()
-		if root == "" {
-			return RunResult{Error: "open a project folder first"}
+		confined, err := paths.ConfineToProjectRoot(root, path)
+		if err != nil {
+			return RunResult{Error: err.Error()}
 		}
-		path = filepath.Join(root, path)
+		path = paths.RemapScenariaArtifact(root, confined)
 	}
 	if _, err := os.Stat(path); err != nil {
 		return RunResult{Error: fmt.Sprintf("report not found: %s", path)}
 	}
 	openMode := "full"
-	if root := s.ProjectPath(); root != "" {
-		if cfg, err := settings.LoadProjectConfig(root); err == nil {
-			openMode = cfg.HTMLReportOpenMode
-		}
+	if cfg, err := settings.LoadProjectConfig(root); err == nil {
+		openMode = cfg.HTMLReportOpenMode
 	}
 	path = report.PreferredHTMLReportPath(path, openMode)
 	if _, err := os.Stat(path); err != nil {

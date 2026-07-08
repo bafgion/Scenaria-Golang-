@@ -17,6 +17,7 @@ import (
 )
 
 var ErrRelaunchHeadless = errors.New("recorder: relaunch browser for headless change")
+var ErrBrowserClosed = errors.New("recorder: browser closed")
 
 // LiveSession controls an in-progress live recording (pause/resume/focus/undo).
 type LiveSession struct {
@@ -255,23 +256,31 @@ func (s *LiveSession) RecordedStepCount() int {
 	return len(*s.steps)
 }
 
-// EachRecordedLine invokes fn for every recorded step line in order.
+// EachRecordedLine invokes fn for every formatted Gherkin step line in order.
 func (s *LiveSession) EachRecordedLine(fn func(index int, line string)) {
 	if fn == nil {
 		return
 	}
 	s.mu.Lock()
-	var lines []string
+	var steps []RecordedStep
 	if s.steps != nil {
-		lines = RecordedStepsToLines(append([]RecordedStep(nil), (*s.steps)...))
+		steps = append([]RecordedStep(nil), (*s.steps)...)
 	}
 	s.mu.Unlock()
-	if len(lines) == 0 {
-		return
-	}
-	for i, line := range lines {
+	for i, line := range FormatRecordedStepsAsGherkin(steps) {
 		fn(i, line)
 	}
+}
+
+// SnapshotRecordedSteps returns formatted Gherkin lines for the current buffer.
+func (s *LiveSession) SnapshotRecordedSteps() []string {
+	s.mu.Lock()
+	var steps []RecordedStep
+	if s.steps != nil {
+		steps = append([]RecordedStep(nil), (*s.steps)...)
+	}
+	s.mu.Unlock()
+	return FormatRecordedStepsAsGherkin(steps)
 }
 
 func (s *LiveSession) BrowserAlive() bool {
@@ -313,6 +322,9 @@ func (s *LiveSession) FocusBrowser() error {
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
+	if page == nil || page.IsClosed() {
+		return ErrBrowserClosed
+	}
 	return winfocus.BringPageToFront(page)
 }
 
@@ -325,6 +337,9 @@ func (s *LiveSession) ApplyRecorderOptions(filterImportant, navOnly, hoverRecord
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
+	if page == nil || page.IsClosed() {
+		return ErrBrowserClosed
+	}
 	return ApplyPageRecorderConfig(page, s.RecorderPageConfig())
 }
 
@@ -350,8 +365,8 @@ func (s *LiveSession) ExportTestClient(name string) (*settings.TestClient, error
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
-	if page == nil {
-		return nil, fmt.Errorf("браузер не открыт")
+	if page == nil || page.IsClosed() {
+		return nil, ErrBrowserClosed
 	}
 	return player.CaptureTestClientFromPage(page, name)
 }
@@ -360,8 +375,8 @@ func (s *LiveSession) PickSelector(ctx context.Context) (string, error) {
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
-	if page == nil {
-		return "", fmt.Errorf("браузер не открыт")
+	if page == nil || page.IsClosed() {
+		return "", ErrBrowserClosed
 	}
 	if s.CaptureEnabled() && !s.IsPaused() {
 		return "", fmt.Errorf("поставьте запись на паузу")

@@ -26,6 +26,7 @@
   import type { gui } from '../../wailsjs/go/models'
   import type { editor as MonacoEditor } from 'monaco-editor'
   import { replaceModelText } from './editorTextSync'
+  import { featureTabUri } from './monacoTabModels'
   import { MonacoTabModelStore } from './monacoTabModels'
   import { MonacoTabViewStateStore } from './monacoTabViewState'
 
@@ -52,7 +53,25 @@
   const tabModels = new MonacoTabModelStore()
   const tabViewStates = new MonacoTabViewStateStore()
 
-  const dispatch = createEventDispatcher<{ change: string; cursorline: number; ready: void }>()
+  type EditorChangeEvent = { path: string | null; modelUri: string | null; text: string }
+
+  const dispatch = createEventDispatcher<{ change: EditorChangeEvent; cursorline: number; ready: void }>()
+
+  function modelUriForPath(path: string | null): string | null {
+    if (!monacoApi) return null
+    if (!path) {
+      return welcomeModel && !welcomeModel.isDisposed() ? welcomeModel.uri.toString() : null
+    }
+    return featureTabUri(monacoApi, path).toString()
+  }
+
+  function emitChangeForModel(text: string, path = activeTabPath) {
+    dispatch('change', {
+      path,
+      modelUri: modelUriForPath(path),
+      text,
+    })
+  }
 
   function ensureWelcomeModel(text: string): MonacoEditor.ITextModel {
     if (!monacoApi) throw new Error('monaco not ready')
@@ -77,7 +96,7 @@
     if (modelText !== value) {
       value = modelText
       if (!opts?.silent) {
-        dispatch('change', modelText)
+        emitChangeForModel(modelText)
       }
     }
     queueMicrotask(() => {
@@ -85,6 +104,14 @@
       syncEditorMarkers()
       syncLargeFileOptions()
     })
+  }
+
+  function reconcileAttachedModelText(text: string) {
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model || model.getValue() === text) return
+    replaceModelText(editor, text, 'activate-tab')
+    value = text
   }
 
   function syncLargeFileOptions() {
@@ -177,7 +204,7 @@
         return
       }
       value = editor.getValue()
-      dispatch('change', value)
+      emitChangeForModel(value)
       scheduleLargeFileOptionsSync()
     })
 
@@ -244,6 +271,14 @@
     refreshGherkinInlayHints(editor)
   }
 
+  export function getActiveModelUri(): string | null {
+    return editor?.getModel()?.uri.toString() ?? null
+  }
+
+  export function emitEditorChangeForTest(path: string | null, text: string) {
+    emitChangeForModel(text, path)
+  }
+
   onDestroy(() => {
     unsubscribeSystemTheme?.()
     if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
@@ -274,19 +309,15 @@
     if (!path) {
       const model = ensureWelcomeModel(text)
       attachModel(model, { silent: true })
-      if (text !== model.getValue()) {
-        void setContent(text).then(() => {
-          if (editor) tabViewStates.restore(editor, path)
-        })
-      } else {
-        syncEditorMarkers()
-        tabViewStates.restore(editor, path)
-      }
+      reconcileAttachedModelText(text)
+      syncEditorMarkers()
+      tabViewStates.restore(editor, path)
       return
     }
     const existing = tabModels.getModel(monacoApi, path)
     if (existing) {
       attachModel(existing, { silent: true })
+      reconcileAttachedModelText(text)
       syncEditorMarkers()
       tabViewStates.restore(editor, path)
       return

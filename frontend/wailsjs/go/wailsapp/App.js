@@ -6,6 +6,10 @@ export function AllureStatus(arg1) {
   return window['go']['wailsapp']['App']['AllureStatus'](arg1);
 }
 
+export function AnalyzeEditorContent(arg1, arg2) {
+  return window['go']['wailsapp']['App']['AnalyzeEditorContent'](arg1, arg2);
+}
+
 export function AnalyzeScenarioHints(arg1) {
   return window['go']['wailsapp']['App']['AnalyzeScenarioHints'](arg1);
 }

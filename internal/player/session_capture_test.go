@@ -9,7 +9,7 @@ import (
 func TestOriginFromURL(t *testing.T) {
 	tests := map[string]string{
 		"https://app.example.com/path?q=1": "https://app.example.com",
-		"http://localhost:8080/":         "http://localhost:8080",
+		"http://localhost:8080/":           "http://localhost:8080",
 		"about:blank":                      "",
 		"":                                 "",
 		"not-a-url":                        "",

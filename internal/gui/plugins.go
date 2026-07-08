@@ -1,10 +1,10 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	"github.com/bafgion/scenaria-golang/internal/cli"
 	"github.com/bafgion/scenaria-golang/internal/plugin"
 )
 
@@ -84,14 +84,14 @@ func (s *Service) RunPlugin(req PluginRunRequest) RunResult {
 	}
 	switch target.Runner {
 	case "va":
-		out, runErr := captureCLI(func() error { return cliRunVA(appendVanessaArgs(target.Args, req)) })
+		out, runErr := s.cliRunner().VA(appendVanessaArgs(target.Args, req))
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
 		return RunResult{Output: out}
 	case "run":
 		args := appendRunPluginArgs(append([]string(nil), target.Args...), req)
-		out, runErr := captureCLI(func() error { return cli.RunRun(args) })
+		out, runErr := s.cliRunner().Run(context.Background(), args)
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
@@ -108,7 +108,7 @@ func (s *Service) runVanessa(req PluginRunRequest) RunResult {
 		args = append(args, "--dry-run")
 	}
 	args = appendVanessaArgs(args, req)
-	out, err := captureCLI(func() error { return cliRunVA(args) })
+	out, err := s.cliRunner().VA(args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}

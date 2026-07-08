@@ -25,6 +25,8 @@ export type RunForm = {
   endStep: number
 }
 
+export type RunFormMode = 'batch' | 'single' | 'tag' | 'step-range'
+
 export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
   return {
     tag: '',
@@ -53,4 +55,41 @@ export function defaultRunForm(partial?: Partial<RunForm>): RunForm {
     endStep: -1,
     ...partial,
   }
+}
+
+export type RunFormModeDefaults = Partial<RunForm>
+
+export function runFormFromMode(lastRun: RunForm, mode: RunFormMode, defaults: RunFormModeDefaults = {}): RunForm {
+  const form: RunForm = {
+    ...lastRun,
+    ...defaults,
+  }
+
+  switch (mode) {
+    case 'batch':
+      form.tag = ''
+      form.scenario = ''
+      form.startStep = -1
+      form.endStep = -1
+      break
+    case 'single':
+      form.tag = ''
+      form.startStep = -1
+      form.endStep = -1
+      break
+    case 'tag':
+      form.scenario = ''
+      form.startStep = -1
+      form.endStep = -1
+      break
+    case 'step-range':
+      form.tag = ''
+      break
+  }
+
+  return form
+}
+
+export function batchRunFormFrom(lastRun: RunForm, dryRun: boolean): RunForm {
+  return runFormFromMode(lastRun, 'batch', { dryRun })
 }

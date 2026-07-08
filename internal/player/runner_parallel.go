@@ -21,12 +21,13 @@ type indexedRunCase struct {
 	runCase RunCase
 }
 
-func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (ExecutionResult, error) {
+func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (result ExecutionResult, err error) {
+	defer FlushRunStatus(ctx)
 	if r.Executor == nil {
 		return ExecutionResult{}, fmt.Errorf("browser runner: executor is nil")
 	}
 	files, scenarios, steps, _ := SummarizePlan(plan)
-	result := ExecutionResult{
+	result = ExecutionResult{
 		Mode:      "browser",
 		Files:     files,
 		Scenarios: scenarios,
@@ -36,12 +37,17 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	if workers < 1 {
 		workers = 1
 	}
-	runID := fmt.Sprintf("%x", time.Now().UnixNano())
+	runID := RunIDFromContext(ctx)
+	if runID == "" {
+		runID = fmt.Sprintf("run-%d", time.Now().UnixNano())
+	}
+	defer func() { stampRunID(&result, runID) }()
 	logx.Info("run started", "run_id", runID, "scenarios", len(plan.Cases), "workers", workers)
 
 	if workers == 1 || len(plan.Cases) <= 1 {
 		if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok {
-			return r.executeSequentialSession(ctx, result, pwExec, plan, nil)
+			result, err = r.executeSequentialSession(ctx, result, pwExec, plan, nil)
+			return result, err
 		}
 		total := len(plan.Cases)
 		var firstErr error
@@ -129,9 +135,11 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (Executi
 	}
 
 	if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok && poolEligible(pwExec.options) {
-		return r.executeParallelWithPool(ctx, result, pwExec, plan, workers, runID)
+		result, err = r.executeParallelWithPool(ctx, result, pwExec, plan, workers, runID)
+		return result, err
 	}
-	return r.executeParallel(ctx, result, plan, workers, runID)
+	result, err = r.executeParallel(ctx, result, plan, workers, runID)
+	return result, err
 }
 
 func (r BrowserRunner) executeParallelWithPool(
@@ -585,8 +593,10 @@ func (r BrowserRunner) executeSequentialSession(
 
 func scenarioInputFromCase(runCase RunCase) ScenarioInput {
 	return ScenarioInput{
+		CaseID:       runCase.CaseID,
 		FeaturePath:  runCase.FeaturePath,
 		ScenarioName: runCase.Name,
+		ExampleIndex: runCase.ExampleIndex,
 		Steps:        runCase.Steps,
 		TestClient:   runCase.TestClient,
 		Variables:    runCase.Variables,
@@ -597,12 +607,8 @@ func scenarioInputFromCase(runCase RunCase) ScenarioInput {
 }
 
 func canceledScenarioResult(runCase RunCase, err error) ScenarioResult {
-	return ScenarioResult{
-		FeaturePath: runCase.FeaturePath,
-		Scenario:    runCase.Name,
-		Status:      "failed",
-		Message:     err.Error(),
-	}
+	result := scenarioResultFromCase(runCase, "canceled", err.Error())
+	return result
 }
 
 func enqueueJobs(ctx context.Context, jobs chan<- indexedRunCase, cases []RunCase) {

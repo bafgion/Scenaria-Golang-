@@ -165,8 +165,29 @@ func writeJSON(path string, src any) error {
 			return fmt.Errorf("create json dir %q: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, append(payload, '\n'), 0o644); err != nil {
-		return fmt.Errorf("write json file %q: %w", path, err)
+	data := append(payload, '\n')
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp json file %q: %w", path, err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("write temp json file %q: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close temp json file %q: %w", path, err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		if removeErr := os.Remove(path); removeErr == nil {
+			if retryErr := os.Rename(tmpPath, path); retryErr == nil {
+				return nil
+			}
+		}
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("replace json file %q: %w", path, err)
 	}
 	return nil
 }

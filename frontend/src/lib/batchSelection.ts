@@ -1,8 +1,12 @@
 import {
   collectFeaturePathsUnder,
-  normFeaturePath,
   type CatalogNode,
 } from './catalogTree'
+import { canonicalFeaturePath } from './featurePath'
+
+function normFeaturePath(path: string): string {
+  return canonicalFeaturePath(path).toLowerCase()
+}
 
 /** Быстрый lookup выбранных путей (нормализованные ключи). */
 export function buildBatchSelectedSet(selected: string[]): Set<string> {
@@ -24,6 +28,28 @@ export function toggleBatchPath(selected: string[], path: string): string[] {
 /** Все .feature под узлом дерева (с учётом текущего фильтра в explorer). */
 export function selectAllFeaturesUnder(tree: CatalogNode | null): string[] {
   return tree ? collectFeaturePathsUnder(tree) : []
+}
+
+/** Сопоставить selection с актуальными путями проекта после refresh/rename/move. */
+export function remapBatchSelectedPaths(selected: string[], featurePaths: string[]): string[] {
+  if (!selected.length || !featurePaths.length) return []
+  const available = new Map<string, string>()
+  for (const path of featurePaths) {
+    const key = normFeaturePath(path)
+    if (!available.has(key)) {
+      available.set(key, path)
+    }
+  }
+  const remapped: string[] = []
+  const seen = new Set<string>()
+  for (const path of selected) {
+    const key = normFeaturePath(path)
+    const next = available.get(key)
+    if (!next || seen.has(key)) continue
+    seen.add(key)
+    remapped.push(next)
+  }
+  return remapped
 }
 
 export type CatalogFileClickAction = 'toggle-batch' | 'open'

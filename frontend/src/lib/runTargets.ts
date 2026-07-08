@@ -1,9 +1,10 @@
 import { isUntitled, untitledLabel } from './untitled'
 import type { TabBody } from './tabMemory'
 import { tabEditorText, tabNeedsDiskReload } from './tabMemory'
+import { canonicalFeaturePath } from './featurePath'
 
 function basename(path: string): string {
-  const normalized = path.replace(/\\/g, '/')
+  const normalized = canonicalFeaturePath(path)
   return normalized.split('/').pop() || normalized
 }
 

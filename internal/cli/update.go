@@ -1,13 +1,17 @@
 package cli
 
 import (
-	"fmt"
+	"io"
 
 	"github.com/bafgion/scenaria-golang/internal/update"
 	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
 func RunUpdate(args []string) error {
+	return RunUpdateWithOutput(args, nil)
+}
+
+func RunUpdateWithOutput(args []string, out io.Writer) error {
 	checkOnly := false
 	for _, arg := range args {
 		if arg == "--check" {
@@ -20,14 +24,14 @@ func RunUpdate(args []string) error {
 		return err
 	}
 	if !update.IsNewer(version.Version, release.TagName) {
-		fmt.Printf("You are on the latest version (%s).\n", version.Version)
+		cliPrintf(out, "You are on the latest version (%s).\n", version.Version)
 		return nil
 	}
-	fmt.Printf("Update available: %s -> %s\n", version.Version, release.TagName)
-	fmt.Printf("Release: %s\n", release.HTMLURL)
+	cliPrintf(out, "Update available: %s -> %s\n", version.Version, release.TagName)
+	cliPrintf(out, "Release: %s\n", release.HTMLURL)
 	if checkOnly {
 		return nil
 	}
-	fmt.Println("Download the portable ZIP from the release page or run: make build-portable")
+	cliPrintln(out, "Download the portable ZIP from the release page or run: make build-portable")
 	return nil
 }

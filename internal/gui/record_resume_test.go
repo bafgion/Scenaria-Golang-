@@ -92,8 +92,12 @@ func TestStopRecordingCaptureEndsCaptureOnly(t *testing.T) {
 	if err := session.BeginCapture(); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.StopRecordingCapture(); err != nil {
+	stopped, err := svc.StopRecordingCapture()
+	if err != nil {
 		t.Fatalf("StopRecordingCapture: %v", err)
+	}
+	if !stopped {
+		t.Fatal("expected stop to report stopped=true")
 	}
 	if session.CaptureEnabled() {
 		t.Fatal("expected capture disabled after stop")
@@ -110,8 +114,12 @@ func TestStopRecordingCaptureClearsSteps(t *testing.T) {
 	if err := session.BeginCapture(); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.StopRecordingCapture(); err != nil {
+	stopped, err := svc.StopRecordingCapture()
+	if err != nil {
 		t.Fatalf("StopRecordingCapture: %v", err)
+	}
+	if !stopped {
+		t.Fatal("expected stop to report stopped=true")
 	}
 	if len(steps) != 0 {
 		t.Fatalf("expected cleared steps, got %d", len(steps))
@@ -175,7 +183,7 @@ func TestChaosBeginRecordingCaptureResume(t *testing.T) {
 						t.Fatal("expected capture enabled when started")
 					}
 				case 2:
-					_ = svc.StopRecordingCapture()
+					_, _ = svc.StopRecordingCapture()
 				case 3:
 					if session.CaptureEnabled() {
 						if rng.Intn(2) == 0 {

@@ -152,6 +152,13 @@ export namespace gui {
 	    output: string;
 	    error: string;
 	    entries?: RunResultEntry[];
+	    reportPath?: string;
+	    htmlPath?: string;
+	    junitPath?: string;
+	    summaryJson?: string;
+	    allureDir?: string;
+	    traceDir?: string;
+	    videoDir?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RunResult(source);
@@ -162,6 +169,13 @@ export namespace gui {
 	        this.output = source["output"];
 	        this.error = source["error"];
 	        this.entries = this.convertValues(source["entries"], RunResultEntry);
+	        this.reportPath = source["reportPath"];
+	        this.htmlPath = source["htmlPath"];
+	        this.junitPath = source["junitPath"];
+	        this.summaryJson = source["summaryJson"];
+	        this.allureDir = source["allureDir"];
+	        this.traceDir = source["traceDir"];
+	        this.videoDir = source["videoDir"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -255,6 +269,7 @@ export namespace gui {
 	    recording: boolean;
 	    paused: boolean;
 	    stepCount: number;
+	    browserSessionId?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new BrowserSessionDTO(source);
@@ -266,6 +281,29 @@ export namespace gui {
 	        this.recording = source["recording"];
 	        this.paused = source["paused"];
 	        this.stepCount = source["stepCount"];
+	        this.browserSessionId = source["browserSessionId"];
+	    }
+	}
+	export class ScenarioHintDTO {
+	    id: string;
+	    title: string;
+	    stepIndex: number;
+	    line: number;
+	    severity: string;
+	    autoFixable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScenarioHintDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.stepIndex = source["stepIndex"];
+	        this.line = source["line"];
+	        this.severity = source["severity"];
+	        this.autoFixable = source["autoFixable"];
 	    }
 	}
 	export class EditorStepRow {
@@ -294,28 +332,6 @@ export namespace gui {
 	        this.error = source["error"];
 	    }
 	}
-	export class ScenarioHintDTO {
-	    id: string;
-	    title: string;
-	    stepIndex: number;
-	    line: number;
-	    severity: string;
-	    autoFixable: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScenarioHintDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.title = source["title"];
-	        this.stepIndex = source["stepIndex"];
-	        this.line = source["line"];
-	        this.severity = source["severity"];
-	        this.autoFixable = source["autoFixable"];
-	    }
-	}
 	export class ValidationIssue {
 	    line: number;
 	    message: string;
@@ -336,6 +352,41 @@ export namespace gui {
 	        this.stepText = source["stepText"];
 	    }
 	}
+	export class EditorAnalysisDTO {
+	    issues: ValidationIssue[];
+	    steps: EditorStepRow[];
+	    hints: ScenarioHintDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new EditorAnalysisDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.issues = this.convertValues(source["issues"], ValidationIssue);
+	        this.steps = this.convertValues(source["steps"], EditorStepRow);
+	        this.hints = this.convertValues(source["hints"], ScenarioHintDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ExportPreview {
 	    stepCount: number;
 	    scenarioTitle: string;
@@ -703,6 +754,7 @@ export namespace gui {
 	    features: string[];
 	    tags: string[];
 	    featureTags: Record<string, Array<string>>;
+	    version: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProjectInfo(source);
@@ -714,6 +766,7 @@ export namespace gui {
 	        this.features = source["features"];
 	        this.tags = source["tags"];
 	        this.featureTags = source["featureTags"];
+	        this.version = source["version"];
 	    }
 	}
 	export class ProjectReplaceRequest {

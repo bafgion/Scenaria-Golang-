@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -27,8 +28,12 @@ type vaOptions struct {
 }
 
 func RunVA(args []string) error {
+	return RunVAWithOutput(args, nil)
+}
+
+func RunVAWithOutput(args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		return printVAHelp()
+		return printVAHelp(out)
 	}
 	if args[0] != "run" {
 		return fmt.Errorf("unknown va subcommand %q (supported: run)", args[0])
@@ -65,10 +70,10 @@ func RunVA(args []string) error {
 		if !c.Success {
 			mark = "✗"
 		}
-		fmt.Printf("%s %s: %s\n", mark, c.Name, c.Message)
+		cliPrintf(out, "%s %s: %s\n", mark, c.Name, c.Message)
 	}
 	if result.RunDir != "" {
-		fmt.Printf("Run directory: %s\n", result.RunDir)
+		cliPrintf(out, "Run directory: %s\n", result.RunDir)
 	}
 	if !result.Success {
 		if result.Error != "" {
@@ -184,17 +189,17 @@ func parseVAOptions(args []string) (vaOptions, error) {
 	return opts, nil
 }
 
-func printVAHelp() error {
-	fmt.Println("Vanessa Automation runner (1C)")
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  scenaria va run [--project <dir>] [--dir <features>] [--files a.feature,b.feature]")
-	fmt.Println("                  [--tag smoke] [--exclude-tag wip] [--scenario \"Name\"]")
-	fmt.Println("                  [--platform-exe <path>] [--epf <path>] [--ib <conn>] [--allure]")
-	fmt.Println("                  [--rerun-failed <run-dir>] [--epf-install] [--epf-url <url>] [--dry-run]")
-	fmt.Println()
-	fmt.Println("Configure platform in .scenaria/vanessa.json:")
-	fmt.Println(`  {"platform_executable":"C:\\Program Files\\1cv8\\bin\\1cv8.exe","epf_path":"C:\\vanessa\\vanessa-automation.epf"}`)
+func printVAHelp(out io.Writer) error {
+	cliPrintln(out, "Vanessa Automation runner (1C)")
+	cliPrintln(out)
+	cliPrintln(out, "Usage:")
+	cliPrintln(out, "  scenaria va run [--project <dir>] [--dir <features>] [--files a.feature,b.feature]")
+	cliPrintln(out, "                  [--tag smoke] [--exclude-tag wip] [--scenario \"Name\"]")
+	cliPrintln(out, "                  [--platform-exe <path>] [--epf <path>] [--ib <conn>] [--allure]")
+	cliPrintln(out, "                  [--rerun-failed <run-dir>] [--epf-install] [--epf-url <url>] [--dry-run]")
+	cliPrintln(out)
+	cliPrintln(out, "Configure platform in .scenaria/vanessa.json:")
+	cliPrintln(out, `  {"platform_executable":"C:\\Program Files\\1cv8\\bin\\1cv8.exe","epf_path":"C:\\vanessa\\vanessa-automation.epf"}`)
 	return nil
 }
 

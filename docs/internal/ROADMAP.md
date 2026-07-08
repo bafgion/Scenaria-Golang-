@@ -1,990 +1,838 @@
-# Scenaria Go — Roadmap
+# Scenaria v1.0 Stabilization Roadmap
 
-Статус: **master** v0.29.0; **Wails IDE** — основной продукт. Python/Qt — снят с поддержки (экспорт в Python сохранён).
+## Цель
 
-## Приоритеты
+Подготовить Scenaria к стабильной версии v1.0.
 
-| # | Направление | Статус |
-|---|-------------|--------|
-| P0 | Wails IDE | done |
-| P0 | Recorder | done |
-| **P0** | **Стабильность Web UI (Фаза 8)** | **done** |
-| P1 | Monaco / редактор IDE | done (Фаза 6) |
-| P1 | Паритет Python IDE | done (Фаза 7) |
-| P1 | Allure | done |
-| P1 | Portable release | done |
-| **P1** | **Monaco hardening (Фаза 9)** | **done** |
-| **P2** | **Flaky-run + post-record diff (Фаза 10)** | **done** |
-| **P2** | **Cold start + FailedStep + E2E (Фаза 11)** | **done** |
-| **P3** | **Lazy workers + flaky E2E (Фаза 12)** | **done** |
-| **P0** | **GUI reliability audit (Фаза 13–14)** | **done** |
-| **P0** | **Daily-use QA audit (Фаза 15)** | **done** |
-| **P1** | **Interactive HTML Report (Фаза 16)** | **done** |
-| **P0** | **Code audit Web UI stability (Фаза 17)** | **done** |
-| **P1** | **Runner DSL: UI state & checkout (Фаза 19)** | **в работе** |
+Фокус roadmap:
+
+* не терять и не смешивать содержимое вкладок;
+* гарантировать корректный batch run;
+* синхронизировать IDE diagnostics/autocomplete/inlay hints с runner;
+* ввести явную идентичность проекта, запуска, recorder-сессии и отчётов;
+* изолировать отчёты и артефакты по запускам;
+* убрать основные race-condition и stale-event сценарии;
+* снизить лишние Wails-вызовы, повторный parsing и memory pressure.
 
 ---
 
-## Фаза 1 — Wails GUI
+# 0. Add Safety Tests Before Refactoring
 
-- [x] Monaco IDE, run/record/Vanessa/OTP/Allure
-- [x] Splash, portable `wails build`
-- [x] UI shell: menubar, activity bar, explorer, action bar, bottom panel, status bar
-- [x] Настройки с вкладками (Интерфейс / Запись / Плагины)
-- [x] Пакетный запуск в explorer (Выбор, Ctrl+клик)
-- [x] Command palette (Ctrl+Shift+P), recording bar, dirty banner, ресайз панелей
-- [x] Welcome: недавние проекты/файлы, примеры; Results/Error панели из run_status.json
-- [x] Модалки: Запустить, TestClient, шаги, экспорт (ts/python)
+**Priority:** Critical
+**Status:** Done
+**Goal:** зафиксировать текущее поведение и защититься от новых регрессий.
 
----
+## Why First
 
-## Фаза 2 — Portable
+Некоторые зоны нельзя безопасно менять без тестов:
 
-- [x] `scripts/build-portable.ps1` — CLI + Wails + Chromium
-- [x] `README-PORTABLE.txt`, `Start-GUI.bat`, CI artifact on tag
+* `loadFeature`;
+* Monaco model activation;
+* `RunRequest`;
+* `ExecutionPlan`;
+* `StepMatcher`;
+* recorder events;
+* report layout;
+* project/run lifecycle.
 
----
+## Tasks
 
-## Фаза 3 — Allure
+* [x] Добавить frontend test: закрытие активной вкладки активирует правильную Monaco model.
+* [x] Добавить frontend test: закрытие Welcome tab активирует правильный feature tab.
+* [x] Добавить frontend test: editor change от stale model не меняет активную вкладку.
+* [x] Добавить frontend test: save/reload не меняет другую вкладку после tab switch.
+* [x] Добавить frontend test: stale validation response игнорируется после изменения текста.
+* [x] Добавить frontend test: batch run после single-scenario run очищает stale filters.
+* [x] Добавить Go test: `RunRequest` копирует `Targets` / `Vars`.
+* [x] Добавить Go test: `ExecutionPlan` строится заново на каждый запуск.
+* [x] Добавить Go test: IDE/runtime step parity для базовых шагов.
+* [x] Добавить Go race/concurrency test: parallel run status writes.
+* [x] Добавить test: late recorder event ignored.
+* [x] Добавить test: report atomic write failure keeps previous report.
 
-- [x] Writer, CLI, GUI
-- [x] Screenshot + trace + video attachments
+## Acceptance Criteria
 
----
-
-## Фаза 5 — Тесты
-
-- [x] `scripts/coverage.ps1` (`-coverpkg=./...`)
-- [x] CI soft gate 40% (цель 60%)
-
----
-
-## Фаза 6 — Monaco и редактор IDE
-
-Цель: перенести типовые IDE-функции в Monaco, убрать дублирование UI, добавить настраиваемый редактор.
-
-### 6.1 Настройки редактора (P1)
-
-- [x] Секция «Редактор» в `SettingsDialog` (вкладка «Интерфейс» или отдельная)
-- [x] Поля: `fontSize`, `fontFamily`, `wordWrap`, `minimap`, `lineNumbers`, `tabSize`, `insertSpaces`, `renderWhitespace`
-- [x] Опции: `folding`, `stickyScroll`, `autoClosingQuotes`, `formatOnSave`
-- [x] Хранение в `AppSettings` / `settings.json` (`editor: { ... }`)
-- [x] Применение через `editor.updateOptions()` без пересоздания Monaco
-- [x] Светлая тема `scenaria-light` (опционально) + переключатель темы
-
-### 6.2 Find / Replace (P1)
-
-- [x] Встроенный виджет Monaco: `actions.find`, `editor.action.startFindReplaceAction`
-- [x] Ctrl+H / Ctrl+F открывают нативный find/replace вместо `FindReplaceDialog` для текущего файла
-- [x] Удалить или упростить `FindReplaceDialog.svelte` + обёртки `findNext` / `replaceNext` / `replaceAll` в `MonacoEditor.svelte`
-- [x] Оставить `ProjectReplaceDialog` для замены по всему проекту (Wails, не Monaco)
-
-### 6.3 Подсказки и документация шагов (P1)
-
-- [x] `registerHoverProvider` — описание шага, пример, ссылка на справку при наведении на строку
-- [x] Данные из каталога шагов (`DescribeEditorLine` / stepcatalog lookup)
-- [x] Настройки: вкл/выкл hover, авто-валидация при вводе (debounce уже есть)
-
-### 6.4 Format provider (P2)
-
-- [x] `registerDocumentFormattingEditProvider` — нормализация отступов, схлопывание пустых строк
-- [x] Переиспользовать `RefactorNormalizeIndents`, `RefactorCollapseBlankLines` (`FormatFeature` на бэкенде)
-- [x] Shift+Alt+F и `formatOnSave` (если включено в настройках)
-- [x] Пункты меню «Рефакторинг» оставить как alias
-
-### 6.5 Completions и сниппеты (P2)
-
-- [x] Tab stops в completions: `insertTextRules: InsertAsSnippet`, `${1:selector}` и т.п.
-- [x] Улучшить ранжирование: `filterText`, `preselect`, `sortText`
-- [x] Свести основной путь ввода к Ctrl+Space; `SnippetPalette` — расширенный поиск по каталогу
-- [x] Опционально: trigger characters для кавычек и селекторов
-
-### 6.6 Навигация по сценарию (P2)
-
-- [x] `registerDocumentSymbolProvider` — сценарии, шаги, блоки → Outline / Go to Symbol (Ctrl+Shift+O)
-- [x] Breadcrumbs Monaco по структуре feature
-- [x] Клик в outline → `gotoLine` (частичная замена панели шагов)
-- [x] Настройка: показывать breadcrumbs / outline по умолчанию
-
-### 6.7 Code Lens и запуск из редактора (P3)
-
-- [x] `registerCodeLensProvider` — «▶ Запустить сценарий», «▶ с этой строки» у заголовков сценариев / шагов
-- [x] Обработчик lens → существующие `RunFeature` / run-current hotkey
-- [x] Настройка: показывать code lens (по умолчанию выкл или только при наведении)
-- [x] Частичный запуск с шага (см. Фаза 7.1 — backend `StartStep`/`EndStep`)
-
-### 6.8 Inlay hints (P3)
-
-- [x] `registerInlayHintsProvider` — серым текстом справа: `click → #login`, `fill → "…"`
-- [x] Данные из `ParseEditorSteps` (уже есть на бэкенде)
-- [x] Настройка: вкл/выкл inlay hints
-
-### 6.9 Превью Gherkin (P3)
-
-- [x] Read-only Monaco вместо `FeaturePreview` + `HighlightFeature` (единая подсветка Monarch)
-- [x] Синхронизация темы/шрифта превью с настройками редактора
-- [x] Diff-редактор отложен (превью текущего текста достаточно; post-record banner для контекста записи)
-
-### 6.10 Панель шагов и нижняя «Проверка» (P3)
-
-- [x] После outline/code lens — упростить `steps-panel` (свернуть по умолчанию или скрыть при включённом outline)
-- [x] Problems-паттерн: клик по issue в «Проверка» уже есть (`gotoEditorLine`) — синхронизировать с Monaco markers
-- [x] Единый owner маркеров: ошибки валидации + hints (разные severity/source)
-
-### 6.11 Подсказки сценария — настройки (P3)
-
-- [x] Настройки: показывать hints, после записи, фильтр severity (warning / info)
-- [x] Опционально: авто-fix `autoFixable` hints при сохранении
-- [x] Post-record banner оставить в Svelte (контекст записи, не редактирования)
-
-### 6.12 Что остаётся в Svelte / Wails (не переносить)
-
-- Вкладки, explorer, запись, браузер, OTP, picker
-- Журнал, результаты, Vanessa, плагины, Command Palette приложения
-- Замена по проекту, импорт/экспорт, модалки сценария
+* [x] До начала крупных исправлений есть минимальная regression-сетка.
+* [x] Тесты покрывают три главных бага: tabs, batch, parser.
+* [x] Тесты покрывают stale async/event сценарии.
+* [x] Можно безопасно начинать исправления с первой технической фазы.
 
 ---
 
-## Фаза 7 — Паритет с Python IDE
+# 1. Stabilize Monaco Tabs and Editor State
 
-**Статус: done** (v0.19.0).
+**Priority:** Critical
+**Status:** Done
+**Area:** Frontend / Monaco / Tabs / Editor State
 
-Цель: закрыть реальные пробелы относительно Python/Qt v0.12, не дублируя то, что уже сделано иначе (Monaco, dirty→temp-before-run, hints в редакторе).
+## Problem
 
-Статусы в матрице: **эквивалент** | **иначе (осознанно)** | **нет**.
+Содержимое вкладок может пропадать, становиться stale или записываться в другой файл. Главная причина — не переиспользование одной Monaco model, а неправильный порядок `activeTab → loadFeature → Monaco activation`: `activeTab` меняется до фактической активации model, а `loadFeature()` может выйти раньше из-за `path === activeTab`.
 
-### 7.1 Запуск с шага / до шага (P1)
+## Scope
 
-- [x] Player: `StartStep` / `EndStep` на leaf-шагах (`gherkin.LeafSteps`, `ApplyStepRange`)
-- [x] CLI: `--start-step`, `--end-step`
-- [x] Wails: `ResolveRunFromLine` + передача в `Run`
-- [x] Code lens «▶ с этой строки» запускает с выбранного шага, не весь сценарий
-- [x] Steps panel: контекстное меню «Запустить с шага» / «До шага»
-- [x] Dry-run summary с учётом частичного диапазона в логе
-
-### 7.2 Восстановление сессии (P1)
-
-- [x] `open_tabs` + `active_tab` в `settings.json` (как Python)
-- [x] Восстановление вкладок при старте IDE
-- [x] Draft autosave каждые 30 с (несохранённый текст → `.scenaria/drafts`)
-- [x] Восстановление draft при открытии проекта
-
-### 7.3 Настройки записи и запуска (P2)
-
-- [x] Slow-mo (скорость выполнения тестов) в `AppSettings` + пресеты в настройках
-- [x] Индикация прогона: playing-bar, подсветка редактора и toolbar
-- [x] `scroll_before_click` в recorder script + настройка
-- [x] `hover_record_min_ms` — минимальная длительность hover перед записью
-- [x] Сохранение опций записи в `AppSettings`
-
-### 7.4 Наборы параметров `.params.json` (P2)
-
-- [x] Загрузка `<stem>.params.json` при outline (sidecar рядом с feature)
-- [x] Расширение outline в runner (`ExpandFeatureAtPath` + `LoadScenarioParams`)
-- [x] Справка F1: раздел про params в `StepsHelpDialog`
-
-### 7.5 Explorer: папки (P3)
-
-- [x] Контекстное меню папки: «Запустить все .feature»
-- [x] «Vanessa: папка…» из explorer
-- [x] Batch по папке без ручного Ctrl+клик (выбор для пакетного запуска)
-
-### 7.6 Селекторы и валидация (P3)
-
-- [x] Редактируемый порядок стратегий в настройках (клики / поля ввода; инъекция в recorder/picker)
-- [x] Per-step статусы в «Проверка в браузере» (found / missing / warning) + панель «Проверка»
-
-### 7.7 Прочее (P3)
-
-- [x] Обновления приложения: проверка релиза, страница GitHub, скачивание артефакта (installer / portable по ОС)
-- [x] Saved browser session (cookies) — захват из открытого браузера в TestClient и повторный запуск с тем же профилем
-
-### Уже эквивалентно (не в scope Фазы 7)
-
-| Python | Go |
-|--------|-----|
-| Qt Gherkin + Apply | Monaco, dirty banner, temp-before-run |
-| FindReplaceDialog | Monaco find/replace |
-| GherkinHintsBar | hints markers + `StepsHelpDialog` + `gherkin-hints` |
-| StepsStrip edit | редактирование в Monaco + outline + code lens |
-| Пользовательские сниппеты | каталог шагов + completions/snippets (Фаза 6.5); отдельное хранение не планируется |
-| StepEditorDialog / reorder в панели | Monaco, outline, picker; структурный диалог шага не планируется |
-| Теги через диалог | `@tags` в тексте |
-| `save_html_reports` global | чекбокс в RunDialog + slow-mo в настройках |
-| Browser overlay Qt | in-browser toolbar + browse/record режимы |
-
----
-
-## Версии
-
-| Версия | Содержание |
-|--------|------------|
-| **0.14.0** | trace/video Allure (**master**) |
-| **0.15.0** | GUI trace/video + scenario catalog + recorder polish (**master**) |
-| **0.16.0** | Monaco: настройки редактора, встроенный find/replace, hover шагов (план: Фаза 6.1–6.3) |
-| **0.17.0** | Monaco: format, outline, completions/snippets (план: Фаза 6.4–6.6) |
-| **0.18.0** | Monaco: code lens, inlay hints, read-only preview, hints settings (Фаза 6.7–6.11) |
-| **0.19.0** | Паритет Python: run-from-step, сессия, запись/запуск, params (Фаза 7.1–7.4) |
-| **0.20.0** | Стабильность Web UI: player/recorder lifecycle, отчёты при fail, concurrency, security (Фаза 8) — **master** |
-| **0.21.0** | Monaco: shortcuts, запись без гонок, preview perf, lifecycle вкладок, масштабирование (Фаза 9) — **master** |
-| **0.22.0** | Flaky-run метрики, post-record diff, release CI (Фаза 10) — **master** |
-| **0.23.0** | Monaco lazy load, FailedStep в player, E2E outline/diff (Фаза 11) — **master** |
-| **0.24.0** | Lazy Monaco workers, E2E flaky-run UI (Фаза 12) — **master** |
-| **0.25.0** | GUI reliability: session restore, recorder, shutdown, hotkeys (Фаза 13–14) — **master** |
-| **0.26.0** | Daily-use QA: run progress, trace viewer, editor races, onboarding (Фаза 15) — **master** |
-| **0.27.0** | Onboarding tour, live browser reuse, bilingual docs, CI stability — **master** |
-| **0.28.0** | Phase 17 Web UI stability, HTML reports, failed-run reports, E2E green — **master** |
-| **0.28.1** | OTP/first-run browser, runner hardening, Phase 18 audit, HTML report artifacts, `assert-enabled`/`disabled` — **released** |
-| **0.29.0** | Phase 19 checkout DSL, HTML report viewer hardening, screenshot lightbox, full/light report pair — **released** |
-
----
-
-## Фаза 9 — Monaco Editor hardening (аудит 2026)
-
-**Статус: done** (v0.21.0).
-
-Цель: закрыть пробелы интеграции Monaco + Svelte + Wails после аудита редактора.
-
-### 9.1 P0 — Критические UX
-
-- [x] **`Ctrl+Shift+O`:** привязка `editor.action.quickOutline` в Monaco (не только палитра)
-- [x] **Live record:** шаги записи без гонки с ручным вводом (текст из модели + очередь)
-- [x] **FeaturePreview:** debounce + `replaceModelText` вместо `setValue` на каждый символ
-
-### 9.2 P1 — Стабильность
-
-- [x] **Providers:** `providerRegistered` для completions и document symbols (HMR/dev)
-- [x] **Вкладки:** сохранение cursor/scroll при переключении файлов
-- [x] **Hotkeys:** `Shift+Alt+F` и `Ctrl+Shift+O` вне фокуса редактора (explorer и т.д.)
-- [x] **`formatOnSave`:** через `formatDocument()` Monaco (единый путь с Shift+Alt+F)
-
-### 9.3 P2 — Масштабирование
-
-- [x] Кэш `parseFeatureSymbols` по `model.getVersionId()` (`featureSymbolCache.ts`)
-- [x] Folding ranges для блоков Если/Повторяю/Пока/Для каждого (`gherkinFolding.ts`)
-- [x] Lazy-mount превью (80 ms defer); отключение minimap/code lens/inlay на файлах ≥2000 строк
-- [x] Monaco отдельный chunk в Vite (`manualChunks` → `monaco.js`)
-
----
-
-## Следующие шаги (вне закрытых фаз)
-
-**Активно:** backlog Фазы 16 (полный HAR timeline per-step) + опциональные E2E.
-
-Опционально (backlog):
-
-- Flaky-run E2E с реальным прогоном (не mock)
-- Language workers Monaco (json/css/html) при необходимости
-- HAR / full network timeline per step в HTML report (live + trace: snippet на каждый шаг — **done** v0.28.1)
-
----
-
-## Фаза 13 — GUI reliability audit (2026)
-
-**Статус: done** (v0.25.0).
-
-Цель: закрыть критические пробелы GUI-аудита (Monaco session restore, recorder lifecycle, Wails shutdown, hotkeys).
-
-Оценка до фиксов: **6.5/10**. Цель после фазы: **8/10**.
-
-### 13.1 P0 — Критические
-
-- [x] **Session restore:** синхронизация `activateTab` после mount Monaco (`editor ready`)
-- [x] **`record-error`:** подписка во frontend + сброс UI
-- [x] **Undo записи:** откат строки в Monaco + `liveRecordStepLines`
-- [x] **Recorder race:** `record-step` ждёт `prepareRecordEditorTab`; не сбрасывать map при duplicate `record-started`
-- [x] **Wails shutdown:** `OnShutdown` → `CancelRun` + `CloseBrowser`
-- [x] **Frontend teardown:** `onDestroy` / `closeProject` / смена проекта
-- [x] **Escape:** не перехватывать при открытых Monaco overlays (find/suggest/quick input)
-
-### 13.2 P1 — Usability
-
-- [x] **Post-record banner:** после `record-stopped` (browse→record path)
-- [x] **Banner step count:** из редактора, не только с диска
-- [x] **`featureSymbolCache`:** ключ с URI модели (нет коллизий между вкладками)
-- [x] **`BrowserOverlay`:** показывать при `browserOpen || recording || playing`
-- [x] **Hotkey Ctrl+R:** не открывать диалог при активной записи (focus browser)
-- [x] **`syncTabContent`:** `monaco.getEditorText()` для активной вкладки
-- [x] **Смена проекта:** confirm + reset tabs/browser при `openProjectAt` на другой path
-- [x] **Monaco dispose:** `setModel(null)` перед `releaseAll`
-
-### 13.3 P2 — Масштабирование и polish
-
-- [x] Lock editor during `playing` (`readOnly` в Monaco)
-- [x] Re-entry guard для `executeRun` / `runPrimary`
-- [x] File reload prompt при возврате в окно (`visibilitychange` + `ReadFeature`)
-- [x] Large file: gate symbols, folding, hover, completions, code lens ≥2000 строк
-- [x] Hotkeys: `Alt+P` пауза записи, `Ctrl+Shift+R` стоп (запись / тест / браузер)
-
----
-
-## Фаза 14 — Recorder UX polish (v0.25.0)
-
-**Статус: done**.
-
-### 14.1 Целевая вкладка записи
-
-- [x] `recordingTargetPath` фиксируется при `record-started`
-- [x] Предупреждение при переключении вкладки во время записи (confirm + смена цели)
-- [x] Блокировка «Старт» и закрытия целевой вкладки без паузы
-- [x] `applyLiveRecordedStep` возвращает фокус на целевую вкладку
-
-### 14.2 Results panel
-
-- [x] Двойной клик по строке → открыть feature (как в истории запусков)
-
----
-
-## Фаза 15 — Daily-use QA audit (v0.26.0)
-
-**Статус: done** (v0.26.0).
-
-**Источник:** симуляция ежедневного использования (QA Automation + UX), 6 пользовательских сценариев: onboarding, Monaco, live recording, run, results, settings.
-
-**Оценка до фиксов: 6.8/10**. Цель после фазы: **8/10**.
-
-### Матрица сценариев (до фиксов)
-
-| Сценарий | Интуитивность | Стабильность | Приятность 8h/day |
-|----------|---------------|--------------|-------------------|
-| 1. Onboarding | 6/10 | 7/10 | 5/10 |
-| 2. Monaco | 7.5/10 | 6/10 | 7/10 |
-| 3. Recording | 7/10 | 7.5/10 | 6.5/10 |
-| 4. Run | 5.5/10 | 7/10 | 5/10 |
-| 5. Results | 6/10 | 8/10 | 5.5/10 |
-| 6. Settings | 7/10 | 8/10 | 6.5/10 |
-
----
-
-### 15.1 P0 — Критические (ежедневные блокеры)
-
-#### Запуск тестов — нет реального прогресса
-
-- [x] **Live run progress:** события из `internal/player` (сценарий / шаг / файл) → Wails events `run-progress`
-- [x] **Playing bar:** числитель/знаменатель (N/M сценариев, текущий файл) + progress bar по `--run-progress`
-- [x] **Журнал:** стрим stdout во время `captureCLIStream` → `run-log-line`
-- [x] **Results panel:** инкрементальное обновление строк во время suite run (как `VanessaMonitorPanel`)
-
-#### Результаты — trace без viewer
-
-- [x] **Trace viewer:** кнопка «Trace viewer» → `playwright show-trace` на последнем ZIP
-- [x] Fallback: подсказка в UI, если `playwright` CLI недоступен
-
-#### Recorder / Stop — перегруженная кнопка
-
-- [x] **Контекстная подпись Stop:** «Стоп тест» / «Стоп запись» / «Закрыть браузер» (toolbar + title)
-- [x] Confirm при закрытии браузера, если есть несохранённый сценарий
-- [x] Hotkey `Ctrl+Shift+R` — то же поведение, что и кнопка (контекст через `stopRecord`)
-
-#### Monaco — race при переключении вкладок
-
-- [x] **Dirty race:** `activeTab` обновлять до `activateTab`
-- [x] **Guard `attachModel`:** silent attach при tab switch (без фантомного `*`)
-
----
-
-### 15.2 P1 — Onboarding (сценарий 1)
-
-- [x] **`checklistDismissed`:** передать в `WelcomePanel`, persist в `settings.json`, кнопка «Скрыть чеклист»
-- [x] **Шаг 2 чеклиста:** ✓ только при `recording || browserOpen`
-- [x] **`welcomePlayedSuccess`:** persist в settings
-- [x] **`startURL`:** persist в settings
-- [x] **Быстрый старт без проекта:** блок + переход к «Открыть проект»
-- [x] **Запись без проекта:** `beginRecord` требует открытый проект
-- [x] **«Открыть примеры»:** после open — подсказка «выберите сценарий в каталоге» или авто-фокус каталога
-
----
-
-### 15.3 P1 — Monaco и редактор (сценарий 2)
-
-- [x] **`saveFeatureAs`:** `monaco.getEditorText()`
-- [x] **Failed step → go to line:** `FailedStepLine` + кнопки в Results / Error panel
-- [x] **Large file banner:** status bar / toast при `≥2000` строк («упрощённый режим: без outline/folding/hover»)
-- [x] **Find UX:** в Hotkeys dialog и подсказках — явно Ctrl+F (find) vs Ctrl+H (find+replace); опционально унифицировать
-- [x] **Record undo vs Ctrl+Z:** подсказка в recording bar / F1 — «Отменить шаг» ≠ editor undo
-- [x] **Dirty на неактивных вкладках:** опционально баннер «N несохранённых вкладок» или список в Command Palette
-- [x] **Auto-fix при сохранении:** лог / toast при `runScenarioHintsAutoFix` («исправлено N подсказок»)
-
----
-
-### 15.4 P1 — Live Recording (сценарий 3)
-
-- [x] **Recording target chip:** в status bar — «Запись → `file.feature`»
-- [x] **Idle timeout toast:** `record-stopped` reason `idle` + баннер в журнале
-- [x] **Output path по умолчанию:** активный таб / `recordingTargetPath`, не `recorded.feature` в корне
-- [x] **Tab switch confirm:** опция «Больше не спрашивать» (session или settings)
-- [x] **Poll vs pause desync:** `syncBrowserStateFromBackend` не перетирать `recordPaused` сразу после user toggle (debounce / ignore stale)
-- [x] **Headless toggle в recording bar:** confirm перед relaunch браузера mid-session
-
----
-
-### 15.5 P1 — Запуск тестов (сценарий 4)
-
-- [x] **Cancel в playing bar:** кнопка «Отмена» + статус «Останавливаем…»
-- [x] **`runPrimary` / Ctrl+Enter:** summary последних опций в toolbar или status bar (headed, HTML, workers…)
-- [x] **Первый Ctrl+Enter:** опционально открывать RunDialog, если `lastRun` ещё не задан явно
-- [x] **`rerunFailed`:** по полному ключу `path::scenario`, не только `path` (перезапуск одного сценария)
-- [x] **`readOnly` при Vanessa run:** единый флаг «automation active» (`playing || vanessaRunning`)
-
----
-
-### 15.6 P1 — Settings (сценарий 6)
-
-- [x] **«Сбросить по умолчанию»:** кнопка на вкладке / глобально в SettingsDialog
-- [x] **`navWaitUntil` в UI:** выпадающий список (load / domcontentloaded / networkidle…) — ключ уже в `AppSettings`
-- [x] **`sidebarWidth` drift:** единый owner (только `settings.json` **или** только `localStorage` layout)
-- [x] **Recording bar vs Settings:** после OK в Settings — синхронизировать toggles в recording bar
-- [x] **Валидация workers / slowMo:** предупреждение при экстремальных значениях (16 workers + slowMo 5000)
-
----
-
-### 15.7 P2 — Polish и согласованность
-
-#### Onboarding / проект
-
-- [x] Session restore: toast при несуществующем `sessionProject` («проект не найден: …»)
-- [x] Max recents: увеличить с 6 или настраиваемо в Settings
-
-#### Monaco
-
-- [x] Dry-run vs real run: единая политика `readOnly` (или явная подпись «dry-run — редактор доступен»)
-- [x] Закрытие вкладки: предупреждение, если tab — `recordingTargetPath` (даже на паузе — опционально)
-
-#### Recording
-
-- [x] `record-started` pre-emit: не показывать «● Идёт запись» до готовности браузера (или spinner)
-- [x] Picker без паузы: advanced setting «разрешить picker во время записи» (default off)
-
-#### Run
-
-- [x] Parallel fail-fast: настройка в RunDialog / Settings (продолжать все / остановить при первом fail)
-- [x] Suite run: имя текущего сценария в playing bar, не только «N сценариев»
-
-#### Results
-
-- [x] Allure: проверка `allure` в PATH + ссылка «Как установить» в Settings / Results
-- [x] `ServeAllure` повторный вызов: показать URL / кнопка «Открыть снова»
-- [x] HTML report: опция сохранять с timestamp (`report-YYYYMMDD-HHMM.html`)
-
-#### Settings
-
-- [x] Кнопка **Apply** без закрытия диалога (OK остаётся)
-- [x] Hotkeys: не перехватывать Ctrl+S при открытом Settings (или явно disabled state)
-
----
-
-### 15.8 P3 — Nice to have (backlog внутри фазы)
-
-- [x] Мастер «Новый проект» (папка + `.scenaria` + шаблон feature)
-- [x] System theme (follow OS) в editor settings
-- [x] Flaky badge → «Запустить 3×» из Results
-- [x] Update modal: не показывать поверх splash / первого onboarding
-- [x] E2E: settings reset defaults, live progress mock, trace viewer smoke
-- [x] Документ `docs/QA-DAILY-USE.md` — чеклист ручного регресса по 6 сценариям
-
----
-
-### 15.9 Порядок реализации (рекомендуемый)
-
-| Sprint | Фокус | Ключевые пункты |
-|--------|-------|-----------------|
-| **15.1a** | Run visibility | 15.1 live progress + journal stream |
-| **15.1b** | Debug loop | 15.1 trace viewer + 15.3 failed_step goto line |
-| **15.1c** | Editor trust | 15.1 dirty race + 15.3 saveFeatureAs |
-| **15.2** | Recorder clarity | 15.1 split Stop + 15.4 target chip + idle toast |
-| **15.3** | Onboarding | 15.2 checklist + quick start guard |
-| **15.4** | Settings | 15.6 reset defaults + navWaitUntil + sidebarWidth |
-| **15.5** | Polish | 15.7–15.8 по остатку |
-
----
-
-### 15.10 Критерии приёмки фазы
-
-- [x] Suite из ≥10 сценариев: виден текущий файл и прогресс N/M в playing bar
-- [x] Упавший прогон: trace открывается из IDE одной кнопкой
-- [x] Переключение 5 вкладок с правками: нет фантомного `*` без редактирования
-- [x] Stop: пользователь понимает, что остановится, без чтения журнала
-- [x] Новый пользователь: «Быстрый старт» не оставляет в ловушке «записал — не могу запустить»
-- [x] Settings: сброс к defaults + `navWaitUntil` в UI
-- [x] E2E: ≥2 новых теста (progress mock, onboarding guard или trace button)
-
----
-
-## Фаза 12 — Lazy workers + flaky E2E (v0.24.0)
-
-**Статус: done** (v0.24.0).
-
-### 12.1 Отложенные Monaco workers
-
-- [x] `ensureMonacoEnvironment()` — dynamic import `editor.worker` при первом `preloadMonacoEditor`
-- [x] Убран sync import `monaco-env` из `main.ts` (cold start без worker bundle)
-
-### 12.2 E2E flaky-run UI
-
-- [x] Mock `?e2e=flaky-run` — `ListRunResults` + `FlakyMetrics` с flaky-сценарием
-- [x] E2E: история запусков (фильтр Flaky) + бейдж в панели «Результаты»
-
----
-
-## Фаза 11 — Cold start, FailedStep, E2E (v0.23.0)
-
-**Статус: done** (v0.23.0).
-
-### 11.1 Динамический import Monaco
-
-- [x] `import('monaco-editor')` в `appBootstrap` — отдельный chunk, не блокирует main bundle
-- [x] Splash без await Monaco; `prefetchMonacoEditor()` после показа shell
-- [x] `gherkinHintActions` — только type-import Monaco
-
-### 11.2 FailedStep в player
-
-- [x] `RunContext.markFailedLeafStep` / `FailedLeafStep` (0-based leaf index)
-- [x] `ScenarioResult.FailedStep` → `run_status.json` через CLI
-- [x] Step-flaky метрики получают данные из реальных прогонов
-
-### 11.3 E2E
-
-- [x] `Ctrl+Shift+O` → quick outline widget
-- [x] Post-record diff: режим `?e2e=post-record-diff`, banner + diff dialog
-
----
-
-## Фаза 10 — Flaky-run, post-record diff, release CI (v0.22.0)
-
-**Статус: done** (v0.22.0).
-
-### 10.1 Метрики flaky-run
-
-- [x] `runstatus.FlakyStats` — сценарии с чередованием pass/fail; шаги с ≥2 падениями
-- [x] API `FlakyMetrics` + `failed_step` в `ListRunResults`
-- [x] UI: фильтр «Flaky» в истории; бейджи в Results / Run history
-
-### 10.2 Monaco diff после записи
-
-- [x] Baseline текста при `record-started`
-- [x] Post-record banner + кнопка «Сравнить»
-- [x] `PostRecordDiffDialog` — Monaco `createDiffEditor` (до / после)
-
-### 10.3 Release CI
-
-- [x] `.github/workflows/release.yml` — tag `v*` → portable zip + installer + `latest.json` (уже было; задокументировано в ROADMAP)
-
----
-
-## Фаза 8 — Стабильность Web UI (аудит 2026)
-
-**Статус: done** (v0.20.0).
-
-Цель: закрыть критические пробелы player / recorder / отчётов / Wails для production Web UI automation.
-
-Оценка до фиксов: **5/10**. После фазы: **7+/10**.
-
-### 8.1 P0 — Критические (player / CLI / recorder)
-
-- [x] **Runner + CLI:** partial `ExecutionResult` при падении; HTML/JUnit/Allure пишутся до return error
-- [x] **`browserSession`:** сериализация доступа к `page`/`closed` (mutex на `executeAction`)
-- [x] **`waitForLocator`:** drain goroutine при `ctx.Done()` (не оставлять зависший `WaitFor`)
-- [x] **`RecordLive`:** session generation ID — не обнулять `liveSession`/`recordCancel` чужим goroutine
-- [x] **Recorded steps:** все мутации `*steps` под `LiveSession.mu` (poll-loop + undo)
-
-### 8.2 P1 — Важные (reliability / security)
-
-- [x] **Signal handling:** SIGINT/SIGTERM → cancel run context (CLI); GUI `CancelRun` + `RunRunContext`
-- [x] **`runstatus`:** `WritableScenariaDir` вместо жёсткого `project/.scenaria`
-- [x] **Record timeout:** idle-only (не wall-clock `idle+30` на всю сессию)
-- [x] **`PickSelector`:** cancel через `recordCtx` / `recordCancel`
-- [x] **Picker bindings:** per-context или reset при close browser
-- [x] **`captureCLI`:** mutex на stdout (без гонок при параллельных GUI вызовах)
-- [x] **OTP channels:** очищать после use (`wailsapp/app.go`)
-- [x] **`UrlsMatch`:** опционально query/fragment для SPA
-- [x] **Navigation:** configurable `waitUntil` (не только `domcontentloaded`)
-- [x] **OTP / download / press:** thread `ctx` через все блокирующие waits
-- [x] **Path confinement:** `Output`/`AppendTo` в recorder — только внутри project root
-- [x] **Gherkin sanitize:** escape `\n` в recorded step text
-- [x] **Allure:** очистка stale results + уникальные timestamps per scenario
-- [x] **`ServeAllure`:** tracking PID, не плодить JVM
-- [x] **CLI validate:** flag-first parsing (`validate --no-browser ./features`)
-- [x] **CLI run:** dedupe discovered `.feature` paths
-- [x] **`writeJSON` / reports:** `MkdirAll` parent dir
-- [x] **Wails async:** `ctx != nil` guard в `StartRecord`/`OpenBrowser`/`StartVanessaRun`
-- [x] **`buildRunner` error:** показывать resolved engine name
-
-### 8.3 P2 — Улучшения / flakiness / DX
-
-- [x] **Browser pool** (reuse context per worker) — снижение RAM при `--workers N`
-- [x] **`for_each`:** re-query locators per iteration
-- [x] **`downloadByClick` / `upload`:** chained locators как у click/fill
-- [x] **`assert-hidden` / `wait-hidden`:** проверять все matches, не только `.First()`
-- [x] **JUnit:** статус `broken` → failures
-- [x] **`WriteTempFeature`:** cleanup temp dirs
-- [x] **Download artifacts:** teardown `.scenaria/downloads/run-*`
-- [x] **Recorder trust:** document hostile-origin risk; validate picker binding origin
-- [x] **Linux paths:** единый app-data root (settings + artifacts)
-- [x] **Structured errors:** `ExecutionFailure` с partial result (typed)
-- [x] **Observability:** slog `run_id` при старте прогона, debug-логи retry
-- [x] **CLI help:** упомянуть `--html`
-- [x] **`RunInit`:** не глотать ошибки scaffold
-
-### 8.4 Уже сделано (аудит follow-up)
-
-- [x] `watchContext` + `pw.Stop()` при cancel
-- [x] Parallel fail-fast (`cancel()` on first failure)
-- [x] `waitForURL` polling с учётом ctx deadline
-- [x] Chained locators + retry для большинства actions
-- [x] Writable artifacts fallback (`paths.WritableScenariaDir`)
-- [x] Monaco: Ctrl+Z (без `setValue` на tab switch), deferred hint fix
-- [x] Integration: `parallel_cancel_integration_test.go`
-- [x] `docs/SELECTORS.md`, placeholder cycle detection
-
-### Матрица приоритетов фазы 8
-
-| Область | P0 | P1 | P2 |
-|---------|----|----|-----|
-| Player / runner | partial results, session lock, wait drain | signal, UrlsMatch, ctx OTP | pool, for_each, selectors |
-| Recorder | session gen, steps mutex | picker cancel, path confine | trust doc, sanitize |
-| Reports / CLI | reports on failure | runstatus, dedupe, validate flags | JUnit broken, help |
-| Wails / GUI | — | OTP, captureCLI, ctx guard | temp cleanup, Allure PID |
-
----
-
-## Фаза 16 — Interactive HTML Report (Mini Trace Viewer)
-
-**Статус: done** (v0.28.0). Остаток — backlog (HAR per-step, optional per-step screenshots toggle).
-
-Цель: превратить `report.html` в практичный инструмент для QA — timeline шагов, inspector, сравнение с историей, интеграция с Playwright Trace.
-
-### 16.1 MVP — структура и timeline (P1) — **done (частично)**
-
-- [x] Embedded JSON payload в одном HTML-файле
-- [x] Трёхпанельный layout: сценарии | timeline | inspector
-- [x] Фильтры: только упавшие, тег, длительность, поиск
-- [x] Failure highlight: авто-выбор первого failed сценария и шага
-- [x] Per-step записи при browser-run (`StepRecord`: timing, selector, error)
-- [x] Dry-run timeline из плана (leaf steps + inferred status)
-- [x] Inspector: Gherkin, selector, ошибка, скриншот (full mode)
-- [x] Copy selector / Copy Gherkin / Copy re-run / Copy trace cmd
-- [x] Кнопка «Open Playwright Trace» → trace.playwright.dev + trace zip рядом с отчётом
-- [x] Советы по шагу (data-testid, timeout, strict mode)
-- [x] Шапка: passed/failed/skipped, flaky count, slowest step
-- [x] Сравнение с `run_status.json` (последний прогон)
-- [x] Export failed steps → `.feature`
-- [x] Responsive (mobile sidebar + inspector drawer)
-- [x] `HTMLOptions.LightMode` / `RunRequest.HTMLLightMode` (без бинарных артефактов)
-
-### 16.2 Сбор данных — расширение (P1)
-
-- [x] Network snippet на шаг (failed request / HTTP ≥400) из live run и Playwright tracing
-- [x] Network snippet последнего failed request на упавшем шаге
-- [x] Network failures из trace.network (HTTP ≥400) на каждый шаг по offset
-- [x] Скриншот на каждый шаг (опционально, full mode)
-- [x] Скриншот на каждый шаг при full HTML (не light mode)
-- [x] Скриншот viewport на упавшем шаге (full mode)
-- [ ] DOM snapshot / accessibility tree для failed step
-- [x] DOM snapshot + a11y tree (упрощённый) на failed step
-- [x] Page context (title + URL) на failed step
-- [x] Example index в payload и заголовке timeline
-- [x] Длительность сценария end-to-end (wall clock)
-
-### 16.3 Trace Viewer — углубление (P1)
-
-- [x] Встроенный мини-viewer (timeline + action log без полного PW UI)
-- [x] Trace tab: rail + события + шаги (mini-viewer в центральной панели)
-- [x] Action log tab (таблица шагов, sync с timeline/inspector)
-- [x] Drag-and-drop trace в отчёт (offline парсинг .zip → Trace tab; fallback trace.playwright.dev)
-- [x] Drop-zone для trace .zip в inspector
-- [ ] Ссылка `npx playwright show-trace` с авто-open из IDE (кнопка в GUI)
-- [x] Авто-open trace viewer после GUI-прогона с падениями (если включён trace)
-- [x] Кнопка «Trace in IDE» через report bridge → `OpenTrace`
-- [x] Trace только для failed сценариев (zip при падении, discard после pass)
-- [x] Синхронизация шага ↔ trace (timeline из zip + offset/bridge)
-- [x] Trace timeline из zip + клик → выбор ближайшего шага
-- [x] Trace at step: offset в bridge + seek hint в IDE/journal
-
-### 16.4 Размер и режимы (P2)
-
-- [x] Сжатие скриншотов (webp / jpeg quality)
-- [x] Toggle Full/Light в диалоге «Запустить» (GUI)
-- [x] CLI `--html-light`
-- [ ] Лимит размера embedded JSON; вынос крупных trace в `traces/` only (zip на диске + trim `trace_events` в JSON — **done**; HAR в embed — backlog)
-- [x] Лимит embedded JSON (4 MiB) с `artifacts_trimmed` flag
-- [x] Поэтапный trim: screenshots → DOM/a11y → trace_events (zip остаётся в `traces/`)
-- [x] Дедупликация одинаковых скриншотов между шагами
-
-### 16.5 История и flaky (P2)
-
-- [ ] Diff шагов с N предыдущими прогонами (таблица regressions)
-- [x] Diff шагов с N предыдущими прогонами (`run_diff` в inspector)
-- [x] Regression hints (new_failure / step_changed / still_failing)
-- [x] Таблица последних 5 прогонов на сценарий в inspector
-- [x] Подсветка flaky шагов на timeline (badge + tint для passed flaky)
-- [x] Flaky badge на timeline (из run_status)
-- [x] Sparkline длительности сценария по истории (run_status)
-- [x] Sparkline длительности шага по истории (`step_durations` в run_status)
-- [x] Импорт внешнего `run_summary` для CI сравнения
-
-### 16.6 QA workflow (P2)
-
-- [ ] Re-run scenario из IDE по клику в отчёте (deep link / custom protocol) — [x] HTTP bridge `/rerun` + кнопка в viewer
-- [x] HTTP bridge localhost: Open in IDE / Re-run in IDE из HTML-отчёта
-- [ ] Jump to line в Monaco из inspector — [x] bridge `/goto` + `gotoReportStep` в IDE
-- [x] Jump to line через bridge (кнопка «Open in Scenaria IDE»)
-- [x] Печать / PDF-friendly layout (`@media print`)
-- [x] i18n отчёта ru/en (`locale` в payload, строки в viewer)
-- [x] Клавиатура j/k и ↑↓ для навигации по шагам
-
-### 16.7 Тесты и CI (P1)
-
-- [x] Unit: payload builder, step status inference, WriteHTML smoke
-- [x] Golden JSON snapshot (структура payload)
-- [ ] E2E: прогон example → открыть report.html → клик по failed step — [x] `html-report.spec.ts` (fixture `example-report.html`)
-- [x] E2E: fixture из `examples/01-pervaya-proverka.feature` → `example-report.html`
-- [x] E2E: fixture `sample.html` + Playwright (timeline, action log, filter)
-- [x] Trace offset hint в inspector (кумулятивная длительность шагов)
-
----
-
-## Фаза 17 — Code audit: стабильность Web UI / Playwright / Wails (P0)
-
-Аудит senior Go (июнь 2026). Оценка до фиксов: **5/10** для production Web UI. Цель фазы — закрыть критические дыры и зафиксировать остаток.
-
-### 17.1 Критические — исправлено
-
-- [x] **Deadlock `browser_pool.release` + `Close()`** при abort/cancel (`internal/player/browser_pool.go`) — слот всегда возвращается в канал; тест `browser_pool_release_test.go`
-- [x] **Live browser vs прогон:** `HoldForTestRun` блокирует poll записи; `CloseBrowser` не закрывает браузер пока `TestRunHeld()`; forced close только в `Shutdown`
-- [x] **EPIPE / Ctrl+C:** graceful shutdown ждёт `activePlaywright` (8 с), затем `StopAllureServe` + `closeBrowserForced`; мягкий `abortRun` без рвения pipe; drain 75 ms перед `pw.Stop`
-- [x] **Report bridge без auth:** per-session token `X-Scenaria-Bridge-Token`, встраивается в HTML payload (`bridge_token`)
-- [x] **Произвольные пути в bridge:** `confineFeaturePath` / `confineArtifactPath` перед emit; trace/open — `ConfineToProjectRoot`
-- [x] **`ReadFeature` / `SaveFeature` / `DuplicateFeature`:** confinement через `path_guard.go` (проект, temp run dirs, `%TEMP%`)
-
-### 17.2 Средний приоритет — исправлено
-
-- [x] **`session.closed` data race** → `atomic.Bool` + `isClosed()` / `setClosed()`
-- [x] **`OnRequestFailed` vs `executeAction` deadlock** — отдельный `networkMu` для `lastNetworkFail`
-- [x] **`captureTraceZIP` / `traceStopped`** — чтение/запись под `session.mu`
-- [x] **`watchContext` на sequential runner** — при `openSession` для non-attached прогонов
-- [x] **`HoldForTestRun` counter** — floor at 0 при release
-- [x] **`EachRecordedLine` slice race** — копия steps под lock
-- [x] **CPU spin в `live_session` poll** — `time.After(50ms)` вместо `select default`
-- [x] **CLI: report error маскирует execute error** — `errors.Join`
-- [x] **CLI: `recordRunStatus` engine** — `resolveRunEngine` вместо пустого `opts.engine`
-- [x] **GUI `CloseAfterRun`** для отдельного тестового браузера (не live reuse)
-- [x] **`pageGoto` с ctx** — отмена навигации без удержания mutex
-
-### 17.3 Средний приоритет — открыто
-
-- [x] **`emitRunProgress` под mutex** в parallel runner — progress вне lock
-- [x] **Orphan goroutines** Playwright при cancel — `pendingAsync` + `drainPendingAsync` перед `pw.Stop` / `session.close`
-- [x] **`startPlaywright` не отменяется** по ctx при pool create — cancel + stop orphan driver
-- [x] **Vanessa run goroutine** не tracked в shutdown — `activeBackground` WaitGroup
-- [x] **`WriteTempFeature` dirs** — cleanup в `Shutdown` (не только после `Run`)
-- [x] **Plugin install** — лимит 100 MiB на download
-- [x] **HTTP auth passwords** во frontend — `hasPassword` вместо пароля; preserve on save
-- [x] **Wails bindings:** `BeginRecordingCapture` → `bool`; `ResolveRunFromLine` → error
-- [x] **`main.go` exit code** при ошибке `wails.Run` — `os.Exit(1)`
-- [x] **`go test -race`** в CI на player/gui/recorder
-
-### 17.3b Средний приоритет — осталось
-
-- [x] **Wails bindings:** `EventBindingTypes` — DTO уже в `models.ts` (`RunProgressEvent`, `UpdateProgressDTO`)
-- [x] **Chaos-тест** pool cancel при `workers>1` — `browser_pool_chaos_test.go`
-- [x] **Parallel cancel propagation** — `runCtx` на pool + `abortActiveSessions` + `failFastParallelCancel`
-- [x] **Step retry policy** — `runWithRetries` + `isRetryableStepError` (transient errors, expanded actions)
-- [x] **Silent browser cleanup** — `closeBrowserResource` вместо `_ = Close()` в session/trace/reset
-
-### 17.4 Flaky / UX Web UI — открыто
-
-- [x] Изолированный browser context по умолчанию — `reuseLiveBrowser` opt-in в диалоге «Запустить»
-- [x] `networkidle` / per-project nav wait — `nav_wait_until` в `.scenaria/project.json`
-- [x] Retries на `goto` — до 3 попыток на timeout/net errors
-- [x] HTML full mode: скриншоты opt-in — light по умолчанию (GUI + CLI `--html` без `--html-full`)
-
-### 17.5 Архитектура (backlog)
-
-- [x] Единый `PlaywrightRuntime` — `internal/playwrightrt` (ref-count, player/recorder/selector + shutdown)
-- [x] `go test -race` gate + chaos-тест pool cancel при `workers>1`
-- [x] Report bridge: origin allowlist (`null`, `localhost`, `127.0.0.1`) вместо `CORS: *`
-
-### 17.5b Отчёт после прогона
-
-- [x] **HTML не открывался при падении** — `finalizeGUIReports` пишет отчёт до return error; UI открывает при `result.error` (кроме cancel)
-
-### 17.6 Симптомы пользователя (связь с аудитом)
-
-| Симптом | Причина | Статус |
-|---------|---------|--------|
-| Зависание «Выполняется» | Нет timeout / UI без finally | [x] лимит 20 мин, finally в `executeRun` |
-| Зависание на 1-м шаге | Recorder + run на одной page | [x] `HoldForTestRun` |
-| EPIPE в консоли после Ctrl+C | Go exit раньше Node driver | [x] shutdown wait + drain |
-| Множественные перезапуски | OOM / crash Node | [x] единый `playwrightrt` + light HTML по умолчанию |
-| Отчёт не открывается при fail | skip write + `!result.error` в UI | [x] `finalizeGUIReports` + open on fail |
-| OTP-диалог не всплывает | `EmailCode()` после wait полей; тихий skip | [x] prompt first + `EmailCodeForStep` + `WindowShow` |
-| Браузер не открывается при первом запуске | нет проекта; ложный `browser-opened`; «Быстрый старт» → только диалог | [x] auto examples + deferred events + quickStart→`startRecord` |
-| «Идёт запись» до появления окна | pre-emit `record-started` в `StartRecord` | [x] emit после `OnBrowserOpened` |
-
-### 17.7 Файлы изменений (фаза 17)
-
-`internal/player/{browser_pool.go,browser_session.go,browser_cleanup.go,network.go,artifacts.go,trace_lifecycle.go,runner_parallel.go,action_context.go,async_drain.go,prompt.go}`
-`internal/gui/{path_guard.go,report_bridge.go,record.go,service_shutdown.go,allure.go,trace.go,features.go,service.go,run_browser.go,http_auth.go,vanessa_monitor.go}`
-`internal/recorder/{session.go,live_session.go}`
-`internal/cli/run.go`
-`internal/report/{html_payload.go,html_assets/viewer.js}`
-`internal/plugin/install.go`
-`internal/wailsapp/app.go`
-`main.go`
-`frontend/src/App.svelte` (OTP, browser first-run, report handlers)
-`frontend/src/lib/i18n/locales/{ru,en}/journal.ts`
-`internal/settings/{project.go,nav_wait.go}`
-`internal/playwrightrt/runtime.go`
-`internal/gui/run_browser.go` (finalizeGUIReports, report on fail)
-
----
-
-## Фаза 18 — Audit hardening: Web UI / Recorder / Playwright (P0)
-
-Статус: **done** (v0.28.1). Источник: повторный senior Go audit Web UI части.
-
-### 18.1 P0 — исправлено
-
-- [x] **TestClient localStorage применяется не к тому origin** — `ApplyTestClient` регистрирует origin-scoped init script для будущих навигаций и применяет storage сразу только на совпадающем origin.
-- [x] **GUI OpenBrowser игнорирует выбранный TestClient** — убран принудительный reset `req.TestClient`.
-- [x] **CLI `--nav-wait-until` перетирается app settings** — флаг получает явный приоритет над настройками.
-- [x] **Неверные selectors в StepRecord** — `fill`, `select`, `assert-text`, `upload`, `press-in` берут selector из `Value2`.
-- [x] **`WatchContext` stop не идемпотентен** — stop-функция защищена `sync.Once`.
-
-### 18.2 P1 — reliability backlog
-
-- [x] **Parallel runner без goroutine-per-scenario** — `executeParallel*` использует fixed worker pool с `jobs/results`, порядок результатов сохраняется по индексу.
-- [x] **Playwright calls без долгого `session.mu`** — `executeAction` берет snapshot `page/navWait` под lock, Playwright RPC выполняет вне lock; state-changing tab/close операции остаются под lock.
-- [x] **Browser validation с context propagation** — CLI Ctrl+C и GUI Stop отменяют `ValidateFeatureInBrowser` / `ValidateBrowser`.
-- [x] **HTML full report memory pressure** — full HTML пишет screenshots в `screenshots/*.png`, trace zip уже хранится в `traces/*.zip`; payload больше не base64-кодирует screenshots.
-- [x] **Allure cleanup guard** — writer ставит marker `.scenaria-allure-results` и отказывается чистить непустой непомеченный каталог.
-- [x] **Report bridge token lifetime** — GUI HTML получает свежий bridge token при записи отчета; старые токены инвалидируются, сравнение constant-time, remote CORS preflight возвращает 403.
-- [x] **Recorder polling backoff** — основной loop переведен на `Ticker`, sleeps стали context-aware; polling меньше аллоцирует timers и быстрее реагирует на cancel.
-
-### 18.3 Файлы изменений
-
-`internal/player/{testclient.go,session_capture.go,browser_cleanup.go,step_record.go,runner_parallel.go,browser_session.go}`
-`internal/gui/{record.go,service.go,browser_validate.go,report_bridge.go,run_browser.go}`
-`internal/cli/{run.go,validate.go}`
-`internal/selector/{validate.go,browser_validate.go}`
-`internal/report/allure/{writer.go,allure_test.go}`
-`internal/report/{html_payload.go,html_image.go,html_test.go,html_ci_test.go}`
-`internal/recorder/live_session.go`
-`internal/player/{testclient_test.go,step_record_test.go}`
-`internal/cli/run_test.go`
-`internal/gui/report_bridge_test.go`
-
-### 18.4 Fresh audit follow-up — remaining hardening
-
-- [x] **Session page snapshot everywhere** — executor/testclient/for_each/network now use checked page snapshot helpers instead of direct `session.page` reads.
-- [x] **No long Playwright RPC under `session.mu`** — page context, DOM/a11y snapshots, screenshots now snapshot page under lock and run RPC outside lock.
-- [x] **Parallel job enqueue respects cancellation** — sender stops on `runCtx.Done()` and unscheduled results are filled as canceled.
-- [x] **Report artifact cleanup guard** — `screenshots/` and `traces/` are marker-guarded and cleaned before full HTML report writes.
-- [x] **Streaming HTML writer** — HTML shell and JSON payload are streamed to disk without building one full HTML string.
-- [x] **Recorder adaptive polling** — idle/no-capture recorder loop backs off heavy browser `Evaluate` calls while staying responsive after activity.
-
-### 18.5 Monaco Editor audit - Wails/Svelte hardening
-
-- [x] **Save As model URI mismatch** - after saving under a new path, switch Monaco to a model with the new URI and release the old model.
-- [x] **Out-of-order feature loading** - guard async `loadFeature`/Wails reads with a generation token so late responses cannot activate stale tabs.
-- [x] **Deferred setContent stale model write** - ensure delayed external edits apply only to the model/path captured at scheduling time.
-- [x] **Provider/command HMR disposables** - keep Monaco provider disposables in a global registry to avoid duplicate providers during `wails dev`.
-- [x] **Per-tab diagnostics state** - validation markers are stored per tab and restored on tab activation.
-- [x] **Large-file provider pressure** - completion provider now reuses one `model.getValue()` snapshot; byte-length threshold remains as follow-up if needed.
-
----
-
-## Фаза 19 — Runner DSL: состояние UI и чекаут (P1)
-
-Статус: **done** (v0.29.0; осталось 19.5 референс на стенд). Контекст: e-commerce чекаут (напр. 2MOOD)
-
-### 19.1 Сделано (v0.28.1)
-
-- [x] **`проверяю что доступно "…"`** / **`проверяю что недоступно "…"`** — `assert-enabled` / `assert-disabled`, Playwright `isEnabled()` (учитывает `disabled`, `aria-disabled`, перекрытие)
-- [x] EN: `I see "…" is enabled` / `I see "…" is disabled`
-- [x] Каталог F1, snippets, golden DSL, экспорт Playwright TS/Python, валидация селекторов
-- [x] Пример `examples/06-proverka-dostupnosti.feature` (data: HTML, disabled → enabled)
-- [x] Документация: `docs/ru|en/authoring/gherkin.md`, `selectors.md`, `examples.md`
-
-**Ограничение:** `вижу` проверяет только видимость; неактивная кнопка на экране проходит `вижу`, но не `проверяю что доступно`.
-
-### 19.2 P1 — асинхронное состояние и динамический текст
-
-- [x] **`жду пока доступно "selector"`** — `wait-enabled`, polling `isEnabled()`
-- [x] **`жду пока недоступно "selector"`** — `wait-disabled`
-- [x] **`проверяю что текст соответствует regex "…" в "…"`** — `assert-text-regex`
-- [x] **Условия в блоках:** `Если доступно`, `Если недоступно`, `Пока доступно` (+ EN `"…" is enabled/disabled`)
-- [x] **`проверяю что выбрано "selector"`** — `assert-selected` (`aria-selected`, `aria-checked`, `.active`)
-
-### 19.3 P2 — числа, переменные, связь полей
-
-- [x] **`запоминаю число из "selector" как "var"`** — `remember-number`, нормализация `7 180 ₽` → `7180`
-- [x] **Сравнение переменных:** `проверяю что "{{a}}" содержит "{{b}}"` / `равно` — `assert-var-contains` / `assert-var-equals`
-- [ ] **Связь сайдбар ↔ кнопка** (опционально) — через фиксированную корзину + `Примеры:` / `--var`
-- [x] **Арифметика в плейсхолдерах:** `{{total / 4}}`, `{{total}} / 4`, `(total - points) / 4` — целочисленное деление, работает в `assert-var-*`, `fill`, шагах с `{{…}}`
-
-### 19.4 P2 — запись и маски (flaky fill)
-
-- [x] **`fill-generated` + phone mask** — `PressSequentially` для `phone` / `input[type=tel]`
-- [x] **Нормализация при записи:** placeholder `+7 (` → `input[type=tel]`
-- [x] **Подсказка сценария:** hint `phone_mask_selector` для fragile placeholder на шаге телефона
-
-### 19.5 Референс-сценарий (чекаут, без привязки к прод)
-
-Целевое покрытие одного `.feature` на стенде с фиксированной корзиной:
-
-```gherkin
-# 1. Пустой чекаут → кнопка недоступна
-Тогда проверяю что недоступно "[data-testid=checkout-pay]"
-
-# 2. Заполнить контакты, доставку, оплату → доступна
-И проверяю что доступно "[data-testid=checkout-pay]"
-
-# 3. Сплит → текст и сумма на кнопке (подстроки или regex)
-И проверяю текст "Яндекс.Сплит" в "[data-testid=checkout-pay]"
-И проверяю текст "1 795" в "[data-testid=checkout-pay]"
-
-# 4. Итого в сайдбаре (фиксированные данные стенда)
-И проверяю текст "7 180" в ".order-summary"
+```text
+frontend/src/App.svelte
+frontend/src/lib/MonacoEditor.svelte
+frontend/src/lib/monacoTabModels.ts
+frontend/src/lib/editorTextSync.ts
 ```
 
-Зависимости: стабильные `data-testid` на CTA, итого, плитках; тестовый стенд с предсказуемыми ценами/баллами.
+## Tasks
 
-### 19.6 Файлы (план)
+* [x] Исправить `finalizeCloseTab`: не выставлять `activeTab = next.path` до активации Monaco model.
+* [x] Исправить `closeWelcomeTab` по той же схеме.
+* [x] Добавить `forceActivate` / `activateExisting` режим для `loadFeature`.
+* [x] Для existing tab всегда активировать Monaco model, если это явное переключение.
+* [x] Сделать editor change event path-aware: `{ path, modelUri, text }`.
+* [x] В `onEditorChange` игнорировать event, если event path/model не совпадает с активной вкладкой.
+* [x] Ввести canonical path helper для вкладок, Monaco models, markers, dirty state и batch selection.
+* [x] Добавить reconciliation существующей Monaco model при authoritative reload/draft restore.
+* [x] `syncTabContent` сделать active-tab-only или требовать явный source text/path.
+* [x] Save operation привязать к `pathAtStart`.
+* [x] Disk reload привязать к `pathAtStart`.
+* [x] Validation response защитить `textVersion`.
+* [x] Inlay hints и diagnostics строить по одной версии текста.
 
-`internal/stepdsl/{parser.go,en_patterns.go,testdata/steps_golden.json}`
-`internal/player/{browser_session.go,context.go}` — wait-enabled, regex assert, number parse
-`internal/gherkin/blocks.go` — условия enabled/disabled
-`internal/stepcatalog/snippets.go`
-`examples/` — чекаут-пример на стенд (после появления тестовых data-testid)
-`docs/ru|en/authoring/`
+## Removed Duplicates
 
-### 20.1 GUI/backend reliability audit - Wails + Playwright hardening
+Следующие ранее отдельные пункты объединены в эту фазу:
 
-- [x] **Wails panic boundary** - wrap Wails-bound methods and background goroutines with recover so backend panics become `RunResult.Error` / emitted error events instead of crashing the desktop app.
-- [x] **Safe CLI stdout capture** - restore `os.Stdout`, close pipe handles, drain scanner, and convert panics to errors in `captureCLIStream`.
-- [x] **Shutdown live browser before waiting** - cancel/close recorder browser sessions before waiting on `activePlaywright` to avoid 8s shutdown hangs.
-- [x] **Parallel cancellation polish** - prevent browser pool deadlocks/leaks on reset failures, closed pool sends, and fail-fast cancellation races.
-- [x] **Trace artifact lifecycle lock** - stop trace recording under session ownership so `session.close()` cannot race with failed-artifact collection.
-- [x] **Recorder cleanup logging** - replace silent `Close`/`Evaluate` cleanup paths with low-noise debug logging.
-- [x] **Retry policy hardening** - separate action retry from assertion retry, add jittered backoff, and avoid retrying deterministic assertion mismatches.
-- [x] **Long Wails operations async model** - migrate Run/Validate/Export/plugin operations toward start/cancel/status events instead of long pending binding calls.
-- [x] **Monaco model/provider cleanup** - Save As URI, stale async writes, provider disposables, per-tab diagnostics, and model release are hardened.
+* Monaco tabs stabilization;
+* path-aware editor change;
+* save path-stability;
+* disk reload path-stability;
+* `syncTabContent` safety;
+* validation text version guard;
+* inlay hints same snapshot;
+* canonical frontend paths for editor.
 
-### 20.2 HTML report UI/UX audit - report.html viewer hardening
+## Acceptance Criteria
 
-- [x] **P1 Mobile layout overlap** - `internal/report/html_assets/viewer.css`: at <=720px the inspector stays `.open` and overlays header/timeline; toolbar, inspector, timeline cards, and action sections overlap. Fixed with grid body rows, mobile bottom-drawer inspector, and no hard-coded header offset.
-- [x] **P1 Native filter controls** - `viewer.css`/`viewer.html`: `#filter-failed` inherits `.filters input { width:100% }`, renders as a tiny native checkbox centered in a 275px-wide box, and uses `appearance:auto`/`accent-color:auto`. Fixed with scoped input CSS, `.check-filter`, custom checkbox state, and focus-visible styling.
-- [x] **P1 Locale consistency** - `viewer.js`: RU locale still exposes English UI strings (`Timeline`, `Action log`, `Inspector`, `Gherkin`, `Selector`, `Copy selector`, `Copy Gherkin`, `Copy re-run`, `Export failed .feature`). Fixed with runtime RU/EN locale overrides for visible report controls/actions.
-- [x] **P2 Broken mojibake fallbacks** - `viewer.html` contains mojibake fallback text/placeholders before JS localization. Fixed by replacing fallback markup with clean ASCII text.
-- [x] **P2 Header responsiveness** - `viewer.css`: header uses wrapped flex with variable height, but `.layout` assumes `height: calc(100vh - 52px)` and inspector fixed `top:52px`. Fixed by switching body to `auto minmax(0, 1fr)` grid rows and removing hard-coded `52px` offsets.
-- [x] **P2 Controls visual polish** - buttons/links/inputs lack a shared focus-visible treatment and disabled/loading states; number input exposes native spinner styling. Fixed shared focus-visible treatment, normalized filter controls, and number input spinner handling.
-- [x] **P2 Interaction discoverability** - mobile has no obvious way to close the inspector or return to scenario list after selecting a step. Fixed with explicit inspector close button, drawer reopen on step/action/trace selection, and sidebar auto-close on scenario selection.
-- [x] **P2 Full/light mode switch inside report** - HTML report can be generated in full and light modes, but the opened report only shows the current payload. Added paired artifact links (`report.html` / `report.light.html`), segmented full/light control, disabled state when the pair is missing, URL hash state preservation, Go coverage, and Playwright E2E.
-- [x] **P3 Accessibility pass** - add labels/aria for filter fields and timeline step buttons, keyboard navigation for scenarios/steps/tabs, and verify contrast/focus order in dark and light report modes. Fixed with localized ARIA labels, tablist/tabpanel roles, keyboard activation for scenario/step/action rows, arrow-key tab navigation, and E2E assertions.
-- [x] **P3 Visual regression coverage** - add Playwright screenshots for report viewer at desktop (~1280), tablet (~900), and mobile (~390) plus assertions for no horizontal overflow and no major panel overlap. Fixed with viewport smoke tests that capture screenshots and assert no overflow/header overlap at desktop, tablet, and mobile sizes.
-- [x] **P2 Screenshot lightbox** - inspector thumbnail opens full-size overlay preview (Escape/backdrop/close button).
-- [x] **P2 Cyrillic data URLs** - `data:text/html` paths with non-ASCII normalize encoding in step DSL resolver.
-- [x] **P2 Project report open mode** - `html_report_open_mode` in `.scenaria/project.json` + Settings dialog (full vs light default).
-- [x] **P2 Light report failed screenshots** - always write full/light HTML pair; embed screenshots for failed steps even in light mode.
-- [x] **P3 Custom scrollbars** - dark-theme scrollbar styling in report viewer.
+* [x] Закрытие активной вкладки не оставляет Monaco пустым.
+* [x] Закрытие Welcome tab не ломает активную model.
+* [x] Быстрое переключение вкладок не смешивает содержимое.
+* [x] Editor event от model A не может изменить tab B.
+* [x] Save file A не очищает draft file B.
+* [x] Disk reload file A не меняет file B.
+* [x] Diagnostics и inlay hints соответствуют текущей версии текста.
+* [x] Undo/redo работает отдельно для каждой открытой model.
+* [x] Один физический файл имеет один canonical frontend key.
+
+## Manual QA
+
+* [ ] Открыть 5 файлов.
+* [ ] Быстро переключаться между ними.
+* [ ] Внести разные изменения в каждый файл.
+* [ ] Закрыть активную вкладку из середины.
+* [ ] Закрыть первую и последнюю вкладку.
+* [ ] Закрыть Welcome tab.
+* [ ] Проверить undo/redo по вкладкам.
+* [ ] Проверить save после переключения.
+* [ ] Проверить external reload после переключения.
+
+---
+
+# 2. Stabilize Batch Execution
+
+**Priority:** Critical
+**Status:** Done
+**Area:** Frontend / Runner / ExecutionPlan
+
+## Problem
+
+Batch run может запускать старый subset тестов. Точный найденный root cause: `runBatchSelected()` строит options через `{ ...lastRun, dryRun }`, из-за чего batch run наследует stale `scenario`, `tag`, `startStep`, `endStep`; backend получает targets, но затем фильтрует план по старым параметрам. Дополнительно `toggleBatchMode()` откладывает select-all на next frame, поэтому быстрый run может использовать старый `batchSelected`.
+
+## Scope
+
+```text
+frontend/src/App.svelte
+frontend/src/lib/batchSelection.ts
+internal/gui/run_browser.go
+internal/gui/service.go
+internal/player/suite.go
+internal/player/runner_parallel.go
+```
+
+## Tasks
+
+* [x] Для default batch run очищать `scenario`.
+* [x] Для default batch run очищать `tag`.
+* [x] Для default batch run сбрасывать `startStep = -1`.
+* [x] Для default batch run сбрасывать `endStep = -1`.
+* [x] Передавать в `executeRun` копию: `[...batchSelected]`.
+* [x] В `executeRun` копировать `targets`.
+* [x] На backend копировать `RunRequest.Targets`.
+* [x] На backend копировать `RunRequest.Vars`.
+* [x] Сделать `toggleBatchMode` синхронным.
+* [x] Убрать deferred select-all race.
+* [x] После `refreshProject` делать prune/remap `batchSelected`.
+* [x] Добавить run request factory для batch/single/tag/step-range режимов.
+* [x] Добавить debug logs:
+
+  * frontend selected count;
+  * backend received targets count;
+  * execution plan cases count;
+  * runner executed count.
+
+## Removed Duplicates
+
+Следующие ранее отдельные пункты объединены в эту фазу:
+
+* stale `lastRun` filters;
+* deferred batch select-all race;
+* defensive copying;
+* batch request contract;
+* batch selection prune after refresh;
+* ExecutionPlan freshness verification;
+* run debug logs.
+
+## Acceptance Criteria
+
+* [x] Предыдущий single-scenario run не фильтрует следующий batch run.
+* [x] Предыдущий tag run не фильтрует следующий batch run.
+* [x] Выбрано 5 файлов → backend получает 5 targets.
+* [x] Выбрано 5 файлов → plan содержит ожидаемое количество cases.
+* [x] Повторный batch run строит fresh `ExecutionPlan`.
+* [x] Runner queue создаётся заново на каждый запуск.
+* [x] После удаления/rename файла selection не содержит stale path.
+* [x] UI count, backend target count и plan cases count можно сверить по логам.
+
+## Manual QA
+
+* [ ] Выбрать 2 теста и запустить.
+* [ ] Добавить ещё 3 теста и запустить.
+* [ ] Проверить, что выполняются все 5.
+* [ ] Убрать часть тестов и запустить.
+* [ ] Проверить запуск через hotkey сразу после включения batch mode.
+* [ ] Проверить folder selection.
+* [ ] Проверить refresh проекта после удаления файла.
+
+---
+
+# 3. Introduce ProjectSession, RunSession and Operation Identity
+
+**Priority:** Critical
+**Status:** Done
+**Area:** Wails / Backend / Lifecycle / Events
+
+## Problem
+
+Backend использует mutable singleton-state: `projectPath`, `runCtx/runCancel`, `liveSession`, `tempFeatureDirs`, report bridge token, global stdout lock и другие состояния. При этом у project/run/record/report events нет единого ownership-протокола: `runId`, `recordSessionId`, `projectVersion`. Это позволяет старым операциям обновлять новый проект или новую UI-сессию.
+
+## Scope
+
+```text
+internal/wailsapp/app.go
+internal/gui/service.go
+frontend/src/App.svelte
+frontend event handlers
+run/validate/record/report methods
+```
+
+## Tasks
+
+* [x] Ввести `ProjectSession { ID, Root, Version, Context }`.
+* [x] Увеличивать `ProjectVersion` при open/switch/close project.
+* [x] Ввести `RunSession { RunID, ProjectVersion, RequestSnapshot, Context, TempResources }`.
+* [x] Ввести `RecordSessionID`.
+* [x] Ввести `BrowserSessionID`.
+* [x] Ввести `ReportID`.
+* [x] Все Wails events должны передавать relevant identity:
+
+  * `projectVersion`;
+  * `runId`;
+  * `recordSessionId`;
+  * `browserSessionId`;
+  * `reportId`;
+  * `jobId`.
+* [x] Frontend должен игнорировать stale events.
+* [x] `OpenProject` должен стать lifecycle boundary: cancel/detach project-scoped work.
+* [x] Добавить explicit concurrent run policy: reject или explicit cancel/restart.
+* [x] Добавить timeout/cancellation для Wails async jobs.
+* [x] Добавить stale-event debug logs.
+
+## Removed Duplicates
+
+Следующие темы объединены в эту фазу:
+
+* ProjectVersion;
+* ProjectSession;
+* RunSession;
+* operation IDs;
+* stale Wails events;
+* async job timeout;
+* backend run concurrency policy;
+* stale frontend response guards.
+
+## Acceptance Criteria
+
+* [ ] Run из project A не может обновить UI project B.
+* [ ] Validation из старой версии проекта игнорируется.
+* [ ] Recorder event из старой сессии игнорируется.
+* [ ] Report action привязан к своему report/run/project.
+* [ ] Новый run не отменяет старый silently.
+* [ ] Frontend не зависает навсегда, если backend не прислал finish event.
+* [ ] Все long-running events трассируются по ID.
+
+## Manual QA
+
+* [ ] Открыть project A.
+* [ ] Запустить run.
+* [ ] Быстро открыть project B.
+* [ ] Проверить, что старые результаты не применились.
+* [ ] Повторить с validation.
+* [ ] Повторить с recorder.
+* [ ] Повторить с report actions.
+
+---
+
+# 4. Unify StepMatcher and EditorAnalysisService
+
+**Priority:** Critical
+**Status:** Done
+**Area:** Parser / Diagnostics / Autocomplete / Inlay Hints / Runner
+
+## Problem
+
+IDE и runner не используют единый pipeline обработки шагов. Runner идёт через `gherkin.ParseFeatureFile → NormalizeFeatureText → structured Step.Text → stepdsl.Parse`, а IDE частично использует fallback raw scanners, `ParseEditorSteps` и static `stepcatalog.CompletionsForLineLang`. Поэтому runtime-valid step может стать `Unknown step` в IDE.
+
+## Scope
+
+```text
+internal/gherkin
+internal/stepdsl
+internal/stepcatalog
+internal/gui/validate.go
+internal/gui/editor_steps.go
+internal/gui/scenario_hints.go
+frontend/src/lib/gherkinCompletions.ts
+frontend/src/lib/gherkinInlayHintsProvider.ts
+```
+
+## Tasks
+
+* [x] Создать общий `StepMatcher`.
+* [x] Создать общий `EditorAnalysisService`.
+* [x] Вынести shared keyword classifier.
+* [x] Вынести shared step text normalization.
+* [x] Перевести diagnostics на `EditorAnalysisService`.
+* [x] Перевести `ParseEditorSteps` / inlay hints на `EditorAnalysisService`.
+* [x] Перевести scenario hints на тот же analysis result.
+* [x] Reconcile `stepcatalog` with `stepdsl`.
+* [x] Autocomplete должен использовать metadata из runtime-compatible registry или иметь parity tests.
+* [x] Убрать independent raw fallback matcher.
+* [x] Добавить parser recovery mode для editor-time invalid text.
+* [x] Добавить golden parity tests.
+
+## Removed Duplicates
+
+Следующие ранее отдельные блоки объединены:
+
+* Parser / Step Registry;
+* shared keyword classification;
+* shared normalization;
+* ParseEditorSteps rewrite;
+* autocomplete parity;
+* diagnostics/markers stability;
+* parser recovery mode;
+* editor analysis performance consolidation.
+
+## Acceptance Criteria
+
+* [ ] Если runner выполняет шаг, IDE не показывает `Unknown step`.
+* [ ] Diagnostics, inlay hints, steps panel и autocomplete используют совместимый источник истины.
+* [ ] Один malformed scenario не ломает valid steps в другом scenario.
+* [ ] `Дано/Когда/Тогда/И/Но/Допустим/*` покрыты тестами.
+* [ ] `ё/е`, smart quotes, tabs, spaces, escaped selectors покрыты тестами.
+* [ ] Completion items либо соответствуют executable step pattern, либо явно marked snippet-only.
+
+## Manual QA
+
+* [ ] Открыть файл с известными шагами.
+* [ ] Проверить diagnostics.
+* [ ] Проверить autocomplete.
+* [ ] Проверить inlay hints.
+* [ ] Внести временную синтаксическую ошибку.
+* [ ] Проверить, что valid known steps не стали false unknown.
+* [ ] Запустить тот же сценарий runner-ом.
+
+---
+
+# 5. Stabilize Backend Storage, Locks and File Operations
+
+**Priority:** High
+**Status:** Done
+**Area:** Backend / Concurrency / File IO / Settings / RunStatus
+
+## Problem
+
+Есть несколько shared storage/race зон: `runstatus.Store` пишет JSON read-modify-write без lock, `tempFeatureDirs` общий для всех запусков, settings read-modify-write может терять обновления, project file operations могут пересекаться с run/validate/refresh.
+
+## Scope
+
+```text
+internal/runstatus
+internal/settings
+internal/gui/service.go
+internal/gui/features.go
+internal/gui/http_auth.go
+internal/player/runner_parallel.go
+```
+
+## Tasks
+
+* [x] Добавить mutex или per-file lock для `runstatus.Store`.
+* [x] Сделать runstatus writes atomic.
+* [x] Перевести runstatus на batch write per run или JSONL.
+* [x] Temp feature files привязать к `RunSession`, убрать global cleanup.
+* [x] Добавить `SettingsStore` с mutex и atomic writes.
+* [x] Перевести `SaveSettings`, `SaveHTTPAuth`, recents, credentials на `SettingsStore`.
+* [x] Ввести project filesystem lock или snapshot layer.
+* [x] Run должен использовать immutable loaded feature snapshot.
+* [x] Save/rename/delete/import/replace должны координироваться с refresh/validate/run preparation.
+* [x] OTP prompt сделать single-flight или promptId-based.
+* [x] Report bridge tokens сделать per report/run или bounded token set.
+* [x] CLI/global stdout capture заменить context-aware service APIs.
+
+## Removed Duplicates
+
+Объединены:
+
+* runstatus race;
+* temp feature cleanup;
+* settings lost updates;
+* project file operation races;
+* OTP concurrency;
+* report bridge token coupling;
+* global stdout capture;
+* immutable backend snapshots.
+
+## Acceptance Criteria
+
+* [x] Parallel run не corrupt-ит `run_status.json`.
+* [x] Run A не удаляет temp files Run B.
+* [x] Settings updates не теряют данные.
+* [x] Run preparation не читает half-written files.
+* [x] OTP prompts не перезаписывают друг друга.
+* [x] Report actions не ломаются при открытии нового report.
+* [x] GUI не зависит от global stdout replacement для нормальных операций.
+
+## Manual QA
+
+* [ ] Запустить parallel run.
+* [ ] Проверить run status/history.
+* [ ] Запустить run с unsaved/temp feature.
+* [ ] Отменить и сразу запустить другой.
+* [ ] Проверить settings save параллельно с recents/HTTP auth.
+* [ ] Проверить project refresh во время save/rename/delete.
+
+---
+
+# 6. Stabilize Recorder Lifecycle
+
+**Priority:** High
+**Status:** Done
+**Area:** Recorder / Live Browser / Wails Events / Editor Target
+
+## Problem
+
+Recorder events сейчас могут быть anonymous/global и применяться к текущему active editor, хотя событие относится к старой recorder session. Recorder должен владеть browser session, но не должен напрямую мутировать editor без explicit target path/model.
+
+## Scope
+
+```text
+internal/gui/record.go
+internal/recorder/live.go
+internal/recorder/live_session.go
+internal/recorder/session.go
+frontend/src/App.svelte
+frontend/src/lib/recordedStepEditor.ts
+```
+
+## Tasks
+
+* [x] Каждая recorder session получает `RecordSessionID`.
+* [x] Каждая browser session получает `BrowserSessionID`.
+* [x] Recorder event содержит `projectVersion`, `recordSessionId`, `browserSessionId`, `targetPath`.
+* [x] Backend callbacks проверяют active generation перед emit.
+* [x] Frontend игнорирует stale recorder events.
+* [x] `applyLiveRecordedStep` должен писать в explicit target model/path, не в ambient `activeTab`.
+* [x] Recording target file/model должен открываться до старта recording.
+* [x] `CloseBrowser` должен retire recorder generation.
+* [x] `StopRecordingCapture` должен быть idempotent.
+* [x] Browse-only → capture → relaunch должен переинжектить recorder scripts.
+* [x] Recorder context должен cancel-иться при natural termination.
+* [x] LiveSession Playwright calls должны возвращать typed `ErrBrowserClosed`.
+* [x] Recorder step events должны быть snapshot-based или иметь полный op model: `upsert/delete/reset/snapshot`.
+* [x] Recorded Gherkin formatting должен принадлежать backend или иметь shared contract.
+
+## Removed Duplicates
+
+Объединены:
+
+* recorder event identity;
+* stale recorder callbacks;
+* editor targeting;
+* close/stop idempotency;
+* browse-to-capture script injection;
+* context cancellation;
+* Playwright use-after-close;
+* recorded step snapshot model;
+* recorded Gherkin formatting contract.
+
+## Acceptance Criteria
+
+* [x] Late `record-step` не меняет editor.
+* [x] Recorder пишет только в выбранный target file.
+* [x] Switch tab during recording не меняет target.
+* [x] Project switch invalidates old recorder events.
+* [x] Stop twice даёт один effective transition.
+* [x] Browser close не оставляет picker hanging.
+* [x] Browse-only session после capture/relaunch продолжает писать steps.
+* [x] Frontend recorded lines не расходятся с backend recorder state.
+
+## Manual QA
+
+* [ ] Start recording в `B.feature`, активна `A.feature`.
+* [ ] Сделать click/input.
+* [ ] Проверить, что изменился только `B.feature`.
+* [ ] Переключать вкладки во время записи.
+* [ ] Stop → Start снова.
+* [ ] Close browser во время picker.
+* [ ] Project switch во время recording.
+* [ ] Проверить отсутствие stale events.
+
+---
+
+# 7. Stabilize Reports and Artifacts
+
+**Priority:** High
+**Status:** Done
+**Area:** Reports / HTML / Allure / JUnit / Artifacts / History
+
+## Problem
+
+Reports и artifacts пишутся в fixed paths `.scenaria/...`; repeated/concurrent runs могут перезаписывать HTML, Allure, screenshots, traces, summary, JUnit. Scenario outline examples не имеют стабильной identity, report writes не atomic, old reports могут потерять assets. Финальный план отдельно указывает fixed output dirs, non-atomic writes, отсутствие `CaseID/ExampleIndex` и memory pressure в reports как критичные риски.
+
+## Scope
+
+```text
+internal/report/*
+internal/report/allure/writer.go
+internal/gui/run_browser.go
+internal/player/runner.go
+internal/player/artifacts.go
+internal/runstatus
+frontend report opening logic
+```
+
+## Tasks
+
+* [x] Добавить `RunID` в report generation.
+* [x] Добавить `CaseID` в `RunCase` / `ScenarioResult`.
+* [x] Добавить `ExampleIndex` в result identity.
+* [x] Перейти на `.scenaria/runs/<runID>/...`.
+* [x] Хранить screenshots/traces/videos per run/case.
+* [x] Добавить `latest.json` или stable latest pointer.
+* [x] Все report writes сделать atomic.
+* [x] Allure писать через staging dir.
+* [x] Trace/screenshot names строить по `RunID/CaseID/ExampleIndex`.
+* [x] `findPlanCase` и history matching перевести на `CaseID`.
+* [x] Добавить status `canceled`.
+* [x] Partial canceled report разрешить открывать по policy.
+* [x] History/flaky metrics должны исключать current `RunID`.
+* [x] Artifact write errors должны быть visible.
+* [x] Исправить path confinement check.
+
+## Removed Duplicates
+
+Объединены:
+
+* per-run reports;
+* atomic writes;
+* latest pointer;
+* artifact naming;
+* scenario outline identity;
+* old report asset stability;
+* Allure staging;
+* canceled status;
+* history excludes current run;
+* artifact error handling;
+* report path safety.
+
+## Acceptance Criteria
+
+* [x] Каждый report принадлежит одному `RunID`.
+* [x] Каждый executed case имеет `CaseID`.
+* [x] Scenario outline examples различимы.
+* [x] Старый открытый report остаётся рабочим после нового run.
+* [x] HTML/Allure/JUnit/Summary не corrupt-ятся при сбое записи.
+* [x] New run не удаляет artifacts old run.
+* [x] Canceled run не отображается как обычный failure.
+* [x] History не сравнивает run сам с собой.
+* [x] Artifact write failure не скрывается.
+
+## Manual QA
+
+* [ ] Run с HTML/Allure/traces.
+* [ ] Открыть report.
+* [ ] Run повторно.
+* [ ] Проверить старый report и latest report.
+* [ ] Проверить scenario outline с двумя examples.
+* [ ] Проверить canceled run partial report.
+* [ ] Проверить Allure output после failed write simulation.
+
+---
+
+# 8. Stabilize Playwright Runner Lifecycle
+
+**Priority:** Medium / High
+**Status:** Done
+**Area:** Runner / Playwright / Browser Pool / Goroutines
+
+## Problem
+
+Playwright cleanup в целом аккуратный, но canceled operations могут оставлять drain goroutines, startup cancellation может ждать до 30 секунд, browser pool shutdown может масштабироваться по workers. Эти риски не первые по приоритету, но важны для стабильности repeated runs.
+
+## Scope
+
+```text
+internal/player/action_context.go
+internal/player/async_drain.go
+internal/player/browser_pool.go
+internal/player/browser_session.go
+internal/playwrightrt/runtime.go
+internal/player/runner_parallel.go
+```
+
+## Tasks
+
+* [x] Добавить pending async drain counter.
+* [x] Логировать long-running drains.
+* [x] Проверить, что browser/context close освобождает stuck Playwright calls.
+* [x] Добавить cancel/leak tests для `Goto`, `WaitFor`, `Press`, `ExpectDownload`.
+* [x] Добавить browser pool shutdown timing logs.
+* [x] Проверить shutdown latency with many workers.
+* [x] Добавить goroutine profile dev command.
+* [x] Убедиться, что repeated cancel не увеличивает goroutine count unbounded.
+
+## Acceptance Criteria
+
+* [x] 20 repeated cancel не увеличивают goroutine count бесконечно.
+* [x] Browser pool закрывает все sessions.
+* [x] Долгие stuck calls видны в logs/metrics.
+* [x] Cancel/shutdown latency измерима.
+* [ ] Live browser reuse не ломается.
+
+## Manual QA
+
+* [ ] Run/cancel 20 раз.
+* [ ] Cancel во время navigation/wait/download.
+* [ ] Parallel run с failure.
+* [ ] Close app during run.
+* [ ] Проверить, что browsers закрылись.
+
+---
+
+# 9. Performance and Memory Optimization
+
+**Priority:** Medium
+**Status:** Done
+**Area:** Performance / Memory / Large Projects
+
+## Problem
+
+Основные performance-риски: autocomplete отправляет полный документ, validation делает несколько full-document passes, project/run повторно парсят файлы, runstatus переписывает историю per scenario, HTML report держит artifacts в памяти и пишет full report дважды.
+
+## Scope
+
+```text
+frontend Monaco providers
+frontend/src/App.svelte
+internal/gui/validate.go
+internal/gui/editor_steps.go
+internal/gui/scenario_hints.go
+internal/report/*
+internal/runstatus
+internal/scenario
+```
+
+## Tasks
+
+* [x] Добавить performance marks и Wails timing logs.
+* [x] Добавить pprof/dev diagnostics.
+* [x] Autocomplete не должен отправлять full document на каждый request.
+* [x] Completion должен передавать language/current line/context.
+* [x] Editor analysis должен быть одним backend pass на text version.
+* [x] CodeLens/symbols/folding должны шарить per-model parsed structure.
+* [x] Coalesce `refreshRunResults` during active run.
+* [x] Добавить project index cache по path/mtime/size/hash.
+* [x] Artifacts заменить с `[]byte` на `ArtifactRef`/file path/stream.
+* [x] `WriteHTMLModePair` должен писать full report один раз.
+* [x] Runstatus перейти на batch write или JSONL.
+* [x] Debounce `StepsInsertDialog` search.
+* [x] Clear symbol cache on tab/project close.
+
+## Removed Duplicates
+
+Объединены:
+
+* autocomplete payload optimization;
+* editor analysis consolidation;
+* Monaco symbols/cache sharing;
+* report memory pressure;
+* HTML mode pair double write;
+* run results refresh coalescing;
+* project parse index;
+* runstatus storage optimization;
+* step search debounce;
+* symbol cache cleanup;
+* profiling/metrics.
+
+## Acceptance Criteria
+
+* [x] Typing в large feature не вызывает лишние Wails calls.
+* [x] Validation/hints/scenario hints используют один analysis result.
+* [x] Completion latency не растёт резко на 5k/20k lines.
+* [x] Large reports не удерживают все artifacts в heap.
+* [x] Report generation быстрее на 100/500 scenarios.
+* [x] Project refresh не repars-ит unchanged files.
+* [x] Runstatus не rewrite-ит всю историю на каждый scenario.
+* [x] Performance можно измерить через benchmarks/profiles.
+
+## Manual QA
+
+* [ ] Открыть large feature.
+* [ ] Быстро печатать 100 символов.
+* [ ] Открыть large project.
+* [ ] Сгенерировать 100-scenario full report.
+* [ ] Открыть/закрыть 50 tabs.
+* [ ] Проверить responsiveness.
+
+---
+
+# 10. Architecture Cleanup
+
+**Priority:** Medium
+**Status:** Planned
+**Area:** Architecture / Maintainability / Ownership
+
+## Problem
+
+`App.svelte` и `internal/gui.Service` стали слишком широкими ownership-центрами. Аудит отдельно отмечает, что `internal/gui` стал orchestration god-package, а `App.svelte` владеет слишком большим количеством application state; также нет first-class `ProjectSession`, operation identity и single IDE/runtime step service.
+
+## Scope
+
+```text
+frontend/src/App.svelte
+frontend stores/controllers
+internal/gui.Service
+internal/wailsapp.App
+new backend domain services
+docs/architecture
+```
+
+## Tasks
+
+* [x] Добавить `docs/architecture/state-ownership.md`.
+* [x] Описать ownership:
+
+  * editor text;
+  * active file;
+  * project session;
+  * run session;
+  * recorder session;
+  * step analysis;
+  * report artifacts;
+  * settings.
+* [x] Постепенно выделить frontend stores/controllers:
+
+  * `tabsStore`;
+  * `projectStore`;
+  * `runnerStore`;
+  * `diagnosticsStore`;
+  * `recorderStore`;
+  * `reportsStore`;
+  * `wailsEventsController`.
+* [ ] Оставить `App.svelte` как UI shell, а не god component.
+* [ ] Оставить `gui.Service` как Wails-facing façade.
+* [x] Вынести backend services:
+
+  * `ProjectService`;
+  * `RunService`;
+  * `EditorAnalysisService`;
+  * `RecorderService`;
+  * `ReportService`;
+  * `SettingsStore`;
+  * `FileOperationService`.
+* [x] Убрать GUI-to-CLI coupling через global stdout.
+* [x] Пересмотреть package-level mutable singletons.
+* [x] Добавить reset/cleanup APIs для тестов там, где globals остаются.
+
+## Acceptance Criteria
+
+* [ ] У каждого critical state есть один владелец.
+* [ ] Derived state явно обозначен как derived.
+* [ ] `App.svelte` не владеет unrelated domains напрямую.
+* [ ] `gui.Service` делегирует domain services.
+* [ ] CLI и GUI используют общие service APIs, а не GUI → CLI → stdout capture.
+* [ ] Новые фичи не добавляют новый source of truth без документации.
+
+---
+
+# Final Implementation Order
+
+Идём строго сверху вниз:
+
+```text
+0. Add Safety Tests Before Refactoring
+1. Stabilize Monaco Tabs and Editor State
+2. Stabilize Batch Execution
+3. Introduce ProjectSession, RunSession and Operation Identity
+4. Unify StepMatcher and EditorAnalysisService
+5. Stabilize Backend Storage, Locks and File Operations
+6. Stabilize Recorder Lifecycle
+7. Stabilize Reports and Artifacts
+8. Stabilize Playwright Runner Lifecycle
+9. Performance and Memory Optimization
+10. Architecture Cleanup
+```
+
+---
+
+# Consolidated Definition of Done
+
+Задача считается выполненной только если:
+
+* [ ] исправлен root cause, а не только симптом;
+* [ ] добавлен regression test или понятный manual QA сценарий;
+* [ ] async result/event защищён от stale применения;
+* [ ] path/session/run/project identity не теряется;
+* [ ] mutable input копируется на async/backend boundaries;
+* [ ] нет silent behavior change для пользователя;
+* [ ] добавлены logs/metrics, если баг сложно диагностировать;
+* [ ] обновлён ROADMAP/checklist при изменении scope.
+
+---
+
+# v1.0 Release Criteria
+
+Scenaria можно считать готовой к v1.0-stable, когда:
+
+* [ ] вкладки не теряют и не смешивают содержимое;
+* [ ] batch run выполняет ровно актуально выбранные тесты;
+* [ ] IDE и runner одинаково понимают known/unknown steps;
+* [ ] project/run/record/report events имеют identity;
+* [ ] stale events игнорируются;
+* [ ] run inputs immutable;
+* [ ] recorder пишет только в explicit target file/model;
+* [ ] reports изолированы per run;
+* [ ] report writes atomic;
+* [ ] scenario outline examples имеют стабильную identity;
+* [ ] canceled run отображается отдельно от failed;
+* [ ] runstatus/settings/file operations защищены от races;
+* [ ] repeated cancel не приводит к unbounded goroutine/browser leaks;
+* [ ] large files и large reports имеют измеримую и приемлемую производительность;
+* [ ] targeted `go test -race` проходит для sensitive backend packages;
+* [ ] frontend regression tests проходят для tabs, batch, validation, recorder.

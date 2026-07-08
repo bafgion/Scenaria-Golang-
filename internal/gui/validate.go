@@ -40,30 +40,16 @@ func validateParsedFeature(feature *gherkin.Feature) []ValidationIssue {
 }
 
 func validateFeatureLines(text string) []ValidationIssue {
-	lines := strings.Split(text, "\n")
-	issues := make([]ValidationIssue, 0)
-	for i, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
+	analysis := analyzeEditorSteps(text)
+	issues := make([]ValidationIssue, 0, len(analysis))
+	for _, step := range analysis {
+		if step.TestClient {
 			continue
 		}
-		if isTagLine(line) || isTableLine(line) {
-			continue
-		}
-		if isScenarioStructureLine(line) {
-			continue
-		}
-		stepText := stripGherkinKeyword(line)
-		if stepText == "" {
-			continue
-		}
-		if gherkin.IsTestClientStep(gherkin.Step{Text: stepText}) {
-			continue
-		}
-		if _, err := stepdsl.Parse(gherkin.Step{Line: i + 1, Text: stepText}); err != nil {
+		if step.ParseErr != nil {
 			issues = append(issues, ValidationIssue{
-				Line:    i + 1,
-				Message: fmt.Sprintf("%v", err),
+				Line:    step.Line,
+				Message: fmt.Sprintf("%v", step.ParseErr),
 			})
 		}
 	}
@@ -125,13 +111,4 @@ func isTagLine(line string) bool {
 
 func isTableLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), "|")
-}
-
-func stripGherkinKeyword(line string) string {
-	for _, keyword := range []string{"Допустим ", "Дано ", "Когда ", "Тогда ", "И ", "Но ", "Given ", "When ", "Then ", "And ", "But "} {
-		if strings.HasPrefix(line, keyword) {
-			return strings.TrimSpace(strings.TrimPrefix(line, keyword))
-		}
-	}
-	return line
 }

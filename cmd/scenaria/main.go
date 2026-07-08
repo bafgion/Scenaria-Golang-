@@ -66,6 +66,11 @@ func main() {
 			description: "Vanessa Automation (1C) runner",
 			run:         runVA,
 		},
+		"dev": {
+			name:        "dev",
+			description: "Developer diagnostics (goroutines, pprof)",
+			run:         cli.RunDev,
+		},
 		"version": {
 			name:        "version",
 			description: "Print CLI version",
@@ -117,6 +122,7 @@ func runHelp(_ []string) error {
 	fmt.Println("  update    Check for updates (`--check`)")
 	fmt.Println("  plugins   Manage plugins (`list`, `install`, `uninstall`)")
 	fmt.Println("  va        Vanessa Automation runner (`va run`)")
+	fmt.Println("  dev       Developer diagnostics (`goroutines`, `pprof --out`)")
 	fmt.Println("  version   Print version")
 	fmt.Println("  help      Show this help")
 	fmt.Println()

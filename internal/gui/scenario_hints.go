@@ -60,7 +60,10 @@ type parsedScenarioStep struct {
 }
 
 func AnalyzeScenarioHints(text string) []ScenarioHintDTO {
-	steps := parseScenarioSteps(text)
+	return AnalyzeScenarioHintsFromSteps(parseScenarioSteps(text))
+}
+
+func AnalyzeScenarioHintsFromSteps(steps []parsedScenarioStep) []ScenarioHintDTO {
 	hints := make([]ScenarioHintDTO, 0)
 	for i, step := range steps {
 		if step.err != nil {
@@ -127,11 +130,23 @@ func scenarioHint(id, title string, index int, steps []parsedScenarioStep, sever
 }
 
 func parseScenarioSteps(text string) []parsedScenarioStep {
-	lines := parseScenarioStepLines(text)
-	out := make([]parsedScenarioStep, 0, len(lines))
-	for _, line := range lines {
-		action, err := stepdsl.Parse(gherkin.Step{Text: line.body})
-		out = append(out, parsedScenarioStep{line: line, action: action, err: err})
+	analysis := analyzeEditorSteps(strings.ReplaceAll(text, "\r\n", "\n"))
+	out := make([]parsedScenarioStep, 0, len(analysis))
+	for _, step := range analysis {
+		line := scenarioStepLine{
+			lineNo: step.Line,
+			raw:    step.Raw,
+			indent: step.Indent,
+			body:   step.StepText,
+		}
+		if step.Keyword != "" {
+			line.keyword = step.Keyword + " "
+		}
+		out = append(out, parsedScenarioStep{
+			line:   line,
+			action: step.Action.Action,
+			err:    step.ParseErr,
+		})
 	}
 	return out
 }
@@ -464,30 +479,19 @@ func removeScenarioStepLine(text string, stepIndex int) RefactorResult {
 }
 
 func parseScenarioStepLines(text string) []scenarioStepLine {
-	rawLines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	out := make([]scenarioStepLine, 0)
-	for i, raw := range rawLines {
-		stripped := strings.TrimSpace(raw)
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			continue
-		}
-		if isScenarioStructureLine(stripped) {
-			continue
-		}
-		keyword, body := splitStepKeyword(stripped)
-		if body == "" && keyword == "" {
-			continue
-		}
-		prefix := keyword
+	analysis := analyzeEditorSteps(strings.ReplaceAll(text, "\r\n", "\n"))
+	out := make([]scenarioStepLine, 0, len(analysis))
+	for _, step := range analysis {
+		prefix := step.Keyword
 		if prefix != "" {
 			prefix += " "
 		}
 		out = append(out, scenarioStepLine{
-			lineNo:  i + 1,
-			raw:     raw,
-			indent:  leadingIndent(raw),
+			lineNo:  step.Line,
+			raw:     step.Raw,
+			indent:  step.Indent,
 			keyword: prefix,
-			body:    body,
+			body:    step.StepText,
 		})
 	}
 	return out

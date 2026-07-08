@@ -50,32 +50,28 @@ func TestSyncRecordedStepsOnCaptureStartCallbackCount(t *testing.T) {
 	}
 	s.Bind(nil, &recorded)
 
-	var notifies []int
-	notify := func(index int, _ string) {
-		notifies = append(notifies, index)
+	var events []RecordStepEvent
+	notify := func(event RecordStepEvent) {
+		events = append(events, event)
 	}
 
 	syncSteps := func() {
 		if ShouldSyncRecordedStepsOnCaptureStart(s) {
-			for i, st := range recorded {
-				if line, ok := RecordedStepToLine(st); ok {
-					notify(i, line)
-				}
-			}
+			notifySnapshot(notify, recorded)
 		}
 		_ = s.BeginCapture()
 	}
 
 	syncSteps()
-	if len(notifies) != 3 {
-		t.Fatalf("first capture: expected 3 notifies, got %v", notifies)
+	if len(events) != 1 || events[0].Op != RecordStepSnapshot || len(events[0].Lines) != 3 {
+		t.Fatalf("first capture: expected snapshot with 3 lines, got %+v", events)
 	}
 
 	s.EndCapture()
-	notifies = nil
+	events = nil
 	syncSteps()
-	if len(notifies) != 0 {
-		t.Fatalf("after stop buffer is empty; expected no replay, got %v", notifies)
+	if len(events) != 0 {
+		t.Fatalf("after stop buffer is empty; expected no replay, got %+v", events)
 	}
 	if len(recorded) != 0 {
 		t.Fatalf("expected recorded cleared after stop, got %d", len(recorded))

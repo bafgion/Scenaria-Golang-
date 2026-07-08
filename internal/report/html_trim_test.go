@@ -43,8 +43,8 @@ func TestTrimPayloadClearsTraceEvents(t *testing.T) {
 
 func TestComputeRegressionsNewFailure(t *testing.T) {
 	sc := htmlScenario{
-		Status: "failed",
-		FailedStep: intPtr(1),
+		Status:      "failed",
+		FailedStep:  intPtr(1),
 		HistoryRuns: []htmlHistoryEntry{{Status: "passed", At: "t0"}},
 		Steps: []htmlStep{
 			{Index: 0, Status: "passed"},

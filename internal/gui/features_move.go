@@ -45,23 +45,25 @@ func (s *Service) MoveFeature(src, destDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Stat(destAbs)
-	if err != nil {
-		return "", fmt.Errorf("destination folder: %w", err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("destination must be a folder")
-	}
 	target := filepath.Join(destAbs, filepath.Base(srcAbs))
 	if strings.EqualFold(filepath.Clean(srcAbs), filepath.Clean(target)) {
 		return srcAbs, nil
 	}
-	if _, err := os.Stat(target); err == nil {
-		return "", fmt.Errorf("file already exists: %s", filepath.Base(target))
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	if err := os.Rename(srcAbs, target); err != nil {
+	if err := s.withProjectFSWriteLock(func() error {
+		info, err := os.Stat(destAbs)
+		if err != nil {
+			return fmt.Errorf("destination folder: %w", err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("destination must be a folder")
+		}
+		if _, err := os.Stat(target); err == nil {
+			return fmt.Errorf("file already exists: %s", filepath.Base(target))
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return os.Rename(srcAbs, target)
+	}); err != nil {
 		return "", fmt.Errorf("move feature: %w", err)
 	}
 	return target, nil
@@ -73,23 +75,28 @@ func (s *Service) ImportFeatures(destDir string, paths []string) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	if info, err := os.Stat(destAbs); err != nil || !info.IsDir() {
-		if err != nil {
-			return nil, fmt.Errorf("destination folder: %w", err)
-		}
-		return nil, fmt.Errorf("destination must be a folder")
-	}
 	imported := make([]string, 0, len(paths))
-	for _, src := range paths {
-		src = strings.TrimSpace(src)
-		if src == "" || !strings.EqualFold(filepath.Ext(src), ".feature") {
-			continue
+	if err := s.withProjectFSWriteLock(func() error {
+		if info, err := os.Stat(destAbs); err != nil || !info.IsDir() {
+			if err != nil {
+				return fmt.Errorf("destination folder: %w", err)
+			}
+			return fmt.Errorf("destination must be a folder")
 		}
-		target := uniqueFeaturePath(filepath.Join(destAbs, filepath.Base(src)))
-		if err := copyFile(src, target); err != nil {
-			return imported, fmt.Errorf("import %s: %w", filepath.Base(src), err)
+		for _, src := range paths {
+			src = strings.TrimSpace(src)
+			if src == "" || !strings.EqualFold(filepath.Ext(src), ".feature") {
+				continue
+			}
+			target := uniqueFeaturePath(filepath.Join(destAbs, filepath.Base(src)))
+			if err := copyFile(src, target); err != nil {
+				return fmt.Errorf("import %s: %w", filepath.Base(src), err)
+			}
+			imported = append(imported, target)
 		}
-		imported = append(imported, target)
+		return nil
+	}); err != nil {
+		return imported, err
 	}
 	if len(imported) == 0 {
 		return nil, fmt.Errorf("no .feature files to import")

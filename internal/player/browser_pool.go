@@ -119,17 +119,31 @@ func (p *browserPool) Close() {
 		return
 	}
 	p.closed = true
+	workers := len(p.stops)
 	p.mu.Unlock()
-	for i := 0; i < len(p.stops); i++ {
+
+	started := time.Now()
+	logx.Debug("browser pool closing", "workers", workers)
+	for i := 0; i < workers; i++ {
+		slotStart := time.Now()
 		select {
 		case <-p.slots:
 		case <-time.After(2 * time.Second):
-			logx.Debug("browser pool close timed out waiting for idle slot", "index", i)
+			logx.Warn("browser pool close timed out waiting for idle slot",
+				"index", i,
+				"elapsed_ms", time.Since(slotStart).Milliseconds(),
+			)
 		}
 	}
-	for _, stop := range p.stops {
+	for i, stop := range p.stops {
+		workerStart := time.Now()
 		stop()
+		logx.Debug("browser pool worker stopped",
+			"index", i,
+			"elapsed_ms", time.Since(workerStart).Milliseconds(),
+		)
 	}
+	logx.Debug("browser pool closed", "elapsed_ms", time.Since(started).Milliseconds())
 	p.stops = nil
 	p.size = 0
 }

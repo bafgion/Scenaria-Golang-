@@ -44,7 +44,7 @@ func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateReques
 	}
 	store := scenario.NewFeatureStore()
 	validator := selector.Validator{Headless: true}
-	appCfg, _ := settings.LoadDefaultAppSettings()
+	appCfg, _ := s.loadAppSettings()
 	baseURL := ""
 	if root := paths.InferProjectRoot(targets); root != "" {
 		if cfg, err := settings.LoadProjectConfig(root); err == nil {
@@ -64,24 +64,38 @@ func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateReques
 	}
 
 	out := make([]ValidationIssue, 0)
-	for _, featurePath := range targets {
+	type featureSnapshot struct {
+		path    string
+		feature *gherkin.Feature
+		loadErr error
+	}
+	snapshots := make([]featureSnapshot, 0, len(targets))
+	if err := s.withProjectFSReadLock(func() error {
+		for _, featurePath := range targets {
+			feature, err := store.Load(featurePath)
+			snapshots = append(snapshots, featureSnapshot{path: featurePath, feature: feature, loadErr: err})
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	for _, snap := range snapshots {
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		feature, err := store.Load(featurePath)
-		if err != nil {
-			out = append(out, ValidationIssue{Line: 1, Message: err.Error(), Status: "missing"})
+		if snap.loadErr != nil {
+			out = append(out, ValidationIssue{Line: 1, Message: snap.loadErr.Error(), Status: "missing"})
 			continue
 		}
 		fileIssues := make([]ValidationIssue, 0)
-		for _, issue := range gherkin.ValidateFeature(feature) {
+		for _, issue := range gherkin.ValidateFeature(snap.feature) {
 			fileIssues = append(fileIssues, ValidationIssue{
 				Line:    issue.Line,
 				Message: issue.Message,
 				Status:  "missing",
 			})
 		}
-		syntaxIssues, err := validator.ValidateFeature(featurePath, feature)
+		syntaxIssues, err := validator.ValidateFeature(snap.path, snap.feature)
 		if err != nil {
 			fileIssues = append(fileIssues, ValidationIssue{Line: 1, Message: err.Error(), Status: "missing"})
 		} else {
@@ -98,7 +112,7 @@ func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateReques
 			out = append(out, fileIssues...)
 			continue
 		}
-		stepResults, err := validator.ValidateFeatureInBrowserDetailed(ctx, featurePath, feature, selector.BrowserValidateOptions{
+		stepResults, err := validator.ValidateFeatureInBrowserDetailed(ctx, snap.path, snap.feature, selector.BrowserValidateOptions{
 			BrowserName: browserName,
 			Headless:    headless,
 			BaseURL:     baseURL,

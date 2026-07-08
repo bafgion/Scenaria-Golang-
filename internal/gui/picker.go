@@ -1,12 +1,8 @@
 package gui
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/bafgion/scenaria-golang/internal/recorder"
 )
 
 type PickerStepChoice struct {
@@ -28,9 +24,9 @@ func PickerStepChoices(selector, keyword string) []PickerStepChoice {
 	}
 	quoted := quotePickerSelector(selector)
 	templates := []struct {
-		label       string
-		body        string
-		description string
+		label        string
+		body         string
+		description  string
 		selectorOnly bool
 	}{
 		{"Клик", fmt.Sprintf(`нажимаю %s`, quoted), "Клик по элементу", false},
@@ -67,20 +63,7 @@ func (s *Service) PickSelector() PickSelectorResult {
 	session := s.liveSession
 	ctx := s.recordCtx
 	s.mu.RUnlock()
-	if session == nil {
-		return PickSelectorResult{Error: "браузер не открыт"}
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	selector, err := session.PickSelector(ctx)
-	if err != nil {
-		if errors.Is(err, recorder.ErrPickerCancelled) {
-			return PickSelectorResult{Error: "отменено"}
-		}
-		return PickSelectorResult{Error: err.Error()}
-	}
-	return PickSelectorResult{Selector: selector}
+	return s.recorderOps().PickSelector(session, ctx)
 }
 
 func quotePickerSelector(value string) string {

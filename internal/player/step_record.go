@@ -9,19 +9,20 @@ import (
 
 // StepRecord captures one executed leaf step for HTML trace viewer and reports.
 type StepRecord struct {
-	Index         int    `json:"index"`
-	Line          int    `json:"line,omitempty"`
-	Keyword       string `json:"keyword,omitempty"`
-	Text          string `json:"text"`
-	Selector      string `json:"selector,omitempty"`
-	Status        string `json:"status"`
-	DurationMS    int64  `json:"duration_ms,omitempty"`
-	Error         string `json:"error,omitempty"`
-	Network       string `json:"network,omitempty"`
-	PageContext   string `json:"page_context,omitempty"`
-	DOMSnapshot   string `json:"dom_snapshot,omitempty"`
-	A11ySnapshot  string `json:"a11y_snapshot,omitempty"`
-	ScreenshotPNG []byte `json:"-"`
+	Index          int    `json:"index"`
+	Line           int    `json:"line,omitempty"`
+	Keyword        string `json:"keyword,omitempty"`
+	Text           string `json:"text"`
+	Selector       string `json:"selector,omitempty"`
+	Status         string `json:"status"`
+	DurationMS     int64  `json:"duration_ms,omitempty"`
+	Error          string `json:"error,omitempty"`
+	Network        string `json:"network,omitempty"`
+	PageContext    string `json:"page_context,omitempty"`
+	DOMSnapshot    string `json:"dom_snapshot,omitempty"`
+	A11ySnapshot   string `json:"a11y_snapshot,omitempty"`
+	ScreenshotPNG  []byte `json:"-"`
+	ScreenshotPath string
 }
 
 func (c *RunContext) beginLeafStep(step gherkin.Step) int {
@@ -54,7 +55,9 @@ func (c *RunContext) completeLeafStep(idx int, selector string, started time.Tim
 			rec.PageContext = capturePageContext(session)
 			rec.DOMSnapshot = captureDOMSnapshot(session)
 			rec.A11ySnapshot = captureA11ySnapshot(session)
-			rec.ScreenshotPNG = captureViewportScreenshot(session)
+			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), "step-failed"); ok {
+				rec.ScreenshotPath = p
+			}
 		}
 		return
 	}
@@ -64,7 +67,9 @@ func (c *RunContext) completeLeafStep(idx int, selector string, started time.Tim
 			rec.Network = net
 		}
 		if c != nil && c.stepScreenshots {
-			rec.ScreenshotPNG = captureViewportScreenshot(session)
+			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), "step"); ok {
+				rec.ScreenshotPath = p
+			}
 		}
 	}
 }

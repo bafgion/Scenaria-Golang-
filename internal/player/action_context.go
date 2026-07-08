@@ -208,6 +208,9 @@ func pressKey(ctx context.Context, page playwright.Page, key string) error {
 }
 
 func expectDownload(ctx context.Context, page playwright.Page, trigger func() error) (playwright.Download, error) {
+	if page == nil {
+		return nil, fmt.Errorf("browser page is not available")
+	}
 	if ctx == nil {
 		return page.ExpectDownload(trigger)
 	}

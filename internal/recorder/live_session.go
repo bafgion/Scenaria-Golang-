@@ -89,11 +89,7 @@ func runLiveBrowserSession(
 	}()
 
 	if session.CaptureEnabled() && opts.Callbacks.OnStepRecorded != nil {
-		for i, st := range *recorded {
-			if line, ok := RecordedStepToLine(st); ok {
-				opts.Callbacks.OnStepRecorded(i, line)
-			}
-		}
+		notifySnapshot(opts.Callbacks.OnStepRecorded, *recorded)
 	}
 
 	pageClosed := make(chan struct{}, 1)
@@ -106,9 +102,9 @@ func runLiveBrowserSession(
 
 	lastURL := page.URL()
 	lastEventAt := time.Now()
-	stepNotify := func(index int, line string) {
+	stepNotify := func(event RecordStepEvent) {
 		if opts.Callbacks.OnStepRecorded != nil {
-			opts.Callbacks.OnStepRecorded(index, line)
+			opts.Callbacks.OnStepRecorded(event)
 		}
 	}
 	poll := time.NewTicker(100 * time.Millisecond)
@@ -173,11 +169,7 @@ func runLiveBrowserSession(
 						opts.Callbacks.OnCaptureStart(!replay)
 					}
 					if replay {
-						for i, st := range *recorded {
-							if line, ok := RecordedStepToLine(st); ok {
-								stepNotify(i, line)
-							}
-						}
+						notifySnapshot(stepNotify, *recorded)
 					}
 				}
 			case "picker":

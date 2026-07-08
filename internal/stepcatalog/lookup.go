@@ -3,7 +3,9 @@ package stepcatalog
 import "strings"
 
 func normalizeActionKind(kind string) string {
-	return strings.ReplaceAll(kind, "-", "_")
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	kind = strings.ReplaceAll(kind, "_", "-")
+	return kind
 }
 
 // LookupByAction finds a catalog entry for a parsed stepdsl action kind.
@@ -52,7 +54,7 @@ func lookupByLabelPrefix(stepText string) (Entry, bool) {
 		if rest != "" && rest[0] != ' ' && rest[0] != '"' && rest[0] != '\'' {
 			continue
 		}
-		if !found || len(lbl) < bestLen {
+		if !found || len(lbl) > bestLen {
 			best = entry
 			bestLen = len(lbl)
 			found = true

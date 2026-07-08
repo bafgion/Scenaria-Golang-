@@ -3,6 +3,7 @@
   const noop = () => {}
   const asyncEmpty = async () => ''
   const asyncOk = async () => ({ output: 'ok', error: '' })
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
   const E2E_PROJECT = 'C:/e2e/project'
   const e2eMode = () => new URLSearchParams(location.search).get('e2e')
@@ -88,6 +89,7 @@
 
   let runCancelled = false
   let lastRunRequest = null
+  let reloadRaceReads = 0
 
   const sampleSteps = [
     {
@@ -114,12 +116,24 @@
 
   const handlers = new Map()
 
+  const withRecordIdentity = (event, payload) => {
+    if (!payload || typeof payload !== 'object') return payload
+    if (!event.startsWith('record-') && !event.startsWith('browser-') && event !== 'toolbar-picker') return payload
+    return {
+      ...payload,
+      recordSessionId: payload.recordSessionId || liveRecord.recordSessionId,
+      browserSessionId: payload.browserSessionId || liveRecord.browserSessionId,
+      targetPath: payload.targetPath || liveRecord.targetPath,
+    }
+  }
+
   const emitE2E = (event, payload) => {
     const set = handlers.get(event)
     if (!set) return
+    const normalizedPayload = withRecordIdentity(event, payload)
     for (const cb of set) {
       try {
-        cb(payload)
+        cb(normalizedPayload)
       } catch {
         /* ignore */
       }
@@ -246,6 +260,9 @@
     paused: false,
     captureEver: false,
     steps: [],
+    recordSessionId: 'record-e2e-1',
+    browserSessionId: 'browser-e2e-1',
+    targetPath: '',
   }
 
   const postRecordSteps = [
@@ -393,11 +410,41 @@
       const start = typed ? column - line.slice(bodyOffset, column).trimStart().length : bodyOffset
       return { start, end: column, items: filtered }
     },
-    ValidateFeature: async () => [],
+    ValidateFeature: async (text = '') => {
+      if (e2eMode() === 'validation-race') {
+        if (String(text).includes('VALIDATION_STALE_BAD')) {
+          await delay(900)
+          return [{ line: 1, message: 'stale bad validation' }]
+        }
+        if (String(text).includes('VALIDATION_STALE_GOOD')) {
+          await delay(150)
+          return []
+        }
+      }
+      return []
+    },
+    AnalyzeEditorContent: async (text = '', includeHints = true) => {
+      let issues = []
+      if (e2eMode() === 'validation-race') {
+        if (String(text).includes('VALIDATION_STALE_BAD')) {
+          await delay(900)
+          issues = [{ line: 1, message: 'stale bad validation' }]
+        } else if (String(text).includes('VALIDATION_STALE_GOOD')) {
+          await delay(150)
+        }
+      }
+      const mode = e2eMode()
+      const hints = includeHints && (mode === 'post-record' || mode === 'post-record-diff') ? postRecordHints : []
+      return {
+        issues,
+        steps: [],
+        hints,
+      }
+    },
     OpenProject: async (path) => {
       const root = path || E2E_PROJECT
       const norm = root.replace(/\\/g, '/')
-      const isExamples = norm.includes('examples')
+      const isExamples = norm.includes('examples') || e2eMode() === 'batch-race'
       const features = isExamples
         ? [`${norm}/smoke.feature`, `${norm}/login.feature`, `${norm}/api-smoke.feature`]
         : [`${norm}/smoke.feature`]
@@ -413,11 +460,15 @@
     RefreshProject: async () => {
       const root = E2E_PROJECT
       const norm = root.replace(/\\/g, '/')
+      const isExamples = e2eMode() === 'batch-race'
+      const features = isExamples
+        ? [`${norm}/smoke.feature`, `${norm}/login.feature`, `${norm}/api-smoke.feature`]
+        : [`${norm}/smoke.feature`]
       return {
         path: root,
-        features: [`${norm}/smoke.feature`],
+        features,
         tags: ['@smoke'],
-        featureTags: { [`${norm}/smoke.feature`]: ['@smoke'] },
+        featureTags: Object.fromEntries(features.map((f) => [f, ['@smoke']])),
         name: 'e2e',
       }
     },
@@ -431,7 +482,15 @@
       if (e2eMode() === 'save-as') return `${E2E_PROJECT}/saved-as.feature`
       return ''
     },
-    ReadFeature: async () => {
+    ReadFeature: async (path = '') => {
+      if (e2eMode() === 'reload-race' && String(path).includes('smoke.feature')) {
+        reloadRaceReads++
+        if (reloadRaceReads === 1) {
+          return 'Функция: smoke\n  Сценарий: тест\n    Открыт "https://example.com"'
+        }
+        await delay(900)
+        return 'Функция: smoke\n  Сценарий: disk reload updated\n    Открыт "https://example.com/reloaded"'
+      }
       if (e2eMode() === 'large-file') {
         const lines = ['Функционал: big', 'Сценарий: one']
         while (lines.length < 2001) lines.push('\tоткрыт "https://example.com"')
@@ -439,7 +498,12 @@
       }
       return 'Функция: smoke\n  Сценарий: тест\n    открыт "https://example.com"'
     },
-    SaveFeature: asyncOk,
+    SaveFeature: async (path, text) => {
+      if (e2eMode() === 'save-race') {
+        await delay(900)
+      }
+      return { output: `saved ${path || ''}`, error: '' }
+    },
     WriteTempFeature: async () => `${E2E_PROJECT}/.scenaria/temp.feature`,
     Run: runImpl,
     StartRun: (opts) => startAsyncJob('run', 'run-finished', () => runImpl(opts)),
@@ -561,7 +625,7 @@
       liveRecord.paused = false
       emitE2E('browser-opened', '')
     },
-    StartRecord: async () => {
+    StartRecord: async (req = {}) => {
       const mode = e2eMode()
       if (
         mode === 'demo-video' ||
@@ -575,9 +639,12 @@
         liveRecord.captureEver = true
         liveRecord.paused = false
         liveRecord.steps = mode === 'record-resume' ? [...resumeRecordSteps] : [...postRecordSteps]
-        emitE2E('browser-opened', '')
         const recordOutput =
-          mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : `${E2E_PROJECT}/smoke.feature`
+          mode === 'record-resume'
+            ? ''
+            : req.output || (mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : `${E2E_PROJECT}/smoke.feature`)
+        liveRecord.targetPath = mode === 'record-resume' ? '' : recordOutput
+        emitE2E('browser-opened', {})
         emitE2E('record-started', { resume: false, output: recordOutput })
         queueMicrotask(() => {
           for (const step of liveRecord.steps) {
@@ -594,8 +661,9 @@
       liveRecord.captureEver = true
       liveRecord.paused = false
       liveRecord.steps = []
-      emitE2E('browser-opened', '')
-      emitE2E('record-started', { resume: false, output: `${E2E_PROJECT}/examples/smoke.feature` })
+      liveRecord.targetPath = req.output || `${E2E_PROJECT}/examples/smoke.feature`
+      emitE2E('browser-opened', {})
+      emitE2E('record-started', { resume: false, output: liveRecord.targetPath })
     },
     BeginRecordingCapture: async () => {
       if (!liveRecord.browserOpen) {
@@ -611,6 +679,7 @@
       liveRecord.paused = false
       if (mode === 'record-resume') {
         liveRecord.steps = [...resumeRecordSteps]
+        liveRecord.targetPath = ''
         emitE2E('record-started', { append: true, resume: true })
         queueMicrotask(() => {
           for (const step of liveRecord.steps) {
@@ -620,6 +689,7 @@
         return
       }
       liveRecord.steps = []
+      liveRecord.targetPath = liveRecord.targetPath || `${E2E_PROJECT}/smoke.feature`
       emitE2E('record-started', { append: true })
     },
     PollBrowserSession: async () => ({

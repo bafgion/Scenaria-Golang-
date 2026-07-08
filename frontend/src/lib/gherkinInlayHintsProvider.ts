@@ -5,6 +5,7 @@ import { replaceMonacoDisposables } from './monacoDisposables'
 export type InlayHintsHandlers = {
   isEnabled: () => boolean
   getSteps: () => StepInlayRow[]
+  isSnapshotCurrent: () => boolean
 }
 
 let activeHandlers: InlayHintsHandlers | null = null
@@ -39,7 +40,12 @@ export function registerGherkinInlayHints(monacoInstance: typeof Monaco, handler
   const disposable = monacoInstance.languages.registerInlayHintsProvider('scenaria-feature', {
     provideInlayHints(model, _range, token) {
       const current = activeHandlers
-      if (!current || token.isCancellationRequested || !current.isEnabled()) {
+      if (
+        !current ||
+        token.isCancellationRequested ||
+        !current.isEnabled() ||
+        !current.isSnapshotCurrent()
+      ) {
         return { hints: [], dispose: () => {} }
       }
       const hints = buildInlayHints(model, current.getSteps(), monacoInstance)

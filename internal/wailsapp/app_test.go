@@ -95,3 +95,14 @@ func TestStartValidateReturnsJobID(t *testing.T) {
 		t.Fatalf("expected unique job ids, got %q", first)
 	}
 }
+
+func TestPromptEmailCodeRejectsConcurrentPrompt(t *testing.T) {
+	app := NewApp()
+	app.otpCode = make(chan string, 1)
+	app.otpErr = make(chan error, 1)
+
+	_, err := app.promptEmailCode("user@example.com")
+	if err == nil {
+		t.Fatal("expected concurrent otp prompt error")
+	}
+}

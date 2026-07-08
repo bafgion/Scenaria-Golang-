@@ -40,7 +40,7 @@ func (s *Service) Shutdown(ctx context.Context) {
 	waitWaitGroup(ctx, &s.activeBackground)
 
 	s.cleanupTempFeatureDirs()
-	StopAllureServe()
+	s.stopAllureServe()
 	playwrightrt.Shutdown()
 	logx.Debug("gui shutdown complete")
 }

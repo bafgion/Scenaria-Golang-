@@ -124,3 +124,26 @@ func TestBuildExecutionPlan_TestClientOverride(t *testing.T) {
 		t.Fatalf("unexpected test client: %+v", plan.Cases[0].TestClient)
 	}
 }
+
+func TestBuildExecutionPlanFreshEachCall(t *testing.T) {
+	feature := &gherkin.Feature{
+		Title: "Demo",
+		Scenarios: []gherkin.Scenario{
+			{Title: "One", Steps: []gherkin.Step{{Keyword: "Когда", Text: "шаг"}}},
+		},
+	}
+
+	first := BuildExecutionPlan([]FeatureInput{{Path: "demo.feature", Feature: feature}}, "", nil)
+	if len(first.Cases) != 1 {
+		t.Fatalf("expected one case in first plan, got %d", len(first.Cases))
+	}
+	first.Cases[0].Name = "Mutated"
+
+	second := BuildExecutionPlan([]FeatureInput{{Path: "demo.feature", Feature: feature}}, "", nil)
+	if len(second.Cases) != 1 {
+		t.Fatalf("expected one case in second plan, got %d", len(second.Cases))
+	}
+	if second.Cases[0].Name != "One" {
+		t.Fatalf("expected fresh plan data, got %+v", second.Cases[0])
+	}
+}

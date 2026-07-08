@@ -41,7 +41,7 @@ type LiveCallbacks struct {
 	OnCaptureStop   func(reason string)
 	OnPickerRequest func()
 	OnBrowserLost   func()
-	OnStepRecorded  func(index int, line string)
+	OnStepRecorded  func(event RecordStepEvent)
 }
 
 type recorderEvent struct {

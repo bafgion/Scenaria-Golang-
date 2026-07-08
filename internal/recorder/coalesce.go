@@ -95,7 +95,6 @@ func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep
 	return out, &lastStep
 }
 
-type StepNotifier func(index int, line string)
 
 func appendRecordedStep(steps *[]RecordedStep, step RecordedStep, notify StepNotifier) {
 	step, ok := polishIncomingStep(step)
@@ -134,7 +133,7 @@ func emitRecordedStep(notify StepNotifier, steps []RecordedStep, emitted *Record
 		}
 	}
 	if line, ok := RecordedStepToLine(*emitted); ok {
-		notify(idx, line)
+		notifyUpsert(notify, idx, line)
 	}
 }
 

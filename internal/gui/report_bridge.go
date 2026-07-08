@@ -2,7 +2,6 @@ package gui
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 )
 
 const bridgeTokenHeader = "X-Scenaria-Bridge-Token"
+const maxBridgeTokens = 8
 
 // ReportGotoRequest is sent from an HTML report to focus a step in the IDE.
 type ReportGotoRequest struct {
@@ -22,12 +22,14 @@ type ReportGotoRequest struct {
 	Scenario    string `json:"scenario"`
 	LeafIndex   int    `json:"leaf_index"`
 	Line        int    `json:"line"`
+	ReportID    string `json:"report_id,omitempty"`
 }
 
 // ReportRerunRequest asks the IDE to re-run one scenario.
 type ReportRerunRequest struct {
 	FeaturePath string `json:"feature_path"`
 	Scenario    string `json:"scenario"`
+	ReportID    string `json:"report_id,omitempty"`
 }
 
 // ReportTraceRequest opens a Playwright trace archive in the IDE.
@@ -36,6 +38,7 @@ type ReportTraceRequest struct {
 	ReportDir     string `json:"report_dir"`
 	TraceOffsetMS int64  `json:"trace_offset_ms,omitempty"`
 	StepIndex     int    `json:"step_index,omitempty"`
+	ReportID      string `json:"report_id,omitempty"`
 }
 
 type reportBridge struct {
@@ -43,6 +46,8 @@ type reportBridge struct {
 	server  *http.Server
 	baseURL string
 	token   string
+	tokens  map[string]struct{}
+	order   []string
 	onGoto  func(ReportGotoRequest)
 	onRerun func(ReportRerunRequest)
 	onTrace func(ReportTraceRequest)
@@ -65,7 +70,7 @@ func (b *reportBridge) rotateToken() (string, error) {
 		return "", err
 	}
 	b.mu.Lock()
-	b.token = token
+	b.addTokenLocked(token)
 	b.mu.Unlock()
 	return token, nil
 }
@@ -81,6 +86,8 @@ func startReportBridge(onGoto func(ReportGotoRequest), onRerun func(ReportRerunR
 	}
 	b := &reportBridge{
 		token:   token,
+		tokens:  map[string]struct{}{token: {}},
+		order:   []string{token},
 		onGoto:  onGoto,
 		onRerun: onRerun,
 		onTrace: onTrace,
@@ -100,6 +107,25 @@ func startReportBridge(onGoto func(ReportGotoRequest), onRerun func(ReportRerunR
 		_ = b.server.Serve(ln)
 	}()
 	return b, nil
+}
+
+func (b *reportBridge) addTokenLocked(token string) {
+	if b == nil || token == "" {
+		return
+	}
+	if b.tokens == nil {
+		b.tokens = make(map[string]struct{})
+	}
+	if _, exists := b.tokens[token]; !exists {
+		b.order = append(b.order, token)
+	}
+	b.tokens[token] = struct{}{}
+	b.token = token
+	for len(b.order) > maxBridgeTokens {
+		oldest := b.order[0]
+		b.order = b.order[1:]
+		delete(b.tokens, oldest)
+	}
 }
 
 func (b *reportBridge) close() error {
@@ -250,12 +276,9 @@ func (b *reportBridge) authorize(r *http.Request) bool {
 	}
 	got := r.Header.Get(bridgeTokenHeader)
 	b.mu.Lock()
-	token := b.token
+	_, ok := b.tokens[got]
 	b.mu.Unlock()
-	if token == "" || len(got) != len(token) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+	return ok
 }
 
 func rejectDisallowedBridgeOrigin(w http.ResponseWriter, r *http.Request) bool {

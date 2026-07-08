@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,10 @@ type exportOptions struct {
 }
 
 func RunExport(args []string) error {
+	return RunExportWithOutput(args, nil)
+}
+
+func RunExportWithOutput(args []string, out io.Writer) error {
 	opts, err := parseExportOptions(args)
 	if err != nil {
 		return err
@@ -60,7 +65,7 @@ func RunExport(args []string) error {
 		return fmt.Errorf("unsupported export format %q", opts.format)
 	}
 
-	fmt.Printf("Exported %s -> %s (%s)\n", opts.input, opts.output, opts.format)
+	cliPrintf(out, "Exported %s -> %s (%s)\n", opts.input, opts.output, opts.format)
 	return nil
 }
 

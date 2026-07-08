@@ -133,9 +133,11 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 ) (ScenarioResult, error) {
 	started := time.Now()
 	result := ScenarioResult{
-		FeaturePath: input.FeaturePath,
-		Scenario:    input.ScenarioName,
-		Status:      "passed",
+		FeaturePath:  input.FeaturePath,
+		Scenario:     input.ScenarioName,
+		CaseID:       input.CaseID,
+		ExampleIndex: input.ExampleIndex,
+		Status:       "passed",
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -171,7 +173,7 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 		}
 	}
 	if failed {
-		result.ScreenshotPNG, result.TraceZIP, result.VideoWebM = captureFailureArtifacts(
+		result.ScreenshotPath, result.TraceZIPPath, result.VideoWebMPath = captureFailureArtifacts(
 			session, input, e.options.TraceDir, e.options.VideoDir,
 		)
 		restartTraceRecording(session)

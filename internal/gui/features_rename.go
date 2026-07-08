@@ -27,12 +27,14 @@ func (s *Service) RenameFeature(path, newName string) (string, error) {
 	if strings.EqualFold(filepath.Clean(srcAbs), filepath.Clean(target)) {
 		return srcAbs, nil
 	}
-	if _, err := os.Stat(target); err == nil {
-		return "", fmt.Errorf("file already exists: %s", newName)
-	} else if !os.IsNotExist(err) {
-		return "", err
-	}
-	if err := os.Rename(srcAbs, target); err != nil {
+	if err := s.withProjectFSWriteLock(func() error {
+		if _, err := os.Stat(target); err == nil {
+			return fmt.Errorf("file already exists: %s", newName)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return os.Rename(srcAbs, target)
+	}); err != nil {
 		return "", fmt.Errorf("rename feature: %w", err)
 	}
 	return target, nil

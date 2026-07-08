@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -15,7 +14,7 @@ type RecentsDTO struct {
 }
 
 func (s *Service) LoadRecents() RecentsDTO {
-	cfg, err := settings.LoadDefaultAppSettings()
+	cfg, err := s.settingsStore.Load()
 	if err != nil || cfg == nil {
 		return RecentsDTO{}
 	}
@@ -26,35 +25,26 @@ func (s *Service) LoadRecents() RecentsDTO {
 }
 
 func (s *Service) RememberRecentProject(path string) error {
-	return rememberRecent(path, true)
+	return s.rememberRecent(path, true)
 }
 
 func (s *Service) RememberRecentFeature(path string) error {
-	return rememberRecent(path, false)
+	return s.rememberRecent(path, false)
 }
 
-func rememberRecent(itemPath string, project bool) error {
+func (s *Service) rememberRecent(itemPath string, project bool) error {
 	itemPath = strings.TrimSpace(itemPath)
 	if itemPath == "" {
 		return nil
 	}
-	settingsPath := settings.DefaultAppSettingsPath()
-	if settingsPath == "" {
-		return fmt.Errorf("settings path unavailable")
-	}
-	cfg, err := settings.LoadDefaultAppSettings()
-	if err != nil {
-		return err
-	}
-	if cfg == nil {
-		cfg = &settings.AppSettings{Browser: "chromium"}
-	}
-	if project {
-		cfg.RecentProjects = pushRecent(cfg.RecentProjects, itemPath)
-	} else {
-		cfg.RecentFeatures = pushRecent(cfg.RecentFeatures, itemPath)
-	}
-	return settings.SaveAppSettings(settingsPath, cfg)
+	return s.settingsStore.Update(func(cfg *settings.AppSettings) error {
+		if project {
+			cfg.RecentProjects = pushRecent(cfg.RecentProjects, itemPath)
+		} else {
+			cfg.RecentFeatures = pushRecent(cfg.RecentFeatures, itemPath)
+		}
+		return nil
+	})
 }
 
 func pushRecent(list []string, item string) []string {

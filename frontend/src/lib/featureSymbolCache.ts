@@ -1,3 +1,4 @@
+import { collectBlockFoldingRanges, type FeatureFoldingRange } from './gherkinFolding'
 import { parseFeatureSymbols, type FeatureSymbol } from './gherkinDocumentSymbols'
 
 const MAX_CACHE_ENTRIES = 64
@@ -21,8 +22,9 @@ function cacheKey(text: string, versionId?: number | null, modelKey?: string | n
 }
 
 const symbolCache = new Map<string, FeatureSymbol[]>()
+const foldingCache = new Map<string, FeatureFoldingRange[]>()
 
-function remember(key: string, symbols: FeatureSymbol[]): FeatureSymbol[] {
+function rememberSymbol(key: string, symbols: FeatureSymbol[]): FeatureSymbol[] {
   if (symbolCache.size >= MAX_CACHE_ENTRIES) {
     const oldest = symbolCache.keys().next().value
     if (oldest) symbolCache.delete(oldest)
@@ -42,9 +44,40 @@ export function getCachedFeatureSymbols(
   if (hit) {
     return hit
   }
-  return remember(key, parseFeatureSymbols(text))
+  return rememberSymbol(key, parseFeatureSymbols(text))
+}
+
+export function getCachedBlockFoldingRanges(
+  text: string,
+  versionId?: number | null,
+  modelKey?: string | null,
+): FeatureFoldingRange[] {
+  const key = `fold:${cacheKey(text, versionId, modelKey)}`
+  const hit = foldingCache.get(key)
+  if (hit) {
+    return hit
+  }
+  const ranges = collectBlockFoldingRanges(text)
+  if (foldingCache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = foldingCache.keys().next().value
+    if (oldest) foldingCache.delete(oldest)
+  }
+  foldingCache.set(key, ranges)
+  return ranges
 }
 
 export function clearFeatureSymbolCache(): void {
   symbolCache.clear()
+  foldingCache.clear()
+}
+
+export function evictFeatureSymbolCache(modelKey: string): void {
+  if (!modelKey) return
+  const prefix = `${modelKey}:`
+  for (const key of [...symbolCache.keys()]) {
+    if (key.startsWith(prefix)) symbolCache.delete(key)
+  }
+  for (const key of [...foldingCache.keys()]) {
+    if (key.includes(modelKey)) foldingCache.delete(key)
+  }
 }

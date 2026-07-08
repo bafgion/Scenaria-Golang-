@@ -18,7 +18,7 @@ func TestLookupByActionNormalizesHyphen(t *testing.T) {
 
 func TestLookupByStepTextLabelPrefix(t *testing.T) {
 	entry, ok := LookupByStepText(`нажимаю "#login"`)
-	if !ok || entry.Label != "нажимаю" {
+	if !ok || normalizeActionKind(entry.Action) != "click" {
 		t.Fatalf("got %+v ok=%v", entry, ok)
 	}
 }

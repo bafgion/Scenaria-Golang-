@@ -1,10 +1,8 @@
 package gui
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/stepdsl"
 )
 
@@ -21,44 +19,7 @@ type EditorStepRow struct {
 }
 
 func ParseEditorSteps(text string) []EditorStepRow {
-	lines := strings.Split(text, "\n")
-	out := make([]EditorStepRow, 0)
-	for i, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		if isScenarioStructureLine(line) {
-			continue
-		}
-		keyword, stepText := splitStepKeyword(line)
-		if stepText == "" && keyword == "" {
-			continue
-		}
-		row := EditorStepRow{
-			Line:    i + 1,
-			Keyword: keyword,
-			Action:  stepText,
-			Text:    stepText,
-		}
-		if gherkin.IsTestClientStep(gherkin.Step{Text: stepText}) {
-			row.Kind = "test-client"
-			row.Action = "TestClient"
-			out = append(out, row)
-			continue
-		}
-		action, err := stepdsl.Parse(gherkin.Step{Line: i + 1, Text: stepText})
-		if err != nil {
-			row.Error = fmt.Sprintf("%v", err)
-			out = append(out, row)
-			continue
-		}
-		row.Kind = action.Kind
-		row.Action = actionDisplayName(action.Kind)
-		row.Element, row.Value = actionFields(action)
-		out = append(out, row)
-	}
-	return out
+	return editorStepsFromAnalysis(analyzeEditorSteps(text))
 }
 
 func splitStepKeyword(line string) (keyword, rest string) {

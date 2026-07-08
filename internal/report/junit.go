@@ -51,6 +51,9 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 		case "failed", "broken":
 			suite.Failures++
 			tc.Failure = &junitFailure{Message: scenario.Message}
+		case "canceled":
+			suite.Skipped++
+			tc.Skipped = &junitSkipped{Message: scenario.Message}
 		case "skipped", "dry-run":
 			suite.Skipped++
 			tc.Skipped = &junitSkipped{Message: scenario.Message}
@@ -69,7 +72,7 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 			return fmt.Errorf("create junit report dir %q: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
+	if err := writeAtomic(path, content); err != nil {
 		return fmt.Errorf("write junit report %q: %w", path, err)
 	}
 	return nil

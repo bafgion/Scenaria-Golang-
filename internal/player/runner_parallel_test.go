@@ -63,7 +63,7 @@ func TestParallelRunnerCancelsSiblingContexts(t *testing.T) {
 		if sr.Scenario == "fail-fast" {
 			continue
 		}
-		if sr.Status == "failed" && strings.Contains(sr.Message, "canceled") {
+		if sr.Status == "canceled" || (sr.Status == "failed" && strings.Contains(sr.Message, "canceled")) {
 			canceled++
 		}
 	}

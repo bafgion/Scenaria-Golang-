@@ -15,19 +15,23 @@ import (
 
 // HTMLOptions configures interactive HTML report generation.
 type HTMLOptions struct {
-	Plan            player.ExecutionPlan
-	ProjectRoot     string
-	LightMode       bool
-	BridgeURL       string
-	BridgeToken     string
-	Locale          string
-	ReportDir       string
-	MaxJSONBytes    int
-	PreviousSummary *RunSummaryDetailed
+	Plan              player.ExecutionPlan
+	ProjectRoot       string
+	LightMode         bool
+	BridgeURL         string
+	BridgeToken       string
+	Locale            string
+	ReportDir         string
+	RunID             string
+	MaxJSONBytes      int
+	PreviousSummary   *RunSummaryDetailed
+	ModePairFullPath  string
+	ModePairLightPath string
 }
 
 type htmlReportPayload struct {
 	Version          string         `json:"version"`
+	RunID            string         `json:"run_id,omitempty"`
 	Brand            string         `json:"brand"`
 	GeneratedAt      string         `json:"generated_at"`
 	Mode             string         `json:"mode"`
@@ -60,6 +64,7 @@ type htmlSummary struct {
 	Steps     int `json:"steps"`
 	Passed    int `json:"passed"`
 	Failed    int `json:"failed"`
+	Canceled  int `json:"canceled"`
 	Skipped   int `json:"skipped"`
 }
 
@@ -168,6 +173,7 @@ type htmlSlowStep struct {
 func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPath string) (htmlReportPayload, error) {
 	payload := htmlReportPayload{
 		Version:     "1",
+		RunID:       strings.TrimSpace(opts.RunID),
 		Brand:       brand.Name,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Mode:        result.Mode,
@@ -176,7 +182,7 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 		BridgeToken: strings.TrimSpace(opts.BridgeToken),
 		Locale:      normalizeReportLocale(opts.Locale),
 		ReportDir:   strings.TrimSpace(opts.ReportDir),
-		ModeLinks:   buildHTMLModeLinks(reportPath, opts.LightMode),
+		ModeLinks:   buildHTMLModeLinks(reportPath, opts),
 		Summary: htmlSummary{
 			Files:     result.Files,
 			Scenarios: result.Scenarios,
@@ -188,8 +194,8 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 	if root := strings.TrimSpace(opts.ProjectRoot); root != "" {
 		if store, err := runstatus.Open(root); err == nil {
 			if entries, err := store.List(200); err == nil {
-				history = entries
-				scenarios, steps := runstatus.FlakyStats(entries)
+				history = filterHistoryEntries(entries, opts.RunID)
+				scenarios, steps := runstatus.FlakyStats(history)
 				payload.Flaky.Scenarios = scenarios
 				payload.Flaky.Steps = steps
 			}
@@ -221,8 +227,10 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 		switch sr.Status {
 		case "passed":
 			payload.Summary.Passed++
-		case "failed":
+		case "failed", "broken":
 			payload.Summary.Failed++
+		case "canceled":
+			payload.Summary.Canceled++
 		default:
 			payload.Summary.Skipped++
 		}
@@ -235,16 +243,22 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 	return payload, nil
 }
 
-func buildHTMLModeLinks(reportPath string, light bool) htmlModeLinks {
-	fullPath, lightPath := htmlModePairPaths(reportPath, light)
+func buildHTMLModeLinks(reportPath string, opts HTMLOptions) htmlModeLinks {
+	fullPath, lightPath := htmlModePairPaths(reportPath, opts.LightMode)
+	if opts.ModePairFullPath != "" {
+		fullPath = opts.ModePairFullPath
+	}
+	if opts.ModePairLightPath != "" {
+		lightPath = opts.ModePairLightPath
+	}
 	links := htmlModeLinks{
 		Current:        "full",
 		FullHref:       filepath.Base(fullPath),
 		LightHref:      filepath.Base(lightPath),
-		FullAvailable:  !light || fileExists(fullPath),
-		LightAvailable: light || fileExists(lightPath),
+		FullAvailable:  opts.ModePairLightPath != "" || !opts.LightMode || fileExists(fullPath),
+		LightAvailable: opts.ModePairFullPath != "" || opts.LightMode || fileExists(lightPath),
 	}
-	if light {
+	if opts.LightMode {
 		links.Current = "light"
 	}
 	if !links.FullAvailable {
@@ -289,9 +303,19 @@ func shouldEmbedScreenshot(light bool, status string, hasPNG bool) bool {
 }
 
 func findPlanCase(plan player.ExecutionPlan, sr player.ScenarioResult) *player.RunCase {
+	if sr.CaseID != "" {
+		for i := range plan.Cases {
+			if plan.Cases[i].CaseID == sr.CaseID {
+				return &plan.Cases[i]
+			}
+		}
+	}
 	for i := range plan.Cases {
 		c := &plan.Cases[i]
 		if c.FeaturePath == sr.FeaturePath && c.Name == sr.Scenario {
+			if sr.ExampleIndex > 0 && c.ExampleIndex != sr.ExampleIndex {
+				continue
+			}
 			return c
 		}
 	}
@@ -327,6 +351,11 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 		if casePlan.ExampleIndex > 0 {
 			sc.ExampleIndex = casePlan.ExampleIndex
 		}
+	} else if sr.ExampleIndex > 0 {
+		sc.ExampleIndex = sr.ExampleIndex
+	}
+	if sr.CaseID != "" {
+		sc.ID = sr.CaseID
 	}
 	scenarioPath := sr.FeaturePath + "::" + sr.Scenario
 	traceHints := scenarioHasTrace(sr, light)
@@ -337,16 +366,34 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 	}
 	sc.RerunCommand = fmt.Sprintf("scenaria run %q --scenario %q", sr.FeaturePath, sr.Scenario)
 
-	if shouldEmbedScreenshot(light, sr.Status, len(sr.ScreenshotPNG) > 0) {
-		sc.Screenshot = writeScreenshotArtifact(screenshotsDir, artifactBase+"__scenario.png", sr.ScreenshotPNG)
+	screenshotBytes := sr.ScreenshotPNG
+	if len(screenshotBytes) == 0 && strings.TrimSpace(sr.ScreenshotPath) != "" {
+		if b, err := os.ReadFile(sr.ScreenshotPath); err == nil {
+			screenshotBytes = b
+		}
+	}
+	if shouldEmbedScreenshot(light, sr.Status, len(screenshotBytes) > 0) {
+		sc.Screenshot = writeScreenshotArtifact(screenshotsDir, artifactBase+"__scenario.png", screenshotBytes)
 	}
 	if !light {
-		if len(sr.TraceZIP) > 0 {
-			sc.TraceEvents = parseTraceActions(sr.TraceZIP, 80)
-			networkFails := parseTraceNetworkFailures(sr.TraceZIP, 24)
+		traceBytes := sr.TraceZIP
+		tracePath := strings.TrimSpace(sr.TraceZIPPath)
+		if len(traceBytes) == 0 && tracePath != "" {
+			if b, err := os.ReadFile(tracePath); err == nil {
+				traceBytes = b
+			}
+		}
+		if len(traceBytes) > 0 {
+			sc.TraceEvents = parseTraceActions(traceBytes, 80)
+			networkFails := parseTraceNetworkFailures(traceBytes, 24)
 			name := safeArtifactName(sr.FeaturePath, sr.Scenario) + ".zip"
 			path := filepath.Join(tracesDir, name)
-			if err := os.WriteFile(path, sr.TraceZIP, 0o644); err == nil {
+			if tracePath != "" {
+				_ = copyFile(path, tracePath)
+			} else {
+				_ = os.WriteFile(path, traceBytes, 0o644)
+			}
+			if fileExists(path) {
 				rel, _ := filepath.Rel(filepath.Dir(tracesDir), path)
 				if rel == "" || strings.HasPrefix(rel, "..") {
 					rel = filepath.Join("traces", name)
@@ -365,7 +412,7 @@ func buildHTMLScenario(sr player.ScenarioResult, casePlan *player.RunCase, index
 }
 
 func scenarioHasTrace(sr player.ScenarioResult, light bool) bool {
-	return !light && sr.Status == "failed" && len(sr.TraceZIP) > 0
+	return !light && sr.Status == "failed" && (len(sr.TraceZIP) > 0 || strings.TrimSpace(sr.TraceZIPPath) != "")
 }
 
 func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky map[int]int, light bool, traceHints bool, screenshotsDir, artifactBase string) []htmlStep {
@@ -395,8 +442,14 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 			if flaky != nil {
 				step.FlakyFailures = flaky[rec.Index]
 			}
-			if shouldEmbedScreenshot(light, rec.Status, len(rec.ScreenshotPNG) > 0) {
-				step.Screenshot = writeScreenshotArtifact(screenshotsDir, fmt.Sprintf("%s__step_%03d.png", artifactBase, rec.Index), rec.ScreenshotPNG)
+			stepPNG := rec.ScreenshotPNG
+			if len(stepPNG) == 0 && strings.TrimSpace(rec.ScreenshotPath) != "" {
+				if b, err := os.ReadFile(rec.ScreenshotPath); err == nil {
+					stepPNG = b
+				}
+			}
+			if shouldEmbedScreenshot(light, rec.Status, len(stepPNG) > 0) {
+				step.Screenshot = writeScreenshotArtifact(screenshotsDir, fmt.Sprintf("%s__step_%03d.png", artifactBase, rec.Index), stepPNG)
 			}
 			step.Tips = stepTips(step.Selector, step.Error, step.Text)
 			out = append(out, step)
@@ -590,20 +643,42 @@ func computeRegressions(sc htmlScenario) []htmlRegression {
 	})
 }
 
+func historyPathKey(sr player.ScenarioResult) string {
+	if sr.CaseID != "" {
+		return sr.CaseID
+	}
+	return sr.FeaturePath + "::" + sr.Scenario
+}
+
+func filterHistoryEntries(entries []runstatus.Entry, currentRunID string) []runstatus.Entry {
+	if currentRunID == "" {
+		return entries
+	}
+	out := make([]runstatus.Entry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.RunID == currentRunID {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 func lookupHistoryRuns(entries []runstatus.Entry, sr player.ScenarioResult, limit int) []htmlHistoryEntry {
 	if limit <= 0 {
 		limit = 5
 	}
-	path := sr.FeaturePath + "::" + sr.Scenario
+	path := historyPathKey(sr)
 	out := make([]htmlHistoryEntry, 0, limit)
 	for _, entry := range entries {
-		if entry.Path != path {
+		key := entry.Path
+		if entry.CaseID != "" {
+			key = entry.CaseID
+		}
+		if key != path {
 			continue
 		}
-		status := "passed"
-		if !entry.Success {
-			status = "failed"
-		}
+		status := historyStatusFromEntry(entry)
 		out = append(out, htmlHistoryEntry{
 			Status:        status,
 			At:            entry.At,
@@ -620,10 +695,14 @@ func lookupHistoryRuns(entries []runstatus.Entry, sr player.ScenarioResult, limi
 }
 
 func lookupHistory(entries []runstatus.Entry, sr player.ScenarioResult) *htmlHistory {
-	path := sr.FeaturePath + "::" + sr.Scenario
+	path := historyPathKey(sr)
 	var prev *runstatus.Entry
 	for _, entry := range entries {
-		if entry.Path != path {
+		key := entry.Path
+		if entry.CaseID != "" {
+			key = entry.CaseID
+		}
+		if key != path {
 			continue
 		}
 		prev = &entry
@@ -632,10 +711,7 @@ func lookupHistory(entries []runstatus.Entry, sr player.ScenarioResult) *htmlHis
 	if prev == nil {
 		return nil
 	}
-	status := "passed"
-	if !prev.Success {
-		status = "failed"
-	}
+	status := historyStatusFromEntry(*prev)
 	changed := (status == "passed") != (sr.Status == "passed")
 	return &htmlHistory{
 		LastStatus:  status,
@@ -643,6 +719,16 @@ func lookupHistory(entries []runstatus.Entry, sr player.ScenarioResult) *htmlHis
 		LastMessage: prev.Message,
 		Changed:     changed,
 	}
+}
+
+func historyStatusFromEntry(entry runstatus.Entry) string {
+	if entry.Success {
+		return "passed"
+	}
+	if strings.Contains(strings.ToLower(entry.Message), "canceled") {
+		return "canceled"
+	}
+	return "failed"
 }
 
 func safeArtifactName(featurePath, scenario string) string {

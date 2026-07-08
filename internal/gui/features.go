@@ -30,28 +30,33 @@ func (s *Service) ReplaceInProject(req ProjectReplaceRequest) (ProjectReplaceRes
 	if strings.TrimSpace(find) == "" {
 		return ProjectReplaceResult{}, fmt.Errorf("find text is required")
 	}
-	store := scenario.NewFeatureStore()
-	files, err := store.Discover(path)
-	if err != nil {
-		return ProjectReplaceResult{}, err
-	}
 	result := ProjectReplaceResult{Files: []string{}}
-	for _, file := range files {
-		payload, err := os.ReadFile(file)
+	if err := s.withProjectFSWriteLock(func() error {
+		store := scenario.NewFeatureStore()
+		files, err := store.Discover(path)
 		if err != nil {
-			continue
+			return err
 		}
-		original := string(payload)
-		replaced := ReplaceAllInText(original, find, req.Replace, req.CaseSensitive, true)
-		if replaced.Count == 0 {
-			continue
+		for _, file := range files {
+			payload, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			original := string(payload)
+			replaced := ReplaceAllInText(original, find, req.Replace, req.CaseSensitive, true)
+			if replaced.Count == 0 {
+				continue
+			}
+			if err := os.WriteFile(file, []byte(replaced.Text), 0o644); err != nil {
+				return fmt.Errorf("write %s: %w", file, err)
+			}
+			result.FilesChanged++
+			result.Replacements += replaced.Count
+			result.Files = append(result.Files, file)
 		}
-		if err := os.WriteFile(file, []byte(replaced.Text), 0o644); err != nil {
-			return result, fmt.Errorf("write %s: %w", file, err)
-		}
-		result.FilesChanged++
-		result.Replacements += replaced.Count
-		result.Files = append(result.Files, file)
+		return nil
+	}); err != nil {
+		return result, err
 	}
 	return result, nil
 }
@@ -77,7 +82,7 @@ func (s *Service) DeleteFeature(path string) error {
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("feature is outside the project")
 	}
-	if err := os.Remove(abs); err != nil {
+	if err := s.withProjectFSWriteLock(func() error { return os.Remove(abs) }); err != nil {
 		return fmt.Errorf("delete feature: %w", err)
 	}
 	return nil
@@ -91,10 +96,6 @@ func (s *Service) DuplicateFeature(path, newName string) (string, error) {
 	srcAbs, err := s.confineFeaturePath(path)
 	if err != nil {
 		return "", err
-	}
-	payload, err := os.ReadFile(srcAbs)
-	if err != nil {
-		return "", fmt.Errorf("read feature: %w", err)
 	}
 	dir := filepath.Dir(srcAbs)
 	ext := filepath.Ext(srcAbs)
@@ -121,7 +122,13 @@ func (s *Service) DuplicateFeature(path, newName string) (string, error) {
 			target = filepath.Join(dir, fmt.Sprintf("%s-copy-%d%s", base, i, ext))
 		}
 	}
-	if err := os.WriteFile(target, payload, 0o644); err != nil {
+	if err := s.withProjectFSWriteLock(func() error {
+		payload, err := os.ReadFile(srcAbs)
+		if err != nil {
+			return fmt.Errorf("read feature: %w", err)
+		}
+		return os.WriteFile(target, payload, 0o644)
+	}); err != nil {
 		return "", fmt.Errorf("write duplicate: %w", err)
 	}
 	return target, nil

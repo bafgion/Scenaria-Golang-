@@ -8,12 +8,12 @@ import (
 const gherkinStepIndent = "\t"
 
 var (
-	refactorKeywordRE = regexp.MustCompile(`(?i)^(Допустим|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+(.*)$`)
+	refactorKeywordRE  = regexp.MustCompile(`(?i)^(Допустим|Когда|Тогда|И|Но|Given|When|Then|And|But)\s+(.*)$`)
 	refactorGotoBodyRE = regexp.MustCompile(`(?i)^открыт[а]?\s+"((?:\\.|[^"])*)"$`)
-	refactorHeaderRE  = regexp.MustCompile(`(?i)^(функционал|функциональность|функция|feature|сценарий|scenario|структура\s+сценария|scenario\s+outline)\s*:`)
-	refactorTagRE     = regexp.MustCompile(`^@\S+$`)
+	refactorHeaderRE   = regexp.MustCompile(`(?i)^(функционал|функциональность|функция|feature|сценарий|scenario|структура\s+сценария|scenario\s+outline)\s*:`)
+	refactorTagRE      = regexp.MustCompile(`^@\S+$`)
 	refactorExamplesRE = regexp.MustCompile(`(?i)^примеры\s*:|^examples\s*:`)
-	refactorBlockRE   = regexp.MustCompile(`(?i)^(если|повторяю|пока|для каждого|иначе|конец если|конец)\b`)
+	refactorBlockRE    = regexp.MustCompile(`(?i)^(если|повторяю|пока|для каждого|иначе|конец если|конец)\b`)
 )
 
 type RefactorResult struct {

@@ -58,9 +58,9 @@ func TestWriteReportE2EFixture(t *testing.T) {
 			StepRecords: []player.StepRecord{
 				{Index: 0, Line: 3, Keyword: "Когда", Text: `открыт "https://example.com"`, Status: "passed", DurationMS: 200},
 				{Index: 1, Line: 4, Keyword: "Когда", Text: `кликаю "#missing"`, Selector: "#missing", Status: "failed", DurationMS: 100, Error: "element not found",
-					PageContext:  "Example\nhttps://example.com",
-					DOMSnapshot:  "<html><body><button id=\"missing\">Login</button></body></html>",
-					A11ySnapshot: "button \"Login\"",
+					PageContext:   "Example\nhttps://example.com",
+					DOMSnapshot:   "<html><body><button id=\"missing\">Login</button></body></html>",
+					A11ySnapshot:  "button \"Login\"",
 					ScreenshotPNG: fixturePNG,
 				},
 			},

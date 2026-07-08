@@ -15,6 +15,7 @@ type FeatureInput struct {
 }
 
 type ExecutionResult struct {
+	RunID           string
 	Mode            string
 	Files           int
 	Scenarios       int
@@ -23,8 +24,11 @@ type ExecutionResult struct {
 }
 
 type ScenarioResult struct {
+	RunID         string
+	CaseID        string
 	FeaturePath   string
 	Scenario      string
+	ExampleIndex  int
 	Status        string
 	Message       string
 	FailedStep    *int
@@ -33,6 +37,10 @@ type ScenarioResult struct {
 	ScreenshotPNG []byte
 	TraceZIP      []byte
 	VideoWebM     []byte
+	// Artifact paths are preferred over in-memory payloads to avoid retaining large blobs in heap.
+	ScreenshotPath string
+	TraceZIPPath   string
+	VideoWebMPath  string
 }
 
 type BrowserExecutor interface {
@@ -54,15 +62,17 @@ func NewRunner(dryRun bool) Runner {
 
 type DryRunner struct{}
 
-func (DryRunner) Execute(_ context.Context, plan ExecutionPlan) (ExecutionResult, error) {
+func (DryRunner) Execute(ctx context.Context, plan ExecutionPlan) (ExecutionResult, error) {
 	files, scenarios, steps, scenarioResults := SummarizePlan(plan)
-	return ExecutionResult{
+	result := ExecutionResult{
 		Mode:            "dry-run",
 		Files:           files,
 		Scenarios:       scenarios,
 		Steps:           steps,
 		ScenarioResults: scenarioResults,
-	}, nil
+	}
+	stampRunID(&result, RunIDFromContext(ctx))
+	return result, nil
 }
 
 type StubBrowserExecutor struct{}

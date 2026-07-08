@@ -1,6 +1,8 @@
+import { canonicalFeaturePath } from './featurePath'
+
 /** Normalize feature tab path for stable comparisons during recording. */
 export function normalizeRecordTabPath(path: string): string {
-  return path.trim().replace(/\\/g, '/')
+  return canonicalFeaturePath(path)
 }
 
 export function isSameRecordTab(a: string, b: string): boolean {
@@ -17,4 +19,17 @@ export function recordingTabSwitchAllowed(
 ): boolean {
   if (!recording || recordPaused || !recordingTargetPath) return true
   return isSameRecordTab(recordingTargetPath, nextPath)
+}
+
+export function resolveRecordingTargetPath(
+  eventTargetPath: string,
+  recordingTargetPath: string,
+): string {
+  const path = (eventTargetPath || recordingTargetPath || '').trim()
+  return path ? normalizeRecordTabPath(path) : ''
+}
+
+/** Ignore record-step events that arrive after capture has stopped. */
+export function shouldApplyLiveRecordedStep(recording: boolean, line: string): boolean {
+  return recording && line.trim() !== ''
 }

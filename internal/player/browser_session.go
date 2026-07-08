@@ -276,10 +276,24 @@ func (s *browserSession) resetForScenario() error {
 
 // finalizeVideoRecording closes page and context so Playwright flushes the webm, then reads it.
 func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
+	path := s.finalizeVideoRecordingPath(videoDir)
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// finalizeVideoRecordingPath closes page and context so Playwright flushes the webm and returns the file path.
+// The caller can then copy/stream the file instead of holding it in memory.
+func (s *browserSession) finalizeVideoRecordingPath(videoDir string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s == nil || s.isClosed() || !s.videoEnabled || s.page == nil {
-		return nil
+		return ""
 	}
 	recorder := s.page.Video()
 	closeBrowserResource("page", func() error { return s.page.Close() })
@@ -290,9 +304,16 @@ func (s *browserSession) finalizeVideoRecording(videoDir string) []byte {
 	}
 	s.videoRetained = true
 	if recorder == nil {
-		return nil
+		return ""
 	}
-	return readVideoRecording(recorder, videoDir)
+	path, err := recorder.Path()
+	if err != nil || strings.TrimSpace(path) == "" {
+		return ""
+	}
+	if !filepath.IsAbs(path) && videoDir != "" {
+		path = filepath.Join(videoDir, path)
+	}
+	return path
 }
 
 func (s *browserSession) setPage(page playwright.Page) {

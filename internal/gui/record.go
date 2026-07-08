@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/httpauth"
+	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/settings"
@@ -66,7 +67,7 @@ type ImportRequest struct {
 }
 
 func (s *Service) ValidateFeature(text string) []ValidationIssue {
-	return ValidateFeatureContent(text)
+	return s.editorAnalyzer().ValidateFeature(text)
 }
 
 func (s *Service) Export(req ExportRequest) RunResult {
@@ -81,7 +82,7 @@ func (s *Service) Export(req ExportRequest) RunResult {
 	if req.Force {
 		args = append(args, "--force")
 	}
-	out, err := captureCLI(func() error { return cliRunExport(args) })
+	out, err := s.cliRunner().Export(args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -93,9 +94,7 @@ func (s *Service) ImportJSON(req ImportRequest) RunResult {
 	if req.Force {
 		args = append(args, "--force")
 	}
-	out, err := captureCLI(func() error {
-		return cliRunImportJSON(args)
-	})
+	out, err := s.cliRunner().ImportJSON(args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -119,26 +118,81 @@ func (s *Service) OpenBrowser(req OpenBrowserRequest, emit func(string, any)) Ru
 	}, emit)
 }
 
-func (s *Service) liveRecordCallbacks(emit func(string, any), browseOnly bool, output string) recorder.LiveCallbacks {
+func resolveRecordTargetPath(projectPath string, req RecordRequest) string {
+	if appendTo := strings.TrimSpace(req.AppendTo); appendTo != "" {
+		if confined, err := paths.ConfineToProjectRoot(projectPath, appendTo); err == nil {
+			return confined
+		}
+	}
+	output := strings.TrimSpace(req.Output)
+	if output == "" {
+		return filepath.Join(projectPath, "recorded.feature")
+	}
+	if confined, err := paths.ConfineToProjectRoot(projectPath, output); err == nil {
+		return confined
+	}
+	return filepath.Join(projectPath, "recorded.feature")
+}
+
+func (s *Service) guardedRecordEmit(gen uint64, targetPath string, emit func(string, any)) func(string, any) {
+	if emit == nil {
+		return nil
+	}
+	return func(name string, payload any) {
+		s.mu.RLock()
+		active := s.recordGen == gen
+		s.mu.RUnlock()
+		if !active {
+			logx.Debug("stale record event skipped", "event", name, "expected_gen", gen)
+			return
+		}
+		if m, ok := payload.(map[string]any); ok && m != nil {
+			if targetPath != "" {
+				if _, has := m["targetPath"]; !has {
+					m["targetPath"] = targetPath
+				}
+			}
+		}
+		emit(name, payload)
+	}
+}
+
+func (s *Service) liveRecordCallbacks(emit func(string, any), browseOnly bool, output, targetPath, recordSessionID, browserSessionID string) recorder.LiveCallbacks {
+	eventPayload := func(extra map[string]any) map[string]any {
+		m := map[string]any{
+			"recordSessionId":  recordSessionID,
+			"browserSessionId": browserSessionID,
+		}
+		if targetPath != "" {
+			m["targetPath"] = targetPath
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
 	return recorder.LiveCallbacks{
 		OnBrowserOpened: func() {
 			if emit == nil {
 				return
 			}
 			if browseOnly {
-				emit("browser-opened", nil)
+				emit("browser-opened", eventPayload(nil))
 				return
 			}
-			emit("record-started", map[string]any{"resume": false, "output": output})
+			emit("record-started", eventPayload(map[string]any{
+				"resume": false,
+				"output": output,
+			}))
 		},
 		OnCaptureStart: func(resume bool) {
 			if emit != nil {
-				emit("record-started", map[string]any{"resume": resume})
+				emit("record-started", eventPayload(map[string]any{"resume": resume}))
 			}
 		},
 		OnCaptureStop: func(reason string) {
 			if emit != nil {
-				payload := map[string]any{"reason": reason}
+				payload := eventPayload(map[string]any{"reason": reason})
 				if reason == "idle" && s.recordIdleSeconds > 0 {
 					payload["idleSeconds"] = s.recordIdleSeconds
 				}
@@ -147,18 +201,29 @@ func (s *Service) liveRecordCallbacks(emit func(string, any), browseOnly bool, o
 		},
 		OnPickerRequest: func() {
 			if emit != nil {
-				emit("toolbar-picker", nil)
+				emit("toolbar-picker", eventPayload(nil))
 			}
 		},
 		OnBrowserLost: func() {
 			if emit != nil {
-				emit("browser-lost", nil)
+				emit("browser-lost", eventPayload(nil))
 			}
 		},
-		OnStepRecorded: func(index int, line string) {
-			if emit != nil {
-				emit("record-step", map[string]any{"index": index, "line": line})
+		OnStepRecorded: func(event recorder.RecordStepEvent) {
+			if emit == nil {
+				return
 			}
+			payload := eventPayload(map[string]any{"op": string(event.Op)})
+			switch event.Op {
+			case recorder.RecordStepUpsert:
+				payload["index"] = event.Index
+				payload["line"] = event.Line
+			case recorder.RecordStepDelete:
+				payload["index"] = event.Index
+			case recorder.RecordStepSnapshot:
+				payload["lines"] = event.Lines
+			}
+			emit("record-step", payload)
 		},
 	}
 }
@@ -170,22 +235,80 @@ func (s *Service) HasLiveBrowser() bool {
 	return session != nil && session.BrowserAlive()
 }
 
-func (s *Service) emitLiveRecordedSteps(session *recorder.LiveSession, emit func(string, any)) {
+func (s *Service) emitLiveRecordedSteps(session *recorder.LiveSession, emit func(string, any), targetPath, recordSessionID, browserSessionID string) {
 	if emit == nil || session == nil {
 		return
 	}
-	session.EachRecordedLine(func(index int, line string) {
-		emit("record-step", map[string]any{"index": index, "line": line})
+	lines := session.SnapshotRecordedSteps()
+	payload := map[string]any{
+		"op":               string(recorder.RecordStepSnapshot),
+		"recordSessionId":  recordSessionID,
+		"browserSessionId": browserSessionID,
+	}
+	if targetPath != "" {
+		payload["targetPath"] = targetPath
+	}
+	if len(lines) == 0 {
+		payload["op"] = string(recorder.RecordStepReset)
+	} else {
+		payload["lines"] = lines
+	}
+	emit("record-step", payload)
+}
+
+func (s *Service) emitRecordStepReset() {
+	s.mu.RLock()
+	emit := s.recordEmit
+	myGen := s.recordGen
+	targetPath := s.recordTargetPath
+	recordSessionID := s.recordSessionID
+	browserSessionID := s.browserSessionID
+	s.mu.RUnlock()
+	if emit == nil {
+		return
+	}
+	emit = s.guardedRecordEmit(myGen, targetPath, emit)
+	emit("record-step", map[string]any{
+		"op":               string(recorder.RecordStepReset),
+		"recordSessionId":  recordSessionID,
+		"browserSessionId": browserSessionID,
+		"targetPath":       targetPath,
+	})
+}
+
+func (s *Service) emitRecordStepDelete(index int) {
+	s.mu.RLock()
+	emit := s.recordEmit
+	myGen := s.recordGen
+	targetPath := s.recordTargetPath
+	recordSessionID := s.recordSessionID
+	browserSessionID := s.browserSessionID
+	s.mu.RUnlock()
+	if emit == nil || index < 0 {
+		return
+	}
+	emit = s.guardedRecordEmit(myGen, targetPath, emit)
+	emit("record-step", map[string]any{
+		"op":               string(recorder.RecordStepDelete),
+		"index":            index,
+		"recordSessionId":  recordSessionID,
+		"browserSessionId": browserSessionID,
+		"targetPath":       targetPath,
 	})
 }
 
 func (s *Service) startCaptureOnExistingSession(req RecordRequest, emit func(string, any)) RunResult {
 	s.mu.RLock()
 	session := s.liveSession
+	myGen := s.recordGen
+	recordSessionID := s.recordSessionID
+	browserSessionID := s.browserSessionID
+	targetPath := s.recordTargetPath
 	s.mu.RUnlock()
 	if session == nil || !session.BrowserAlive() {
 		return RunResult{Error: "браузер не открыт"}
 	}
+	emit = s.guardedRecordEmit(myGen, targetPath, emit)
 	appCfg, err := s.loadAppSettings()
 	if err != nil {
 		return RunResult{Error: err.Error()}
@@ -199,7 +322,13 @@ func (s *Service) startCaptureOnExistingSession(req RecordRequest, emit func(str
 	)
 	if session.CaptureEnabled() {
 		if emit != nil {
-			emit("record-started", map[string]any{"append": true, "sync": true})
+			emit("record-started", map[string]any{
+				"append":           true,
+				"sync":             true,
+				"recordSessionId":  recordSessionID,
+				"browserSessionId": browserSessionID,
+				"targetPath":       targetPath,
+			})
 		}
 		return RunResult{}
 	}
@@ -208,9 +337,15 @@ func (s *Service) startCaptureOnExistingSession(req RecordRequest, emit func(str
 		return RunResult{Error: err.Error()}
 	}
 	if emit != nil {
-		emit("record-started", map[string]any{"append": true, "resume": !replay})
+		emit("record-started", map[string]any{
+			"append":           true,
+			"resume":           !replay,
+			"recordSessionId":  recordSessionID,
+			"browserSessionId": browserSessionID,
+			"targetPath":       targetPath,
+		})
 		if replay {
-			s.emitLiveRecordedSteps(session, emit)
+			s.emitLiveRecordedSteps(session, emit, targetPath, recordSessionID, browserSessionID)
 		}
 	}
 	return RunResult{}
@@ -277,8 +412,14 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	}
 	s.recordGen++
 	myGen := s.recordGen
+	recordSessionID := fmt.Sprintf("record-%d", myGen)
+	browserSessionID := fmt.Sprintf("browser-%d", myGen)
+	targetPath := resolveRecordTargetPath(path, req)
 	session := recorder.NewLiveSession()
 	s.liveSession = session
+	s.recordSessionID = recordSessionID
+	s.browserSessionID = browserSessionID
+	s.recordTargetPath = targetPath
 	ctx, cancel := context.WithCancel(context.Background())
 	s.recordCtx = ctx
 	s.recordCancel = cancel
@@ -286,10 +427,14 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 	s.recordIdleSeconds = idle
 	s.mu.Unlock()
 
+	emit = s.guardedRecordEmit(myGen, targetPath, emit)
+
 	clearRecordSession := func() {
 		s.mu.Lock()
 		if s.recordGen == myGen {
 			s.recordEmit = nil
+		} else {
+			logx.Debug("stale record emit cleanup skipped", "record_session_id", recordSessionID, "expected_gen", myGen, "current_gen", s.recordGen)
 		}
 		s.mu.Unlock()
 	}
@@ -335,14 +480,20 @@ func (s *Service) RecordLive(req RecordRequest, emit func(string, any)) RunResul
 		TestClient:        testClient,
 		HTTPCredentials:   httpCreds,
 		BrowseOnly:        req.BrowseOnly,
-		Callbacks:         s.liveRecordCallbacks(emit, req.BrowseOnly, output),
+		Callbacks:         s.liveRecordCallbacks(emit, req.BrowseOnly, output, targetPath, recordSessionID, browserSessionID),
 	})
 
 	s.mu.Lock()
 	if s.recordGen == myGen {
+		s.rememberClosedRecordSessionLocked(recordSessionID, browserSessionID)
 		s.recordCancel = nil
 		s.liveSession = nil
 		s.recordCtx = nil
+		s.recordSessionID = ""
+		s.browserSessionID = ""
+		s.recordTargetPath = ""
+	} else {
+		logx.Debug("stale record session cleanup skipped", "record_session_id", recordSessionID, "expected_gen", myGen, "current_gen", s.recordGen)
 	}
 	s.mu.Unlock()
 
@@ -360,20 +511,20 @@ func (s *Service) BeginRecordingCapture() (bool, error) {
 	session := s.liveSession
 	emit := s.recordEmit
 	s.mu.RUnlock()
-	if session == nil {
-		return false, fmt.Errorf("браузер не открыт")
-	}
-	if session.CaptureEnabled() {
-		return false, nil
-	}
-	replay := recorder.ShouldSyncRecordedStepsOnCaptureStart(session)
-	if err := session.BeginCapture(); err != nil {
+	started, replay, err := s.recorderOps().BeginCapture(session)
+	if err != nil {
 		return false, err
 	}
-	if replay && emit != nil {
-		s.emitLiveRecordedSteps(session, emit)
+	if started && replay && emit != nil {
+		s.mu.RLock()
+		recordSessionID := s.recordSessionID
+		browserSessionID := s.browserSessionID
+		targetPath := s.recordTargetPath
+		myGen := s.recordGen
+		s.mu.RUnlock()
+		s.emitLiveRecordedSteps(session, s.guardedRecordEmit(myGen, targetPath, emit), targetPath, recordSessionID, browserSessionID)
 	}
-	return true, nil
+	return started, nil
 }
 
 func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
@@ -410,7 +561,7 @@ func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
 			args = append(args, "--step", step)
 		}
 	}
-	out, err := captureCLI(func() error { return cliRunRecord(args) })
+	out, err := s.cliRunner().Record(args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -418,43 +569,33 @@ func (s *Service) RecordBaseline(req BaselineRecordRequest) RunResult {
 }
 
 type BrowserSessionDTO struct {
-	BrowserOpen bool `json:"browserOpen"`
-	Recording   bool `json:"recording"`
-	Paused      bool `json:"paused"`
-	StepCount   int  `json:"stepCount"`
+	BrowserOpen      bool   `json:"browserOpen"`
+	Recording        bool   `json:"recording"`
+	Paused           bool   `json:"paused"`
+	StepCount        int    `json:"stepCount"`
+	BrowserSessionID string `json:"browserSessionId,omitempty"`
 }
 
 func (s *Service) PollBrowserSession() BrowserSessionDTO {
 	s.mu.RLock()
 	session := s.liveSession
+	browserSessionID := s.browserSessionID
 	s.mu.RUnlock()
-	if session == nil || !session.BrowserAlive() {
-		return BrowserSessionDTO{}
-	}
-	return BrowserSessionDTO{
-		BrowserOpen: true,
-		Recording:   session.CaptureEnabled(),
-		Paused:      session.IsPaused(),
-		StepCount:   session.RecordedStepCount(),
-	}
+	return s.recorderOps().PollBrowserSession(session, browserSessionID)
 }
 
 func (s *Service) PauseRecording() {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session != nil {
-		session.Pause()
-	}
+	s.recorderOps().PauseRecording(session)
 }
 
 func (s *Service) ResumeRecording() {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session != nil {
-		session.Resume()
-	}
+	s.recorderOps().ResumeRecording(session)
 }
 
 func (s *Service) IsRecordingPaused() bool {
@@ -467,18 +608,56 @@ func (s *Service) IsRecordingPaused() bool {
 	return session.IsPaused()
 }
 
-func (s *Service) StopRecordingCapture() error {
+func (s *Service) CurrentRecordSessionID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.recordSessionID
+}
+
+func (s *Service) CurrentBrowserSessionID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.browserSessionID
+}
+
+func (s *Service) CurrentRecordTargetPath() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.recordTargetPath
+}
+
+func (s *Service) LastClosedBrowserSessionID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastClosedBrowserSessionID
+}
+
+func (s *Service) LastClosedRecordSessionID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastClosedRecordSessionID
+}
+
+func (s *Service) rememberClosedRecordSessionLocked(recordSessionID, browserSessionID string) {
+	if recordSessionID == "" && browserSessionID == "" {
+		return
+	}
+	s.lastClosedRecordSessionID = recordSessionID
+	s.lastClosedBrowserSessionID = browserSessionID
+}
+
+func (s *Service) StopRecordingCapture() (bool, error) {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session == nil {
-		return fmt.Errorf("браузер не открыт")
+	stopped, err := s.recorderOps().StopCapture(session)
+	if err != nil {
+		return false, err
 	}
-	if !session.CaptureEnabled() {
-		return nil
+	if stopped {
+		s.emitRecordStepReset()
 	}
-	session.EndCapture()
-	return nil
+	return stopped, nil
 }
 
 func (s *Service) CloseBrowser() {
@@ -499,10 +678,20 @@ func (s *Service) closeBrowserLocked() {
 	s.mu.Lock()
 	cancel := s.recordCancel
 	session := s.liveSession
+	hadSession := session != nil || cancel != nil
+	recordSessionID := s.recordSessionID
+	browserSessionID := s.browserSessionID
 	s.recordCancel = nil
 	s.liveSession = nil
 	s.recordEmit = nil
 	s.recordCtx = nil
+	s.recordSessionID = ""
+	s.browserSessionID = ""
+	s.recordTargetPath = ""
+	if hadSession {
+		s.rememberClosedRecordSessionLocked(recordSessionID, browserSessionID)
+		s.recordGen++
+	}
 	s.mu.Unlock()
 	if session != nil {
 		session.Clear()
@@ -520,38 +709,24 @@ func (s *Service) FocusBrowser() error {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session == nil {
-		return fmt.Errorf("браузер не открыт")
-	}
-	return session.FocusBrowser()
+	return s.recorderOps().FocusBrowser(session)
 }
 
 func (s *Service) UpdateRecordingOptions(filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int) error {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session == nil {
-		return fmt.Errorf("запись не активна")
-	}
-	_ = session.ApplyRecorderOptions(filter, navOnly, hover, scrollBefore, hoverMinMs)
-	session.RequestHeadless(headless)
-	return nil
+	return s.recorderOps().UpdateRecordingOptions(session, filter, navOnly, hover, headless, scrollBefore, hoverMinMs)
 }
 
 func (s *Service) UndoRecordedStep() bool {
 	s.mu.RLock()
 	session := s.liveSession
 	s.mu.RUnlock()
-	if session == nil {
+	index, ok := s.recorderOps().UndoLastRecordedStep(session)
+	if !ok {
 		return false
 	}
-	return session.UndoLastStep()
+	s.emitRecordStepDelete(index)
+	return true
 }
-
-// cli hooks for testing
-var (
-	cliRunExport     = func(args []string) error { return runExport(args) }
-	cliRunImportJSON = func(args []string) error { return runImportJSON(args) }
-	cliRunRecord     = func(args []string) error { return runRecord(args) }
-	cliRunVA         = func(args []string) error { return runVA(args) }
-)

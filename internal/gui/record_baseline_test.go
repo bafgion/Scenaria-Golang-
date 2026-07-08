@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,8 +15,9 @@ func TestRecordBaseline_WritesFeature(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	old := cliRunRecord
-	cliRunRecord = func(args []string) error {
+	ops := svc.cliRunner()
+	origRunRecord := ops.runRecordFn
+	ops.runRecordFn = func(args []string, _ io.Writer) error {
 		if len(args) < 2 || args[0] != "--output" {
 			t.Fatalf("unexpected args: %v", args)
 		}
@@ -27,7 +29,7 @@ func TestRecordBaseline_WritesFeature(t *testing.T) {
 `
 		return os.WriteFile(out, []byte(content), 0o644)
 	}
-	t.Cleanup(func() { cliRunRecord = old })
+	t.Cleanup(func() { ops.runRecordFn = origRunRecord })
 
 	result := svc.RecordBaseline(BaselineRecordRequest{
 		Output:       "demo.feature",

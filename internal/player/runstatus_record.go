@@ -6,10 +6,16 @@ import "github.com/bafgion/scenaria-golang/internal/runstatus"
 func RunstatusEntry(result ScenarioResult, runner string) runstatus.Entry {
 	entry := runstatus.Entry{
 		Path:       result.FeaturePath + "::" + result.Scenario,
+		CaseID:     result.CaseID,
+		RunID:      result.RunID,
 		Success:    result.Status == "passed",
 		Message:    result.Message,
 		Runner:     runner,
 		DurationMS: int(result.DurationMS),
+	}
+	if result.ExampleIndex > 0 {
+		idx := result.ExampleIndex
+		entry.ExampleIndex = &idx
 	}
 	if result.FailedStep != nil {
 		entry.FailedStep = result.FailedStep

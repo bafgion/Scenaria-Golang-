@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
@@ -22,6 +23,10 @@ type recordOptions struct {
 }
 
 func RunRecord(args []string) error {
+	return RunRecordWithOutput(args, nil)
+}
+
+func RunRecordWithOutput(args []string, out io.Writer) error {
 	opts, err := parseRecordOptions(args)
 	if err != nil {
 		return err
@@ -68,7 +73,7 @@ func RunRecord(args []string) error {
 		return err
 	}
 
-	fmt.Printf("Recorded baseline scenario: %s\n", opts.output)
+	cliPrintf(out, "Recorded baseline scenario: %s\n", opts.output)
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -51,11 +52,15 @@ type runOptions struct {
 func RunRun(args []string) error {
 	ctx, stop := InterruptContext()
 	defer stop()
-	return RunRunContext(ctx, args)
+	return RunRunContextWithOutput(ctx, args, nil)
 }
 
 // RunRunContext executes scenarios using the supplied context (GUI cancel, tests).
 func RunRunContext(ctx context.Context, args []string) error {
+	return RunRunContextWithOutput(ctx, args, nil)
+}
+
+func RunRunContextWithOutput(ctx context.Context, args []string, out io.Writer) error {
 	opts, err := parseRunOptions(args)
 	if err != nil {
 		return err
@@ -82,7 +87,7 @@ func RunRunContext(ctx context.Context, args []string) error {
 		feature, loadErr := store.Load(path)
 		if loadErr != nil {
 			errorsCount++
-			fmt.Printf("✗ %s: %v\n", path, loadErr)
+			cliPrintf(out, "✗ %s: %v\n", path, loadErr)
 			continue
 		}
 
@@ -90,7 +95,7 @@ func RunRunContext(ctx context.Context, args []string) error {
 		if len(issues) > 0 {
 			errorsCount += len(issues)
 			for _, issue := range issues {
-				fmt.Printf("✗ %s:%d %s\n", path, issue.Line, issue.Message)
+				cliPrintf(out, "✗ %s:%d %s\n", path, issue.Line, issue.Message)
 			}
 			continue
 		}
@@ -99,7 +104,7 @@ func RunRunContext(ctx context.Context, args []string) error {
 			Path:    path,
 			Feature: feature,
 		})
-		fmt.Printf("✓ %s\n", path)
+		cliPrintf(out, "✓ %s\n", path)
 	}
 
 	if errorsCount > 0 {
@@ -148,7 +153,7 @@ func RunRunContext(ctx context.Context, args []string) error {
 	}
 	ctx = player.WithContinueOnFail(ctx, opts.continueOnFail)
 	result, err := runner.Execute(ctx, plan)
-	reportErr := writeRunReports(opts, plan, result)
+	reportErr := writeRunReportsWithOutput(opts, plan, result, out)
 	if reportErr != nil && err != nil {
 		return errors.Join(err, reportErr)
 	}
@@ -159,12 +164,12 @@ func RunRunContext(ctx context.Context, args []string) error {
 		recordRunStatus(opts, result)
 	}
 
-	fmt.Printf("Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
+	cliPrintf(out, "Discovered %d file(s), %d scenario(s), %d step(s) [%s]\n", result.Files, result.Scenarios, result.Steps, version.String())
 	if opts.startStep >= 0 || opts.endStep >= 0 {
-		fmt.Printf("Partial run: %s\n", formatPartialStepRange(opts.startStep, opts.endStep))
+		cliPrintf(out, "Partial run: %s\n", formatPartialStepRange(opts.startStep, opts.endStep))
 	}
 	if opts.dryRun {
-		fmt.Println("Dry-run mode enabled: browser execution skipped")
+		cliPrintln(out, "Dry-run mode enabled: browser execution skipped")
 		return nil
 	}
 	if err != nil {
@@ -173,7 +178,8 @@ func RunRunContext(ctx context.Context, args []string) error {
 	return nil
 }
 
-func writeRunReports(opts runOptions, plan player.ExecutionPlan, result player.ExecutionResult) error {
+func writeRunReportsWithOutput(opts runOptions, plan player.ExecutionPlan, result player.ExecutionResult, out io.Writer) error {
+	defer player.CleanupExecutionTempArtifacts(&result)
 	var prevSummary *report.RunSummaryDetailed
 	if opts.summaryJSON != "" {
 		prevSummary = report.ReadPreviousSummary(opts.summaryJSON)
@@ -182,13 +188,13 @@ func writeRunReports(opts runOptions, plan player.ExecutionPlan, result player.E
 		if writeErr := report.WriteRunSummaryDetailed(opts.summaryJSON, report.FromExecutionResultDetailed(result)); writeErr != nil {
 			return writeErr
 		}
-		fmt.Printf("Wrote summary report: %s\n", opts.summaryJSON)
+		cliPrintf(out, "Wrote summary report: %s\n", opts.summaryJSON)
 	}
 	if opts.junitPath != "" {
 		if writeErr := report.WriteJUnit(opts.junitPath, result); writeErr != nil {
 			return writeErr
 		}
-		fmt.Printf("Wrote JUnit report: %s\n", opts.junitPath)
+		cliPrintf(out, "Wrote JUnit report: %s\n", opts.junitPath)
 	}
 	if opts.htmlPath != "" {
 		root := paths.InferProjectRoot(opts.targets)
@@ -202,13 +208,13 @@ func writeRunReports(opts runOptions, plan player.ExecutionPlan, result player.E
 		if _, _, writeErr := report.WriteHTMLModePair(opts.htmlPath, result, htmlOpts); writeErr != nil {
 			return writeErr
 		}
-		fmt.Printf("Wrote HTML report: %s\n", opts.htmlPath)
+		cliPrintf(out, "Wrote HTML report: %s\n", opts.htmlPath)
 	}
 	if opts.allureDir != "" {
 		if writeErr := allure.WriteResults(opts.allureDir, result); writeErr != nil {
 			return writeErr
 		}
-		fmt.Printf("Wrote Allure results: %s\n", opts.allureDir)
+		cliPrintf(out, "Wrote Allure results: %s\n", opts.allureDir)
 	}
 	return nil
 }

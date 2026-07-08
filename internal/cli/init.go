@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -9,6 +10,10 @@ import (
 )
 
 func RunInit(args []string) error {
+	return RunInitWithOutput(args, nil)
+}
+
+func RunInitWithOutput(args []string, out io.Writer) error {
 	target := "."
 	if len(args) > 0 {
 		target = args[0]
@@ -61,10 +66,10 @@ func RunInit(args []string) error {
 		return fmt.Errorf("write demo test client example: %w", err)
 	}
 
-	fmt.Printf("Initialized Scenaria project in %s\n", scenariaDir)
-	fmt.Println("  .scenaria/project.json")
-	fmt.Println("  .scenaria/vanessa.json.example")
-	fmt.Println("  .scenaria/va-params.base.json.example")
-	fmt.Println("  .scenaria/test_clients/DemoUser.json.example")
+	cliPrintf(out, "Initialized Scenaria project in %s\n", scenariaDir)
+	cliPrintln(out, "  .scenaria/project.json")
+	cliPrintln(out, "  .scenaria/vanessa.json.example")
+	cliPrintln(out, "  .scenaria/va-params.base.json.example")
+	cliPrintln(out, "  .scenaria/test_clients/DemoUser.json.example")
 	return nil
 }

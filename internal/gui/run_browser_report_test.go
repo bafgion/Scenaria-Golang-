@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/report"
 )
 
 func TestFinalizeGUIReportsOnFailedRun(t *testing.T) {
@@ -36,7 +37,7 @@ func TestFinalizeGUIReportsOnFailedRun(t *testing.T) {
 	}
 	runErr := errors.New(`scenario "Fail" failed: assertion failed`)
 
-	got, err := svc.finalizeGUIReports(tmp, RunRequest{HTMLPath: htmlPath}, plan, result, runErr, false)
+	got, _, err := svc.finalizeGUIReports(tmp, RunRequest{HTMLPath: htmlPath}, plan, result, runErr, false)
 	if err == nil {
 		t.Fatal("expected run error after failed scenario")
 	}
@@ -45,5 +46,27 @@ func TestFinalizeGUIReportsOnFailedRun(t *testing.T) {
 	}
 	if _, statErr := os.Stat(htmlPath); statErr != nil {
 		t.Fatalf("HTML report not written on failure: %v", statErr)
+	}
+}
+
+func TestResolvePreviousSummaryPathUsesLatestPointer(t *testing.T) {
+	root := t.TempDir()
+	latestSummary := filepath.Join(root, ".scenaria", "runs", "run-prev", "summary.json")
+	if err := os.MkdirAll(filepath.Dir(latestSummary), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteRunSummaryDetailed(latestSummary, report.RunSummaryDetailed{Mode: "browser", Scenarios: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteLatestRunPointer(root, report.RunArtifactLayout{
+		RunID:       "run-prev",
+		SummaryJSON: latestSummary,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	currentSummary := filepath.Join(root, ".scenaria", "runs", "run-new", "summary.json")
+	got := resolvePreviousSummaryPath(root, currentSummary, "run-new")
+	if got != latestSummary {
+		t.Fatalf("previous summary path = %q, want %q", got, latestSummary)
 	}
 }

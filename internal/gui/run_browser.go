@@ -19,7 +19,8 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
-func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEmitter) (player.ExecutionResult, error) {
+func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEmitter) (player.ExecutionResult, report.RunArtifactLayout, error) {
+	var artifactLayout report.RunArtifactLayout
 	targets := req.Targets
 	if len(targets) == 0 {
 		if path := s.ProjectPath(); path != "" {
@@ -27,33 +28,12 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 		}
 	}
 	if len(targets) == 0 {
-		return player.ExecutionResult{}, fmt.Errorf("нет файлов для запуска — откройте сценарий или проект")
+		return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no files to run")
 	}
 
-	store := scenario.NewFeatureStore()
-	files := make([]string, 0)
-	for _, target := range targets {
-		discovered, err := store.Discover(target)
-		if err != nil {
-			return player.ExecutionResult{}, err
-		}
-		files = append(files, discovered...)
-	}
-	files = dedupePaths(files)
-	if len(files) == 0 {
-		return player.ExecutionResult{}, fmt.Errorf("no .feature files found in %v", targets)
-	}
-
-	featureInputs := make([]player.FeatureInput, 0, len(files))
-	for _, path := range files {
-		feature, err := store.Load(path)
-		if err != nil {
-			return player.ExecutionResult{}, fmt.Errorf("%s: %w", path, err)
-		}
-		if issues := gherkin.ValidateFeature(feature); len(issues) > 0 {
-			return player.ExecutionResult{}, fmt.Errorf("%s: %s", path, issues[0].Message)
-		}
-		featureInputs = append(featureInputs, player.FeatureInput{Path: path, Feature: feature})
+	featureInputs, err := s.prepareRunFeatureSnapshot(targets)
+	if err != nil {
+		return player.ExecutionResult{}, artifactLayout, err
 	}
 
 	plan := player.BuildExecutionPlanWithTestClient(featureInputs, req.Tag, req.Scenario, req.Vars, req.TestClient)
@@ -69,12 +49,12 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 	}
 	if len(plan.Cases) == 0 {
 		if req.Scenario != "" {
-			return player.ExecutionResult{}, fmt.Errorf("no scenarios found with name %q", req.Scenario)
+			return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no scenarios found with name %q", req.Scenario)
 		}
 		if req.Tag != "" {
-			return player.ExecutionResult{}, fmt.Errorf("no scenarios found with tag %q", req.Tag)
+			return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no scenarios found with tag %q", req.Tag)
 		}
-		return player.ExecutionResult{}, fmt.Errorf("no runnable scenarios found")
+		return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no runnable scenarios found")
 	}
 
 	ctx = player.WithRunProgress(ctx, func(ev player.RunProgressEvent) {
@@ -86,8 +66,17 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 		}
 	})
 	ctx = player.WithContinueOnFail(ctx, req.ContinueOnFail)
+	if session := s.CurrentRunSession(); session != nil {
+		ctx = player.WithRunID(ctx, session.RunID)
+	}
 
 	root := paths.InferProjectRoot(targets)
+	if root != "" {
+		req, artifactLayout, err = s.layoutRunRequestArtifacts(root, req)
+		if err != nil {
+			return player.ExecutionResult{}, artifactLayout, err
+		}
+	}
 	statusIncremental := false
 	if root != "" && !req.DryRun {
 		if st, err := runstatus.Open(root); err == nil {
@@ -108,11 +97,11 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 		workers = 1
 	}
 
-	appCfg, _ := settings.LoadDefaultAppSettings()
+	appCfg, _ := s.loadAppSettings()
 	httpCreds := player.ResolveRunHTTPCredentials(req.BaseURL, plan, appCfg)
 	navWait, err := resolveRunNavWait(paths.InferProjectRoot(targets), appCfg)
 	if err != nil {
-		return player.ExecutionResult{}, err
+		return player.ExecutionResult{}, artifactLayout, err
 	}
 
 	exec := player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
@@ -141,6 +130,40 @@ func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEm
 	return s.finalizeGUIReports(root, req, plan, result, runErr, statusIncremental)
 }
 
+func (s *Service) prepareRunFeatureSnapshot(targets []string) ([]player.FeatureInput, error) {
+	store := scenario.NewFeatureStore()
+	files := make([]string, 0)
+	featureInputs := make([]player.FeatureInput, 0, len(files))
+	if err := s.withProjectFSReadLock(func() error {
+		for _, target := range targets {
+			discovered, err := store.Discover(target)
+			if err != nil {
+				return err
+			}
+			files = append(files, discovered...)
+		}
+		files = dedupePaths(files)
+		if len(files) == 0 {
+			return fmt.Errorf("no .feature files found in %v", targets)
+		}
+		featureInputs = make([]player.FeatureInput, 0, len(files))
+		for _, path := range files {
+			feature, err := store.Load(path)
+			if err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			if issues := gherkin.ValidateFeature(feature); len(issues) > 0 {
+				return fmt.Errorf("%s: %s", path, issues[0].Message)
+			}
+			featureInputs = append(featureInputs, player.FeatureInput{Path: path, Feature: feature})
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return featureInputs, nil
+}
+
 func (s *Service) finalizeGUIReports(
 	root string,
 	req RunRequest,
@@ -148,21 +171,25 @@ func (s *Service) finalizeGUIReports(
 	result player.ExecutionResult,
 	runErr error,
 	statusIncremental bool,
-) (player.ExecutionResult, error) {
+) (player.ExecutionResult, report.RunArtifactLayout, error) {
 	if root != "" {
-		req = remapRunArtifacts(root, req)
+		var layoutErr error
+		req, _, layoutErr = s.layoutRunRequestArtifacts(root, req)
+		if layoutErr != nil {
+			return result, report.RunArtifactLayout{}, layoutErr
+		}
 	}
-	reportErr := s.writeGUIReports(root, req, plan, result)
+	layout, reportErr := s.writeGUIReports(root, req, plan, result)
 	if reportErr != nil && runErr != nil {
-		return result, errors.Join(runErr, reportErr)
+		return result, layout, errors.Join(runErr, reportErr)
 	}
 	if reportErr != nil {
-		return result, reportErr
+		return result, layout, reportErr
 	}
 	if root != "" && !statusIncremental {
 		recordGUIStatus(root, req, result)
 	}
-	return result, runErr
+	return result, layout, runErr
 }
 
 func (s *Service) canReuseLiveBrowser(req RunRequest) bool {
@@ -294,19 +321,63 @@ func remapRunArtifacts(root string, req RunRequest) RunRequest {
 	return req
 }
 
-func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan player.ExecutionPlan, result player.ExecutionResult) error {
+func (s *Service) layoutRunRequestArtifacts(root string, req RunRequest) (RunRequest, report.RunArtifactLayout, error) {
+	req = remapRunArtifacts(root, req)
+	runID := ""
+	if session := s.CurrentRunSession(); session != nil {
+		runID = session.RunID
+	}
+	layout, err := report.LayoutRunArtifacts(root, runID, report.RunArtifactInputs(
+		req.HTMLPath, req.JUnitPath, req.SummaryJSON, req.AllureDir, req.TraceDir, req.VideoDir,
+	))
+	if err != nil {
+		return req, layout, err
+	}
+	if layout.RunID != "" {
+		req.HTMLPath = layout.HTMLPath
+		req.JUnitPath = layout.JUnitPath
+		req.SummaryJSON = layout.SummaryJSON
+		req.AllureDir = layout.AllureDir
+		req.TraceDir = layout.TraceDir
+		req.VideoDir = layout.VideoDir
+	}
+	return req, layout, nil
+}
+
+func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan player.ExecutionPlan, result player.ExecutionResult) (report.RunArtifactLayout, error) {
+	runID := result.RunID
+	if runID == "" {
+		if session := s.CurrentRunSession(); session != nil {
+			runID = session.RunID
+		}
+	}
+	layout, err := report.LayoutRunArtifacts(projectRoot, runID, report.RunArtifactInputs(
+		req.HTMLPath, req.JUnitPath, req.SummaryJSON, req.AllureDir, req.TraceDir, req.VideoDir,
+	))
+	if err != nil {
+		return layout, err
+	}
+	if layout.RunID != "" {
+		req.HTMLPath = layout.HTMLPath
+		req.JUnitPath = layout.JUnitPath
+		req.SummaryJSON = layout.SummaryJSON
+		req.AllureDir = layout.AllureDir
+		req.TraceDir = layout.TraceDir
+		req.VideoDir = layout.VideoDir
+	}
+	var writeErr error
 	var prevSummary *report.RunSummaryDetailed
-	if req.SummaryJSON != "" {
-		prevSummary = report.ReadPreviousSummary(req.SummaryJSON)
+	if previousSummaryPath := resolvePreviousSummaryPath(projectRoot, req.SummaryJSON, runID); previousSummaryPath != "" {
+		prevSummary = report.ReadPreviousSummary(previousSummaryPath)
 	}
 	if req.SummaryJSON != "" {
 		if err := report.WriteRunSummaryDetailed(req.SummaryJSON, report.FromExecutionResultDetailed(result)); err != nil {
-			return err
+			writeErr = errors.Join(writeErr, err)
 		}
 	}
 	if req.JUnitPath != "" {
 		if err := report.WriteJUnit(req.JUnitPath, result); err != nil {
-			return err
+			writeErr = errors.Join(writeErr, err)
 		}
 	}
 	if req.HTMLPath != "" {
@@ -320,17 +391,43 @@ func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan playe
 			Locale:          req.ReportLocale,
 			ReportDir:       filepath.Dir(req.HTMLPath),
 			PreviousSummary: prevSummary,
+			RunID:           runID,
 		}
 		if _, _, err := report.WriteHTMLModePair(req.HTMLPath, result, htmlOpts); err != nil {
-			return err
+			writeErr = errors.Join(writeErr, err)
 		}
 	}
 	if req.AllureDir != "" {
 		if err := allure.WriteResults(req.AllureDir, result); err != nil {
-			return err
+			writeErr = errors.Join(writeErr, err)
 		}
 	}
-	return nil
+	if layout.RunID != "" && projectRoot != "" {
+		if err := report.WriteLatestRunPointer(projectRoot, layout); err != nil {
+			writeErr = errors.Join(writeErr, err)
+		}
+	}
+	player.CleanupExecutionTempArtifacts(&result)
+	return layout, writeErr
+}
+
+func resolvePreviousSummaryPath(projectRoot, currentSummaryPath, runID string) string {
+	currentSummaryPath = strings.TrimSpace(currentSummaryPath)
+	runID = strings.TrimSpace(runID)
+	if strings.TrimSpace(projectRoot) == "" {
+		return currentSummaryPath
+	}
+	latest, err := report.ReadLatestRunPointer(projectRoot)
+	if err != nil || latest == nil {
+		return currentSummaryPath
+	}
+	if runID != "" && latest.RunID == runID {
+		return currentSummaryPath
+	}
+	if summary := strings.TrimSpace(latest.SummaryJSON); summary != "" {
+		return summary
+	}
+	return currentSummaryPath
 }
 
 func recordGUIStatus(root string, req RunRequest, result player.ExecutionResult) {
