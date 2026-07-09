@@ -2797,12 +2797,11 @@
   }
 
   function trimTabsMemory() {
-    if (isWelcome || !activeTab) {
-      tabsStore.setTabs(trimRetainedTabBodies(tabs, activeTab || ''))
-    } else {
-      tabsStore.setTabs(trimRetainedTabBodies(tabs, activeTab))
-    }
-    monaco?.retainTabs(pathsToRetainModels(tabs, isWelcome ? '' : activeTab))
+    const state = tabsStore.snapshot()
+    const activePath = state.activeTab === WELCOME_KEY ? '' : state.activeTab
+    const retainedTabs = trimRetainedTabBodies(state.tabs, activePath)
+    tabsStore.setTabs(retainedTabs)
+    monaco?.retainTabs(pathsToRetainModels(retainedTabs, activePath))
   }
 
   function warnManyOpenTabs() {
@@ -3146,8 +3145,9 @@
   }
 
   function syncStepStatusFromIssues(issues: gui.ValidationIssue[]) {
-    diagnosticsStore.setStepStatusError(issues.length > 0)
-    if (!stepStatusError && statusMessage === tr('journal.status.scenarioError')) {
+    const hasIssues = issues.length > 0
+    diagnosticsStore.setStepStatusError(hasIssues)
+    if (!hasIssues && statusMessage === tr('journal.status.scenarioError')) {
       setStatus('', 'normal')
     }
   }
