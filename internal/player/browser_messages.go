@@ -8,7 +8,7 @@ import (
 const (
 	// MsgBrowserClosed is shown when a scenario cannot start because the browser is closed.
 	MsgBrowserClosed = "браузер закрыт — откройте браузер в IDE или уберите шаг «закрываю браузер»"
-	// MsgScenarioNotStartedBrowserClosed is shown for scenarios skipped after a prior scenario closed the browser.
+	// MsgScenarioNotStartedBrowserClosed is shown when the previous scenario closed the browser and reuse is impossible.
 	MsgScenarioNotStartedBrowserClosed = "не запущен: предыдущий сценарий закрыл браузер"
 )
 

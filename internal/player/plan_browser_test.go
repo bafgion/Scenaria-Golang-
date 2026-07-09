@@ -21,3 +21,14 @@ func TestPlanContainsCloseBrowser(t *testing.T) {
 		t.Fatal("expected no close-browser in plan")
 	}
 }
+
+func TestScenarioEndedWithCloseBrowser(t *testing.T) {
+	if !ScenarioEndedWithCloseBrowser(ScenarioResult{
+		StepRecords: []StepRecord{{TerminalAction: "close-browser"}},
+	}) {
+		t.Fatal("expected close-browser terminal action")
+	}
+	if ScenarioEndedWithCloseBrowser(ScenarioResult{}) {
+		t.Fatal("expected false without records")
+	}
+}

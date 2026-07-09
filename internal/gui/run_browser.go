@@ -76,8 +76,8 @@ func (s *Service) finalizeGUIReports(
 	return s.reporter().FinalizeRunReports(root, req, plan, result, runErr, statusIncremental)
 }
 
-func (s *Service) canReuseLiveBrowser(req RunRequest, plan player.ExecutionPlan) bool {
-	return s.runner().CanReuseLiveBrowser(req, s.HasLiveBrowser(), plan)
+func (s *Service) canReuseLiveBrowser(req RunRequest) bool {
+	return s.runner().CanReuseLiveBrowser(req, s.HasLiveBrowser())
 }
 
 func resolveRunNavWait(projectRoot string, appCfg *settings.AppSettings) (string, error) {

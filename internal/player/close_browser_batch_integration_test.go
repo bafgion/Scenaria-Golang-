@@ -4,7 +4,6 @@ package player
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -35,11 +34,11 @@ func openPageCase(name string) RunCase {
 	}
 }
 
-func TestCloseBrowserMarksRemainingScenariosNotStarted(t *testing.T) {
+func TestCloseBrowserOpensFreshSessionForNextScenario(t *testing.T) {
 	plan := ExecutionPlan{
 		Cases: []RunCase{
 			closeBrowserCase("First closes browser"),
-			openPageCase("Second should not start"),
+			openPageCase("Second runs on fresh session"),
 		},
 	}
 	runner := BrowserRunner{
@@ -50,8 +49,7 @@ func TestCloseBrowserMarksRemainingScenariosNotStarted(t *testing.T) {
 		}),
 		ParallelWorkers: 1,
 	}
-	ctx := WithContinueOnFail(context.Background(), true)
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	result, err := runner.Execute(ctx, plan)
@@ -61,8 +59,46 @@ func TestCloseBrowserMarksRemainingScenariosNotStarted(t *testing.T) {
 	if len(result.ScenarioResults) != 2 {
 		t.Fatalf("expected 2 scenario results, got %d", len(result.ScenarioResults))
 	}
+	for _, sr := range result.ScenarioResults {
+		if sr.Status != "passed" {
+			t.Fatalf("scenario %q status = %q message = %q", sr.Scenario, sr.Status, sr.Message)
+		}
+	}
+}
+
+func TestLiveBrowserCloseBrowserMarksRemainingNotStarted(t *testing.T) {
+	base, cleanup := newTestBrowserSession(t)
+	defer cleanup()
+
+	attached, err := AttachToPage(base.page, "domcontentloaded")
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+
+	exec := NewPlaywrightExecutor(PlaywrightExecutorOptions{
+		BrowserName:   "chromium",
+		CloseAfterRun: false,
+	})
+	runner := BrowserRunner{}
+	plan := ExecutionPlan{
+		Cases: []RunCase{
+			closeBrowserCase("First closes browser"),
+			openPageCase("Second cannot reuse live browser"),
+		},
+	}
+	ctx := WithContinueOnFail(context.Background(), true)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	result, err := runner.ExecuteSequentialAttached(ctx, exec, plan, attached)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if len(result.ScenarioResults) != 2 {
+		t.Fatalf("expected 2 scenario results, got %d", len(result.ScenarioResults))
+	}
 	if result.ScenarioResults[0].Status != "passed" {
-		t.Fatalf("first scenario status = %q message = %q", result.ScenarioResults[0].Status, result.ScenarioResults[0].Message)
+		t.Fatalf("first scenario status = %q", result.ScenarioResults[0].Status)
 	}
 	second := result.ScenarioResults[1]
 	if second.Status != "not-started" {
@@ -70,8 +106,5 @@ func TestCloseBrowserMarksRemainingScenariosNotStarted(t *testing.T) {
 	}
 	if second.Message != MsgScenarioNotStartedBrowserClosed {
 		t.Fatalf("second scenario message = %q", second.Message)
-	}
-	if IsBrowserSessionClosed(errors.New(second.Message)) || second.Message == "browser session is closed" {
-		t.Fatal("second scenario should not expose low-level browser session error")
 	}
 }

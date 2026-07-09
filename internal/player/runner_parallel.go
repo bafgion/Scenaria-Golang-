@@ -437,7 +437,7 @@ func (r BrowserRunner) executeSequentialSession(
 
 	total := len(plan.Cases)
 	var firstErr error
-	var browserClosedInRun bool
+	var priorClosedBrowser bool
 	session := attached
 	var stopPW func()
 	var stopWatch func()
@@ -502,18 +502,6 @@ func (r BrowserRunner) executeSequentialSession(
 			return result, err
 		}
 
-		if browserClosedInRun {
-			emitRunProgress(ctx, RunProgressEvent{
-				Phase:       ProgressScenarioStart,
-				Index:       i + 1,
-				Total:       total,
-				FeaturePath: runCase.FeaturePath,
-				Scenario:    runCase.Name,
-			})
-			appendNotStartedScenario(ctx, &result, runCase, i+1, total)
-			continue
-		}
-
 		emitRunProgress(ctx, RunProgressEvent{
 			Phase:       ProgressScenarioStart,
 			Index:       i + 1,
@@ -522,76 +510,81 @@ func (r BrowserRunner) executeSequentialSession(
 			Scenario:    runCase.Name,
 		})
 
-		if i > 0 && attached == nil && session != nil && session.alive() {
-			if err := session.resetForScenario(); err != nil {
-				if IsBrowserSessionClosed(err) {
-					browserClosedInRun = true
-					appendNotStartedScenario(ctx, &result, runCase, i+1, total)
-					appendRemainingNotStarted(ctx, &result, plan, i+1, total)
-					break
+		if i == 0 {
+			if session == nil || !session.alive() {
+				if attached != nil {
+					runResult := ScenarioResult{
+						FeaturePath: runCase.FeaturePath,
+						Scenario:    runCase.Name,
+						Status:      "failed",
+						Message:     MsgBrowserClosed,
+						FailedStep:  failedStepIndex(0),
+					}
+					result.ScenarioResults = append(result.ScenarioResults, runResult)
+					recordScenarioRunStatus(ctx, runResult)
+					emitRunProgress(ctx, RunProgressEvent{
+						Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+						FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+					})
+					err := fmt.Errorf("scenario %q failed: %s", runCase.Name, runResult.Message)
+					if !ContinueOnFail(ctx) {
+						return result, executionFailure(err, result)
+					}
+					if firstErr == nil {
+						firstErr = err
+					}
+					continue
 				}
-				runResult := ScenarioResult{
-					FeaturePath: runCase.FeaturePath,
-					Scenario:    runCase.Name,
-					Status:      "failed",
-					Message:     UserFacingBrowserError(err),
-					FailedStep:  failedStepIndex(0),
+				if err := openSession(); err != nil {
+					return result, err
 				}
-				result.ScenarioResults = append(result.ScenarioResults, runResult)
-				recordScenarioRunStatus(ctx, runResult)
-				emitRunProgress(ctx, RunProgressEvent{
-					Phase: ProgressScenarioDone, Index: i + 1, Total: total,
-					FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
-				})
-				if !ContinueOnFail(ctx) {
-					return result, executionFailure(err, result)
-				}
-				if firstErr == nil {
-					firstErr = err
-				}
-				continue
 			}
-		}
-
-		if session == nil || !session.alive() {
-			if session != nil && session.external {
-				if i > 0 || browserClosedInRun {
-					browserClosedInRun = true
-					appendNotStartedScenario(ctx, &result, runCase, i+1, total)
-					appendRemainingNotStarted(ctx, &result, plan, i+1, total)
-					break
-				}
-				runResult := ScenarioResult{
-					FeaturePath: runCase.FeaturePath,
-					Scenario:    runCase.Name,
-					Status:      "failed",
-					Message:     MsgBrowserClosed,
-					FailedStep:  failedStepIndex(0),
-				}
-				result.ScenarioResults = append(result.ScenarioResults, runResult)
-				recordScenarioRunStatus(ctx, runResult)
-				emitRunProgress(ctx, RunProgressEvent{
-					Phase: ProgressScenarioDone, Index: i + 1, Total: total,
-					FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
-				})
-				err := fmt.Errorf("scenario %q failed: %s", runCase.Name, runResult.Message)
-				if !ContinueOnFail(ctx) {
-					return result, executionFailure(err, result)
-				}
-				if firstErr == nil {
-					firstErr = err
-				}
-				continue
-			}
-			if browserClosedInRun || (i > 0 && PlanContainsCloseBrowser(plan)) {
-				browserClosedInRun = true
+		} else if priorClosedBrowser {
+			if attached != nil {
 				appendNotStartedScenario(ctx, &result, runCase, i+1, total)
-				appendRemainingNotStarted(ctx, &result, plan, i+1, total)
-				break
+				continue
 			}
 			if err := openSession(); err != nil {
 				return result, err
 			}
+		} else if session != nil && session.alive() {
+			if err := session.resetForScenario(); err != nil {
+				if attached != nil {
+					appendNotStartedScenario(ctx, &result, runCase, i+1, total)
+					continue
+				}
+				if IsBrowserSessionClosed(err) {
+					if err := openSession(); err != nil {
+						return result, err
+					}
+				} else {
+					runResult := ScenarioResult{
+						FeaturePath: runCase.FeaturePath,
+						Scenario:    runCase.Name,
+						Status:      "failed",
+						Message:     UserFacingBrowserError(err),
+						FailedStep:  failedStepIndex(0),
+					}
+					result.ScenarioResults = append(result.ScenarioResults, runResult)
+					recordScenarioRunStatus(ctx, runResult)
+					emitRunProgress(ctx, RunProgressEvent{
+						Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+						FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+					})
+					if !ContinueOnFail(ctx) {
+						return result, executionFailure(err, result)
+					}
+					if firstErr == nil {
+						firstErr = err
+					}
+					continue
+				}
+			}
+		} else if attached != nil {
+			appendNotStartedScenario(ctx, &result, runCase, i+1, total)
+			continue
+		} else if err := openSession(); err != nil {
+			return result, err
 		}
 
 		runResult, err := exec.ExecuteScenarioOnSession(ctx, session, scenarioInputFromCase(runCase))
@@ -623,6 +616,7 @@ func (r BrowserRunner) executeSequentialSession(
 			if firstErr == nil {
 				firstErr = err
 			}
+			priorClosedBrowser = ScenarioBlocksSessionReuse(runResult, runCase, session)
 			continue
 		}
 		if runResult.Status == "failed" {
@@ -640,6 +634,7 @@ func (r BrowserRunner) executeSequentialSession(
 			if firstErr == nil {
 				firstErr = runErr
 			}
+			priorClosedBrowser = ScenarioBlocksSessionReuse(runResult, runCase, session)
 			continue
 		}
 		result.ScenarioResults = append(result.ScenarioResults, runResult)
@@ -648,9 +643,7 @@ func (r BrowserRunner) executeSequentialSession(
 			Phase: ProgressScenarioDone, Index: i + 1, Total: total,
 			FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: true,
 		})
-		if stepsContainCloseBrowser(runCase.Steps) || (session != nil && (session.isClosed() || !session.alive())) {
-			browserClosedInRun = true
-		}
+		priorClosedBrowser = ScenarioBlocksSessionReuse(runResult, runCase, session)
 	}
 	if firstErr != nil {
 		return result, executionFailure(firstErr, result)

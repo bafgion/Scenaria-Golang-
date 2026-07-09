@@ -26,3 +26,24 @@ func stepsContainCloseBrowser(steps []gherkin.Step) bool {
 	}
 	return false
 }
+
+// ScenarioEndedWithCloseBrowser reports whether a finished scenario executed close-browser.
+func ScenarioEndedWithCloseBrowser(result ScenarioResult) bool {
+	for _, rec := range result.StepRecords {
+		if rec.TerminalAction == "close-browser" {
+			return true
+		}
+	}
+	return false
+}
+
+// ScenarioBlocksSessionReuse reports whether the next scenario must not reuse the current browser session.
+func ScenarioBlocksSessionReuse(result ScenarioResult, runCase RunCase, session *browserSession) bool {
+	if ScenarioEndedWithCloseBrowser(result) {
+		return true
+	}
+	if result.Status == "passed" && stepsContainCloseBrowser(runCase.Steps) {
+		return true
+	}
+	return result.Status == "passed" && session != nil && session.isClosed()
+}

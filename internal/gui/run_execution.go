@@ -24,17 +24,11 @@ type RunExecutionHost struct {
 	Reports           *ReportService
 }
 
-func (s *RunService) CanReuseLiveBrowser(req RunRequest, hasLiveBrowser bool, plan player.ExecutionPlan) bool {
+func (s *RunService) CanReuseLiveBrowser(req RunRequest, hasLiveBrowser bool) bool {
 	if !req.ReuseLiveBrowser {
 		return false
 	}
 	if req.DryRun || !hasLiveBrowser {
-		return false
-	}
-	if len(plan.Cases) > 1 {
-		return false
-	}
-	if player.PlanContainsCloseBrowser(plan) {
 		return false
 	}
 	workers := req.Workers
@@ -188,7 +182,7 @@ func (s *RunService) ExecuteInProcess(
 	}
 
 	hasLiveBrowser := host.HasLiveBrowser != nil && host.HasLiveBrowser()
-	reuseLive := s.CanReuseLiveBrowser(req, hasLiveBrowser, plan)
+	reuseLive := s.CanReuseLiveBrowser(req, hasLiveBrowser)
 
 	exec := player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
 		BrowserName:       firstNonEmpty(req.Browser, "chromium"),
