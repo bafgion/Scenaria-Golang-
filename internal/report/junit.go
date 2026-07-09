@@ -54,6 +54,9 @@ func WriteJUnit(path string, result player.ExecutionResult) error {
 		case "canceled":
 			suite.Skipped++
 			tc.Skipped = &junitSkipped{Message: scenario.Message}
+		case "not-started":
+			suite.Skipped++
+			tc.Skipped = &junitSkipped{Message: scenario.Message}
 		case "skipped", "dry-run":
 			suite.Skipped++
 			tc.Skipped = &junitSkipped{Message: scenario.Message}

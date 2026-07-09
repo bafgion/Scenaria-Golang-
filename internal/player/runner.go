@@ -80,3 +80,7 @@ type StubBrowserExecutor struct{}
 func (StubBrowserExecutor) ExecuteScenario(_ context.Context, _ ScenarioInput) (ScenarioResult, error) {
 	return ScenarioResult{}, ErrBrowserExecutionNotImplemented
 }
+
+func failedStepIndex(index int) *int {
+	return &index
+}

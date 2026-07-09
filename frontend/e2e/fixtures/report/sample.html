@@ -71,6 +71,8 @@ header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 .stats span.pass { color: var(--pass); }
 .stats span.fail { color: var(--fail); }
 .stats span.skip { color: var(--skip); }
+.stats span.cancel { color: #fbbc04; }
+.stats span.not-started { color: #9aa0a6; }
 .toolbar { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 button, .btn {
   background: #252a35;
@@ -223,7 +225,9 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
 }
 .badge.passed { background: rgba(52,168,83,.2); color: var(--pass); }
 .badge.failed { background: rgba(234,67,53,.2); color: var(--fail); }
-.badge.skipped, .badge.dry-run { background: rgba(154,160,166,.2); color: var(--skip); }
+.badge.skipped, .badge.dry-run, .badge.canceled, .badge.not-started { background: rgba(154,160,166,.2); color: var(--skip); }
+.badge.canceled { color: #fbbc04; }
+.badge.not-started { color: #9aa0a6; font-style: italic; }
 .timeline-wrap { overflow: auto; flex: 1; padding: 16px; }
 .timeline {
   position: relative;
@@ -625,6 +629,8 @@ body.screenshot-lightbox-open {
       <span class="pass" id="stat-pass"></span>
       <span class="fail" id="stat-fail"></span>
       <span class="skip" id="stat-skip"></span>
+      <span class="cancel" id="stat-cancel"></span>
+      <span class="not-started" id="stat-not-started"></span>
       <span id="stat-flaky"></span>
       <span id="stat-slow"></span>
       <span id="light-badge"></span>
@@ -679,7 +685,7 @@ body.screenshot-lightbox-open {
       <p id="screenshot-lightbox-caption" class="screenshot-lightbox-caption"></p>
     </div>
   </div>
-  <script id="scenaria-report-data" type="application/json">{"version":"1","brand":"Scenaria","generated_at":"2026-07-09T12:24:56Z","mode":"browser","light_mode":false,"bridge_url":"http://127.0.0.1:19999","locale":"ru","report_dir":"C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\frontend\\e2e\\fixtures\\report","mode_links":{"current":"full","full_href":"sample.html","light_href":"sample.light.html","full_available":true,"light_available":true},"ci_compare":{"previous_at":"2026-06-01T10:00:00Z","new_failures":[{"path":"login.feature","scenario":"Failed login","status":"failed","previous_status":"passed"}]},"summary":{"files":1,"scenarios":1,"steps":2,"passed":0,"failed":1,"canceled":0,"skipped":0},"scenarios":[{"id":"s0","feature_path":"login.feature","scenario":"Failed login","tags":["@smoke"],"status":"failed","message":"element not found","failed_step":1,"duration_ms":800,"steps":[{"index":0,"line":3,"keyword":"Когда","text":"открыт \"https://example.com\"","status":"passed","duration_ms":200,"network":"GET https://example.com/missing — HTTP 404","duration_sparkline":[180,170,200],"gherkin":"Когда открыт \"https://example.com\""},{"index":1,"line":4,"keyword":"Когда","text":"кликаю \"#missing\"","selector":"#missing","status":"failed","duration_ms":100,"error":"element not found","network":"GET https://example.com/missing — HTTP 404","screenshot":"screenshots/000_login__Failed_login__step_001.png","page_context":"Example\nhttps://example.com","dom_snapshot":"\u003chtml\u003e\u003cbody\u003e\u003cbutton id=\"missing\"\u003eLogin\u003c/button\u003e\u003c/body\u003e\u003c/html\u003e","a11y_snapshot":"button \"Login\"","trace_offset_ms":200,"duration_sparkline":[120,80,100],"tips":["Для стабильности используйте data-testid вместо хрупких CSS/XPath селекторов."],"gherkin":"Когда кликаю \"#missing\""}],"trace_path":"traces\\login__Failed_login.zip","trace_command":"npx playwright show-trace \"traces\\\\login__Failed_login.zip\"","trace_events":[{"offset_ms":0,"title":"Frame.goto https://example.com","kind":"goto"},{"offset_ms":200,"title":"Frame.click #missing","kind":"click"}],"rerun_command":"scenaria run \"login.feature\" --scenario \"Failed login\"","history":{"last_status":"failed","last_at":"2026-06-02T09:00:00Z","changed":false},"history_runs":[{"status":"failed","at":"2026-06-02T09:00:00Z","failed_step":0,"duration_ms":500,"step_durations":[170,80]},{"status":"passed","at":"2026-06-01T09:00:00Z","duration_ms":600,"step_durations":[180,120]}],"regressions":[{"step":1,"text":"кликаю \"#missing\"","kind":"step_changed","previous_at":"2026-06-02T09:00:00Z","detail":"was step #1, now #2"}],"duration_sparkline":[600,500,800],"run_diff":{"columns":[{"label":"06-01T09:00","at":"2026-06-01T09:00:00Z","status":"passed"},{"label":"06-02T09:00","at":"2026-06-02T09:00:00Z","status":"failed"},{"label":"now","status":"failed","current":true}],"rows":[{"index":0,"text":"открыт \"https://example.com\"","cells":["passed","failed","passed"]},{"index":1,"text":"кликаю \"#missing\"","cells":["passed","skipped","failed"]}]}}],"flaky":{"scenarios":[{"path":"login.feature::Failed login","failures":1,"passes":1,"total":2,"flaky":true,"last_failed_at":"2026-06-02T09:00:00Z"}]},"slow_steps":[{"scenario_path":"login.feature::Failed login","step":0,"text":"открыт \"https://example.com\"","duration_ms":200},{"scenario_path":"login.feature::Failed login","step":1,"text":"кликаю \"#missing\"","duration_ms":100}]}
+  <script id="scenaria-report-data" type="application/json">{"version":"1","brand":"Scenaria","generated_at":"2026-07-09T13:19:58Z","mode":"browser","light_mode":false,"bridge_url":"http://127.0.0.1:19999","locale":"ru","report_dir":"C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\frontend\\e2e\\fixtures\\report","mode_links":{"current":"full","full_href":"sample.html","light_href":"sample.light.html","full_available":true,"light_available":true},"ci_compare":{"previous_at":"2026-06-01T10:00:00Z","new_failures":[{"path":"login.feature","scenario":"Failed login","status":"failed","previous_status":"passed"}]},"summary":{"files":1,"scenarios":1,"steps":2,"passed":0,"failed":1,"canceled":0,"not_started":0,"skipped":0},"scenarios":[{"id":"s0","feature_path":"login.feature","scenario":"Failed login","tags":["@smoke"],"status":"failed","message":"element not found","failed_step":1,"duration_ms":800,"steps":[{"index":0,"line":3,"keyword":"Когда","text":"открыт \"https://example.com\"","status":"passed","duration_ms":200,"network":"GET https://example.com/missing — HTTP 404","duration_sparkline":[180,170,200],"gherkin":"Когда открыт \"https://example.com\""},{"index":1,"line":4,"keyword":"Когда","text":"кликаю \"#missing\"","selector":"#missing","status":"failed","duration_ms":100,"error":"element not found","network":"GET https://example.com/missing — HTTP 404","screenshot":"screenshots/000_login__Failed_login__step_001.png","page_context":"Example\nhttps://example.com","dom_snapshot":"\u003chtml\u003e\u003cbody\u003e\u003cbutton id=\"missing\"\u003eLogin\u003c/button\u003e\u003c/body\u003e\u003c/html\u003e","a11y_snapshot":"button \"Login\"","trace_offset_ms":200,"duration_sparkline":[120,80,100],"tips":["Для стабильности используйте data-testid вместо хрупких CSS/XPath селекторов."],"gherkin":"Когда кликаю \"#missing\""}],"trace_path":"traces\\login__Failed_login.zip","trace_command":"npx playwright show-trace \"traces\\\\login__Failed_login.zip\"","trace_events":[{"offset_ms":0,"title":"Frame.goto https://example.com","kind":"goto"},{"offset_ms":200,"title":"Frame.click #missing","kind":"click"}],"rerun_command":"scenaria run \"login.feature\" --scenario \"Failed login\"","history":{"last_status":"failed","last_at":"2026-06-02T09:00:00Z","changed":false},"history_runs":[{"status":"failed","at":"2026-06-02T09:00:00Z","failed_step":0,"duration_ms":500,"step_durations":[170,80]},{"status":"passed","at":"2026-06-01T09:00:00Z","duration_ms":600,"step_durations":[180,120]}],"regressions":[{"step":1,"text":"кликаю \"#missing\"","kind":"step_changed","previous_at":"2026-06-02T09:00:00Z","detail":"was step #1, now #2"}],"duration_sparkline":[600,500,800],"run_diff":{"columns":[{"label":"06-01T09:00","at":"2026-06-01T09:00:00Z","status":"passed"},{"label":"06-02T09:00","at":"2026-06-02T09:00:00Z","status":"failed"},{"label":"now","status":"failed","current":true}],"rows":[{"index":0,"text":"открыт \"https://example.com\"","cells":["passed","failed","passed"]},{"index":1,"text":"кликаю \"#missing\"","cells":["passed","skipped","failed"]}]}}],"flaky":{"scenarios":[{"path":"login.feature::Failed login","failures":1,"passes":1,"total":2,"flaky":true,"last_failed_at":"2026-06-02T09:00:00Z"}]},"slow_steps":[{"scenario_path":"login.feature::Failed login","step":0,"text":"открыт \"https://example.com\"","duration_ms":200},{"scenario_path":"login.feature::Failed login","step":1,"text":"кликаю \"#missing\"","duration_ms":100}]}
 </script>
   <script>/* Playwright trace.zip reader for offline HTML report (deflate + stored entries). */
 (function (root) {
@@ -832,7 +838,8 @@ body.screenshot-lightbox-open {
       stepTitle: 'Шаг #{n}', error: 'Ошибка', tips: 'Советы', screenshot: 'Скриншот',
       screenshotExpand: 'Открыть скриншот', screenshotHint: 'Нажмите для увеличения', screenshotClose: 'Закрыть',
       lastRun: 'Прошлый прогон', changed: '(изменился)', actions: 'Действия',
-      flakyHistory: 'Шаг падал {n} раз в недавней истории', stepCol: 'Шаг',
+      flakyHistory: 'Шаг падал {n} раз в недавней истории', flakyInHistory: 'flaky (история)',
+      canceled: 'отменено', notStarted: 'не запущено', stepCol: 'Шаг',
       when: 'Когда', status: 'Статус', message: 'Сообщение', stepInTrace: 'шаг #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Перетащите .zip trace сюда — offline-просмотр во вкладке Trace',
@@ -868,7 +875,8 @@ body.screenshot-lightbox-open {
       stepTitle: 'Step #{n}', error: 'Error', tips: 'Tips', screenshot: 'Screenshot',
       screenshotExpand: 'Open screenshot', screenshotHint: 'Click to enlarge', screenshotClose: 'Close',
       lastRun: 'Previous run', changed: '(changed)', actions: 'Actions',
-      flakyHistory: 'Step failed {n} times recently', stepCol: 'Step',
+      flakyHistory: 'Step failed {n} times recently', flakyInHistory: 'flaky (history)',
+      canceled: 'canceled', notStarted: 'not started', stepCol: 'Step',
       when: 'When', status: 'Status', message: 'Message', stepInTrace: 'step #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Drop .zip trace here — offline viewing in Trace tab',
@@ -933,6 +941,9 @@ body.screenshot-lightbox-open {
     changed: '(\u0438\u0437\u043c\u0435\u043d\u0438\u043b\u0441\u044f)',
     actions: '\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f',
     flakyHistory: '\u0428\u0430\u0433 \u043f\u0430\u0434\u0430\u043b {n} \u0440\u0430\u0437 \u0432 \u043d\u0435\u0434\u0430\u0432\u043d\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
+    flakyInHistory: 'flaky (\u0438\u0441\u0442\u043e\u0440\u0438\u044f)',
+    canceled: '\u043e\u0442\u043c\u0435\u043d\u0435\u043d\u043e',
+    notStarted: '\u043d\u0435 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u043e',
     stepCol: '\u0428\u0430\u0433',
     when: '\u041a\u043e\u0433\u0434\u0430',
     status: '\u0421\u0442\u0430\u0442\u0443\u0441',
@@ -1066,6 +1077,20 @@ body.screenshot-lightbox-open {
     if (s === 'failed') return 'failed';
     if (s === 'running') return 'running';
     return 'skipped';
+  }
+
+  function normScenarioKey(s) {
+    return String(s || '').replace(/\\/g, '/').toLowerCase();
+  }
+
+  function scenarioFlakyStat(sc) {
+    const flakyList = (DATA.flaky && DATA.flaky.scenarios) || [];
+    const keys = [sc.id, (sc.feature_path || '') + '::' + (sc.scenario || '')].map(normScenarioKey);
+    return flakyList.find((x) => x.flaky && keys.includes(normScenarioKey(x.path)));
+  }
+
+  function flakyScenariosInRun() {
+    return (DATA.scenarios || []).filter((sc) => scenarioFlakyStat(sc));
   }
 
   function filteredScenarios() {
@@ -1284,13 +1309,17 @@ body.screenshot-lightbox-open {
     $('#meta-line').textContent = [
       DATA.generated_at || '',
       'Mode: ' + (DATA.mode || ''),
-      (s.scenarios || 0) + ' scenarios',
+      ((DATA.scenarios || []).length || s.scenarios || 0) + ' scenarios',
     ].join(' · ');
     $('#stat-pass').textContent = (s.passed || 0) + ' passed';
     $('#stat-fail').textContent = (s.failed || 0) + ' failed';
     $('#stat-skip').textContent = (s.skipped || 0) + ' skipped';
-    const flaky = (DATA.flaky && DATA.flaky.scenarios) ? DATA.flaky.scenarios.filter((x) => x.flaky).length : 0;
-    $('#stat-flaky').textContent = flaky ? flaky + ' flaky' : '';
+    const canceled = s.canceled || 0;
+    $('#stat-cancel').textContent = canceled ? canceled + ' ' + t('canceled') : '';
+    const notStarted = s.not_started || 0;
+    $('#stat-not-started').textContent = notStarted ? notStarted + ' ' + t('notStarted') : '';
+    const flaky = flakyScenariosInRun().length;
+    $('#stat-flaky').textContent = flaky ? flaky + ' ' + t('flakyInHistory') : '';
     const slow = (DATA.slow_steps || [])[0];
     $('#stat-slow').textContent = slow ? 'Slowest: ' + slow.duration_ms + 'ms' : '';
     $('#light-badge').textContent = DATA.light_mode ? t('light') : t('full');
@@ -1443,8 +1472,10 @@ body.screenshot-lightbox-open {
       const tags = (sc.tags || []).slice(0, 3).map((t) => '<span class="badge">' + esc(t) + '</span>').join('');
       const spark = renderSparkline(sc.duration_sparkline);
       const active = sc.id === state.scenarioId;
+      const flaky = scenarioFlakyStat(sc);
+      const flakyBadge = flaky ? ' <span class="flaky-pill" title="' + esc(t('flakyInHistory')) + '">flaky</span>' : '';
       return '<div class="scenario-item' + (active ? ' active' : '') + '" role="button" tabindex="0" aria-selected="' + (active ? 'true' : 'false') + '" aria-label="' + esc(sc.scenario + ' — ' + sc.status) + '" data-id="' + esc(sc.id) + '">' +
-        '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' +
+        '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' + flakyBadge +
         '<div class="title">' + esc(sc.scenario) + spark + '</div>' +
         '<div class="sub">' + esc(sc.feature_path) + '</div>' +
         (tags ? '<div class="sub">' + tags + '</div>' : '') +

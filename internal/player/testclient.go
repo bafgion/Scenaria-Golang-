@@ -151,7 +151,8 @@ func (e *PlaywrightExecutor) runScenarioOnSession(
 		if err != nil {
 			failed = true
 			result.Status = "failed"
-			result.Message = err.Error()
+			result.Message = UserFacingBrowserError(err)
+			result.FailedStep = failedStepIndex(0)
 		} else if err := ApplyTestClient(page, input.TestClient); err != nil {
 			failed = true
 			result.Status = "failed"

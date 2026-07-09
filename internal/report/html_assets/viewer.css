@@ -65,6 +65,8 @@ header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 .stats span.pass { color: var(--pass); }
 .stats span.fail { color: var(--fail); }
 .stats span.skip { color: var(--skip); }
+.stats span.cancel { color: #fbbc04; }
+.stats span.not-started { color: #9aa0a6; }
 .toolbar { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 button, .btn {
   background: #252a35;
@@ -217,7 +219,9 @@ button.primary { background: #1a73e8; border-color: #1a73e8; }
 }
 .badge.passed { background: rgba(52,168,83,.2); color: var(--pass); }
 .badge.failed { background: rgba(234,67,53,.2); color: var(--fail); }
-.badge.skipped, .badge.dry-run { background: rgba(154,160,166,.2); color: var(--skip); }
+.badge.skipped, .badge.dry-run, .badge.canceled, .badge.not-started { background: rgba(154,160,166,.2); color: var(--skip); }
+.badge.canceled { color: #fbbc04; }
+.badge.not-started { color: #9aa0a6; font-style: italic; }
 .timeline-wrap { overflow: auto; flex: 1; padding: 16px; }
 .timeline {
   position: relative;

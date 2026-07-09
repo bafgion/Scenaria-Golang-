@@ -312,4 +312,10 @@ func TestInferStepStatus(t *testing.T) {
 	if inferStepStatus("failed", 2, &fs) != "skipped" {
 		t.Fatal("step 2 should be skipped")
 	}
+	if inferStepStatus("failed", 0, nil) != "failed" {
+		t.Fatal("step 0 should be failed when failed_step is missing")
+	}
+	if inferStepStatus("failed", 1, nil) != "skipped" {
+		t.Fatal("step 1 should be skipped when failed_step is missing")
+	}
 }

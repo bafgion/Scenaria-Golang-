@@ -16,7 +16,8 @@
       stepTitle: 'Шаг #{n}', error: 'Ошибка', tips: 'Советы', screenshot: 'Скриншот',
       screenshotExpand: 'Открыть скриншот', screenshotHint: 'Нажмите для увеличения', screenshotClose: 'Закрыть',
       lastRun: 'Прошлый прогон', changed: '(изменился)', actions: 'Действия',
-      flakyHistory: 'Шаг падал {n} раз в недавней истории', stepCol: 'Шаг',
+      flakyHistory: 'Шаг падал {n} раз в недавней истории', flakyInHistory: 'flaky (история)',
+      canceled: 'отменено', notStarted: 'не запущено', stepCol: 'Шаг',
       when: 'Когда', status: 'Статус', message: 'Сообщение', stepInTrace: 'шаг #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Перетащите .zip trace сюда — offline-просмотр во вкладке Trace',
@@ -52,7 +53,8 @@
       stepTitle: 'Step #{n}', error: 'Error', tips: 'Tips', screenshot: 'Screenshot',
       screenshotExpand: 'Open screenshot', screenshotHint: 'Click to enlarge', screenshotClose: 'Close',
       lastRun: 'Previous run', changed: '(changed)', actions: 'Actions',
-      flakyHistory: 'Step failed {n} times recently', stepCol: 'Step',
+      flakyHistory: 'Step failed {n} times recently', flakyInHistory: 'flaky (history)',
+      canceled: 'canceled', notStarted: 'not started', stepCol: 'Step',
       when: 'When', status: 'Status', message: 'Message', stepInTrace: 'step #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Drop .zip trace here — offline viewing in Trace tab',
@@ -117,6 +119,9 @@
     changed: '(\u0438\u0437\u043c\u0435\u043d\u0438\u043b\u0441\u044f)',
     actions: '\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044f',
     flakyHistory: '\u0428\u0430\u0433 \u043f\u0430\u0434\u0430\u043b {n} \u0440\u0430\u0437 \u0432 \u043d\u0435\u0434\u0430\u0432\u043d\u0435\u0439 \u0438\u0441\u0442\u043e\u0440\u0438\u0438',
+    flakyInHistory: 'flaky (\u0438\u0441\u0442\u043e\u0440\u0438\u044f)',
+    canceled: '\u043e\u0442\u043c\u0435\u043d\u0435\u043d\u043e',
+    notStarted: '\u043d\u0435 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u043e',
     stepCol: '\u0428\u0430\u0433',
     when: '\u041a\u043e\u0433\u0434\u0430',
     status: '\u0421\u0442\u0430\u0442\u0443\u0441',
@@ -250,6 +255,20 @@
     if (s === 'failed') return 'failed';
     if (s === 'running') return 'running';
     return 'skipped';
+  }
+
+  function normScenarioKey(s) {
+    return String(s || '').replace(/\\/g, '/').toLowerCase();
+  }
+
+  function scenarioFlakyStat(sc) {
+    const flakyList = (DATA.flaky && DATA.flaky.scenarios) || [];
+    const keys = [sc.id, (sc.feature_path || '') + '::' + (sc.scenario || '')].map(normScenarioKey);
+    return flakyList.find((x) => x.flaky && keys.includes(normScenarioKey(x.path)));
+  }
+
+  function flakyScenariosInRun() {
+    return (DATA.scenarios || []).filter((sc) => scenarioFlakyStat(sc));
   }
 
   function filteredScenarios() {
@@ -468,13 +487,17 @@
     $('#meta-line').textContent = [
       DATA.generated_at || '',
       'Mode: ' + (DATA.mode || ''),
-      (s.scenarios || 0) + ' scenarios',
+      ((DATA.scenarios || []).length || s.scenarios || 0) + ' scenarios',
     ].join(' · ');
     $('#stat-pass').textContent = (s.passed || 0) + ' passed';
     $('#stat-fail').textContent = (s.failed || 0) + ' failed';
     $('#stat-skip').textContent = (s.skipped || 0) + ' skipped';
-    const flaky = (DATA.flaky && DATA.flaky.scenarios) ? DATA.flaky.scenarios.filter((x) => x.flaky).length : 0;
-    $('#stat-flaky').textContent = flaky ? flaky + ' flaky' : '';
+    const canceled = s.canceled || 0;
+    $('#stat-cancel').textContent = canceled ? canceled + ' ' + t('canceled') : '';
+    const notStarted = s.not_started || 0;
+    $('#stat-not-started').textContent = notStarted ? notStarted + ' ' + t('notStarted') : '';
+    const flaky = flakyScenariosInRun().length;
+    $('#stat-flaky').textContent = flaky ? flaky + ' ' + t('flakyInHistory') : '';
     const slow = (DATA.slow_steps || [])[0];
     $('#stat-slow').textContent = slow ? 'Slowest: ' + slow.duration_ms + 'ms' : '';
     $('#light-badge').textContent = DATA.light_mode ? t('light') : t('full');
@@ -627,8 +650,10 @@
       const tags = (sc.tags || []).slice(0, 3).map((t) => '<span class="badge">' + esc(t) + '</span>').join('');
       const spark = renderSparkline(sc.duration_sparkline);
       const active = sc.id === state.scenarioId;
+      const flaky = scenarioFlakyStat(sc);
+      const flakyBadge = flaky ? ' <span class="flaky-pill" title="' + esc(t('flakyInHistory')) + '">flaky</span>' : '';
       return '<div class="scenario-item' + (active ? ' active' : '') + '" role="button" tabindex="0" aria-selected="' + (active ? 'true' : 'false') + '" aria-label="' + esc(sc.scenario + ' — ' + sc.status) + '" data-id="' + esc(sc.id) + '">' +
-        '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' +
+        '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' + flakyBadge +
         '<div class="title">' + esc(sc.scenario) + spark + '</div>' +
         '<div class="sub">' + esc(sc.feature_path) + '</div>' +
         (tags ? '<div class="sub">' + tags + '</div>' : '') +

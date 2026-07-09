@@ -65,13 +65,14 @@ type htmlModeLinks struct {
 }
 
 type htmlSummary struct {
-	Files     int `json:"files"`
-	Scenarios int `json:"scenarios"`
-	Steps     int `json:"steps"`
-	Passed    int `json:"passed"`
-	Failed    int `json:"failed"`
-	Canceled  int `json:"canceled"`
-	Skipped   int `json:"skipped"`
+	Files      int `json:"files"`
+	Scenarios  int `json:"scenarios"`
+	Steps      int `json:"steps"`
+	Passed     int `json:"passed"`
+	Failed     int `json:"failed"`
+	Canceled   int `json:"canceled"`
+	NotStarted int `json:"not_started"`
+	Skipped    int `json:"skipped"`
 }
 
 type htmlScenario struct {
@@ -255,10 +256,13 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 			payload.Summary.Failed++
 		case "canceled":
 			payload.Summary.Canceled++
+		case "not-started":
+			payload.Summary.NotStarted++
 		default:
 			payload.Summary.Skipped++
 		}
 	}
+	payload.Summary.Scenarios = len(payload.Scenarios)
 	payload.SlowSteps = collectSlowSteps(payload.Scenarios, 8)
 	payload.CICompare = buildCICompare(payload.Scenarios, opts.PreviousSummary)
 	if payload.ReportDir == "" {
@@ -523,15 +527,17 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 
 func inferStepStatus(scenarioStatus string, stepIndex int, failedStep *int) string {
 	switch scenarioStatus {
-	case "dry-run", "skipped":
+	case "dry-run", "skipped", "not-started", "canceled":
 		return "skipped"
 	case "passed":
 		return "passed"
 	}
-	if failedStep == nil {
+	fs := 0
+	if failedStep != nil {
+		fs = *failedStep
+	} else if scenarioStatus != "failed" && scenarioStatus != "broken" {
 		return "unknown"
 	}
-	fs := *failedStep
 	switch {
 	case stepIndex < fs:
 		return "passed"
