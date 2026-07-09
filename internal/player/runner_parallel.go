@@ -135,7 +135,7 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (result 
 		return result, nil
 	}
 
-	if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok && poolEligible(pwExec.options) {
+	if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok && poolEligibleForPlan(pwExec.options, plan) {
 		result, err = r.executeParallelWithPool(ctx, result, pwExec, plan, workers, runID)
 		return result, err
 	}
@@ -223,7 +223,7 @@ func (r BrowserRunner) executeParallelWithPool(
 					continue
 				}
 				runResult, err := exec.ExecuteScenarioOnSession(runCtx, slot.session, scenarioInputFromCase(rc))
-				pool.release(slot)
+				pool.release(runCtx, slot, exec.options, runResult, rc)
 
 				mu.Lock()
 				scenarioFailed := err != nil || runResult.Status == "failed"

@@ -13,6 +13,7 @@ func TestBrowserPoolReleaseAfterAbortDoesNotDeadlockClose(t *testing.T) {
 		t.Skip("playwright not available:", err)
 	}
 
+	options := PlaywrightExecutorOptions{BrowserName: "chromium", Headless: true}
 	slot, err := pool.acquire(ctx)
 	if err != nil {
 		pool.Close()
@@ -22,7 +23,7 @@ func TestBrowserPoolReleaseAfterAbortDoesNotDeadlockClose(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		pool.release(slot)
+		pool.release(ctx, slot, options, ScenarioResult{}, RunCase{})
 		pool.Close()
 		close(done)
 	}()

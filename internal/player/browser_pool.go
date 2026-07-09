@@ -10,15 +10,34 @@ import (
 )
 
 type browserPool struct {
-	mu     sync.Mutex
-	slots  chan *browserPoolSlot
-	stops  []func()
-	size   int
-	closed bool
+	mu      sync.Mutex
+	slots   chan *browserPoolSlot
+	size    int
+	retired int
+	closed  bool
 }
 
 type browserPoolSlot struct {
 	session *browserSession
+	stop    func()
+	index   int
+}
+
+func newPoolSlot(ctx context.Context, options PlaywrightExecutorOptions, index int) (*browserPoolSlot, error) {
+	pw, stopPW, err := startPlaywright(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("start playwright worker %d: %w", index+1, err)
+	}
+	session, err := newBrowserSession(pw, options)
+	if err != nil {
+		stopPW()
+		return nil, err
+	}
+	stopWatch := session.watchContext(ctx)
+	stop := func() {
+		stopBrowserWorker(stopWatch, session, stopPW)
+	}
+	return &browserPoolSlot{session: session, stop: stop, index: index}, nil
 }
 
 func newBrowserPool(ctx context.Context, options PlaywrightExecutorOptions, size int) (*browserPool, error) {
@@ -27,7 +46,6 @@ func newBrowserPool(ctx context.Context, options PlaywrightExecutorOptions, size
 	}
 	pool := &browserPool{
 		slots: make(chan *browserPoolSlot, size),
-		stops: make([]func(), 0, size),
 		size:  size,
 	}
 	for i := 0; i < size; i++ {
@@ -35,22 +53,12 @@ func newBrowserPool(ctx context.Context, options PlaywrightExecutorOptions, size
 			pool.Close()
 			return nil, err
 		}
-		pw, stopPW, err := startPlaywright(ctx)
+		slot, err := newPoolSlot(ctx, options, i)
 		if err != nil {
-			pool.Close()
-			return nil, fmt.Errorf("start playwright worker %d: %w", i+1, err)
-		}
-		session, err := newBrowserSession(pw, options)
-		if err != nil {
-			stopPW()
 			pool.Close()
 			return nil, err
 		}
-		stopWatch := session.watchContext(ctx)
-		pool.stops = append(pool.stops, func() {
-			stopBrowserWorker(stopWatch, session, stopPW)
-		})
-		pool.slots <- &browserPoolSlot{session: session}
+		pool.slots <- slot
 	}
 	return pool, nil
 }
@@ -70,7 +78,13 @@ func (p *browserPool) acquire(ctx context.Context) (*browserPoolSlot, error) {
 	}
 }
 
-func (p *browserPool) release(slot *browserPoolSlot) {
+func (p *browserPool) release(
+	ctx context.Context,
+	slot *browserPoolSlot,
+	options PlaywrightExecutorOptions,
+	result ScenarioResult,
+	runCase RunCase,
+) {
 	if p == nil || slot == nil {
 		return
 	}
@@ -78,17 +92,84 @@ func (p *browserPool) release(slot *browserPoolSlot) {
 	closed := p.closed
 	p.mu.Unlock()
 	if closed {
+		if slot.stop != nil {
+			slot.stop()
+		}
 		return
 	}
-	if err := slot.session.resetForScenario(); err != nil {
-		logx.Debug("pool reset failed", "error", err)
-		slot.session.abortRun()
+
+	needsReplace := ScenarioBlocksSessionReuse(result, runCase, slot.session)
+	if !needsReplace {
+		if err := slot.session.resetForScenario(); err != nil {
+			needsReplace = true
+			logPoolResetFailure(slot, err)
+		}
 	}
+	if needsReplace {
+		if err := slot.replaceSession(ctx, options); err != nil {
+			p.retireSlot(slot, err)
+			return
+		}
+		logx.Debug("pool slot replaced after browser close",
+			"slot", slot.index,
+			"scenario", runCase.Name,
+		)
+	}
+
 	select {
 	case p.slots <- slot:
 	default:
-		logx.Debug("pool release skipped", "error", "slot channel is full")
+		logx.Debug("pool release skipped", "error", "slot channel is full", "slot", slot.index)
 	}
+}
+
+func (slot *browserPoolSlot) replaceSession(ctx context.Context, options PlaywrightExecutorOptions) error {
+	if slot == nil {
+		return fmt.Errorf("pool slot is nil")
+	}
+	if slot.stop != nil {
+		slot.stop()
+	}
+	next, err := newPoolSlot(ctx, options, slot.index)
+	if err != nil {
+		return err
+	}
+	slot.session = next.session
+	slot.stop = next.stop
+	return nil
+}
+
+func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
+	if p == nil || slot == nil {
+		return
+	}
+	if slot.stop != nil {
+		slot.stop()
+	}
+	p.mu.Lock()
+	p.retired++
+	retired := p.retired
+	size := p.size
+	p.mu.Unlock()
+	logx.Warn("pool slot retired",
+		"slot", slot.index,
+		"retired", retired,
+		"size", size,
+		"error", reason,
+		"session", slot.session.poolDiagState(),
+	)
+}
+
+func logPoolResetFailure(slot *browserPoolSlot, err error) {
+	state := "nil"
+	if slot != nil && slot.session != nil {
+		state = slot.session.poolDiagState()
+	}
+	logx.Warn("pool reset failed",
+		"slot", slot.index,
+		"error", err,
+		"session", state,
+	)
 }
 
 // abortActiveSessions marks idle pool workers cancelled so in-flight Playwright work stops promptly.
@@ -102,7 +183,12 @@ func (p *browserPool) abortActiveSessions() {
 			if slot != nil && slot.session != nil {
 				slot.session.abortRun()
 			}
-			p.slots <- slot
+			if slot != nil {
+				select {
+				case p.slots <- slot:
+				default:
+				}
+			}
 		default:
 			return
 		}
@@ -119,15 +205,18 @@ func (p *browserPool) Close() {
 		return
 	}
 	p.closed = true
-	workers := len(p.stops)
+	size := p.size
 	p.mu.Unlock()
 
 	started := time.Now()
-	logx.Debug("browser pool closing", "workers", workers)
-	for i := 0; i < workers; i++ {
+	logx.Debug("browser pool closing", "workers", size)
+	for i := 0; i < size; i++ {
 		slotStart := time.Now()
 		select {
-		case <-p.slots:
+		case slot := <-p.slots:
+			if slot != nil && slot.stop != nil {
+				slot.stop()
+			}
 		case <-time.After(2 * time.Second):
 			logx.Warn("browser pool close timed out waiting for idle slot",
 				"index", i,
@@ -135,19 +224,27 @@ func (p *browserPool) Close() {
 			)
 		}
 	}
-	for i, stop := range p.stops {
-		workerStart := time.Now()
-		stop()
-		logx.Debug("browser pool worker stopped",
-			"index", i,
-			"elapsed_ms", time.Since(workerStart).Milliseconds(),
-		)
-	}
-	logx.Debug("browser pool closed", "elapsed_ms", time.Since(started).Milliseconds())
-	p.stops = nil
+	p.mu.Lock()
+	retired := p.retired
+	p.mu.Unlock()
+	logx.Debug("browser pool closed",
+		"elapsed_ms", time.Since(started).Milliseconds(),
+		"retired", retired,
+	)
 	p.size = 0
 }
 
 func poolEligible(options PlaywrightExecutorOptions) bool {
 	return options.TraceDir == "" && options.VideoDir == ""
+}
+
+func poolEligibleForPlan(options PlaywrightExecutorOptions, plan ExecutionPlan) bool {
+	if !poolEligible(options) {
+		return false
+	}
+	if PlanContainsCloseBrowser(plan) {
+		logx.Debug("browser pool disabled", "reason", "plan contains close-browser")
+		return false
+	}
+	return true
 }

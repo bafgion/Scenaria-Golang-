@@ -112,7 +112,7 @@ func TestBrowserPoolAbortActiveSessions(t *testing.T) {
 	if err := slot.session.resetForScenario(); err != nil {
 		t.Fatalf("reset after abort: %v", err)
 	}
-	pool.release(slot)
+	pool.release(ctx, slot, PlaywrightExecutorOptions{BrowserName: "chromium", Headless: true}, ScenarioResult{}, RunCase{})
 }
 
 var _ BrowserExecutor = (*blockingScenarioExecutor)(nil)

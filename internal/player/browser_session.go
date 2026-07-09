@@ -158,6 +158,25 @@ func (s *browserSession) alive() bool {
 	return !s.isClosed() && s.page != nil && !s.page.IsClosed()
 }
 
+func (s *browserSession) poolDiagState() string {
+	if s == nil {
+		return "nil"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	closed := s.isClosed()
+	alive := !closed && s.page != nil && !s.page.IsClosed()
+	return fmt.Sprintf(
+		"closed=%v alive=%v browser=%v context=%v page=%v external=%v",
+		closed,
+		alive,
+		s.browser != nil,
+		s.context != nil,
+		s.page != nil,
+		s.external,
+	)
+}
+
 func (s *browserSession) close() {
 	drainPendingAsync(2 * time.Second)
 	s.closeLocked(false)

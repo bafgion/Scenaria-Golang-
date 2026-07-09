@@ -26,6 +26,7 @@ func TestBrowserPoolCancelWithTwoWorkersDoesNotDeadlock(t *testing.T) {
 		t.Skip("playwright not available:", err)
 	}
 
+	options := PlaywrightExecutorOptions{BrowserName: "chromium", Headless: true}
 	slot1, err := pool.acquire(ctx)
 	if err != nil {
 		pool.Close()
@@ -33,7 +34,7 @@ func TestBrowserPoolCancelWithTwoWorkersDoesNotDeadlock(t *testing.T) {
 	}
 	slot2, err := pool.acquire(ctx)
 	if err != nil {
-		pool.release(slot1)
+		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{})
 		pool.Close()
 		t.Fatal(err)
 	}
@@ -42,9 +43,9 @@ func TestBrowserPoolCancelWithTwoWorkersDoesNotDeadlock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		slot1.session.abortRun()
-		pool.release(slot1)
+		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{})
 		slot2.session.abortRun()
-		pool.release(slot2)
+		pool.release(ctx, slot2, options, ScenarioResult{}, RunCase{})
 		pool.Close()
 		close(done)
 	}()
