@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/recorder"
 )
 
 func TestOpenProjectIncrementsProjectVersionAndCancelsPreviousSession(t *testing.T) {
@@ -54,17 +56,23 @@ func TestOpenProjectCancelsRunValidateAndRecordContexts(t *testing.T) {
 	svc := NewService()
 	root := t.TempDir()
 
-	runCtx, runCancel := context.WithCancel(context.Background())
+	begin, err := svc.runner().TryBegin(1, RunRequest{Targets: []string{"a.feature"}}, nil, DefaultRunTimeout)
+	if err != nil {
+		t.Fatalf("TryBegin: %v", err)
+	}
+	runCtx := begin.Context
+
 	validateCtx, validateCancel := context.WithCancel(context.Background())
 	recordCtx, recordCancel := context.WithCancel(context.Background())
 
 	svc.mu.Lock()
-	svc.runCtx = runCtx
-	svc.runCancel = runCancel
 	svc.validateCancel = validateCancel
-	svc.recordCtx = recordCtx
-	svc.recordCancel = recordCancel
 	svc.mu.Unlock()
+	svc.recorderOps().Session().BeginSession(BeginRecorderSessionInput{
+		Session:      recorder.NewLiveSession(),
+		RecordCtx:    recordCtx,
+		RecordCancel: recordCancel,
+	})
 
 	if _, err := svc.OpenProject(root); err != nil {
 		t.Fatalf("OpenProject: %v", err)

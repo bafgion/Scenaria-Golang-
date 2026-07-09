@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import type { gui } from '../../wailsjs/go/models'
 
 export type RunnerState = {
   playing: boolean
@@ -8,6 +9,10 @@ export type RunnerState = {
   label: string
   logStreaming: boolean
   cancelling: boolean
+  lastRunSince: string | null
+  lastRunBatchResults: gui.RunResultEntry[]
+  lastErrorEntry: gui.RunResultEntry | null
+  dryRunActive: boolean
 }
 
 export const defaultRunnerState: RunnerState = {
@@ -18,6 +23,10 @@ export const defaultRunnerState: RunnerState = {
   label: '',
   logStreaming: false,
   cancelling: false,
+  lastRunSince: null,
+  lastRunBatchResults: [],
+  lastErrorEntry: null,
+  dryRunActive: false,
 }
 
 export function createRunnerStore(initial: RunnerState = defaultRunnerState) {
@@ -38,6 +47,16 @@ export function createRunnerStore(initial: RunnerState = defaultRunnerState) {
     },
     setCancelling(cancelling: boolean) {
       store.update((s) => ({ ...s, cancelling }))
+    },
+    setLastRunSession(
+      lastRunSince: string | null,
+      lastRunBatchResults: gui.RunResultEntry[],
+      lastErrorEntry: gui.RunResultEntry | null,
+    ) {
+      store.update((s) => ({ ...s, lastRunSince, lastRunBatchResults, lastErrorEntry }))
+    },
+    setDryRunActive(dryRunActive: boolean) {
+      store.update((s) => ({ ...s, dryRunActive }))
     },
     stop() {
       store.update((s) => ({ ...s, playing: false }))

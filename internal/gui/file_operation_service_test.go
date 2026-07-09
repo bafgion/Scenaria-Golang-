@@ -14,6 +14,7 @@ func TestFileOperationServiceReadAndSaveFeature(t *testing.T) {
 	}
 	svc := NewFileOperationService(
 		func(_ string) (string, error) { return path, nil },
+		func() string { return root },
 		func(run func() error) error { return run() },
 		func(run func() error) error { return run() },
 	)
@@ -34,5 +35,25 @@ func TestFileOperationServiceReadAndSaveFeature(t *testing.T) {
 	}
 	if string(raw) != "Функционал: Updated" {
 		t.Fatalf("unexpected saved content: %q", string(raw))
+	}
+}
+
+func TestFileOperationServiceDeleteFeature(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "demo.feature")
+	if err := os.WriteFile(path, []byte("Feature:"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewFileOperationService(
+		func(p string) (string, error) { return p, nil },
+		func() string { return root },
+		func(run func() error) error { return run() },
+		func(run func() error) error { return run() },
+	)
+	if err := svc.DeleteFeature(path); err != nil {
+		t.Fatalf("DeleteFeature: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected file removed, stat err=%v", err)
 	}
 }

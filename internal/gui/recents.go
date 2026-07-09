@@ -1,11 +1,5 @@
 package gui
 
-import (
-	"strings"
-
-	"github.com/bafgion/scenaria-golang/internal/settings"
-)
-
 const maxRecents = 6
 
 type RecentsDTO struct {
@@ -14,37 +8,15 @@ type RecentsDTO struct {
 }
 
 func (s *Service) LoadRecents() RecentsDTO {
-	cfg, err := s.settingsStore.Load()
-	if err != nil || cfg == nil {
-		return RecentsDTO{}
-	}
-	return RecentsDTO{
-		Projects: trimRecents(cfg.RecentProjects),
-		Features: trimRecents(cfg.RecentFeatures),
-	}
+	return s.settingOps().LoadRecents()
 }
 
 func (s *Service) RememberRecentProject(path string) error {
-	return s.rememberRecent(path, true)
+	return s.settingOps().RememberRecentProject(path)
 }
 
 func (s *Service) RememberRecentFeature(path string) error {
-	return s.rememberRecent(path, false)
-}
-
-func (s *Service) rememberRecent(itemPath string, project bool) error {
-	itemPath = strings.TrimSpace(itemPath)
-	if itemPath == "" {
-		return nil
-	}
-	return s.settingsStore.Update(func(cfg *settings.AppSettings) error {
-		if project {
-			cfg.RecentProjects = pushRecent(cfg.RecentProjects, itemPath)
-		} else {
-			cfg.RecentFeatures = pushRecent(cfg.RecentFeatures, itemPath)
-		}
-		return nil
-	})
+	return s.settingOps().RememberRecentFeature(path)
 }
 
 func pushRecent(list []string, item string) []string {

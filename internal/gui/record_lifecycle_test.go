@@ -4,6 +4,8 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/recorder"
 )
 
 func TestStopRecordingCaptureIdempotent(t *testing.T) {
@@ -25,21 +27,30 @@ func TestStopRecordingCaptureIdempotent(t *testing.T) {
 }
 
 func TestGuardedRecordEmitSkipsRetiredGeneration(t *testing.T) {
-	svc := &Service{}
-	svc.mu.Lock()
-	svc.recordGen = 1
-	svc.mu.Unlock()
+	svc := NewService()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	begin := svc.recorderOps().Session().BeginSession(BeginRecorderSessionInput{
+		Session:      recorder.NewLiveSession(),
+		RecordCtx:    ctx,
+		RecordCancel: cancel,
+		TargetPath:   "features/a.feature",
+	})
 	emitted := 0
-	emit := svc.guardedRecordEmit(1, "features/a.feature", func(string, any) {
+	emit := svc.guardedRecordEmit(begin.Gen, "features/a.feature", func(string, any) {
 		emitted++
 	})
 	emit("record-step", map[string]any{"index": 0, "line": "step"})
 	if emitted != 1 {
 		t.Fatalf("expected 1 emit, got %d", emitted)
 	}
-	svc.mu.Lock()
-	svc.recordGen = 2
-	svc.mu.Unlock()
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	svc.recorderOps().Session().BeginSession(BeginRecorderSessionInput{
+		Session:      recorder.NewLiveSession(),
+		RecordCtx:    ctx2,
+		RecordCancel: cancel2,
+	})
 	emit("record-step", map[string]any{"index": 1, "line": "late"})
 	if emitted != 1 {
 		t.Fatalf("expected stale emit to be skipped, got %d", emitted)
@@ -48,18 +59,10 @@ func TestGuardedRecordEmitSkipsRetiredGeneration(t *testing.T) {
 
 func TestCloseBrowserRetiresRecordGeneration(t *testing.T) {
 	svc, session := attachLiveSession(t, true)
-	svc.mu.Lock()
-	svc.recordGen = 3
-	svc.recordSessionID = "record-3"
-	svc.browserSessionID = "browser-3"
-	svc.recordTargetPath = "features/live.feature"
-	ctx, cancel := context.WithCancel(context.Background())
-	svc.recordCtx = ctx
-	svc.recordCancel = cancel
-	svc.mu.Unlock()
+	snap := svc.recorderOps().Session().Snapshot()
 
 	emitted := 0
-	emit := svc.guardedRecordEmit(3, svc.recordTargetPath, func(string, any) { emitted++ })
+	emit := svc.guardedRecordEmit(snap.Gen, snap.TargetPath, func(string, any) { emitted++ })
 
 	svc.CloseBrowser()
 	emit("record-step", map[string]any{"index": 0, "line": "late"})
@@ -69,13 +72,10 @@ func TestCloseBrowserRetiresRecordGeneration(t *testing.T) {
 	if session.BrowserAlive() {
 		t.Fatal("expected session cleared")
 	}
-	if got := svc.LastClosedBrowserSessionID(); got != "browser-3" {
+	if got := svc.LastClosedBrowserSessionID(); got != snap.BrowserSessionID {
 		t.Fatalf("LastClosedBrowserSessionID = %q", got)
 	}
-	svc.mu.RLock()
-	gen := svc.recordGen
-	svc.mu.RUnlock()
-	if gen != 4 {
+	if gen := svc.recorderOps().Session().Generation(); gen != snap.Gen+1 {
 		t.Fatalf("expected recordGen increment on close, got %d", gen)
 	}
 }

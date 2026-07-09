@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -10,16 +11,21 @@ import (
 
 func attachLiveSession(t *testing.T, browse bool) (*Service, *recorder.LiveSession) {
 	t.Helper()
-	svc := &Service{}
+	svc := NewService()
 	session := recorder.NewLiveSession()
 	if browse {
 		session.InitBrowseMode()
 	} else {
 		session.InitRecordMode()
 	}
-	svc.mu.Lock()
-	svc.liveSession = session
-	svc.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	svc.recorderOps().Session().BeginSession(BeginRecorderSessionInput{
+		Session:      session,
+		RecordCtx:    ctx,
+		RecordCancel: cancel,
+		TargetPath:   "features/live.feature",
+	})
 	return svc, session
 }
 
@@ -29,13 +35,11 @@ func TestBeginRecordingCaptureEmitsRecordedSteps(t *testing.T) {
 	session.Bind(nil, &steps)
 
 	stepEvents := 0
-	svc.mu.Lock()
-	svc.recordEmit = func(name string, _ any) {
+	svc.recorderOps().Session().SetEmit(func(name string, _ any) {
 		if name == "record-step" {
 			stepEvents++
 		}
-	}
-	svc.mu.Unlock()
+	})
 
 	started, err := svc.BeginRecordingCapture()
 	if err != nil {

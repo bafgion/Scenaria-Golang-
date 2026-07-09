@@ -19,9 +19,7 @@ func (s *Service) CaptureBrowserSession(name string) (string, error) {
 		return "", fmt.Errorf("test client name is required")
 	}
 
-	s.mu.RLock()
-	session := s.liveSession
-	s.mu.RUnlock()
+	session := s.recorderOps().LiveSession()
 	if session == nil || !session.BrowserAlive() {
 		return "", fmt.Errorf("браузер не открыт — откройте браузер или запись, войдите на сайт и повторите")
 	}

@@ -59,11 +59,8 @@ func PickerStepChoices(selector, keyword string) []PickerStepChoice {
 }
 
 func (s *Service) PickSelector() PickSelectorResult {
-	s.mu.RLock()
-	session := s.liveSession
-	ctx := s.recordCtx
-	s.mu.RUnlock()
-	return s.recorderOps().PickSelector(session, ctx)
+	snap := s.recorderOps().Session().Snapshot()
+	return s.recorderOps().PickSelector(snap.Session, snap.RecordCtx)
 }
 
 func quotePickerSelector(value string) string {

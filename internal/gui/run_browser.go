@@ -2,9 +2,7 @@ package gui
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,122 +10,25 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/report"
-	"github.com/bafgion/scenaria-golang/internal/report/allure"
-	"github.com/bafgion/scenaria-golang/internal/runstatus"
 	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/settings"
 	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
+func (s *Service) runExecutionHost() RunExecutionHost {
+	return RunExecutionHost{
+		ProjectPath:     s.ProjectPath,
+		CurrentSession:  s.CurrentRunSession,
+		PrepareSnapshot: s.prepareRunFeatureSnapshot,
+		LoadAppSettings: s.loadAppSettings,
+		HasLiveBrowser:  s.HasLiveBrowser,
+		LiveSession:     s.recorderOps().LiveSession,
+		Reports:         s.reporter(),
+	}
+}
+
 func (s *Service) runInProcess(ctx context.Context, req RunRequest, emit EventEmitter) (player.ExecutionResult, report.RunArtifactLayout, error) {
-	var artifactLayout report.RunArtifactLayout
-	targets := req.Targets
-	if len(targets) == 0 {
-		if path := s.ProjectPath(); path != "" {
-			targets = []string{path}
-		}
-	}
-	if len(targets) == 0 {
-		return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no files to run")
-	}
-
-	featureInputs, err := s.prepareRunFeatureSnapshot(targets)
-	if err != nil {
-		return player.ExecutionResult{}, artifactLayout, err
-	}
-
-	plan := player.BuildExecutionPlanWithTestClient(featureInputs, req.Tag, req.Scenario, req.Vars, req.TestClient)
-	if req.StartStep >= 0 || req.EndStep >= 0 {
-		for i := range plan.Cases {
-			if req.StartStep >= 0 {
-				plan.Cases[i].StartStep = req.StartStep
-			}
-			if req.EndStep >= 0 {
-				plan.Cases[i].EndStep = req.EndStep
-			}
-		}
-	}
-	if len(plan.Cases) == 0 {
-		if req.Scenario != "" {
-			return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no scenarios found with name %q", req.Scenario)
-		}
-		if req.Tag != "" {
-			return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no scenarios found with tag %q", req.Tag)
-		}
-		return player.ExecutionResult{}, artifactLayout, fmt.Errorf("no runnable scenarios found")
-	}
-
-	ctx = player.WithRunProgress(ctx, func(ev player.RunProgressEvent) {
-		if emit != nil {
-			emit("run-progress", ev)
-			if ev.Phase == player.ProgressScenarioDone {
-				emit("run-results-changed", nil)
-			}
-		}
-	})
-	ctx = player.WithContinueOnFail(ctx, req.ContinueOnFail)
-	if session := s.CurrentRunSession(); session != nil {
-		ctx = player.WithRunID(ctx, session.RunID)
-	}
-
-	root := paths.InferProjectRoot(targets)
-	if root != "" {
-		req, artifactLayout, err = s.layoutRunRequestArtifacts(root, req)
-		if err != nil {
-			return player.ExecutionResult{}, artifactLayout, err
-		}
-	}
-	statusIncremental := false
-	if root != "" && !req.DryRun {
-		if st, err := runstatus.Open(root); err == nil {
-			engine := resolveGUIEngine(req, targets)
-			ctx = player.WithRunStatusHook(ctx, st, engine)
-			statusIncremental = true
-		}
-	}
-
-	if req.DryRun {
-		runner := player.DryRunner{}
-		result, err := runner.Execute(ctx, plan)
-		return s.finalizeGUIReports(root, req, plan, result, err, false)
-	}
-
-	workers := req.Workers
-	if workers < 1 {
-		workers = 1
-	}
-
-	appCfg, _ := s.loadAppSettings()
-	httpCreds := player.ResolveRunHTTPCredentials(req.BaseURL, plan, appCfg)
-	navWait, err := resolveRunNavWait(paths.InferProjectRoot(targets), appCfg)
-	if err != nil {
-		return player.ExecutionResult{}, artifactLayout, err
-	}
-
-	exec := player.NewPlaywrightExecutor(player.PlaywrightExecutorOptions{
-		BrowserName:       firstNonEmpty(req.Browser, "chromium"),
-		Headless:          !req.Headed,
-		BaseURL:           req.BaseURL,
-		AutoInstall:       req.InstallPW,
-		SlowMo:            float64(req.SlowMo),
-		TraceDir:          req.TraceDir,
-		VideoDir:          req.VideoDir,
-		HTTPCredentials:   httpCreds,
-		MaxLoopIterations: appCfgMaxLoops(appCfg),
-		NavWaitUntil:      navWait,
-		CloseAfterRun:     !s.canReuseLiveBrowser(req),
-		StepScreenshots:   req.HTMLPath != "" && !req.HTMLLightMode,
-	})
-
-	var result player.ExecutionResult
-	var runErr error
-	if s.canReuseLiveBrowser(req) {
-		result, runErr = s.runOnLiveBrowser(ctx, exec, plan, navWait)
-	} else {
-		runner := player.BrowserRunner{Executor: exec, ParallelWorkers: workers}
-		result, runErr = runner.Execute(ctx, plan)
-	}
-	return s.finalizeGUIReports(root, req, plan, result, runErr, statusIncremental)
+	return s.runner().ExecuteInProcess(ctx, req, emit, s.runExecutionHost())
 }
 
 func (s *Service) prepareRunFeatureSnapshot(targets []string) ([]player.FeatureInput, error) {
@@ -172,48 +73,11 @@ func (s *Service) finalizeGUIReports(
 	runErr error,
 	statusIncremental bool,
 ) (player.ExecutionResult, report.RunArtifactLayout, error) {
-	if root != "" {
-		var layoutErr error
-		req, _, layoutErr = s.layoutRunRequestArtifacts(root, req)
-		if layoutErr != nil {
-			return result, report.RunArtifactLayout{}, layoutErr
-		}
-	}
-	layout, reportErr := s.writeGUIReports(root, req, plan, result)
-	if reportErr != nil && runErr != nil {
-		return result, layout, errors.Join(runErr, reportErr)
-	}
-	if reportErr != nil {
-		return result, layout, reportErr
-	}
-	if root != "" && !statusIncremental {
-		recordGUIStatus(root, req, result)
-	}
-	return result, layout, runErr
+	return s.reporter().FinalizeRunReports(root, req, plan, result, runErr, statusIncremental)
 }
 
 func (s *Service) canReuseLiveBrowser(req RunRequest) bool {
-	if !req.ReuseLiveBrowser {
-		return false
-	}
-	if req.DryRun || !s.HasLiveBrowser() {
-		return false
-	}
-	workers := req.Workers
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > 1 {
-		return false
-	}
-	if strings.TrimSpace(req.TraceDir) != "" || strings.TrimSpace(req.VideoDir) != "" {
-		return false
-	}
-	browser := strings.ToLower(strings.TrimSpace(req.Browser))
-	if browser != "" && browser != "chromium" {
-		return false
-	}
-	return true
+	return s.runner().CanReuseLiveBrowser(req, s.HasLiveBrowser())
 }
 
 func resolveRunNavWait(projectRoot string, appCfg *settings.AppSettings) (string, error) {
@@ -222,41 +86,6 @@ func resolveRunNavWait(projectRoot string, appCfg *settings.AppSettings) (string
 		return "", err
 	}
 	return navWait, nil
-}
-
-func (s *Service) runOnLiveBrowser(ctx context.Context, exec *player.PlaywrightExecutor, plan player.ExecutionPlan, navWait string) (player.ExecutionResult, error) {
-	s.mu.RLock()
-	session := s.liveSession
-	s.mu.RUnlock()
-	if session == nil || !session.BrowserAlive() {
-		return player.ExecutionResult{}, fmt.Errorf("браузер не открыт")
-	}
-	page, ok := session.ActivePage()
-	if !ok {
-		return player.ExecutionResult{}, fmt.Errorf("браузер не открыт")
-	}
-
-	wasRecording := session.CaptureEnabled()
-	wasPaused := session.IsPaused()
-	if wasRecording && !wasPaused {
-		session.Pause()
-	}
-	releaseTestHold := session.HoldForTestRun()
-	defer releaseTestHold()
-	defer func() {
-		if wasRecording && !wasPaused {
-			session.Resume()
-		}
-	}()
-
-	browserSession, err := player.AttachToPage(page, navWait)
-	if err != nil {
-		return player.ExecutionResult{}, err
-	}
-
-	runner := player.BrowserRunner{Executor: exec}
-	result, err := runner.ExecuteSequentialAttached(ctx, exec, plan, browserSession)
-	return result, err
 }
 
 func (s *Service) formatRunOutput(result player.ExecutionResult, runErr error) string {
@@ -309,136 +138,6 @@ func resolveGUIEngine(req RunRequest, targets []string) string {
 		}
 	}
 	return "playwright"
-}
-
-func remapRunArtifacts(root string, req RunRequest) RunRequest {
-	req.HTMLPath = paths.RemapScenariaArtifact(root, req.HTMLPath)
-	req.JUnitPath = paths.RemapScenariaArtifact(root, req.JUnitPath)
-	req.SummaryJSON = paths.RemapScenariaArtifact(root, req.SummaryJSON)
-	req.AllureDir = paths.RemapScenariaArtifact(root, req.AllureDir)
-	req.TraceDir = paths.RemapScenariaArtifact(root, req.TraceDir)
-	req.VideoDir = paths.RemapScenariaArtifact(root, req.VideoDir)
-	return req
-}
-
-func (s *Service) layoutRunRequestArtifacts(root string, req RunRequest) (RunRequest, report.RunArtifactLayout, error) {
-	req = remapRunArtifacts(root, req)
-	runID := ""
-	if session := s.CurrentRunSession(); session != nil {
-		runID = session.RunID
-	}
-	layout, err := report.LayoutRunArtifacts(root, runID, report.RunArtifactInputs(
-		req.HTMLPath, req.JUnitPath, req.SummaryJSON, req.AllureDir, req.TraceDir, req.VideoDir,
-	))
-	if err != nil {
-		return req, layout, err
-	}
-	if layout.RunID != "" {
-		req.HTMLPath = layout.HTMLPath
-		req.JUnitPath = layout.JUnitPath
-		req.SummaryJSON = layout.SummaryJSON
-		req.AllureDir = layout.AllureDir
-		req.TraceDir = layout.TraceDir
-		req.VideoDir = layout.VideoDir
-	}
-	return req, layout, nil
-}
-
-func (s *Service) writeGUIReports(projectRoot string, req RunRequest, plan player.ExecutionPlan, result player.ExecutionResult) (report.RunArtifactLayout, error) {
-	runID := result.RunID
-	if runID == "" {
-		if session := s.CurrentRunSession(); session != nil {
-			runID = session.RunID
-		}
-	}
-	layout, err := report.LayoutRunArtifacts(projectRoot, runID, report.RunArtifactInputs(
-		req.HTMLPath, req.JUnitPath, req.SummaryJSON, req.AllureDir, req.TraceDir, req.VideoDir,
-	))
-	if err != nil {
-		return layout, err
-	}
-	if layout.RunID != "" {
-		req.HTMLPath = layout.HTMLPath
-		req.JUnitPath = layout.JUnitPath
-		req.SummaryJSON = layout.SummaryJSON
-		req.AllureDir = layout.AllureDir
-		req.TraceDir = layout.TraceDir
-		req.VideoDir = layout.VideoDir
-	}
-	var writeErr error
-	var prevSummary *report.RunSummaryDetailed
-	if previousSummaryPath := resolvePreviousSummaryPath(projectRoot, req.SummaryJSON, runID); previousSummaryPath != "" {
-		prevSummary = report.ReadPreviousSummary(previousSummaryPath)
-	}
-	if req.SummaryJSON != "" {
-		if err := report.WriteRunSummaryDetailed(req.SummaryJSON, report.FromExecutionResultDetailed(result)); err != nil {
-			writeErr = errors.Join(writeErr, err)
-		}
-	}
-	if req.JUnitPath != "" {
-		if err := report.WriteJUnit(req.JUnitPath, result); err != nil {
-			writeErr = errors.Join(writeErr, err)
-		}
-	}
-	if req.HTMLPath != "" {
-		bridgeURL, bridgeToken := s.ReportBridgeCredentials()
-		htmlOpts := report.HTMLOptions{
-			Plan:            plan,
-			ProjectRoot:     projectRoot,
-			LightMode:       req.HTMLLightMode,
-			BridgeURL:       bridgeURL,
-			BridgeToken:     bridgeToken,
-			Locale:          req.ReportLocale,
-			ReportDir:       filepath.Dir(req.HTMLPath),
-			PreviousSummary: prevSummary,
-			RunID:           runID,
-		}
-		if _, _, err := report.WriteHTMLModePair(req.HTMLPath, result, htmlOpts); err != nil {
-			writeErr = errors.Join(writeErr, err)
-		}
-	}
-	if req.AllureDir != "" {
-		if err := allure.WriteResults(req.AllureDir, result); err != nil {
-			writeErr = errors.Join(writeErr, err)
-		}
-	}
-	if layout.RunID != "" && projectRoot != "" {
-		if err := report.WriteLatestRunPointer(projectRoot, layout); err != nil {
-			writeErr = errors.Join(writeErr, err)
-		}
-	}
-	player.CleanupExecutionTempArtifacts(&result)
-	return layout, writeErr
-}
-
-func resolvePreviousSummaryPath(projectRoot, currentSummaryPath, runID string) string {
-	currentSummaryPath = strings.TrimSpace(currentSummaryPath)
-	runID = strings.TrimSpace(runID)
-	if strings.TrimSpace(projectRoot) == "" {
-		return currentSummaryPath
-	}
-	latest, err := report.ReadLatestRunPointer(projectRoot)
-	if err != nil || latest == nil {
-		return currentSummaryPath
-	}
-	if runID != "" && latest.RunID == runID {
-		return currentSummaryPath
-	}
-	if summary := strings.TrimSpace(latest.SummaryJSON); summary != "" {
-		return summary
-	}
-	return currentSummaryPath
-}
-
-func recordGUIStatus(root string, req RunRequest, result player.ExecutionResult) {
-	store, err := runstatus.Open(root)
-	if err != nil {
-		return
-	}
-	engine := resolveGUIEngine(req, nil)
-	for _, scenarioResult := range result.ScenarioResults {
-		_ = store.Record(player.RunstatusEntry(scenarioResult, engine))
-	}
 }
 
 func scenarioResultsToEntries(results []player.ScenarioResult, runner string) []RunResultEntry {

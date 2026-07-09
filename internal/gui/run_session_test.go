@@ -6,12 +6,12 @@ import (
 )
 
 func TestCurrentRunSessionReturnsClonedSnapshot(t *testing.T) {
-	svc := NewService()
+	runSvc := NewRunService(func() string { return "" })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	svc.mu.Lock()
-	svc.runSession = &RunSession{
+	runSvc.mu.Lock()
+	runSvc.session = &RunSession{
 		RunID:          "run-1",
 		ProjectVersion: 3,
 		RequestSnapshot: RunRequest{
@@ -22,9 +22,9 @@ func TestCurrentRunSessionReturnsClonedSnapshot(t *testing.T) {
 		Context:       ctx,
 		TempResources: []string{"tmp/a.feature"},
 	}
-	svc.mu.Unlock()
+	runSvc.mu.Unlock()
 
-	got := svc.CurrentRunSession()
+	got := runSvc.CurrentSession()
 	if got == nil {
 		t.Fatal("expected run session")
 	}
@@ -36,9 +36,9 @@ func TestCurrentRunSessionReturnsClonedSnapshot(t *testing.T) {
 	got.RequestSnapshot.Vars["A"] = "2"
 	got.TempResources[0] = "changed"
 
-	svc.mu.RLock()
-	stored := svc.runSession
-	svc.mu.RUnlock()
+	runSvc.mu.RLock()
+	stored := runSvc.session
+	runSvc.mu.RUnlock()
 	if stored == nil {
 		t.Fatal("stored run session disappeared")
 	}
@@ -50,5 +50,36 @@ func TestCurrentRunSessionReturnsClonedSnapshot(t *testing.T) {
 	}
 	if stored.TempResources[0] != "tmp/a.feature" {
 		t.Fatalf("temp resources were not cloned: %#v", stored.TempResources)
+	}
+}
+
+func TestRunServiceTryBeginRejectsOverlappingRuns(t *testing.T) {
+	runSvc := NewRunService(func() string { return "" })
+	first, err := runSvc.TryBegin(1, RunRequest{Targets: []string{"a.feature"}}, nil, DefaultRunTimeout)
+	if err != nil {
+		t.Fatalf("TryBegin: %v", err)
+	}
+	defer first.Cancel()
+	defer runSvc.Finish(first.Gen)
+
+	_, err = runSvc.TryBegin(1, RunRequest{Targets: []string{"b.feature"}}, nil, DefaultRunTimeout)
+	if err == nil {
+		t.Fatal("expected overlapping run rejection")
+	}
+}
+
+func TestServiceCurrentRunSessionDelegatesToRunService(t *testing.T) {
+	svc := NewService()
+
+	begin, err := svc.runner().TryBegin(2, RunRequest{Scenario: "S"}, nil, DefaultRunTimeout)
+	if err != nil {
+		t.Fatalf("TryBegin: %v", err)
+	}
+	defer begin.Cancel()
+	defer svc.runner().Finish(begin.Gen)
+
+	got := svc.CurrentRunSession()
+	if got == nil || got.RunID != begin.RunID {
+		t.Fatalf("unexpected delegated session: %+v", got)
 	}
 }

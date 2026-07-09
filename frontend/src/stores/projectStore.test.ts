@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { gui } from '../../wailsjs/go/models'
 import { createProjectStore, defaultProjectState } from './projectStore'
 
 function currentValue<T>(store: { subscribe: (run: (value: T) => void) => () => void }): T {
@@ -19,6 +20,8 @@ describe('projectStore', () => {
       features: ['a.feature'],
       tags: ['@smoke'],
       featureTags: { 'a.feature': ['@smoke'] },
+      scenarios: [],
+      artifacts: new gui.ProjectArtifacts(),
     })
     expect(currentValue(store)).toEqual({
       path: '/tmp/project',
@@ -26,6 +29,8 @@ describe('projectStore', () => {
       features: ['a.feature'],
       tags: ['@smoke'],
       featureTags: { 'a.feature': ['@smoke'] },
+      scenarios: [],
+      artifacts: new gui.ProjectArtifacts(),
     })
   })
 
@@ -36,8 +41,17 @@ describe('projectStore', () => {
       features: ['x.feature'],
       tags: ['@x'],
       featureTags: { 'x.feature': ['@x'] },
+      scenarios: [],
+      artifacts: new gui.ProjectArtifacts(),
     })
     store.reset()
     expect(currentValue(store)).toEqual(defaultProjectState)
+  })
+
+  it('patches partial project fields', () => {
+    const store = createProjectStore()
+    store.patch({ path: '/p', version: 2 })
+    expect(currentValue(store).path).toBe('/p')
+    expect(currentValue(store).version).toBe(2)
   })
 })

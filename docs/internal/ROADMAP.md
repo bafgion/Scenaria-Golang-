@@ -210,6 +210,107 @@ internal/player/runner_parallel.go
 
 ---
 
+# 2.1. Stabilize Parallel Batch Workers
+
+**Priority:** High
+**Status:** Planned
+**Area:** Batch Execution / Parallel Workers / Variables / Browser Context / Progress Events
+**Parent Section:** `2. Stabilize Batch Execution`
+
+## Problem
+
+При пакетном запуске с `workers > 1` возможны нестабильные ошибки, которые не проявляются при `workers = 1`.
+
+Основные риски:
+
+* shared variables между сценариями;
+* browser context reuse внутри worker-а;
+* сценарии могут зависеть от состояния другого worker-а;
+* fail-fast может выглядеть как “запустились не все тесты”;
+* progress events приходят не в порядке execution plan.
+
+## Tasks
+
+### Variables isolation
+
+* [ ] Клонировать `RunRequest.Vars` перед построением execution plan.
+* [ ] Клонировать variables для каждого `RunCase`.
+* [ ] Клонировать variables при создании `RunContext`.
+* [ ] Запретить shared mutable map между parallel scenarios.
+* [ ] Добавить `go test -race` для parallel scenarios с `Remember()`.
+
+### Worker execution consistency
+
+* [ ] Добавить regression test: batch с `workers = 1`.
+* [ ] Добавить regression test: тот же batch с `workers = 2`.
+* [ ] Добавить regression test: тот же batch с `workers = 4`.
+* [ ] Проверить, что selected cases count одинаковый при любом количестве workers.
+* [ ] Проверить, что каждый selected case выполняется ровно один раз.
+* [ ] Проверить, что runner queue не теряет cases при parallel execution.
+
+### Browser context policy
+
+* [ ] Явно определить browser context policy:
+
+  * isolated context per scenario;
+  * reuse context per worker;
+  * shared auth state only by explicit setting.
+* [ ] Задокументировать разницу между `workers = 1` и `workers > 1`.
+* [ ] Если context переиспользуется внутри worker-а, явно очищать или документировать:
+
+  * cookies;
+  * localStorage;
+  * sessionStorage;
+  * opened tabs;
+  * permissions;
+  * downloads;
+  * network routes.
+* [ ] Если auth/session state должен переиспользоваться, сделать это explicit setting.
+
+### Fail-fast behavior
+
+* [ ] Проверить поведение `ContinueOnFail = false`.
+* [ ] Проверить поведение `ContinueOnFail = true`.
+* [ ] В UI явно показывать настройку:
+
+  * “Stop on first failure”;
+  * “Continue on fail”.
+* [ ] В report разделять:
+
+  * failed;
+  * canceled;
+  * skipped;
+  * not started.
+* [ ] Не показывать canceled scenarios как обычные failed.
+* [ ] Не создавать ощущение, что batch “потерял” тесты.
+
+### Progress events
+
+* [ ] Frontend progress handling должен быть order-independent.
+* [ ] Не считать, что progress events придут в порядке `1,2,3,4`.
+* [ ] Использовать `caseId` / `index` / `runId` для обновления конкретного case.
+* [ ] Progress bar должен считать completed count, а не последний пришедший index.
+* [ ] Добавить debug logs для:
+
+  * scheduled cases;
+  * started cases;
+  * finished cases;
+  * canceled cases;
+  * failed cases.
+
+## Acceptance Criteria
+
+* [ ] Batch с `workers = 1`, `workers = 2`, `workers = 4` выполняет одинаковый набор selected cases.
+* [ ] Каждый selected case выполняется ровно один раз.
+* [ ] Variables не протекают между scenarios.
+* [ ] `go test -race` не показывает race по variables.
+* [ ] Browser context reuse policy явно определена.
+* [ ] ContinueOnFail поведение понятно в UI и report.
+* [ ] Progress UI корректен при out-of-order completion events.
+* [ ] Canceled/not-started scenarios не выглядят как потерянные тесты.
+
+---
+
 # 3. Introduce ProjectSession, RunSession and Operation Identity
 
 **Priority:** Critical
@@ -359,6 +460,149 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
 
 ---
 
+# 4.1. Stabilize Step Execution Semantics
+
+**Priority:** High
+**Status:** Planned
+**Area:** Step Execution / Variables / Loops / Retry
+**Parent Section:** `4. Unify StepMatcher and EditorAnalysisService`
+
+## Problem
+
+Механизм выполнения шагов должен быть предсказуемым:
+
+* переменные не должны протекать между сценариями;
+* `repeat` не должен молча менять количество итераций;
+* `for_each` не должен скрывать DOM errors;
+* `if/while` должны отличать `false` от runtime error;
+* retry не должен повторять опасные действия без явного разрешения.
+
+## Tasks
+
+### Variable isolation
+
+* [ ] Клонировать `RunRequest.Vars`.
+* [ ] Клонировать variables при создании `RunCase`.
+* [ ] Клонировать variables при создании `RunContext`.
+* [ ] Запретить shared mutable map между сценариями.
+* [ ] Добавить `go test -race` для parallel variables.
+
+### Repeat semantics
+
+* [ ] `repeat 0` должен быть ошибкой или явно разрешённой конструкцией с warning.
+* [ ] `repeat < 0` должен быть ошибкой.
+* [ ] `repeat > MaxLoopIterations` должен быть ошибкой, не silent clamp.
+* [ ] Overflow при parsing count должен быть ошибкой.
+* [ ] Repeat должен выполнять ровно requested count.
+
+### ForEach semantics
+
+* [ ] Не игнорировать ошибки `InnerText`.
+* [ ] Логировать selector/index/iteration при ошибке.
+* [ ] Явно определить модель:
+
+  * snapshot;
+  * live DOM;
+  * strict mode.
+* [ ] Если элемент исчез во время итерации — вернуть понятную ошибку.
+* [ ] Переменная цикла не должна получать fallback/мусорное значение.
+
+### If / While semantics
+
+* [ ] `EvaluateCondition` должен возвращать `(bool, error)`.
+* [ ] Отличать false condition от locator/page error.
+* [ ] Отличать timeout от false.
+* [ ] Отличать context canceled от runtime failure.
+* [ ] `while` не должен завершаться silently из-за Playwright error.
+
+### Retry policy
+
+* [ ] Разделить retry actions на safe и risky.
+* [ ] Safe by default:
+
+  * waits;
+  * assertions;
+  * visibility checks.
+* [ ] Risky only opt-in:
+
+  * click;
+  * double-click;
+  * fill;
+  * select;
+  * check;
+  * uncheck;
+  * download-click.
+* [ ] Добавить настройки:
+
+  * `retryWaits`;
+  * `retryAssertions`;
+  * `retryActions`.
+* [ ] Retry attempts должны отображаться в report.
+
+## Acceptance Criteria
+
+* [ ] Scenario A не может изменить variables Scenario B.
+* [ ] Repeat не меняет count silently.
+* [ ] ForEach не скрывает DOM errors.
+* [ ] While не завершает цикл из-за error как будто condition false.
+* [ ] Click/fill/download не retry-ятся silently.
+* [ ] Retry attempts видны в отчёте.
+* [ ] `go test -race` не показывает race по variables.
+
+---
+
+# 4.2. Stabilize Runtime Step Semantics and Reporting
+
+**Priority:** High
+**Status:** Planned
+**Area:** Step Records / Loop Reporting / Retry Reporting / Terminal Steps
+**Parent Section:** `4. Unify StepMatcher and EditorAnalysisService`
+
+## Problem
+
+Отчёт должен объяснять не только какой шаг упал, но и:
+
+* на какой итерации;
+* на какой retry attempt;
+* был ли шаг skipped/canceled;
+* был ли сценарий завершён terminal browser action.
+
+## Tasks
+
+* [ ] Добавить `IterationPath` в `StepRecord`.
+* [ ] Разделить:
+
+  * logical step;
+  * loop iteration;
+  * retry attempt;
+  * generated wait/assert step.
+* [ ] Screenshots/artifacts должны включать iteration index.
+* [ ] Negative wait duration считать ошибкой.
+* [ ] Zero wait duration либо warning, либо explicit allowed.
+* [ ] `close-browser` / `close-tab` не должны silently делать scenario passed при оставшихся шагах.
+* [ ] Если browser closed до конца scenario:
+
+  * remaining steps = skipped/canceled;
+  * scenario status не должен быть passed.
+* [ ] Добавить total action attempts limit per scenario.
+* [ ] В отчёте показывать:
+
+  * loop iteration;
+  * retry attempt;
+  * skipped;
+  * canceled;
+  * terminal browser action.
+
+## Acceptance Criteria
+
+* [ ] Ошибка внутри `repeat[3]` видна как `repeat[3]`, а не просто line number.
+* [ ] Retry внутри loop не маскирует фактическое число попыток.
+* [ ] Negative wait не превращается в `0ms`.
+* [ ] `close-browser` не делает невыполненные шаги passed.
+* [ ] Report показывает logical order и runtime attempts.
+
+---
+
 # 5. Stabilize Backend Storage, Locks and File Operations
 
 **Priority:** High
@@ -505,6 +749,234 @@ frontend/src/lib/recordedStepEditor.ts
 
 ---
 
+# 6.1. Stabilize Element Picker and Selector Generation
+
+**Priority:** High
+**Status:** Planned
+**Area:** Recorder / Picker / Selector Generation
+**Parent Section:** `6. Stabilize Recorder Lifecycle`
+
+## Problem
+
+Picker может выбирать некорректный selector, потому что он выбирает первый подходящий selector, но не доказывает, что selector уникален и указывает именно на выбранный элемент.
+
+## Tasks
+
+### Candidate model
+
+* [ ] Генерировать ranked selector candidates.
+* [ ] Для каждого candidate считать:
+
+  * score;
+  * uniqueness;
+  * matches count;
+  * reason;
+  * strategy;
+  * warnings.
+* [ ] UI должен показывать selector confidence.
+* [ ] Пользователь должен видеть альтернативные candidates.
+
+### Validation before return
+
+* [ ] Проверять, что selector matches exactly one element.
+* [ ] Проверять, что matched element === picked element или корректный actionable ancestor.
+* [ ] Проверять visibility.
+* [ ] Проверять actionability по типу действия.
+* [ ] Не возвращать non-unique selector silently.
+
+### Strategy order
+
+* [ ] Для click предпочитать:
+
+  * `data-testid`;
+  * role/aria;
+  * title;
+  * stable id;
+  * contextual;
+  * text.
+* [ ] Для input предпочитать:
+
+  * `data-testid`;
+  * id;
+  * name;
+  * aria;
+  * label;
+  * placeholder.
+* [ ] Понизить score text-only selectors.
+* [ ] Добавить warning для text-only selector.
+
+### Input / label targeting
+
+* [ ] `label[for]` должен возвращать selector control, не label.
+* [ ] Nested label должен возвращать вложенный input.
+* [ ] Adjacent label должен строить contextual input selector.
+* [ ] Fill/select steps не должны получать selector label как primary target.
+
+### Action-aware picker
+
+* [ ] Определять suggested action:
+
+  * click;
+  * fill;
+  * select;
+  * check;
+  * uncheck;
+  * hover.
+* [ ] Input-like elements:
+
+  * input;
+  * textarea;
+  * select;
+  * contenteditable;
+  * role=textbox;
+  * role=combobox;
+  * role=spinbutton;
+  * role=searchbox.
+* [ ] Recorded step должен использовать suggested action.
+* [ ] Пользователь может переопределить action.
+
+### Iframe / Shadow DOM / SVG / Canvas
+
+* [ ] Добавить iframe-aware picker.
+* [ ] Same-origin iframe: выбирать внутренний элемент.
+* [ ] Cross-origin iframe: честно показывать limitation.
+* [ ] Добавить shadow DOM hit-test.
+* [ ] SVG click нормализовать до clickable ancestor.
+* [ ] Canvas selector должен иметь uniqueness/warning.
+* [ ] Component-library heuristics добавить позже после базовой стабилизации.
+
+## Acceptance Criteria
+
+* [ ] Picker возвращает validated selector.
+* [ ] Selector указывает на выбранный элемент.
+* [ ] Non-unique selector не выбирается silently.
+* [ ] Input получает selector input/control, не label.
+* [ ] `data-testid`/role/aria предпочитаются raw text.
+* [ ] Iframe behavior explicit.
+* [ ] Low-confidence selector показывает warning.
+* [ ] Пользователь может выбрать альтернативный selector.
+
+---
+
+# 6.2. Stabilize Browser Selector Validation
+
+**Priority:** High
+**Status:** Planned
+**Area:** Selector Validation / Browser Validation / Dynamic UI
+**Parent Section:** `6. Stabilize Recorder Lifecycle`
+
+## Problem
+
+Browser selector validation может давать ложную уверенность. Она может проверять selector на initial page, не выполняя flow, который делает элемент доступным. Также validation должна быть action-aware, а не только visible-check.
+
+## Tasks
+
+* [ ] Разделить validation modes:
+
+  * static validation;
+  * flow-aware validation.
+* [ ] Static validation не считать источником истины для dynamic UI.
+* [ ] В UI показывать: “validated on current/initial page only”.
+* [ ] Для dynamic elements не выдавать misleading missing без контекста.
+* [ ] Сделать validation action-aware:
+
+  * click → visible + enabled + actionable;
+  * fill → editable input/textarea/contenteditable;
+  * select → select/combobox;
+  * check → checkbox/radio;
+  * upload → input[type=file].
+* [ ] Для chained selectors показывать matches count.
+* [ ] Для hover selectors не выбирать `.First()` без ambiguous warning.
+* [ ] Для contextual selectors проверять container + target uniqueness.
+* [ ] Flow-aware validation должна уметь выполнять safe actions до проверяемого шага.
+* [ ] Добавить validation diagnostics в отчёт/GUI.
+
+## Acceptance Criteria
+
+* [ ] Selector validation не говорит “OK”, если action невозможен.
+* [ ] Selector validation не говорит “missing” без предупреждения о dynamic flow.
+* [ ] Fill selector проверяется как editable target.
+* [ ] Click selector проверяется как actionable target.
+* [ ] Ambiguous chained selector получает warning.
+* [ ] Validation result объясняет limitation.
+
+---
+
+# 6.3. Stabilize Recorder Event Ordering and Navigation Causality
+
+**Priority:** High
+**Status:** Planned
+**Area:** Recorder / Event Ordering / Navigation / Generated Steps
+**Parent Section:** `6. Stabilize Recorder Lifecycle`
+
+## Problem
+
+Recorder может записать переход по URL раньше клика, который этот переход вызвал.
+
+Неверный output:
+
+```gherkin
+открыт "https://site/dashboard"
+нажимаю "button:has-text(\"Войти\")"
+```
+
+Правильный output:
+
+```gherkin
+нажимаю "button:has-text(\"Войти\")"
+ожидаю адрес "https://site/dashboard"
+```
+
+Или только click, если URL wait disabled.
+
+## Root Cause
+
+Recorder смешивает два источника:
+
+```text
+1. browser-side interaction events:
+   click/input/change/press
+
+2. backend polling:
+   page.URL() changed
+```
+
+URL polling может сработать раньше, чем backend прочитает browser-side click queue.
+
+## Tasks
+
+* [ ] Добавить sequence number в recorder events.
+* [ ] Добавить timestamp в recorder events.
+* [ ] Сначала drain browser recorder events, потом проверять URL change.
+* [ ] Добавить navigation correlation с последним user action.
+* [ ] Не записывать click-caused navigation как `открыт` перед click.
+* [ ] Для click-caused navigation генерировать:
+
+  * click step;
+  * optional `ожидаю адрес`.
+* [ ] `открыт` использовать только для explicit navigation/open.
+* [ ] Добавить correlation window, например 0–2000ms.
+* [ ] Добавить immediate event flush для navigation-causing actions.
+* [ ] Защититься от потери old-page event queue при full page navigation.
+* [ ] Добавить тесты:
+
+  * full navigation after click;
+  * SPA route after click;
+  * delayed navigation;
+  * redirect without click;
+  * old page destroyed before polling.
+
+## Acceptance Criteria
+
+* [ ] Click, вызывающий navigation, записывается до navigation step.
+* [ ] Recorder не выводит `открыт URL` перед click, который вызвал этот URL.
+* [ ] Full page navigation не теряет preceding click.
+* [ ] SPA route change не меняет порядок событий.
+* [ ] Initial page open всё ещё записывается как `открыт`.
+* [ ] Generated scenario replays in logical user order.
+
+---
+
 # 7. Stabilize Reports and Artifacts
 
 **Priority:** High
@@ -635,6 +1107,56 @@ internal/player/runner_parallel.go
 
 ---
 
+# 8.1. Stabilize Browser Context Isolation
+
+**Priority:** Medium / High
+**Status:** Planned
+**Area:** Browser Context / Scenario Isolation / Parallel Execution
+**Parent Section:** `8. Stabilize Playwright Runner Lifecycle`
+
+## Problem
+
+Сценарии не должны случайно влиять друг на друга через browser state:
+
+* cookies;
+* localStorage;
+* sessionStorage;
+* opened tabs;
+* downloads;
+* traces;
+* permissions;
+* network state.
+
+## Tasks
+
+* [ ] Явно задокументировать browser context reuse policy.
+* [ ] Проверить context/page lifecycle per scenario.
+* [ ] Проверить behavior в parallel workers.
+* [ ] Определить, когда context reuse допустим.
+* [ ] Если reuse disabled — очищать:
+
+  * cookies;
+  * localStorage;
+  * sessionStorage;
+  * opened tabs;
+  * downloads;
+  * permissions;
+  * route/network state.
+* [ ] Если auth state reuse включён — сделать это explicit setting.
+* [ ] Artifacts/downloads/traces изолировать per case.
+* [ ] Добавить тест: Scenario A не влияет на Scenario B.
+* [ ] Добавить тест: parallel scenarios не делят storage accidentally.
+
+## Acceptance Criteria
+
+* [ ] Сценарии изолированы по умолчанию или reuse явно включён.
+* [ ] Parallel workers не делят mutable browser state случайно.
+* [ ] Auth reuse контролируемый, не implicit.
+* [ ] Downloads/artifacts не смешиваются между cases.
+* [ ] Scenario A не влияет на Scenario B.
+
+---
+
 # 9. Performance and Memory Optimization
 
 **Priority:** Medium
@@ -715,7 +1237,7 @@ internal/scenario
 # 10. Architecture Cleanup
 
 **Priority:** Medium
-**Status:** Planned
+**Status:** Done
 **Area:** Architecture / Maintainability / Ownership
 
 ## Problem
@@ -754,9 +1276,19 @@ docs/architecture
   * `diagnosticsStore`;
   * `recorderStore`;
   * `reportsStore`;
-  * `wailsEventsController`.
-* [ ] Оставить `App.svelte` как UI shell, а не god component.
-* [ ] Оставить `gui.Service` как Wails-facing façade.
+  * `wailsEventsController`;
+  * `settingsStore`, `runFormStore`, `vanessaRunStore`, `pluginRunStore`, `editorStore`;
+  * `layoutStore`, `uiPrefsStore`, `dialogsStore`, `onboardingTourStore`;
+  * `recorderPrefsStore`, `recordFormStore`, `tabsStore` (extended);
+  * `journalStore`, `featureDialogStore`, `testClientStore`, `validateDialogStore`;
+  * `pluginsStore`, `updateDialogStore`, `catalogStore`, `contextMenuStore`, `postRecordStore`;
+  * `confirmDialogStore`, `menuStore`, `projectReplaceStore`, `pickerDialogStore`, `httpAuthDialogStore`, `stepsHelpDialogStore`, `otpDialogStore`;
+  * `splashStore`, `viewportStore`, `recentsStore`, `settingsDialogStore`, `appMetaStore`, `sessionStore` (layout `bottomTab` in `layoutStore`);
+  * `dialogBindController` (dialog `bind:` session locals + sync/flush);
+  * `workspaceSessionController` (settings/session DTO build, persist, draft autosave);
+  * `paletteCommandsController` (derived palette command list from shell actions).
+* [x] Оставить `App.svelte` как UI shell, а не god component (см. `docs/architecture/app-shell.md`).
+* [x] Оставить `gui.Service` как Wails-facing façade (см. `docs/architecture/gui-facade.md`).
 * [x] Вынести backend services:
 
   * `ProjectService`;
@@ -764,20 +1296,23 @@ docs/architecture
   * `EditorAnalysisService`;
   * `RecorderService`;
   * `ReportService`;
-  * `SettingsStore`;
-  * `FileOperationService`.
+  * `SettingsService`;
+  * `FileOperationService`;
+  * `TestClientService`;
+  * `PluginService`;
+  * `CatalogService`.
 * [x] Убрать GUI-to-CLI coupling через global stdout.
 * [x] Пересмотреть package-level mutable singletons.
 * [x] Добавить reset/cleanup APIs для тестов там, где globals остаются.
 
 ## Acceptance Criteria
 
-* [ ] У каждого critical state есть один владелец.
-* [ ] Derived state явно обозначен как derived.
-* [ ] `App.svelte` не владеет unrelated domains напрямую.
-* [ ] `gui.Service` делегирует domain services.
-* [ ] CLI и GUI используют общие service APIs, а не GUI → CLI → stdout capture.
-* [ ] Новые фичи не добавляют новый source of truth без документации.
+* [x] У каждого critical state есть один владелец (`docs/architecture/state-ownership.md`).
+* [x] Derived state явно обозначен как derived.
+* [x] `App.svelte` не владеет unrelated domains напрямую (shell contract в `app-shell.md`).
+* [x] `gui.Service` делегирует domain services (карта в `gui-facade.md`, smoke tests в `service_facade_test.go`).
+* [x] CLI и GUI используют общие handler APIs (`cli.Run*WithOutput` + in-process services); global stdout capture не используется.
+* [x] Новые фичи не добавляют новый source of truth без документации (policy в `state-ownership.md` § Adding New State).
 
 ---
 
@@ -789,12 +1324,19 @@ docs/architecture
 0. Add Safety Tests Before Refactoring
 1. Stabilize Monaco Tabs and Editor State
 2. Stabilize Batch Execution
+2.1. Stabilize Parallel Batch Workers
 3. Introduce ProjectSession, RunSession and Operation Identity
 4. Unify StepMatcher and EditorAnalysisService
+4.1. Stabilize Step Execution Semantics
+4.2. Stabilize Runtime Step Semantics and Reporting
 5. Stabilize Backend Storage, Locks and File Operations
 6. Stabilize Recorder Lifecycle
+6.1. Stabilize Element Picker and Selector Generation
+6.2. Stabilize Browser Selector Validation
+6.3. Stabilize Recorder Event Ordering and Navigation Causality
 7. Stabilize Reports and Artifacts
 8. Stabilize Playwright Runner Lifecycle
+8.1. Stabilize Browser Context Isolation
 9. Performance and Memory Optimization
 10. Architecture Cleanup
 ```

@@ -23,6 +23,9 @@ describe('recorderStore', () => {
       targetPath: 'features/a.feature',
       recordSessionId: 'record-1',
       browserSessionId: 'browser-1',
+      liveRecordStepLines: {},
+      lastRecordTarget: '',
+      pauseToggleGuardUntil: 0,
     })
   })
 
@@ -34,6 +37,9 @@ describe('recorderStore', () => {
       targetPath: 'x.feature',
       recordSessionId: 'record-x',
       browserSessionId: 'browser-x',
+      liveRecordStepLines: { 1: 2 },
+      lastRecordTarget: 'x.feature',
+      pauseToggleGuardUntil: 100,
     })
     store.reset()
     expect(currentValue(store)).toEqual(defaultRecorderState)

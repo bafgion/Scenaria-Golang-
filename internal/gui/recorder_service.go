@@ -8,11 +8,34 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 )
 
-// RecorderService owns recorder session operations that can be delegated from gui.Service facade.
-type RecorderService struct{}
+// RecorderService owns recorder session state and operations delegated from gui.Service facade.
+type RecorderService struct {
+	session RecorderSessionManager
+}
 
 func NewRecorderService() *RecorderService {
 	return &RecorderService{}
+}
+
+func (s *RecorderService) HasLiveBrowser() bool {
+	if s == nil {
+		return false
+	}
+	return s.session.HasLiveBrowser()
+}
+
+func (s *RecorderService) LiveSession() *recorder.LiveSession {
+	if s == nil {
+		return nil
+	}
+	return s.session.LiveSession()
+}
+
+func (s *RecorderService) Session() *RecorderSessionManager {
+	if s == nil {
+		return nil
+	}
+	return &s.session
 }
 
 func (s *RecorderService) PollBrowserSession(session *recorder.LiveSession, browserSessionID string) BrowserSessionDTO {

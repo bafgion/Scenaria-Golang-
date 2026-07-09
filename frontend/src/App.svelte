@@ -1,26 +1,68 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
+  import { get } from 'svelte/store'
   import MonacoEditor from './lib/MonacoEditor.svelte'
   import WelcomePanel from './lib/WelcomePanel.svelte'
   import CatalogEmptyState from './lib/CatalogEmptyState.svelte'
   import FeatureCatalogTree from './lib/FeatureCatalogTree.svelte'
   import EditorTabBar from './lib/EditorTabBar.svelte'
-  import { buildCatalogViewState, buildCatalogStructure, buildCatalogViewStateFromBase, buildRunByPathMap, catalogStructureKey, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
+  import { buildCatalogViewState, buildCatalogViewStateFromBase, buildRunByPathMap, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
   import {
     buildBatchSelectedSet,
-    remapBatchSelectedPaths,
     selectAllFeaturesUnder,
-    toggleBatchPath,
   } from './lib/batchSelection'
   import { debounce } from './lib/uiScheduler'
   import { perfMark, perfNow } from './lib/perfMark'
   import { clearFeatureSymbolCache, evictFeatureSymbolCache } from './lib/featureSymbolCache'
-  import { formatRunProgressLabel, shouldRefreshRunResultsFromProgress } from './controllers/wailsEventsController'
+  import {
+    bindWailsEvents,
+    createEventStalenessGuards,
+    createStaleEventLogger,
+    formatRunProgressLabel,
+    shouldRefreshRunResultsFromProgress,
+  } from './controllers/wailsEventsController'
+  import { createDialogBindController } from './controllers/dialogBindController'
+  import { buildPaletteCommands, type PaletteActions } from './controllers/paletteCommandsController'
+  import { createWorkspaceSessionController } from './controllers/workspaceSessionController'
   import { createProjectStore, type ProjectState } from './stores/projectStore'
   import { createRunnerStore } from './stores/runnerStore'
   import { createDiagnosticsStore } from './stores/diagnosticsStore'
   import { createRecorderStore } from './stores/recorderStore'
   import { createReportsStore } from './stores/reportsStore'
+  import { anyAppDialogOpen as computeAnyAppDialogOpen, createDialogsStore } from './stores/dialogsStore'
+  import { createRecordFormStore } from './stores/recordFormStore'
+  import { createLayoutStore } from './stores/layoutStore'
+  import { createUiPrefsStore } from './stores/uiPrefsStore'
+  import { createOnboardingTourStore } from './stores/onboardingTourStore'
+  import { createRecorderPrefsStore } from './stores/recorderPrefsStore'
+  import { createSettingsStore } from './stores/settingsStore'
+  import { createRunFormStore } from './stores/runFormStore'
+  import { createVanessaRunStore } from './stores/vanessaRunStore'
+  import { createPluginRunStore } from './stores/pluginRunStore'
+  import { createEditorStore } from './stores/editorStore'
+  import { createRunDialogStore } from './stores/runDialogStore'
+  import { createValidateDialogStore } from './stores/validateDialogStore'
+  import { createJournalStore } from './stores/journalStore'
+  import { createFeatureDialogStore } from './stores/featureDialogStore'
+  import { createTestClientStore } from './stores/testClientStore'
+  import { createPluginsStore } from './stores/pluginsStore'
+  import { createUpdateDialogStore } from './stores/updateDialogStore'
+  import { createCatalogStore } from './stores/catalogStore'
+  import { createContextMenuStore } from './stores/contextMenuStore'
+  import { createPostRecordStore } from './stores/postRecordStore'
+  import { createConfirmDialogStore } from './stores/confirmDialogStore'
+  import { createMenuStore } from './stores/menuStore'
+  import { createProjectReplaceStore } from './stores/projectReplaceStore'
+  import { createPickerDialogStore } from './stores/pickerDialogStore'
+  import { createHttpAuthDialogStore } from './stores/httpAuthDialogStore'
+  import { createStepsHelpDialogStore } from './stores/stepsHelpDialogStore'
+  import { createOtpDialogStore } from './stores/otpDialogStore'
+  import { createSplashStore } from './stores/splashStore'
+  import { createViewportStore } from './stores/viewportStore'
+  import { createRecentsStore } from './stores/recentsStore'
+  import { createSettingsDialogStore } from './stores/settingsDialogStore'
+  import { createAppMetaStore } from './stores/appMetaStore'
+  import { createSessionStore } from './stores/sessionStore'
   import {
     MAX_OPEN_EDITOR_TABS,
     pathsToRetainModels,
@@ -28,10 +70,9 @@
     tabNeedsDiskReload,
     trimRetainedTabBodies,
   } from './lib/tabMemory'
-  import { reduceTabsAfterClose } from './stores/tabsStore'
+  import { createTabsStore, reduceTabsAfterClose } from './stores/tabsStore'
   import SettingsDialog from './lib/SettingsDialog.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
-  import type { PaletteCommand } from './lib/paletteTypes'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
   import HotkeysDialog from './lib/HotkeysDialog.svelte'
   import PluginsDialog from './lib/PluginsDialog.svelte'
@@ -63,12 +104,7 @@
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
   import { applyRecordStepEvent, type RecordStepEvent } from './lib/recordedStepOps'
-  import { isUntitled, makeUntitledPath, syncUntitledCounterFromPaths, untitledLabel } from './lib/untitled'
-  import {
-    buildSessionTabsSnapshot,
-    sessionTabPathsFromSettings,
-    untitledContentMap,
-  } from './lib/sessionTabs'
+  import { isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
   import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { batchRunFormFrom, defaultRunForm, runFormFromMode, type RunForm, type RunFormMode } from './lib/runTypes'
   import { formatLastRunSummary } from './lib/runSummary'
@@ -96,7 +132,6 @@
   import { ONBOARDING_TOUR_VERSION } from './lib/onboarding/tourSteps'
   import type { TourContext } from './lib/onboarding/tourState'
   import { createTranslator, locale, setLocale, t, type Locale } from './lib/i18n'
-  import { loadLayout, saveLayout, resetLayout as resetUILayout } from './lib/layout'
   import { isLargeFeatureFile, LARGE_FILE_LINE_THRESHOLD } from './lib/editorLargeFile'
   import { isEditorAnalysisSnapshotVisible } from './lib/editorAnalysisSync'
   import {
@@ -127,7 +162,6 @@
   import {
     DEFAULT_EDITOR_SETTINGS,
     editorSettingsFromDTO,
-    editorSettingsToDTO,
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
@@ -227,122 +261,300 @@
   type EditorStepRow = gui.EditorStepRow
 
   const projectStore = createProjectStore()
+  const tabsStore = createTabsStore(WELCOME_KEY)
   const runnerStore = createRunnerStore()
   const diagnosticsStore = createDiagnosticsStore()
   const recorderStore = createRecorderStore()
   const reportsStore = createReportsStore()
+  const dialogsStore = createDialogsStore()
+  const layoutStore = createLayoutStore()
+  const uiPrefsStore = createUiPrefsStore()
+  const onboardingTourStore = createOnboardingTourStore()
+  const recorderPrefsStore = createRecorderPrefsStore()
+  const settingsStore = createSettingsStore()
+  const vanessaRunStore = createVanessaRunStore()
+  const pluginRunStore = createPluginRunStore()
+  const editorStore = createEditorStore()
+  const runDialogStore = createRunDialogStore()
+  const validateDialogStore = createValidateDialogStore()
+  const journalStore = createJournalStore()
+  const featureDialogStore = createFeatureDialogStore()
+  const testClientStore = createTestClientStore()
+  const pluginsStore = createPluginsStore()
+  const updateDialogStore = createUpdateDialogStore()
+  const catalogStore = createCatalogStore()
+  const contextMenuStore = createContextMenuStore()
+  const postRecordStore = createPostRecordStore()
+  const confirmDialogStore = createConfirmDialogStore()
+  const menuStore = createMenuStore()
+  const projectReplaceStore = createProjectReplaceStore()
+  const pickerDialogStore = createPickerDialogStore()
+  const httpAuthDialogStore = createHttpAuthDialogStore()
+  const stepsHelpDialogStore = createStepsHelpDialogStore()
+  const otpDialogStore = createOtpDialogStore()
+  const splashStore = createSplashStore({ appReady: false, message: t('splash.starting'), progress: 0, fading: false })
+  const viewportStore = createViewportStore()
+  const recentsStore = createRecentsStore()
+  const settingsDialogStore = createSettingsDialogStore()
+  const appMetaStore = createAppMetaStore()
+  const sessionStore = createSessionStore()
+  const runFormStore = createRunFormStore(
+    defaultRunForm({ headed: true, installPW: true, html: true, htmlLightMode: true }),
+  )
+  const recordFormStore = createRecordFormStore({
+    recordFeatureName: t('dialogs.record.featureDefault'),
+    recordScenarioName: t('dialogs.record.scenarioDefault'),
+  })
 
-  let version = ''
-  let projectPath = ''
-  let currentProjectVersion = 0
-  let features: string[] = []
-  let tags: string[] = []
-  let projectScenarios: string[] = []
-  let featureTags: Record<string, string[]> = {}
-  let tabs: EditorTab[] = []
-  let activeTab = WELCOME_KEY
-  let welcomeTabVisible = true
-  let editorText = ''
-  let logText = ''
-  let stepStatusError = false
-  let testClients: string[] = []
+  const dialogBinds = createDialogBindController({
+    settingsStore,
+    uiPrefsStore,
+    recorderPrefsStore,
+    recordFormStore,
+    validateDialogStore,
+    featureDialogStore,
+    projectReplaceStore,
+    testClientStore,
+    vanessaRunStore,
+    pluginRunStore,
+    runFormStore,
+    settingsDialogStore,
+  })
+
+  const workspaceSession = createWorkspaceSessionController({
+    stores: {
+      settingsStore,
+      recorderPrefsStore,
+      uiPrefsStore,
+      recentsStore,
+      dialogBinds,
+      tabsStore,
+      testClientStore,
+    },
+    welcomeKey: WELCOME_KEY,
+    getProjectPath: () => projectPath,
+    getTabs: () => tabs,
+    getActiveTab: () => activeTab,
+    getEditorText: () => editorText,
+    syncActiveTabContent,
+    isUntitled,
+    saveSettings: SaveSettings,
+    saveFeatureDraft: SaveFeatureDraft,
+    openProject: OpenProject,
+    applyProjectScan,
+    listTestClients: ListTestClients,
+    loadFeature: (path) => loadFeature(path),
+    applyEditorText,
+    trimTabsMemory,
+    appendLog,
+    setStatus,
+    tr: (key, vars) => createTranslator(get(locale) as Locale)(key, vars),
+  })
+
+  $: tr = createTranslator($locale)
+
+  $: ({
+    showSettings,
+    showCommandPalette,
+    showSnippetPalette,
+    showRecord,
+    showPluginRun,
+    showOtp,
+    showRun,
+    showTestClient,
+    showExport,
+    showImport,
+    showImportFeatures,
+    showDuplicateFeature,
+    showRefactorUrl,
+    showOpenProject,
+    showRenameFeature,
+    showMoveFeature,
+    showValidate,
+    showUpdateCheck,
+    showInitProject,
+    showNewProjectWizard,
+    showSteps,
+    showStepsHelp,
+    showAbout,
+    showPlugins,
+    showProjectReplace,
+    showHotkeys,
+    showRunHistory,
+    showVanessaRun,
+    showVanessaSettings,
+    showVanessaMonitor,
+    showHttpAuth,
+    showPickerStep,
+    showPostRecordDiff,
+  } = $dialogsStore)
+
+  $: ({
+    sidebarVisible,
+    previewVisible,
+    previewWidth,
+    bottomPanelOpen,
+    bottomPanelHeight,
+    bottomTab,
+    resizingBottom,
+    resizingSteps,
+    resizingSidebar,
+    resizingPreview,
+    previewPaneMounted,
+  } = $layoutStore)
+
+  $: ({
+    toolbarCompact,
+    stepsPanelVisible,
+    stepsPanelHeight,
+    sidebarWidth,
+    checklistDismissed,
+    welcomePlayedSuccess,
+    onboardingCompleted,
+    onboardingDismissed,
+    runDialogConfirmed,
+    pickerDuringRecording,
+    stepsPanelCollapsed,
+  } = $uiPrefsStore)
+
+  $: ({
+    active: showOnboardingTour,
+    stepId: onboardingTourStepId,
+    validateDone: onboardingValidateDone,
+    dryRunDone: onboardingDryRunDone,
+    journalVisited: onboardingJournalVisited,
+  } = $onboardingTourStore)
+
+  $: ({ filterRecording, navOnlyRecording, hoverRecord } = $recorderPrefsStore)
+
+  $: ({
+    recordURL,
+    recordOutput,
+    recordIdle,
+    recordAppendTo,
+    recordTestClient,
+    recordFeatureName,
+    recordScenarioName,
+  } = $recordFormStore)
+
+  $: ({
+    path: projectPath,
+    version: currentProjectVersion,
+    features,
+    tags,
+    featureTags,
+    scenarios: projectScenarios,
+  } = $projectStore)
+
+  $: ({ tabs, activeTab, welcomeTabVisible, pendingCloseTab } = $tabsStore)
+
+  $: ({
+    browser: settingsBrowser,
+    headless: settingsHeadless,
+    parallelWorkers: settingsWorkers,
+    slowMo: settingsSlowMo,
+    scrollBeforeClick: settingsScrollBeforeClick,
+    hoverRecordMinMs: settingsHoverRecordMinMs,
+    maxLoopIterations: settingsLoops,
+    checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
+    selectorClickStrategies: settingsSelectorClickStrategies,
+    selectorInputStrategies: settingsSelectorInputStrategies,
+    navWaitUntil: settingsNavWaitUntil,
+    startUrl: startURL,
+    uiLocale,
+  } = $settingsStore)
+
+  $: ({ lastRun, runForm } = $runFormStore)
+
+  $: ({
+    dry: vanessaDry,
+    preferRerun: vanessaPreferRerun,
+    tag: vanessaTag,
+    excludeTags: vanessaExcludeTags,
+    scenario: vanessaScenario,
+    rerunDir: vanessaRerunDir,
+    installEpf: vanessaInstallEpf,
+    epfUrl: vanessaEpfUrl,
+    epfDest: vanessaEpfDest,
+    platformExe: vanessaPlatformExe,
+    epfPath: vanessaEpfPath,
+    ib: vanessaIB,
+    reportAllure: vanessaReportAllure,
+    vaDir: vanessaVaDir,
+    vaFiles: vanessaVaFiles,
+    dialogScenarios: vanessaDialogScenarios,
+    running: vanessaRunning,
+    snapshot: vanessaSnapshot,
+    watchDir: vanessaWatchDir,
+    plannedTotal: vanessaPlannedTotal,
+  } = $vanessaRunStore)
+
+  $: ({
+    name: pluginRunName,
+    dry: pluginRunDry,
+    tag: pluginRunTag,
+    scenario: pluginRunScenario,
+    dialogScenarios: pluginRunScenarios,
+  } = $pluginRunStore)
+
+  $: ({
+    text: editorText,
+    textVersion: editorTextVersion,
+    cursorLine: editorCursorLine,
+    steps: editorSteps,
+    stepsTextVersion: editorStepsTextVersion,
+    stepsPanelTab,
+  } = $editorStore)
+
+  $: ({ title: runDialogTitle, scenarios: runDialogScenarios } = $runDialogStore)
+
+  $: ({
+    playing,
+    runId: activeRunEventId,
+    total: runProgressTotal,
+    current: runProgressCurrent,
+    label: playingLabel,
+    logStreaming: runLogStreaming,
+    cancelling: runCancelling,
+    lastRunSince,
+    lastRunBatchResults,
+    lastErrorEntry,
+    dryRunActive: runningDryRun,
+  } = $runnerStore)
+
+  $: ({
+    browserOpen,
+    recording,
+    paused: recordPaused,
+    targetPath: recordingTargetPath,
+    recordSessionId: activeRecordSessionId,
+    browserSessionId: activeBrowserSessionId,
+    liveRecordStepLines,
+    lastRecordTarget,
+    pauseToggleGuardUntil,
+  } = $recorderStore)
+
+  $: appVersion = $appMetaStore.version
+  $: catalogBaseTree = $catalogStore.baseTree
+  $: stepStatusError = $diagnosticsStore.stepStatusError
+  $: hintFixInFlight = $diagnosticsStore.hintFixInFlight
+  $: ({ allureInstalled, allureServeRunning } = $reportsStore)
+  $: projectArtifacts = $projectStore.artifacts
+  $: ({ projects: recentProjects, features: recentFeatures } = $recentsStore)
+  $: flakyByPath = flakyScenarioMap($reportsStore.flakyMetrics)
+  $: flakyStepByPath = flakyStepHints($reportsStore.flakyMetrics)
+
+  $: appReady = $splashStore.appReady
+  $: splashMessage = $splashStore.message
+  $: splashProgress = $splashStore.progress
+  $: splashFading = $splashStore.fading
+  $: viewportWidth = $viewportStore.width
+  $: viewportHeight = $viewportStore.height
+  $: viewportAutoCompact = $viewportStore.autoCompact
+  $: toolbarIconOnly = $viewportStore.toolbarIconOnly
+
   let monaco: MonacoEditor | undefined
-
-  let appReady = false
-  let splashMessage = t('splash.starting')
-  let splashProgress = 0
-  let splashFading = false
-  let showSettings = false
-  let settingsDialogBaseline: gui.AppSettingsDTO | null = null
-  let showCommandPalette = false
-  let showSnippetPalette = false
-  let showRecord = false
-  let recordMode: 'live' | 'baseline' = 'live'
-  let baselineBusy = false
-  let showPluginRun = false
-  let pluginRunName = ''
-  let pluginRunDry = false
-  let pluginRunTag = ''
-  let pluginRunScenario = ''
-  let showOtp = false
-  let showRun = false
-  let showTestClient = false
-  let showExport = false
-  let showImport = false
-  let showImportFeatures = false
-  let importDestDir = ''
-  let importFeaturesBusy = false
-  let showDuplicateFeature = false
-  let duplicateFeaturePath = ''
-  let duplicateNewName = ''
-  let showRefactorUrl = false
-  let showOpenProject = false
-  let showRenameFeature = false
-  let showMoveFeature = false
-  let moveFeaturePath = ''
-  let moveDestDirs: string[] = []
-  let moveDestDir = ''
-  let showValidate = false
-  let validateBrowser = 'chromium'
-  let validateSyntaxOnly = false
-  let validateScope: 'project' | 'current' = 'project'
-  let validateCliLog = ''
-  let showUpdateCheck = false
-  let pendingUpdateCheckOnStartup = false
-  let updateCheckMessage = ''
-  let updateCheckHasUpdate = false
-  let updateCheckInfo: gui.UpdateInfoDTO | null = null
-  let updateDownloading = false
-  let updateProgress: gui.UpdateProgressDTO | null = null
-  let showInitProject = false
-  let showNewProjectWizard = false
-  let renameFeaturePath = ''
-  let exportInputPath = ''
-  let showSteps = false
-  let showStepsHelp = false
-  let stepsHelpQuery = ''
-  let catalogDropTarget = ''
-  let showAbout = false
-  let showPlugins = false
-  let installedPlugins: gui.PluginEntryDTO[] = []
-  let showProjectReplace = false
-  let showHotkeys = false
-  let showRunHistory = false
-  let showVanessaRun = false
-  let showVanessaSettings = false
-  let vanessaDry = false
-  let vanessaTag = ''
-  let vanessaExcludeTags = ''
-  let vanessaScenario = ''
-  let vanessaPreferRerun = false
-  let vanessaRerunDir = ''
-  let vanessaInstallEpf = false
-  let vanessaEpfUrl = ''
-  let vanessaEpfDest = ''
-  let vanessaPlatformExe = ''
-  let vanessaEpfPath = ''
-  let vanessaIB = ''
-  let vanessaReportAllure = false
-  let vanessaVaDir = ''
-  let vanessaVaFiles = ''
-  let vanessaRunning = false
-  let showVanessaMonitor = false
-  let vanessaSnapshot: gui.VanessaRunSnapshotDTO = new gui.VanessaRunSnapshotDTO()
-  let vanessaWatchDir = ''
-  let vanessaPlannedTotal = 1
-  let vanessaPollTimer: ReturnType<typeof setInterval> | null = null
-  let browserWatchTimer: ReturnType<typeof setInterval> | null = null
-  let confirmDialog: {
-    title: string
-    message: string
-    confirmLabel: string
-    danger: boolean
-    dontAskAgainLabel?: string
-    resolve: (confirmed: boolean, dontAskAgain?: boolean) => void
-  } | null = null
-
-  let skipRecordTabSwitchConfirm = false
-  let runningDryRun = false
+  const unsubscribers: (() => void)[] = []
 
   function askConfirm(opts: {
     title: string
@@ -351,334 +563,113 @@
     danger?: boolean
     dontAskAgainLabel?: string
   }): Promise<boolean> {
-    return new Promise((resolve) => {
-      confirmDialog = {
-        title: opts.title,
-        message: opts.message,
-        confirmLabel: opts.confirmLabel || tr('common.ok'),
-        danger: opts.danger || false,
-        dontAskAgainLabel: opts.dontAskAgainLabel,
-        resolve: (confirmed, dontAskAgain) => {
-          if (confirmed && dontAskAgain) skipRecordTabSwitchConfirm = true
-          resolve(confirmed)
-        },
-      }
-    })
+    return confirmDialogStore.ask(opts, { ok: tr('common.ok') })
   }
+
+  const applyCatalogFilterDebounced = debounce((text: string) => {
+    catalogStore.setFilterText(text)
+  }, 200)
 
   function closeConfirm(confirmed: boolean, dontAskAgain = false) {
-    if (confirmDialog) {
-      confirmDialog.resolve(confirmed, dontAskAgain)
-      confirmDialog = null
-    }
+    confirmDialogStore.close(confirmed, dontAskAgain)
   }
 
-  type ProjectEventEnvelope<T> = {
-    projectVersion?: number
-    payload?: T | null
-  }
-
-  function unwrapProjectEvent<T>(raw: T | ProjectEventEnvelope<T>, emptyPayload?: T): { payload: T; projectVersion: number | null } {
-    if (raw && typeof raw === 'object') {
-      const envelopeRaw = raw as Record<string, unknown>
-      if ('projectVersion' in envelopeRaw || 'payload' in envelopeRaw) {
-        const envelope = raw as ProjectEventEnvelope<T>
-        const fallback = (emptyPayload ?? ({} as T))
-        const payload = envelope.payload == null ? fallback : (envelope.payload as T)
-        return {
-          payload,
-          projectVersion: typeof envelope.projectVersion === 'number' ? envelope.projectVersion : null,
-        }
-      }
-    }
-    return { payload: raw as T, projectVersion: null }
-  }
-
-  function syncRecorderSessionIds(recordSessionId: string | null | undefined, browserSessionId: string | null | undefined) {
-    recorderStore.setSessionIDs(recordSessionId ?? '', browserSessionId ?? '')
-  }
-
-  function unwrapRecordSessionEvent<T>(raw: T | ProjectEventEnvelope<T>) {
-    const unwrapped = unwrapProjectEvent(raw)
-    const payload = unwrapped.payload
-    if (payload && typeof payload === 'object') {
-      const payloadObj = payload as { recordSessionId?: string; browserSessionId?: string }
-      syncRecorderSessionIds(payloadObj.recordSessionId, payloadObj.browserSessionId)
-    }
-    return {
-      payload,
-      projectVersion: unwrapped.projectVersion,
-    }
-  }
-
-  function isStaleRecordSessionEvent(recordSessionId: string | null | undefined): boolean {
-    if (!recordSessionId) {
-      if (recording || activeRecordSessionId) {
-        logStaleEvent('record', 'missing-record-session-id')
-        return true
-      }
-      return false
-    }
-    if (!activeRecordSessionId) {
-      recorderStore.setSessionIDs(recordSessionId, '')
-      return false
-    }
-    const stale = activeRecordSessionId !== recordSessionId
-    if (stale) {
-      logStaleEvent('record', `event=${recordSessionId}, active=${activeRecordSessionId}`)
-    }
-    return stale
-  }
-
-  function isStaleBrowserSessionEvent(browserSessionId: string | null | undefined): boolean {
-    if (!browserSessionId) return false
-    if (!activeBrowserSessionId) {
-      recorderStore.setSessionIDs('', browserSessionId)
-      return false
-    }
-    const stale = activeBrowserSessionId !== browserSessionId
-    if (stale) {
-      logStaleEvent('browser', `event=${browserSessionId}, active=${activeBrowserSessionId}`)
-    }
-    return stale
-  }
-
-  const staleEventDebugKeys = new Set<string>()
-
-  function logStaleEvent(kind: string, details: string) {
-    const key = `${kind}:${details}`
-    if (staleEventDebugKeys.has(key)) return
-    staleEventDebugKeys.add(key)
-    console.debug(`[stale-event] ${kind} ignored (${details})`)
-  }
-
-  function isStaleProjectEvent(projectVersion: number | null): boolean {
-    const stale = projectVersion !== null && currentProjectVersion > 0 && projectVersion !== currentProjectVersion
-    if (stale) {
-      logStaleEvent('project', `event=${projectVersion}, current=${currentProjectVersion}`)
-    }
-    return stale
-  }
-
-  function isStaleRunEvent(runId: string | null | undefined): boolean {
-    if (!runId) return false
-    if (!activeRunEventId) {
-      runnerStore.setRunId(runId)
-      return false
-    }
-    const stale = activeRunEventId !== runId
-    if (stale) {
-      logStaleEvent('run', `event=${runId}, active=${activeRunEventId}`)
-    }
-    return stale
-  }
+  const logStaleEvent = createStaleEventLogger()
+  const wailsEventGuards = createEventStalenessGuards(
+    {
+      getProjectVersion: () => currentProjectVersion,
+      getActiveRunId: () => activeRunEventId,
+      getActiveRecordSessionId: () => activeRecordSessionId,
+      getActiveBrowserSessionId: () => activeBrowserSessionId,
+      isRecording: () => recording,
+      syncRecordSessionIds: (recordSessionId, browserSessionId) =>
+        recorderStore.setSessionIDs(recordSessionId ?? '', browserSessionId ?? ''),
+      syncRunId: (runId) => runnerStore.setRunId(runId),
+    },
+    logStaleEvent,
+  )
 
   function setProjectState(next: Partial<ProjectState>) {
-    const merged: ProjectState = {
-      path: projectPath,
-      version: currentProjectVersion,
-      features: features,
-      tags: tags,
-      featureTags: featureTags,
-      ...next,
-    }
-    projectPath = merged.path
-    currentProjectVersion = merged.version
-    features = merged.features
-    tags = merged.tags
-    featureTags = merged.featureTags
-    projectStore.setProject(merged)
+    projectStore.patch(next)
   }
 
   function resetProjectState() {
-    setProjectState({ path: '', version: 0, features: [], tags: [], featureTags: {} })
+    projectStore.reset()
   }
-
-  let showHttpAuth = false
-  let httpAuthHost = ''
-  let showPickerStep = false
-  let pickerSelector = ''
-  let pickerChoices: gui.PickerStepChoice[] = []
-  let projectReplaceBusy = false
-  let findText = ''
-  let replaceText = ''
-  let replaceCaseSensitive = false
-  let postRecordPath = ''
-  let postRecordStepCount = 0
-  let postRecordBaselineText = ''
-  let showPostRecordDiff = false
-  let recordStepPickerOpen = false
-  let editorScenarioHints: gui.ScenarioHintDTO[] = []
-  let editorHintsDismissed = new Set<string>()
-  let contextMenu: { x: number; y: number; path: string } | null = null
-  let folderMenu: { x: number; y: number; dir: string; paths: string[] } | null = null
-  let runDialogTitle = ''
-  let runDialogScenarios: string[] = []
-  let vanessaDialogScenarios: string[] = []
-  let pluginRunScenarios: string[] = []
-
-  let recording = false
-  let browserOpen = false
-  let recordPaused = false
-  let playing = false
-  let playingLabel = ''
-  let runProgressCurrent = 0
-  let runProgressTotal = 0
-  let runLogStreaming = false
-  let runCancelling = false
-  let activeRunEventId = ''
-  let activeRecordSessionId = ''
-  let activeBrowserSessionId = ''
-  let stepsMenu: { x: number; y: number; line: number; step: gui.EditorStepRow } | null = null
-  let sessionPersistTimer: ReturnType<typeof setTimeout> | null = null
-  let draftAutosaveTimer: ReturnType<typeof setInterval> | null = null
-
-  let sidebarVisible = true
-  let sidebarWidth = 260
-  let previewVisible = false
-  let previewPaneMounted = false
-  let previewMountTimer: ReturnType<typeof setTimeout> | null = null
-  let previewWidth = 360
-  let bottomPanelOpen = false
-  let bottomTab: 'journal' | 'results' | 'validate' | 'error' = 'journal'
-  let stepsPanelCollapsed = true
-  let stepsPanelHeight = 160
-  let bottomPanelHeight = 200
-  let sidebarSearch = ''
-  let catalogFilterText = ''
-  let openMenu: string | null = null
-  let statusMessage = ''
-  let statusTone: 'normal' | 'error' | 'success' | 'busy' = 'normal'
-
-  let catalogBaseTree: CatalogNode | null = null
-  let catalogBaseTreeKey = ''
-
-  const applyCatalogFilterDebounced = debounce((text: string) => {
-    catalogFilterText = text
-  }, 200)
 
   function onSidebarSearchInput(e: Event) {
     const value = (e.currentTarget as HTMLInputElement).value
-    sidebarSearch = value
+    catalogStore.setSidebarSearch(value)
     applyCatalogFilterDebounced(value)
   }
 
   function setSidebarSearch(value: string) {
-    sidebarSearch = value
+    catalogStore.setSidebarSearch(value)
     applyCatalogFilterDebounced.cancel()
-    catalogFilterText = value
+    catalogStore.setFilterText(value)
   }
-  let batchSelected: string[] = []
-  let batchMode = false
-  let catalogCollapsed = new Set<string>()
-  let showBatchHint = true
-  let toolbarCompact = false
-  let viewportWidth = 1280
-  let viewportHeight = 800
-  let viewportAutoCompact = false
 
-  let filterRecording = false
-  let navOnlyRecording = false
-  let hoverRecord = false
-  let stepsPanelVisible = true
-
-  let lastRun: RunForm = defaultRunForm({ headed: true, installPW: true, html: true, htmlLightMode: true })
-  let runForm: RunForm = { ...lastRun }
-
-  let settingsBrowser = 'chromium'
-  let settingsHeadless = false
-  let settingsWorkers = 1
-  let settingsSlowMo = 0
-  let settingsScrollBeforeClick = false
-  let settingsHoverRecordMinMs = 600
-  let settingsLoops = 100
-  let settingsCheckUpdatesOnStartup = true
-  let settingsSelectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
-  let settingsSelectorInputStrategies: string[] = ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
-  let settingsNavWaitUntil = 'domcontentloaded'
-  let settingsHtmlReportOpenMode: 'full' | 'light' = 'full'
-  let settingsProjectBaseline: 'full' | 'light' = 'full'
-  let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
-  let editorCursorLine = 1
-  let stepsPanelTab: 'outline' | 'steps' = DEFAULT_EDITOR_SETTINGS.stepsPanelView
-
-  let recordURL = ''
-  let startURL = ''
-  let recordOutput = 'recorded.feature'
-  let recordIdle = 30
-  let recordAppendTo = ''
-  let recordTestClient = ''
-  let recordFeatureName = t('dialogs.record.featureDefault')
-  let recordScenarioName = t('dialogs.record.scenarioDefault')
-  let lastRecordTarget = ''
-  let liveRecordStepLines: Record<number, number> = {}
-  let recordStepApplyChain: Promise<void> = Promise.resolve()
-  let recordEditorReadyPromise: Promise<void> = Promise.resolve()
-  let recordingTargetPath = ''
-  let pauseToggleGuardUntil = 0
-  let pendingCloseTab: string | null = null
-
-  let otpEmail = ''
-
-  let testClientSelection = ''
-  let testClientSuggestName = ''
-
-  let recentProjects: string[] = []
-  let recentFeatures: string[] = []
-  let lastErrorEntry: gui.RunResultEntry | null = null
-  let lastRunSince: string | null = null
-  let lastRunBatchResults: gui.RunResultEntry[] = []
-  let lastRunSummary = ''
-  let paletteCommands: PaletteCommand[] = []
-  $: flakyByPath = flakyScenarioMap($reportsStore.flakyMetrics)
-  $: flakyStepByPath = flakyStepHints($reportsStore.flakyMetrics)
-  let editorSteps: EditorStepRow[] = []
-  let editorStepsTextVersion = -1
-  let editorValidationIssues: gui.ValidationIssue[] = []
-  let diagnosticsHints: gui.ScenarioHintDTO[] = []
-  let editorValidationByTab: Record<string, gui.ValidationIssue[]> = {}
-  let validatePanelIssues: gui.ValidationIssue[] = []
-  let projectArtifacts: gui.ProjectArtifacts = new gui.ProjectArtifacts()
-
-  const unsubscribers: (() => void)[] = []
-
-  $: tr = createTranslator($locale)
-
-  $: if (pendingUpdateCheckOnStartup && settingsCheckUpdatesOnStartup && projectPath) {
-    pendingUpdateCheckOnStartup = false
-    void checkUpdatesOnStartup()
-  }
-  $: playing = $runnerStore.playing
-  $: runProgressCurrent = $runnerStore.current
-  $: runProgressTotal = $runnerStore.total
-  $: playingLabel = $runnerStore.label
-  $: runLogStreaming = $runnerStore.logStreaming
-  $: runCancelling = $runnerStore.cancelling
-  $: activeRunEventId = $runnerStore.runId
-  $: browserOpen = $recorderStore.browserOpen
-  $: recording = $recorderStore.recording
-  $: recordPaused = $recorderStore.paused
-  $: recordingTargetPath = $recorderStore.targetPath
-  $: activeRecordSessionId = $recorderStore.recordSessionId
-  $: activeBrowserSessionId = $recorderStore.browserSessionId
   $: editorValidationIssues = $diagnosticsStore.issues
-  $: diagnosticsHints = $diagnosticsStore.hints
+  $: editorValidationByTab = $diagnosticsStore.issuesByTab
+  $: validatePanelIssues = $diagnosticsStore.browserPanelIssues
+  $: validateCliLog = $validateDialogStore.cliLog
+  $: logText = $journalStore.logText
+  $: statusMessage = $journalStore.statusMessage
+  $: statusTone = $journalStore.statusTone
+  $: duplicateFeaturePath = $featureDialogStore.duplicateFeaturePath
+  $: moveFeaturePath = $featureDialogStore.moveFeaturePath
+  $: moveDestDirs = $featureDialogStore.moveDestDirs
+  $: renameFeaturePath = $featureDialogStore.renameFeaturePath
+  $: exportInputPath = $featureDialogStore.exportInputPath
+  $: importFeaturesBusy = $featureDialogStore.importFeaturesBusy
+  $: testClients = $testClientStore.clients
+  $: testClientSelection = $testClientStore.selection
+  $: testClientSuggestName = $testClientStore.suggestName
+  $: installedPlugins = $pluginsStore.installed
+  $: updateCheckMessage = $updateDialogStore.message
+  $: updateCheckHasUpdate = $updateDialogStore.hasUpdate
+  $: updateCheckInfo = $updateDialogStore.info
+  $: updateDownloading = $updateDialogStore.downloading
+  $: updateProgress = $updateDialogStore.progress
   $: editorScenarioHints = diagnosticsHints
+  $: batchSelected = $catalogStore.batchSelected
+  $: batchMode = $catalogStore.batchMode
+  $: sidebarSearch = $catalogStore.sidebarSearch
+  $: catalogFilterText = $catalogStore.catalogFilterText
+  $: catalogDropTarget = $catalogStore.dropTarget
+  $: showBatchHint = $catalogStore.showBatchHint
+  $: catalogCollapsed = catalogStore.collapsedSet()
+  $: postRecordPath = $postRecordStore.path
+  $: postRecordStepCount = $postRecordStore.stepCount
+  $: postRecordBaselineText = $postRecordStore.baselineText
+  $: contextMenu = $contextMenuStore.feature
+  $: folderMenu = $contextMenuStore.folder
+  $: stepsMenu = $contextMenuStore.steps
+  $: confirmDialog = $confirmDialogStore.request
+  $: confirmDialogOpen = $confirmDialogStore.open
+  $: openMenu = $menuStore.openMenu
+  $: findText = $projectReplaceStore.findText
+  $: replaceText = $projectReplaceStore.replaceText
+  $: replaceCaseSensitive = $projectReplaceStore.caseSensitive
+  $: projectReplaceBusy = $projectReplaceStore.busy
+  $: pickerSelector = $pickerDialogStore.selector
+  $: pickerChoices = $pickerDialogStore.choices
+  $: httpAuthHost = $httpAuthDialogStore.host
+  $: stepsHelpQuery = $stepsHelpDialogStore.query
+  $: otpEmail = $otpDialogStore.email
+  $: diagnosticsHints = $diagnosticsStore.hints
 
   $: isWelcome = activeTab === WELCOME_KEY
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
   $: activeTabUnsaved = activeFeatureTab ? tabIsUnsaved(activeFeatureTab) : false
-  $: if (editorSettings.stepsPanelView) {
-    stepsPanelTab = editorSettings.stepsPanelView
+  $: if (dialogBinds.bindEditorSettings.stepsPanelView) {
+    editorStore.setStepsPanelTab(dialogBinds.bindEditorSettings.stepsPanelView)
   }
   $: stepCount = editorSteps.length
   $: editorLineCount = isWelcome ? 0 : editorText.split(/\r?\n/).length
   $: showLargeFileBanner = !isWelcome && isLargeFeatureFile(editorLineCount)
   $: unsavedTabCount = tabs.filter((t) => tabIsUnsaved(t)).length
-  $: {
-    $locale
-    lastRunSummary = formatLastRunSummary(lastRun)
-  }
+  $: [, lastRunSummary] = [$locale, formatLastRunSummary(lastRun)]
   $: automationActive = playing || vanessaRunning
   $: pickerToolbarEnabled =
     pickerDuringRecording
@@ -688,41 +679,11 @@
   $: batchSelectedSet = buildBatchSelectedSet(batchSelected)
   $: showRecordingBar = recording && !showRecord
   $: showPlayingBar = playing
-  $: anyAppDialogOpen =
-    !!confirmDialog ||
-    !!pendingCloseTab ||
-    showRun ||
-    showVanessaRun ||
-    showPluginRun ||
-    showTestClient ||
-    showStepsHelp ||
-    showSteps ||
-    showVanessaSettings ||
-    showExport ||
-    showRefactorUrl ||
-    showOpenProject ||
-    showRenameFeature ||
-    showMoveFeature ||
-    showValidate ||
-    showNewProjectWizard ||
-    showInitProject ||
-    showUpdateCheck ||
-    showDuplicateFeature ||
-    showImportFeatures ||
-    showImport ||
-    showSettings ||
-    showCommandPalette ||
-    showSnippetPalette ||
-    showRecord ||
-    showOtp ||
-    showAbout ||
-    showHotkeys ||
-    showPlugins ||
-    showRunHistory ||
-    (showPostRecordDiff && !!postRecordPath) ||
-    showProjectReplace ||
-    showHttpAuth ||
-    showPickerStep
+  $: anyAppDialogOpen = computeAnyAppDialogOpen($dialogsStore, {
+    confirmDialogOpen,
+    pendingCloseTab,
+    postRecordPath,
+  })
   $: onboardingTourContext = {
     projectPath,
     featuresCount: features.length,
@@ -740,11 +701,8 @@
     document.body.classList.toggle('onboarding-tour-active', onboardingTourActive)
   }
   $: if (showOnboardingTour && isWelcome && projectPath && features.length > 0) {
-    onboardingValidateDone = false
-    onboardingDryRunDone = false
-    onboardingJournalVisited = false
+    onboardingTourStore.resetProgress()
   }
-  let onboardingTourStepId = 'welcome'
   $: onboardingElevateMenubar =
     showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')
   $: onboardingElevateSidebar = showOnboardingTour && onboardingTourStepId === 'pick-feature'
@@ -752,16 +710,12 @@
     showOnboardingTour && (onboardingTourStepId === 'welcome' || onboardingTourStepId === 'open-examples')
   $: onboardingElevateBottom = showOnboardingTour && onboardingTourStepId === 'journal'
   $: if (showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
-    openMenu = 'run'
+    menuStore.open('run')
   }
   $: if (showOnboardingTour && openMenu === 'run' && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
     void tick().then(() => onboardingTour?.relayout())
   }
   $: showBrowserOverlay = (browserOpen || recording || playing) && !anyAppDialogOpen
-  $: {
-    $locale
-    paletteCommands = buildPaletteCommands()
-  }
   $: stepStatusDisplay =
     stepCount === 0 && !stepStatusError
       ? tr('statusBar.steps', { count: 0 })
@@ -769,12 +723,7 @@
         ? tr('statusBar.stepsWithErrors', { count: stepCount, errors: editorValidationIssues.length })
         : tr('statusBar.steps', { count: stepCount })
 
-  let resizingBottom = false
-  let resizingSteps = false
-  let resizingSidebar = false
-  let resizingPreview = false
   let actionBarEl: HTMLElement | undefined
-  let toolbarIconOnly = true
 
   $: actionBarCompact = toolbarCompact || viewportAutoCompact
   $: layoutSidebarWidth = effectiveSidebarWidth(sidebarWidth, viewportWidth, sidebarVisible)
@@ -783,17 +732,11 @@
   $: showPreviewPane = shouldShowPreviewPane(viewportWidth, previewVisible)
   $: layoutPreviewWidth = effectivePreviewWidth(previewWidth, viewportWidth, previewVisible)
   $: {
-    if (previewMountTimer) {
-      clearTimeout(previewMountTimer)
-      previewMountTimer = null
-    }
     if (showPreviewPane) {
-      previewMountTimer = setTimeout(() => {
-        previewPaneMounted = true
-        previewMountTimer = null
-      }, 80)
+      layoutStore.schedulePreviewMount(() => layoutStore.setPreviewPaneMounted(true))
     } else {
-      previewPaneMounted = false
+      layoutStore.clearPreviewMountTimer()
+      layoutStore.setPreviewPaneMounted(false)
     }
   }
 
@@ -816,13 +759,7 @@
     return map
   })()
 
-  $: {
-    const key = projectPath ? catalogStructureKey(projectPath, features) : ''
-    if (key !== catalogBaseTreeKey) {
-      catalogBaseTreeKey = key
-      catalogBaseTree = projectPath ? buildCatalogStructure(projectPath, features) : null
-    }
-  }
+  $: catalogStore.syncBaseTree(projectPath, features)
 
   $: catalogViewState = buildCatalogViewStateFromBase(
     projectPath || null,
@@ -835,20 +772,9 @@
 
   $: welcomeProjectOpen = !!projectPath
   $: welcomeRecorded = recording || browserOpen
-  let welcomePlayedSuccess = false
-  let checklistDismissed = false
-  let onboardingCompleted = false
-  let onboardingDismissed = false
-  let onboardingValidateDone = false
-  let onboardingDryRunDone = false
-  let onboardingJournalVisited = false
-  let showOnboardingTour = false
+  $: recordMode = $recordFormStore.recordMode
+  $: baselineBusy = $recordFormStore.baselineBusy
   let onboardingTour: OnboardingTour
-  let runDialogConfirmed = false
-  let pickerDuringRecording = false
-  let uiLocale: Locale = 'ru'
-  let allureInstalled = true
-  let allureServeRunning = false
 
   $: stopActionLabel = playing
     ? tr('toolbar.stopTest')
@@ -868,23 +794,22 @@
   }
 
   function setSplashStage(message: string, progress: number) {
-    splashMessage = message
-    splashProgress = progress
+    splashStore.setStage(message, progress)
   }
 
   async function dismissSplash(startedAt: number) {
     const remaining = MIN_SPLASH_MS - (Date.now() - startedAt)
     if (remaining > 0) await sleep(remaining)
 
-    splashFading = true
+    splashStore.startFading()
     await sleep(SPLASH_FADE_MS)
     setSplashDocumentState(false)
     await openMainWindow()
-    appReady = true
+    splashStore.markReady()
     if (shouldAutoStartOnboarding()) {
-      sidebarVisible = true
-      onboardingTourStepId = 'welcome'
-      showOnboardingTour = true
+      layoutStore.showSidebar()
+      onboardingTourStore.setStepId('welcome')
+      onboardingTourStore.start()
     }
   }
 
@@ -893,36 +818,31 @@
   }
 
   async function completeOnboarding() {
-    showOnboardingTour = false
-    onboardingCompleted = true
-    onboardingDismissed = false
+    onboardingTourStore.stop()
+    uiPrefsStore.patch({ onboardingCompleted: true, onboardingDismissed: false })
     await persistSettings()
     void maybeCheckUpdatesOnStartup()
   }
 
   async function dismissOnboarding() {
-    showOnboardingTour = false
-    onboardingDismissed = true
+    onboardingTourStore.stop()
+    uiPrefsStore.patch({ onboardingDismissed: true })
     await persistSettings()
     void maybeCheckUpdatesOnStartup()
   }
 
   function openJournalTab(markTourVisit = false) {
-    bottomPanelOpen = true
-    bottomTab = 'journal'
-    if (markTourVisit && showOnboardingTour) onboardingJournalVisited = true
+    layoutStore.openBottomTab('journal')
+    if (markTourVisit && showOnboardingTour) onboardingTourStore.patch({ journalVisited: true })
   }
 
   function restartOnboardingTour() {
-    onboardingValidateDone = false
-    onboardingDryRunDone = false
-    onboardingJournalVisited = false
-    onboardingTourStepId = ''
-    sidebarVisible = true
-    saveLayout({ sidebarVisible: true })
+    onboardingTourStore.resetProgress()
+    onboardingTourStore.setStepId('')
+    layoutStore.showSidebar()
     void resetWorkspaceForOnboarding().then(() => {
-      onboardingTourStepId = 'welcome'
-      showOnboardingTour = true
+      onboardingTourStore.setStepId('welcome')
+      onboardingTourStore.start()
       onboardingTour?.restart()
     })
   }
@@ -941,37 +861,188 @@
       monaco?.releaseTab(t.path)
     }
     monaco?.retainTabs([])
-    tabs = []
-    activeTab = WELCOME_KEY
-    welcomeTabVisible = true
-    editorText = ''
+    tabsStore.reset()
+    editorStore.reset()
     monaco?.activateTab(null, '')
-    batchSelected = []
-    batchMode = false
+    catalogStore.clearBatch()
     diagnosticsStore.setIssues([])
-    editorValidationByTab = {}
+    diagnosticsStore.clearIssuesByTab()
     clearEditorValidation()
-    openMenu = ''
-    bottomPanelOpen = false
-    saveLayout({ bottomPanelOpen: false })
+    menuStore.close()
+    layoutStore.closeBottomPanel()
   }
 
   function onOnboardingStepChange(e: CustomEvent<{ index: number; id: string }>) {
     const { id } = e.detail
-    onboardingTourStepId = id
+    onboardingTourStore.setStepId(id)
     if (id === 'open-examples' || id === 'pick-feature') {
-      sidebarVisible = true
-      saveLayout({ sidebarVisible: true })
+      layoutStore.showSidebar()
     }
     if (id === 'validate' || id === 'dry-run') {
       void tick().then(() => tick().then(() => onboardingTour?.relayout()))
     }
     if (id === 'journal') {
-      bottomPanelOpen = true
-      bottomTab = 'journal'
-      saveLayout({ bottomPanelOpen: true })
+      layoutStore.openBottomPanel()
+      layoutStore.setBottomTab('journal')
+      layoutStore.patch({ bottomPanelOpen: true })
       void tick().then(() => onboardingTour?.relayout())
     }
+  }
+
+  function setupWailsEventBindings(): () => void {
+    return bindWailsEvents({
+      guards: wailsEventGuards,
+      handlers: {
+        onOtpPrompt(email) {
+          otpDialogStore.setEmail(email)
+          WindowUnminimise()
+          WindowShow()
+          dialogsStore.open('showOtp')
+        },
+        onBrowserOpened() {
+          applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
+          dialogsStore.close('showRecord')
+          setStatus(tr('journal.status.browserOpen'), 'busy')
+          appendLog(tr('journal.browser.opened'))
+          startBrowserWatch()
+        },
+        onBrowserClosed(result) {
+          dismissRecorderPicker()
+          stopBrowserWatch()
+          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'browse')
+        },
+        onBrowserLost() {
+          dismissRecorderPicker()
+          handleBrowserLost()
+        },
+        onToolbarPicker() {
+          void pickElement()
+        },
+        async onRecordStarted(meta) {
+          const m = typeof meta === 'string' ? { append: false, output: meta } : meta
+          const appendOnly = m.append === true
+          const syncOnly = m.sync === true
+          const wasRecording = recording
+          applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
+          dialogsStore.close('showRecord')
+          setStatus(tr('journal.status.preparingRecord'), 'busy')
+          startBrowserWatch()
+          recorderStore.setRecordEditorReadyPromise((async () => {
+            if (!syncOnly) {
+              if (!appendOnly && !wasRecording) {
+                recorderStore.setLiveRecordStepLines({})
+              }
+              if (!appendOnly) {
+                await prepareRecordEditorTab(m.output || '')
+              }
+              postRecordStore.setBaselineText(monaco?.getEditorText() ?? editorText)
+            }
+          })())
+          try {
+            await recorderStore.awaitRecordEditorReady()
+          } catch (e: any) {
+            appendLog(tr('journal.record.prepTabError', { error: String(e) }))
+          }
+          if (!syncOnly) {
+            const targetFromEvent = m.targetPath || ''
+            if (targetFromEvent) {
+              recorderStore.setTargetPath(normalizeRecordTabPath(targetFromEvent))
+            } else if (activeTab && !isWelcome) {
+              recorderStore.setTargetPath(normalizeRecordTabPath(activeTab))
+            }
+          }
+          if (!appendOnly && !syncOnly) {
+            appendLog(tr('journal.record.started'))
+            setStatus(tr('journal.status.recording'), 'busy')
+          } else if (syncOnly) {
+            setStatus(tr('journal.status.recording'), 'busy')
+          }
+        },
+        onRecordStopped(payload) {
+          handleRecordStopped(payload)
+        },
+        onRunLogLine(line) {
+          appendLog(line)
+        },
+        onRunResultsChanged() {
+          scheduleRefreshRunResults()
+        },
+        onReportGoto(req) {
+          void gotoReportStep(req)
+        },
+        onReportRerun(req) {
+          void rerunFromReport(req)
+        },
+        onReportTrace(req) {
+          void openTraceFromReport(req)
+        },
+        onRecordStep(payload) {
+          const op = (payload.op || 'upsert') as RecordStepEvent['op']
+          void applyRecordStepToTarget(
+            {
+              op,
+              index: payload.index,
+              line: payload.line,
+              lines: payload.lines,
+            },
+            payload.targetPath ?? '',
+          )
+        },
+        onRecordFinished(result) {
+          stopBrowserWatch()
+          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'record')
+        },
+        onRecordError(message) {
+          stopBrowserWatch()
+          recorderStore.reset()
+          dialogsStore.close('showRecord')
+          recorderStore.setLiveRecordStepLines({})
+          appendLog(tr('journal.record.error', { message: message || tr('journal.record.unknownError') }))
+          setStatus(tr('journal.status.recordError'), 'error')
+          syncIdleStatus()
+        },
+        onVanessaRunStarted() {
+          vanessaRunStore.setRunning(true)
+          vanessaWatchDir = ''
+          setStatus(tr('journal.status.vanessaRunning'), 'busy')
+          appendLog(tr('journal.vanessa.starting'))
+          startVanessaPoll()
+        },
+        async onVanessaRunFinished(result) {
+          stopVanessaPoll()
+          vanessaRunStore.setRunning(false)
+          const dto = result as gui.VanessaRunResultDTO
+          if (dto?.runDir) {
+            vanessaWatchDir = dto.runDir
+            try {
+              vanessaRunStore.setSnapshot(await PollVanessaRun(dto.runDir, vanessaPlannedTotal))
+            } catch {
+              /* ignore */
+            }
+          }
+          if (dto?.output) appendLog(dto.output.trimEnd())
+          if (dto?.error) {
+            appendLog(tr('journal.error.generic', { error: dto.error }))
+            setStatus(tr('journal.status.vanessaError'), 'error')
+          } else {
+            appendLog(tr('journal.vanessa.done'))
+            setStatus(tr('journal.status.vanessaDone'), dto?.success ? 'success' : 'error')
+          }
+          await refreshRunResults()
+        },
+      },
+      isRunLogStreaming: () => runLogStreaming,
+      isPlaying: () => playing,
+      isRecorderActive: () => browserOpen || recording,
+      runProgress: {
+        getTotal: () => runProgressTotal,
+        getCurrent: () => runProgressCurrent,
+        getLabel: () => playingLabel,
+        updateProgress: (total, current, label) => runnerStore.progress(total, current, label),
+      },
+      scheduleRefreshRunResults,
+      eventsOn: EventsOn,
+    })
   }
 
   onMount(async () => {
@@ -998,19 +1069,13 @@
 
     setSplashStage(tr('splash.envSetup'), 8)
 
-    const layout = loadLayout()
-    sidebarVisible = layout.sidebarVisible
-    bottomPanelOpen = layout.bottomPanelOpen
-    bottomPanelHeight = layout.bottomPanelHeight
-    previewVisible = layout.previewVisible
-    previewWidth = layout.previewWidth || 360
 
     setSplashStage(tr('splash.connecting'), 40)
 
     try {
-      version = await Version()
+      appMetaStore.setVersion(await Version())
     } catch {
-      version = 'dev'
+      appMetaStore.setVersion('dev')
     }
 
     setSplashStage(tr('splash.loadingSettings'), 60)
@@ -1019,24 +1084,22 @@
       loadRecents(),
       callWailsWithTimeout('LoadSettings', LoadSettings(), 4000),
     ])
-    recentProjects = recents.projects
-    recentFeatures = recents.features
+    recentsStore.setRecents(recents.projects, recents.features)
     if (settings) {
       applySettingsFromDTO(settings)
-      setStepHoverEnabled(() => editorSettings.stepHover)
-      stepsPanelCollapsed = resolveStepsPanelCollapsed()
-      stepsPanelHeight = settings.stepsPanelHeight || 160
+      setStepHoverEnabled(() => dialogBinds.bindEditorSettings.stepHover)
+      syncStepsPanelCollapsedFromPrefs()
       if (settings.sidebarWidth >= VIEWPORT.sidebarMin) {
-        sidebarWidth = clampSidebarWidth(settings.sidebarWidth)
+        uiPrefsStore.patch({ sidebarWidth: clampSidebarWidth(settings.sidebarWidth) })
       }
-      if (settings.recentProjects?.length) recentProjects = settings.recentProjects
-      if (settings.recentFeatures?.length) recentFeatures = settings.recentFeatures
+      if (settings.recentProjects?.length) recentsStore.patch({ projects: settings.recentProjects })
+      if (settings.recentFeatures?.length) recentsStore.patch({ features: settings.recentFeatures })
       if (!shouldAutoStartOnboarding()) {
         await restoreWorkspaceSession(settings)
       }
     }
 
-    draftAutosaveTimer = setInterval(() => void autosaveDirtyDrafts(), 30_000)
+    sessionStore.startDraftAutosave(() => void autosaveDirtyDrafts())
 
     setSplashStage(tr('splash.initializing'), 88)
 
@@ -1044,7 +1107,7 @@
       OnFileDrop((_x, _y, paths) => {
         if (projectPath && paths?.length) {
           const dest = catalogDropTarget || projectPath
-          catalogDropTarget = ''
+          catalogStore.setDropTarget('')
           void importDroppedFeatures(dest, paths)
         }
       }, false)
@@ -1054,280 +1117,7 @@
     }
 
     try {
-      unsubscribers.push(
-        EventsOn('otp-prompt', (raw: string | ProjectEventEnvelope<string>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw, '')
-          if (isStaleProjectEvent(projectVersion)) return
-          otpEmail = payload || ''
-          WindowUnminimise()
-          WindowShow()
-          showOtp = true
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('browser-opened', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
-          applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
-          showRecord = false
-          setStatus(tr('journal.status.browserOpen'), 'busy')
-          appendLog(tr('journal.browser.opened'))
-          startBrowserWatch()
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('browser-closed', (raw: ({ result?: gui.RunResult; browserSessionId?: string } | gui.RunResult) | ProjectEventEnvelope<{ result?: gui.RunResult; browserSessionId?: string } | gui.RunResult>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
-          if (isStaleBrowserSessionEvent(browserSessionId)) return
-          const result = typeof payload === 'object' && payload !== null && 'result' in payload ? payload.result : payload
-          dismissRecorderPicker()
-          stopBrowserWatch()
-          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'browse')
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('browser-lost', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
-          if (browserOpen || recording) {
-            dismissRecorderPicker()
-            handleBrowserLost()
-          }
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('toolbar-picker', (raw: { browserSessionId?: string } | ProjectEventEnvelope<{ browserSessionId?: string }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
-          void pickElement()
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('record-started', async (raw: (string | { append?: boolean; sync?: boolean; output?: string; targetPath?: string; recordSessionId?: string; browserSessionId?: string }) | ProjectEventEnvelope<string | { append?: boolean; sync?: boolean; output?: string; targetPath?: string; recordSessionId?: string; browserSessionId?: string }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          const meta = typeof payload === 'object' && payload !== null ? payload : { append: false, output: payload }
-          if (isStaleRecordSessionEvent(typeof meta === 'object' ? meta.recordSessionId : '')) return
-          if (isStaleBrowserSessionEvent(typeof meta === 'object' ? meta.browserSessionId : '')) return
-          const appendOnly = meta.append === true
-          const syncOnly = meta.sync === true
-          const wasRecording = recording
-          applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
-          showRecord = false
-          setStatus(tr('journal.status.preparingRecord'), 'busy')
-          startBrowserWatch()
-          recordEditorReadyPromise = (async () => {
-            if (!syncOnly) {
-              if (!appendOnly && !wasRecording) {
-                liveRecordStepLines = {}
-              }
-              if (!appendOnly) {
-                await prepareRecordEditorTab(meta.output || '')
-              }
-              postRecordBaselineText = monaco?.getEditorText() ?? editorText
-            }
-          })()
-          try {
-            await recordEditorReadyPromise
-          } catch (e: any) {
-            appendLog(tr('journal.record.prepTabError', { error: String(e) }))
-          }
-          if (!syncOnly) {
-            const targetFromEvent = typeof meta === 'object' ? meta.targetPath || '' : ''
-            if (targetFromEvent) {
-              recorderStore.setTargetPath(normalizeRecordTabPath(targetFromEvent))
-            } else if (activeTab && !isWelcome) {
-              recorderStore.setTargetPath(normalizeRecordTabPath(activeTab))
-            }
-          }
-          if (!appendOnly && !syncOnly) {
-            appendLog(tr('journal.record.started'))
-            setStatus(tr('journal.status.recording'), 'busy')
-          } else if (syncOnly) {
-            setStatus(tr('journal.status.recording'), 'busy')
-          }
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('record-stopped', (raw: ({ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | null) | ProjectEventEnvelope<{ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | null>) => {
-          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ reason?: string; idleSeconds?: number; recordSessionId?: string; browserSessionId?: string }>)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (payload && isStaleRecordSessionEvent(payload.recordSessionId)) return
-          if (payload && isStaleBrowserSessionEvent(payload.browserSessionId)) return
-          handleRecordStopped(payload ?? undefined)
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('run-log-line', (raw: ({ line?: string; runId?: string } | string) | ProjectEventEnvelope<{ line?: string; runId?: string } | string>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (!runLogStreaming) return
-          const runId = typeof payload === 'string' ? '' : payload?.runId
-          if (isStaleRunEvent(runId)) return
-          const line = typeof payload === 'string' ? payload : payload?.line
-          if (line) appendLog(line)
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('run-progress', (raw: ({
-          phase?: string
-          index?: number
-          total?: number
-          featurePath?: string
-          scenario?: string
-          success?: boolean
-          runId?: string
-        }) | ProjectEventEnvelope<{
-          phase?: string
-          index?: number
-          total?: number
-          featurePath?: string
-          scenario?: string
-          success?: boolean
-          runId?: string
-        }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (!playing || !payload) return
-          if (isStaleRunEvent(payload.runId)) return
-          const total = payload.total ?? $runnerStore.total
-          const index = payload.index ?? $runnerStore.current
-          if (total > 0) {
-            runnerStore.progress(total, index, $runnerStore.label)
-          }
-          const label = formatRunProgressLabel(payload, total, index)
-          if (label) {
-            runnerStore.progress(Math.max(0, total), Math.max(0, index), label)
-          }
-          if (shouldRefreshRunResultsFromProgress(payload)) {
-            scheduleRefreshRunResults()
-          }
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('run-results-changed', (raw: { runId?: string } | ProjectEventEnvelope<{ runId?: string }>) => {
-          const { payload, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (isStaleRunEvent(payload?.runId)) return
-          scheduleRefreshRunResults()
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('report-goto', (raw: { feature_path: string; scenario: string; leaf_index: number; line: number } | ProjectEventEnvelope<{ feature_path: string; scenario: string; leaf_index: number; line: number }>) => {
-          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (req) void gotoReportStep(req)
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('report-rerun', (raw: { feature_path: string; scenario: string } | ProjectEventEnvelope<{ feature_path: string; scenario: string }>) => {
-          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (req) void rerunFromReport(req)
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('report-trace', (raw: { trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number } | ProjectEventEnvelope<{ trace_path: string; report_dir: string; trace_offset_ms?: number; step_index?: number }>) => {
-          const { payload: req, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (req) void openTraceFromReport(req)
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('record-step', (raw: { op?: string; index?: number; line?: string; lines?: string[]; targetPath?: string; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ op?: string; index?: number; line?: string; lines?: string[]; targetPath?: string; recordSessionId?: string; browserSessionId?: string }>) => {
-          const { payload, projectVersion } = unwrapRecordSessionEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          if (isStaleRecordSessionEvent(payload?.recordSessionId)) return
-          if (isStaleBrowserSessionEvent(payload?.browserSessionId)) return
-          const op = (payload?.op || 'upsert') as RecordStepEvent['op']
-          void applyRecordStepToTarget(
-            {
-              op,
-              index: payload?.index,
-              line: payload?.line,
-              lines: payload?.lines,
-            },
-            payload?.targetPath ?? '',
-          )
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('record-finished', async (raw: ({ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | gui.RunResult) | ProjectEventEnvelope<{ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | gui.RunResult>) => {
-          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ result?: gui.RunResult; recordSessionId?: string; browserSessionId?: string }>)
-          if (isStaleProjectEvent(projectVersion)) return
-          const recordSessionId = typeof payload === 'object' && payload !== null && 'recordSessionId' in payload ? payload.recordSessionId : ''
-          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
-          if (isStaleRecordSessionEvent(recordSessionId)) return
-          if (isStaleBrowserSessionEvent(browserSessionId)) return
-          const result = typeof payload === 'object' && payload !== null && 'result' in payload ? payload.result : payload
-          stopBrowserWatch()
-          handleRecordSessionEnd((result as gui.RunResult) ?? gui.RunResult.createFrom({}), 'record')
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('record-error', (raw: ({ message?: string; recordSessionId?: string; browserSessionId?: string } | string) | ProjectEventEnvelope<{ message?: string; recordSessionId?: string; browserSessionId?: string } | string>) => {
-          const { payload, projectVersion } = unwrapRecordSessionEvent(raw as { message?: string; recordSessionId?: string; browserSessionId?: string } | ProjectEventEnvelope<{ message?: string; recordSessionId?: string; browserSessionId?: string }> | string)
-          if (isStaleProjectEvent(projectVersion)) return
-          const recordSessionId = typeof payload === 'object' && payload !== null && 'recordSessionId' in payload ? payload.recordSessionId : ''
-          const browserSessionId = typeof payload === 'object' && payload !== null && 'browserSessionId' in payload ? payload.browserSessionId : ''
-          if (isStaleRecordSessionEvent(recordSessionId)) return
-          if (isStaleBrowserSessionEvent(browserSessionId)) return
-          const message =
-            typeof payload === 'object' && payload !== null && 'message' in payload
-              ? payload.message ?? ''
-              : typeof payload === 'string'
-                ? payload
-                : ''
-          stopBrowserWatch()
-          recorderStore.reset()
-          showRecord = false
-          liveRecordStepLines = {}
-          appendLog(tr('journal.record.error', { message: message || tr('journal.record.unknownError') }))
-          setStatus(tr('journal.status.recordError'), 'error')
-          syncIdleStatus()
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('vanessa-run-started', (raw: unknown) => {
-          const { projectVersion } = unwrapProjectEvent(raw as Record<string, unknown>)
-          if (isStaleProjectEvent(projectVersion)) return
-          vanessaRunning = true
-          vanessaWatchDir = ''
-          setStatus(tr('journal.status.vanessaRunning'), 'busy')
-          appendLog(tr('journal.vanessa.starting'))
-          startVanessaPoll()
-        }),
-      )
-      unsubscribers.push(
-        EventsOn('vanessa-run-finished', async (raw: gui.VanessaRunResultDTO | ProjectEventEnvelope<gui.VanessaRunResultDTO>) => {
-          const { payload: result, projectVersion } = unwrapProjectEvent(raw)
-          if (isStaleProjectEvent(projectVersion)) return
-          stopVanessaPoll()
-          vanessaRunning = false
-          if (result.runDir) {
-            vanessaWatchDir = result.runDir
-            try {
-              vanessaSnapshot = await PollVanessaRun(result.runDir, vanessaPlannedTotal)
-            } catch {
-              /* ignore */
-            }
-          }
-          if (result.output) appendLog(result.output.trimEnd())
-          if (result.error) {
-            appendLog(tr('journal.error.generic', { error: result.error }))
-            setStatus(tr('journal.status.vanessaError'), 'error')
-          } else {
-            appendLog(tr('journal.vanessa.done'))
-            setStatus(tr('journal.status.vanessaDone'), result.success ? 'success' : 'error')
-          }
-          await refreshRunResults()
-        }),
-      )
+      unsubscribers.push(setupWailsEventBindings())
     } catch {
       /* dev without wails runtime */
     }
@@ -1341,7 +1131,7 @@
       if (showOnboardingTour && (onboardingTourStepId === 'validate' || onboardingTourStepId === 'dry-run')) {
         return
       }
-      openMenu = null
+      menuStore.close()
     }
     window.addEventListener('keydown', onModalEscapeCapture, { capture: true })
     window.addEventListener('keydown', onGlobalKeydown, { capture: true })
@@ -1389,91 +1179,23 @@
     stopBrowserWatch()
     void teardownDesktopSession()
     applyCatalogFilterDebounced.cancel()
-    if (sessionPersistTimer) {
-      clearTimeout(sessionPersistTimer)
-      sessionPersistTimer = null
-      void persistSettings()
-    }
-    if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
-    if (previewMountTimer) clearTimeout(previewMountTimer)
-    if (draftAutosaveTimer) clearInterval(draftAutosaveTimer)
+    sessionStore.flushPersist(() => void persistSettings())
+    diagnosticsStore.clearValidateDebounce()
+    sessionStore.teardown()
+    layoutStore.clearPreviewMountTimer()
     for (const off of unsubscribers) off()
   })
 
   function schedulePersistSession() {
-    if (sessionPersistTimer) clearTimeout(sessionPersistTimer)
-    sessionPersistTimer = setTimeout(() => void persistSettings(), 500)
+    sessionStore.schedulePersist(() => void persistSettings())
   }
 
   async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
-    const proj = (s.sessionProject || '').trim()
-    if (!proj) return
-    try {
-      const info = await OpenProject(proj)
-      applyProjectScan(info)
-      testClients = await ListTestClients().catch(() => [])
-    } catch {
-      appendLog(tr('journal.session.projectNotFound', { path: proj }))
-      setStatus(tr('journal.status.sessionProjectNotFound'), 'error')
-      return
-    }
-    try {
-      const untitledBodies = untitledContentMap(s.untitledTabs)
-      syncUntitledCounterFromPaths([
-        ...(s.openTabs || []),
-        ...untitledBodies.keys(),
-      ])
-      const tabPaths = sessionTabPathsFromSettings(s.openTabs, s.untitledTabs)
-      for (const p of tabPaths) {
-        if (isUntitled(p)) {
-          const content = untitledBodies.get(p)
-          if (content === undefined || tabs.some((t) => t.path === p)) continue
-          tabs = [...tabs, { path: p, content, dirty: true }]
-          continue
-        }
-        try {
-          await loadFeature(p)
-        } catch {
-          /* skip missing files */
-        }
-      }
-      const active = (s.activeTab || '').trim()
-      if (active) {
-        welcomeTabVisible = false
-        if (isUntitled(active)) {
-          const tab = tabs.find((t) => t.path === active)
-          if (tab) {
-            await applyEditorText(tabEditorText(tab), {
-              switchTab: true,
-              tabPath: active,
-              skipValidate: true,
-            })
-            activeTab = active
-            trimTabsMemory()
-          }
-        } else {
-          await loadFeature(active)
-        }
-      } else if (tabPaths.length > 0) {
-        welcomeTabVisible = false
-      }
-    } catch {
-      /* ignore broken session */
-    }
+    await workspaceSession.restoreWorkspaceSession(s)
   }
 
   async function autosaveDirtyDrafts() {
-    if (!projectPath) return
-    syncActiveTabContent()
-    for (const tab of tabs) {
-      if (!tab.dirty || isUntitled(tab.path)) continue
-      const text = tab.path === activeTab ? editorText : tabEditorText(tab)
-      try {
-        await SaveFeatureDraft(tab.path, text)
-      } catch {
-        /* offline */
-      }
-    }
+    await workspaceSession.autosaveDirtyDrafts()
   }
 
   function runModeLabel(dryRun: boolean): string {
@@ -1488,11 +1210,11 @@
   function openStepsContextMenu(e: MouseEvent, step: gui.EditorStepRow) {
     if (!step.line) return
     e.preventDefault()
-    stepsMenu = { x: e.clientX, y: e.clientY, line: step.line, step }
+    contextMenuStore.openSteps({ x: e.clientX, y: e.clientY, line: step.line, step })
   }
 
   function closeStepsMenu() {
-    stepsMenu = null
+    contextMenuStore.closeSteps()
   }
 
   function stepsMenuRunFrom(dryRun: boolean) {
@@ -1540,166 +1262,50 @@
   }
 
   function applySettingsFromDTO(s: gui.AppSettingsDTO) {
-    settingsBrowser = s.browser || 'chromium'
-    settingsHeadless = s.headless
-    settingsWorkers = s.parallelWorkers || 1
-    settingsSlowMo = s.slowMo ?? 0
-    settingsScrollBeforeClick = s.scrollBeforeClick ?? false
-    settingsHoverRecordMinMs = s.hoverRecordMinMs || 600
-    settingsLoops = s.maxLoopIterations || 100
-    filterRecording = s.filterRecording
-    navOnlyRecording = s.navOnlyRecording
-    hoverRecord = s.hoverRecord
-    toolbarCompact = s.toolbarCompact
-    stepsPanelVisible = s.stepsPanelVisible !== false
-    stepsPanelHeight = s.stepsPanelHeight || 160
-    settingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup !== false
-    settingsSelectorClickStrategies = s.selectorClickStrategies?.length
-      ? [...s.selectorClickStrategies]
-      : ['text', 'contextual', 'aria', 'title', 'testid', 'id']
-    settingsSelectorInputStrategies = s.selectorInputStrategies?.length
-      ? [...s.selectorInputStrategies]
-      : ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
-    settingsNavWaitUntil = s.navWaitUntil || 'domcontentloaded'
-    editorSettings = editorSettingsFromDTO(s.editor)
-    stepsPanelTab = editorSettings.stepsPanelView
-    stepsPanelCollapsed = resolveStepsPanelCollapsed()
-    lastRun = {
-      ...lastRun,
-      workers: s.parallelWorkers || 1,
-      slowMo: s.slowMo ?? 0,
-      browser: s.browser || 'chromium',
-    }
-    checklistDismissed = !!s.checklistDismissed
-    welcomePlayedSuccess = !!s.welcomePlayedSuccess
-    onboardingCompleted = !!s.onboardingCompleted
-    onboardingDismissed = !!s.onboardingDismissed
-    if (!onboardingCompleted && s.onboardingVersion !== ONBOARDING_TOUR_VERSION) {
-      onboardingCompleted = false
-      onboardingDismissed = false
-    }
-    runDialogConfirmed = !!s.runDialogConfirmed
-    pickerDuringRecording = !!s.pickerDuringRecording
-    if (s.startUrl) startURL = s.startUrl
-    if (s.uiLocale === 'en' || s.uiLocale === 'ru') {
-      uiLocale = s.uiLocale
-      setLocale(s.uiLocale)
-    }
+    settingsStore.applyFromDTO(s)
+    recorderPrefsStore.applyFromDTO(s)
+    uiPrefsStore.applyFromDTO(s)
+    dialogBinds.syncRecorderPrefsBindLocals()
+    dialogBinds.syncUiPrefsBindLocals()
+    dialogBinds.syncEditorSettingsBindLocal()
+    dialogBinds.syncSettingsBindLocals()
+    editorStore.setStepsPanelTab(dialogBinds.bindEditorSettings.stepsPanelView)
+    syncStepsPanelCollapsedFromPrefs()
+    runFormStore.applyLastRunFromSettings(
+      s.browser || 'chromium',
+      s.parallelWorkers || 1,
+      s.slowMo ?? 0,
+    )
+
+    const locale = settingsStore.snapshot().uiLocale
+    if (locale === 'en' || locale === 'ru') setLocale(locale)
   }
 
   function resolveStepsPanelCollapsed(): boolean {
     return !stepsPanelVisible
   }
 
-  function buildPaletteCommands(): PaletteCommand[] {
-    const pg = (key: string) => tr(`palette.groups.${key}`)
-    const pc = (key: string) => tr(`palette.commands.${key}`)
-    const compactLabel = toolbarCompact ? pc('expanded') : pc('compact')
-    return [
-      { id: 'palette', label: pc('palette'), group: pg('view'), shortcut: 'Ctrl+Shift+P', run: () => (showCommandPalette = true) },
-      { id: 'welcome', label: pc('welcome'), group: pg('view'), run: () => selectTab(WELCOME_KEY) },
-      { id: 'open', label: pc('open'), group: pg('project'), run: openProjectDialog },
-      { id: 'new-project', label: pc('newProject'), group: pg('project'), run: openNewProjectWizard },
-      { id: 'close-project', label: pc('closeProject'), group: pg('project'), run: closeProject },
-      { id: 'settings', label: pc('settings'), group: pg('project'), shortcut: 'Ctrl+,', run: openSettings },
-      { id: 'init', label: pc('init'), group: pg('project'), run: openInitProjectDialog },
-      { id: 'examples', label: pc('examples'), group: pg('project'), run: openExamples },
-      { id: 'new', label: pc('new'), group: pg('scenario'), shortcut: 'Ctrl+N', run: newScenario },
-      { id: 'open-file', label: pc('openFile'), group: pg('scenario'), shortcut: 'Ctrl+O', run: openFileDialog },
-      { id: 'save', label: pc('save'), group: pg('scenario'), shortcut: 'Ctrl+S', run: saveFeature },
-      { id: 'save-as', label: pc('saveAs'), group: pg('scenario'), shortcut: 'Ctrl+Shift+S', run: saveFeatureAs },
-      { id: 'export', label: pc('export'), group: pg('scenario'), run: openExportDialog },
-      { id: 'import', label: pc('import'), group: pg('scenario'), run: openImportDialog },
-      { id: 'import-features', label: pc('importFeatures'), group: pg('scenario'), run: openImportFeaturesDialog },
-      { id: 'steps', label: pc('steps'), group: pg('scenario'), run: openStepsDialog },
-      { id: 'snippets', label: pc('snippets'), group: pg('scenario'), shortcut: 'Ctrl+Shift+Space', run: openSnippetPalette },
-      { id: 'find-replace', label: pc('findReplace'), group: pg('scenario'), shortcut: 'Ctrl+H', run: openFindReplace },
-      { id: 'find', label: pc('find'), group: pg('scenario'), shortcut: 'Ctrl+F', run: () => monaco?.openFind() },
-      { id: 'format', label: pc('format'), group: pg('scenario'), shortcut: 'Shift+Alt+F', run: () => void monaco?.formatDocument() },
-      { id: 'goto-symbol', label: pc('gotoSymbol'), group: pg('scenario'), shortcut: 'Ctrl+Shift+O', run: () => monaco?.openSymbolOutline() },
-      { id: 'project-replace', label: pc('projectReplace'), group: pg('scenario'), run: () => (showProjectReplace = true) },
-      { id: 'duplicate', label: pc('duplicate'), group: pg('scenario'), run: () => activeTab && !isWelcome && openDuplicateDialog(activeTab) },
-      { id: 'rename-feature', label: pc('renameFeature'), group: pg('scenario'), run: () => {
-        if (!activeTab || isWelcome) return
-        renameFeaturePath = activeTab
-        showRenameFeature = true
-      }},
-      { id: 'delete-feature', label: pc('deleteFeature'), group: pg('scenario'), run: () => activeTab && !isWelcome && deleteFeature(activeTab) },
-      { id: 'refactor-indents', label: pc('refactorIndents'), group: pg('refactor'), run: refactorNormalizeIndents },
-      { id: 'refactor-blanks', label: pc('refactorBlanks'), group: pg('refactor'), run: refactorCollapseBlank },
-      { id: 'steps-help', label: pc('stepsHelp'), group: pg('help'), shortcut: 'F1', run: () => openStepsHelp() },
-      { id: 'browser', label: pc('browser'), group: pg('run'), shortcut: 'Ctrl+B', run: () => void openBrowser() },
-      { id: 'record', label: pc('record'), group: pg('run'), shortcut: 'Ctrl+R', run: beginRecord },
-      { id: 'record-pause', label: pc('recordPause'), group: pg('run'), shortcut: 'Alt+P', run: () => void toggleRecordPause() },
-      { id: 'record-stop', label: pc('recordStop'), group: pg('run'), shortcut: 'Ctrl+Shift+R', run: () => void stopRecord() },
-      { id: 'record-baseline', label: pc('recordBaseline'), group: pg('run'), run: openBaselineRecordDialog },
-      { id: 'stop', label: pc('stop'), group: pg('run'), run: stopRecord },
-      { id: 'pause', label: pc('pause'), group: pg('run'), run: toggleRecordPause },
-      { id: 'run', label: pc('run'), group: pg('run'), shortcut: 'Ctrl+Enter', run: () => runPrimary(false) },
-      { id: 'run-current', label: pc('runCurrent'), group: pg('run'), shortcut: 'Ctrl+Shift+Enter', run: () => runCurrentScenario(false) },
-      { id: 'run-current-dry', label: pc('runCurrentDry'), group: pg('run'), run: () => runCurrentScenario(true) },
-      { id: 'run-dialog', label: pc('runDialog'), group: pg('run'), run: () => openRunDialog('', {}, 'single') },
-      { id: 'run-tag', label: pc('runTag'), group: pg('run'), run: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}, 'tag') },
-      { id: 'playwright', label: pc('playwright'), group: pg('run'), run: () => openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }, 'single') },
-      { id: 'dry', label: pc('dry'), group: pg('run'), run: () => runPrimary(true) },
-      { id: 'batch', label: pc('batch'), group: pg('run'), run: () => toggleBatchMode() },
-      { id: 'batch-run', label: pc('batchRun'), group: pg('run'), run: () => runBatchSelected(false) },
-      { id: 'batch-dry', label: pc('batchDry'), group: pg('run'), run: () => runBatchSelected(true) },
-      { id: 'rerun-failed', label: pc('rerunFailed'), group: pg('run'), run: rerunFailed },
-      { id: 'run-history', label: pc('runHistory'), group: pg('run'), run: openRunHistory },
-      { id: 'testclient', label: pc('testclient'), group: pg('run'), run: openTestClientDialog },
-      { id: 'capture-session', label: pc('captureSession'), group: pg('run'), run: openTestClientDialogForCapture },
-      { id: 'validate', label: pc('validate'), group: pg('run'), run: () => openValidateDialog(true) },
-      { id: 'validate-browser', label: pc('validateBrowser'), group: pg('run'), run: () => openValidateDialog(false) },
-      ...(hasVanessaPlugin()
-        ? [
-            { id: 'vanessa-dry', label: pc('vanessaDry'), group: pg('run'), run: () => openVanessaDialog(true) },
-            { id: 'vanessa', label: pc('vanessa'), group: pg('run'), run: () => openVanessaDialog(false) },
-            { id: 'vanessa-rerun', label: pc('vanessaRerun'), group: pg('run'), run: () => openVanessaDialog(false, true) },
-            { id: 'vanessa-settings', label: pc('vanessaSettings'), group: pg('run'), run: openVanessaSettingsDialog },
-            { id: 'vanessa-monitor', label: pc('vanessaMonitor'), group: pg('run'), run: openVanessaMonitor },
-          ]
-        : []),
-      { id: 'plugins', label: pc('plugins'), group: pg('plugins'), run: () => (showPlugins = true) },
-      ...installedPlugins.flatMap((plugin) => {
-        if (!plugin.runnable || plugin.vanessa) return []
-        const label = pluginLabel(plugin)
-        return [
-          { id: `plugin-${plugin.name}-dry`, label: tr('menus.runPluginDry', { name: label }), group: pg('plugins'), run: () => openPluginRun(plugin.name, true) },
-          { id: `plugin-${plugin.name}`, label: tr('menus.runPlugin', { name: label }), group: pg('plugins'), run: () => openPluginRun(plugin.name, false) },
-        ]
-      }),
-      { id: 'journal', label: pc('journal'), group: pg('view'), shortcut: 'Ctrl+`', run: () => { bottomPanelOpen = true; bottomTab = 'journal' } },
-      { id: 'results', label: pc('results'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'results' } },
-      { id: 'allure-serve', label: pc('allureServe'), group: pg('view'), run: () => serveAllureReport(projectArtifacts.allureDir || '') },
-      { id: 'validate-panel', label: pc('validatePanel'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'validate' } },
-      { id: 'error-panel', label: pc('errorPanel'), group: pg('view'), run: () => { bottomPanelOpen = true; bottomTab = 'error' } },
-      { id: 'explorer', label: pc('explorer'), group: pg('view'), run: () => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) } },
-      { id: 'explorer-hide', label: pc('explorerHide'), group: pg('view'), run: () => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) } },
-      { id: 'preview', label: previewVisible ? pc('previewHide') : pc('previewShow'), group: pg('view'), run: togglePreview },
-      { id: 'steps-panel', label: stepsPanelVisible ? pc('stepsPanelHide') : pc('stepsPanelShow'), group: pg('view'), run: toggleStepsPanel },
-      { id: 'compact', label: compactLabel, group: pg('view'), run: () => { toolbarCompact = !toolbarCompact; persistSettings() } },
-      { id: 'refactor-urls', label: pc('refactorUrls'), group: pg('refactor'), run: refactorUpdateUrls },
-      { id: 'hotkeys', label: pc('hotkeys'), group: pg('help'), shortcut: 'Shift+F1', run: () => (showHotkeys = true) },
-      { id: 'reset-layout', label: pc('resetLayout'), group: pg('view'), run: resetWindowLayout },
-      { id: 'updates', label: pc('updates'), group: pg('help'), run: checkUpdates },
-      { id: 'about', label: pc('about'), group: pg('help'), run: showAboutDialog },
-    ]
+  function syncStepsPanelCollapsedFromPrefs() {
+    uiPrefsStore.setStepsPanelCollapsed(resolveStepsPanelCollapsed())
+  }
+
+  function toggleToolbarCompact() {
+    uiPrefsStore.patch({ toolbarCompact: !toolbarCompact })
+    void persistSettings()
   }
 
   function togglePreview() {
-    previewVisible = !previewVisible
-    saveLayout({ previewVisible })
+    layoutStore.patch({ previewVisible: !previewVisible })
   }
 
   function toggleStepsPanel() {
-    stepsPanelVisible = !stepsPanelVisible
-    stepsPanelCollapsed = resolveStepsPanelCollapsed()
-    persistSettings()
+    uiPrefsStore.patch({ stepsPanelVisible: !stepsPanelVisible })
+    syncStepsPanelCollapsedFromPrefs()
+    void persistSettings()
   }
 
   function showAboutDialog() {
-    showAbout = true
+    dialogsStore.open('showAbout')
   }
 
   function openFindReplace() {
@@ -1711,12 +1317,7 @@
   }
 
   function resetWindowLayout() {
-    const layout = resetUILayout()
-    sidebarVisible = layout.sidebarVisible
-    bottomPanelOpen = layout.bottomPanelOpen
-    bottomPanelHeight = layout.bottomPanelHeight
-    previewVisible = layout.previewVisible
-    previewWidth = layout.previewWidth
+    layoutStore.reset()
     appendLog(tr('journal.layout.reset'))
   }
 
@@ -1731,19 +1332,19 @@
   }
 
   const monacoRunLensActions = {
-    isEnabled: () => editorSettings.codeLens && !!activeTab && !isWelcome,
+    isEnabled: () => dialogBinds.bindEditorSettings.codeLens && !!activeTab && !isWelcome,
     onRun: (payload: { scenario: string; line: number; dryRun: boolean; partial: boolean }) =>
       runScenarioAtLine(payload.line, payload.dryRun, payload.scenario, payload.partial),
   }
 
   const monacoInlayHintsHandlers = {
-    isEnabled: () => editorSettings.inlayHints && !!activeTab && !isWelcome,
+    isEnabled: () => dialogBinds.bindEditorSettings.inlayHints && !!activeTab && !isWelcome,
     getSteps: () => editorSteps,
     isSnapshotCurrent: () => isEditorAnalysisSnapshotVisible(editorStepsTextVersion, editorTextVersion),
   }
 
   async function refreshEditorScenarioHints() {
-    if (isWelcome || !editorSettings.scenarioHints) {
+    if (isWelcome || !dialogBinds.bindEditorSettings.scenarioHints) {
       diagnosticsStore.setHints([])
       return
     }
@@ -1751,8 +1352,8 @@
       const all = await AnalyzeScenarioHints(editorText)
       diagnosticsStore.setHints(
         all
-          .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
-          .filter((h) => filterScenarioHints([h], editorSettings).length > 0),
+          .filter((h) => !diagnosticsStore.isHintDismissed(hintDismissKey(h)))
+          .filter((h) => filterScenarioHints([h], dialogBinds.bindEditorSettings).length > 0),
       )
     } catch {
       diagnosticsStore.setHints([])
@@ -1760,11 +1361,11 @@
   }
 
   async function runScenarioHintsAutoFix(text: string): Promise<{ text: string; count: number }> {
-    if (!editorSettings.scenarioHints || !editorSettings.scenarioHintsAutoFixOnSave) {
+    if (!dialogBinds.bindEditorSettings.scenarioHints || !dialogBinds.bindEditorSettings.scenarioHintsAutoFixOnSave) {
       return { text, count: 0 }
     }
     const all = await AnalyzeScenarioHints(text)
-    const fixable = filterScenarioHints(all, editorSettings).filter((h) => h.autoFixable)
+    const fixable = filterScenarioHints(all, dialogBinds.bindEditorSettings).filter((h) => h.autoFixable)
     return applyAutoFixableScenarioHints(text, fixable, async (hint, currentText) => {
       const result = await ApplyScenarioHintFix({
         text: currentText,
@@ -1775,11 +1376,9 @@
     })
   }
 
-  let hintFixInFlight = false
-
   async function applyEditorHintFix(hint: gui.ScenarioHintDTO) {
     if (hintFixInFlight || isWelcome) return
-    hintFixInFlight = true
+    diagnosticsStore.setHintFixInFlight(true)
     try {
       const result = await ApplyScenarioHintFix({
         text: editorText,
@@ -1792,30 +1391,30 @@
         scheduleValidateEditor(150)
       }
     } finally {
-      hintFixInFlight = false
+      diagnosticsStore.setHintFixInFlight(false)
     }
   }
 
   function dismissEditorHint(hint: gui.ScenarioHintDTO) {
-    editorHintsDismissed.add(hintDismissKey(hint))
+    diagnosticsStore.dismissHint(hintDismissKey(hint))
     void refreshEditorScenarioHints()
   }
 
   async function showPostRecordBanner(path: string) {
-    postRecordPath = path
-    editorHintsDismissed = new Set()
+    postRecordStore.open(path)
+    diagnosticsStore.clearDismissedHints()
     try {
       const editorContent = monaco?.getEditorText() ?? editorText
       if (activeTab === path || isUntitled(path)) {
-        postRecordStepCount = (await ParseEditorSteps(editorContent)).length
+        postRecordStore.setStepCount((await ParseEditorSteps(editorContent)).length)
       } else {
         const content = await ReadFeature(path)
-        postRecordStepCount = (await ParseEditorSteps(content)).length
+        postRecordStore.setStepCount((await ParseEditorSteps(content)).length)
       }
     } catch {
-      postRecordStepCount = 0
+      postRecordStore.setStepCount(0)
     }
-    if (editorSettings.scenarioHints && editorSettings.scenarioHintsAfterRecord) {
+    if (dialogBinds.bindEditorSettings.scenarioHints && dialogBinds.bindEditorSettings.scenarioHintsAfterRecord) {
       await refreshEditorScenarioHints()
     } else {
       diagnosticsStore.setHints([])
@@ -1823,10 +1422,8 @@
   }
 
   function dismissPostRecord() {
-    postRecordPath = ''
-    postRecordStepCount = 0
-    postRecordBaselineText = ''
-    showPostRecordDiff = false
+    postRecordStore.dismiss()
+    dialogsStore.close('showPostRecordDiff')
   }
 
   function openPostRecordDiff() {
@@ -1836,7 +1433,7 @@
       appendLog(tr('journal.record.noPostRecordDiff'))
       return
     }
-    showPostRecordDiff = true
+    dialogsStore.open('showPostRecordDiff')
   }
 
   async function postRecordValidate() {
@@ -1849,7 +1446,7 @@
       return
     }
     await validateProject(false, settingsBrowser || 'chromium', targets)
-    bottomTab = 'validate'
+    layoutStore.setBottomTab('validate')
   }
 
   async function postRecordSave() {
@@ -1861,15 +1458,15 @@
 
   function openDuplicateDialog(path: string) {
     if (!path || isWelcome) return
-    duplicateFeaturePath = path
-    duplicateNewName = `${basename(path).replace(/\.feature$/i, '')}-copy`
-    showDuplicateFeature = true
+    featureDialogStore.openDuplicate(path, `${basename(path).replace(/\.feature$/i, '')}-copy`)
+    dialogBinds.bindDuplicateNewName = featureDialogStore.snapshot().duplicateNewName
+    dialogsStore.open('showDuplicateFeature')
   }
 
   async function confirmDuplicateFeature(newName: string) {
-    showDuplicateFeature = false
+    dialogsStore.close('showDuplicateFeature')
     const path = duplicateFeaturePath
-    duplicateFeaturePath = ''
+    featureDialogStore.clearDuplicate()
     if (!path) return
     try {
       if (isUntitled(path)) {
@@ -1941,15 +1538,13 @@
 
   function onFileContextMenu(e: MouseEvent, path: string) {
     e.preventDefault()
-    contextMenu = { x: e.clientX, y: e.clientY, path }
-    folderMenu = null
+    contextMenuStore.openFeature({ x: e.clientX, y: e.clientY, path })
   }
 
   function onFolderContextMenu(e: MouseEvent, node: CatalogNode) {
     e.preventDefault()
     const paths = collectFeaturePathsUnder(node)
-    folderMenu = { x: e.clientX, y: e.clientY, dir: node.path, paths }
-    contextMenu = null
+    contextMenuStore.openFolder({ x: e.clientX, y: e.clientY, dir: node.path, paths })
   }
 
   function onExplorerContextMenu(e: MouseEvent) {
@@ -1958,7 +1553,7 @@
   }
 
   function dismissFolderMenu() {
-    folderMenu = null
+    contextMenuStore.closeFolder()
   }
 
   function folderRelativePath(dirPath: string): string {
@@ -1981,8 +1576,7 @@
 
   function folderMenuSelectBatch() {
     if (!folderMenu) return
-    batchMode = true
-    batchSelected = [...folderMenu.paths]
+    catalogStore.patch({ batchMode: true, batchSelected: [...folderMenu.paths] })
     dismissFolderMenu()
     appendLog(tr('journal.catalog.batchSelected', { count: batchSelected.length }))
   }
@@ -1993,23 +1587,13 @@
   }
 
   function openVanessaForFolder(dirPath: string, dry: boolean) {
-    vanessaDry = dry
-    vanessaTag = ''
-    vanessaExcludeTags = ''
-    vanessaScenario = ''
-    vanessaDialogScenarios = dialogScenarioNames()
-    vanessaRerunDir = ''
-    vanessaPreferRerun = false
-    vanessaInstallEpf = false
-    vanessaEpfUrl = ''
-    vanessaEpfDest = ''
-    vanessaPlatformExe = ''
-    vanessaEpfPath = ''
-    vanessaIB = ''
-    vanessaReportAllure = false
-    vanessaVaDir = folderRelativePath(dirPath)
-    vanessaVaFiles = ''
-    showVanessaRun = true
+    vanessaRunStore.prepareDialog({
+      dry,
+      dialogScenarios: dialogScenarioNames(),
+      vaDir: folderRelativePath(dirPath),
+    })
+    dialogBinds.syncVanessaBindLocals()
+    dialogsStore.open('showVanessaRun')
   }
 
   function folderMenuVanessa(dry: boolean) {
@@ -2020,7 +1604,7 @@
   }
 
   function dismissContextMenu() {
-    contextMenu = null
+    contextMenuStore.closeFeature()
   }
 
   function contextMenuRun() {
@@ -2076,17 +1660,18 @@
 
   function contextMenuMove() {
     if (!contextMenu || !projectPath) return
-    moveFeaturePath = contextMenu.path
-    moveDestDirs = collectProjectDirs().filter((d) => d !== dirname(moveFeaturePath.replace(/\\/g, '/')))
-    moveDestDir = moveDestDirs[0] || projectPath.replace(/\\/g, '/')
+    const srcPath = contextMenu.path
+    const dirs = collectProjectDirs().filter((d) => d !== dirname(srcPath.replace(/\\/g, '/')))
+    featureDialogStore.openMove(srcPath, dirs)
+    dialogBinds.bindMoveDestDir = featureDialogStore.snapshot().moveDestDir || projectPath.replace(/\\/g, '/')
     dismissContextMenu()
-    showMoveFeature = true
+    dialogsStore.open('showMoveFeature')
   }
 
   async function confirmMoveFeature(destDir: string) {
-    showMoveFeature = false
+    dialogsStore.close('showMoveFeature')
     const src = moveFeaturePath
-    moveFeaturePath = ''
+    featureDialogStore.clearMove()
     if (!src || !destDir) return
     try {
       const newPath = await MoveFeature(src, destDir)
@@ -2109,9 +1694,9 @@
 
   function contextMenuRename() {
     if (!contextMenu) return
-    renameFeaturePath = contextMenu.path
+    featureDialogStore.openRename(contextMenu.path)
     dismissContextMenu()
-    showRenameFeature = true
+    dialogsStore.open('showRenameFeature')
   }
 
   async function renameFeature(path: string, newName: string) {
@@ -2120,10 +1705,10 @@
       const newPath = await RenameFeature(path, newName)
       const wasActive = activeTab === path
       if (tabs.some((t) => t.path === path)) {
-        tabs = tabs.map((t) => (t.path === path ? { ...t, path: newPath } : t))
-        if (wasActive) activeTab = newPath
+        tabsStore.mapTabs((tabs) => tabs.map((t) => (t.path === path ? { ...t, path: newPath } : t)))
+        if (wasActive) tabsStore.setActiveTab(newPath)
       }
-      batchSelected = batchSelected.map((p) => (p === path ? newPath : p))
+      catalogStore.mapBatchSelected((paths) => paths.map((p) => (p === path ? newPath : p)))
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
       appendLog(tr('journal.file.renamed', { name: basename(newPath) }))
@@ -2133,56 +1718,52 @@
   }
 
   async function confirmProjectReplace() {
-    if (!findText) return
-    projectReplaceBusy = true
+    if (!dialogBinds.bindProjectReplaceFind) return
+    projectReplaceStore.patch({
+      findText: dialogBinds.bindProjectReplaceFind,
+      replaceText: dialogBinds.bindProjectReplaceReplace,
+      caseSensitive: dialogBinds.bindProjectReplaceCaseSensitive,
+    })
+    projectReplaceStore.setBusy(true)
     try {
       const result = await ReplaceInProject({
-        find: findText,
-        replace: replaceText,
-        caseSensitive: replaceCaseSensitive,
+        find: dialogBinds.bindProjectReplaceFind,
+        replace: dialogBinds.bindProjectReplaceReplace,
+        caseSensitive: dialogBinds.bindProjectReplaceCaseSensitive,
       })
       appendLog(tr('journal.file.replaceDone', { replacements: result.replacements, files: result.filesChanged }))
-      showProjectReplace = false
+      dialogsStore.close('showProjectReplace')
       await refreshProject()
       if (activeTab && !isWelcome) {
-        editorText = await ReadFeature(activeTab)
-        tabs = tabs.map((t) => (t.path === activeTab ? { ...t, content: editorText } : t))
+        editorStore.setText(await ReadFeature(activeTab))
+        tabsStore.mapTabs((tabs) => tabs.map((t) => (t.path === activeTab ? { ...t, content: editorText } : t)))
         validateEditor()
       }
     } catch (e: any) {
       appendLog(tr('journal.error.generic', { error: String(e) }))
     } finally {
-      projectReplaceBusy = false
+      projectReplaceStore.setBusy(false)
     }
   }
 
-  let refreshRunResultsInFlight = false
-  let refreshRunResultsQueued = false
-
   async function refreshRunResults() {
-    if (refreshRunResultsInFlight) {
-      refreshRunResultsQueued = true
-      return
-    }
-    refreshRunResultsInFlight = true
+    if (!reportsStore.tryBeginRefresh()) return
     const started = perfNow()
     try {
       reportsStore.setData(await ListRunResults(50), await FlakyMetrics(200))
     } catch {
       reportsStore.setData([], null)
     } finally {
-      refreshRunResultsInFlight = false
       perfMark('refreshRunResults', started)
-      if (refreshRunResultsQueued) {
-        refreshRunResultsQueued = false
+      if (reportsStore.finishRefresh()) {
         void refreshRunResults()
       }
     }
   }
 
   function scheduleRefreshRunResults() {
-    if (refreshRunResultsInFlight) {
-      refreshRunResultsQueued = true
+    if ($reportsStore.refreshInFlight) {
+      reportsStore.queueRefresh()
       return
     }
     void refreshRunResults()
@@ -2201,40 +1782,37 @@
     runner = 'playwright',
     scenario = '',
   ) {
-    lastRunSince = runSince
     const batch = remapRunResultPaths(
       filterRunResultsSince($reportsStore.runResults, runSince),
       diskTargets,
       runTargets,
     )
-    lastRunBatchResults = batch
-    lastErrorEntry = pickLastRunError(batch)
-    if (!lastErrorEntry && cliError && !/context canceled/i.test(cliError)) {
+    let lastError = pickLastRunError(batch)
+    if (!lastError && cliError && !/context canceled/i.test(cliError)) {
       const featurePath =
         runTargets.length === 1
           ? runResultFeaturePath(runTargets[0])
           : diskTargets.length === 1
             ? diskTargets[0]
             : tr('journal.run.defaultLabel')
-      lastErrorEntry = buildSyntheticRunError({
+      lastError = buildSyntheticRunError({
         featurePath,
         scenario: scenario || undefined,
         message: cliError,
         runner,
       })
     }
-    if (lastRunBatchResults.length === 0 && lastErrorEntry) {
-      lastRunBatchResults = [lastErrorEntry]
-    }
+    const batchResults = batch.length === 0 && lastError ? [lastError] : batch
+    runnerStore.setLastRunSession(runSince, batchResults, lastError)
   }
 
   async function openRunHistory() {
     await refreshRunResults()
-    showRunHistory = true
+    dialogsStore.open('showRunHistory')
   }
 
   async function openFeatureFromHistory(path: string) {
-    showRunHistory = false
+    dialogsStore.close('showRunHistory')
     const feature = path.includes('::') ? path.slice(0, path.indexOf('::')) : path
     const resolved = resolveLogicalRunTarget(feature, tabs, activeTab)
     if (isUntitled(resolved) && tabs.some((t) => t.path === resolved)) {
@@ -2263,10 +1841,10 @@
     try {
       const info = await OpenProject(path)
       applyProjectScan(info)
-      testClients = await ListTestClients().catch(() => [])
+      testClientStore.setClients(await ListTestClients().catch((): string[] => []))
       await rememberProject(projectPath)
       const recents = await loadRecents()
-      recentProjects = recents.projects
+      recentsStore.patch({ projects: recents.projects })
       appendLog(tr('journal.project.opened', { path: projectPath }))
       syncIdleStatus()
       await refreshRunResults()
@@ -2298,7 +1876,7 @@
       /* ignore */
     }
     recorderStore.reset()
-    liveRecordStepLines = {}
+    recorderStore.clearLiveRecordSession()
   }
 
   async function resetWorkspaceForProjectSwitch() {
@@ -2308,18 +1886,13 @@
       monaco?.releaseTab(t.path)
     }
     monaco?.retainTabs([])
-    tabs = []
-    activeTab = WELCOME_KEY
-    welcomeTabVisible = true
-    editorText = ''
+    tabsStore.reset()
+    editorStore.reset()
     monaco?.activateTab(null, '')
-    batchSelected = []
-    batchMode = false
+    catalogStore.clearBatch()
     diagnosticsStore.setIssues([])
-    editorValidationByTab = {}
-    postRecordPath = ''
-    postRecordStepCount = 0
-    postRecordBaselineText = ''
+    diagnosticsStore.clearIssuesByTab()
+    postRecordStore.dismiss()
   }
 
   async function closeProject() {
@@ -2341,15 +1914,12 @@
       monaco?.releaseTab(t.path)
     }
     monaco?.retainTabs([])
-    tabs = []
-    activeTab = WELCOME_KEY
-    welcomeTabVisible = true
-    editorText = ''
+    tabsStore.reset()
+    editorStore.reset()
     monaco?.activateTab(null, '')
-    batchSelected = []
-    batchMode = false
+    catalogStore.clearBatch()
     diagnosticsStore.setIssues([])
-    editorValidationByTab = {}
+    diagnosticsStore.clearIssuesByTab()
     appendLog(tr('journal.project.closed'))
     syncIdleStatus()
     schedulePersistSession()
@@ -2357,39 +1927,36 @@
 
   function startVanessaPoll() {
     stopVanessaPoll()
-    vanessaPollTimer = setInterval(async () => {
+    vanessaRunStore.setPollTimer(setInterval(async () => {
       try {
         let dir = vanessaWatchDir
         if (!dir) {
           const dirs = await ListVanessaRunDirs(1)
           dir = dirs[0] || ''
-          if (dir) vanessaWatchDir = dir
+          if (dir) vanessaRunStore.patch({ watchDir: dir })
         }
         if (dir) {
-          vanessaSnapshot = await PollVanessaRun(dir, vanessaPlannedTotal)
+          vanessaRunStore.setSnapshot(await PollVanessaRun(dir, vanessaPlannedTotal))
         }
       } catch {
         /* offline poll */
       }
-    }, 2000)
+    }, 2000))
   }
 
   function stopVanessaPoll() {
-    if (vanessaPollTimer) {
-      clearInterval(vanessaPollTimer)
-      vanessaPollTimer = null
-    }
+    vanessaRunStore.clearPollTimer()
   }
 
   async function openVanessaMonitor() {
     if (!projectPath) return
-    showVanessaMonitor = true
-    vanessaPlannedTotal = Math.max(1, features.length)
+    dialogsStore.open('showVanessaMonitor')
+    vanessaRunStore.patch({ plannedTotal: Math.max(1, features.length) })
     try {
       const dirs = await ListVanessaRunDirs(1)
       if (dirs[0]) {
-        vanessaWatchDir = dirs[0]
-        vanessaSnapshot = await PollVanessaRun(dirs[0], vanessaPlannedTotal)
+        vanessaRunStore.patch({ watchDir: dirs[0] })
+        vanessaRunStore.setSnapshot(await PollVanessaRun(dirs[0], vanessaPlannedTotal))
       }
     } catch {
       /* ignore */
@@ -2397,27 +1964,8 @@
   }
 
   function buildVanessaPluginRequest(): gui.PluginRunRequest {
-    const exclude = vanessaExcludeTags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-    return {
-      name: 'vanessa',
-      dryRun: vanessaDry,
-      tag: vanessaTag.trim(),
-      excludeTags: exclude,
-      scenario: vanessaScenario.trim(),
-      rerunFailedRunDir: vanessaRerunDir.trim(),
-      installEpf: vanessaInstallEpf,
-      epfUrl: vanessaEpfUrl.trim(),
-      epfDest: vanessaEpfDest.trim(),
-      platformExe: vanessaPlatformExe.trim(),
-      epfPath: vanessaEpfPath.trim(),
-      ibConnection: vanessaIB.trim(),
-      reportAllure: vanessaReportAllure,
-      vaDir: vanessaVaDir.trim(),
-      vaFiles: vanessaVaFiles.trim(),
-    }
+    dialogBinds.flushVanessaBindLocals()
+    return vanessaRunStore.buildPluginRequest(vanessaRunStore.snapshot())
   }
 
   async function openExamples() {
@@ -2427,8 +1975,7 @@
       return
     }
     await openProjectAt(examples)
-    sidebarVisible = true
-    saveLayout({ sidebarVisible: true })
+    layoutStore.showSidebar()
     selectTab(WELCOME_KEY)
     appendLog(tr('journal.examples.selectScenario'))
     setStatus(tr('journal.status.examplesOpened'), 'normal')
@@ -2465,29 +2012,24 @@
   }
 
   function toggleBatchFeature(path: string) {
-    batchSelected = toggleBatchPath(batchSelected, path)
+    catalogStore.toggleBatchPath(path)
   }
 
   function toggleBatchMode() {
     if (batchMode) {
-      batchMode = false
-      batchSelected = []
+      catalogStore.clearBatch()
       return
     }
-    batchMode = true
-    batchSelected = selectAllFeaturesUnder(catalogViewState.tree)
+    catalogStore.patch({ batchMode: true, batchSelected: selectAllFeaturesUnder(catalogViewState.tree) })
   }
 
   function onCatalogToggleBatch(path: string) {
-    if (!batchMode) batchMode = true
+    if (!batchMode) catalogStore.patch({ batchMode: true })
     toggleBatchFeature(path)
   }
 
   function onCatalogCollapse(key: string, collapsed: boolean) {
-    const next = new Set(catalogCollapsed)
-    if (collapsed) next.add(key)
-    else next.delete(key)
-    catalogCollapsed = next
+    catalogStore.setCollapsed(key, collapsed)
   }
 
   function onCatalogActivate(path: string, kind: 'root' | 'dir' | 'file') {
@@ -2495,7 +2037,7 @@
   }
 
   function clearBatchSelection() {
-    batchSelected = []
+    catalogStore.setBatchSelected([])
   }
 
   async function materializeRunTargets(paths: string[]): Promise<string[]> {
@@ -2644,20 +2186,20 @@
         openStepsHelp()
         break
       case 'hotkeys':
-        showHotkeys = true
+        dialogsStore.open('showHotkeys')
         break
       case 'settings':
         openSettings()
         break
       case 'palette':
-        showCommandPalette = true
+        dialogsStore.open('showCommandPalette')
         break
       case 'snippets':
         openSnippetPalette()
         break
       case 'journal':
-        bottomPanelOpen = !bottomPanelOpen
-        if (bottomPanelOpen) bottomTab = 'journal'
+        layoutStore.toggleBottomPanel()
+        if (bottomPanelOpen) layoutStore.setBottomTab('journal')
         break
       case 'format':
         if (!isWelcome && activeTab) void monaco?.formatDocument()
@@ -2666,9 +2208,9 @@
         if (!isWelcome && activeTab) monaco?.openSymbolOutline()
         break
       case 'escape':
-        openMenu = null
-        if (showCommandPalette) showCommandPalette = false
-        if (showSnippetPalette) showSnippetPalette = false
+        menuStore.close()
+        if (showCommandPalette) dialogsStore.close('showCommandPalette')
+        if (showSnippetPalette) dialogsStore.close('showSnippetPalette')
         break
     }
   }
@@ -2682,69 +2224,69 @@
       e.preventDefault()
     }
 
-    if (confirmDialog) return dismiss(() => closeConfirm(false))
+    if (confirmDialogOpen) return dismiss(() => closeConfirm(false))
     if (showHttpAuth) return dismiss(closeHttpAuthDialog)
-    if (showPickerStep) return dismiss(() => { showPickerStep = false })
+    if (showPickerStep) return dismiss(() => { dialogsStore.close('showPickerStep') })
 
     const inModal = e.target instanceof Element && e.target.closest('.modal-backdrop, .palette-backdrop')
     if (!inModal && monacoOverlayConsumesEscape()) return
 
     if (pendingCloseTab) return dismiss(cancelCloseTab)
     if (showOtp) return dismiss(cancelOtp)
-    if (showPluginRun) return dismiss(() => { showPluginRun = false })
-    if (showCommandPalette) return dismiss(() => { showCommandPalette = false })
-    if (showSnippetPalette) return dismiss(() => { showSnippetPalette = false })
-    if (recordStepPickerOpen) return
-    if (showRecord) return dismiss(() => { showRecord = false })
-    if (showSteps) return dismiss(() => { showSteps = false })
-    if (showProjectReplace) return dismiss(() => { showProjectReplace = false })
-    if (showRunHistory) return dismiss(() => { showRunHistory = false })
-    if (showPostRecordDiff && postRecordPath) return dismiss(() => { showPostRecordDiff = false })
-    if (showHotkeys) return dismiss(() => { showHotkeys = false })
-    if (showPlugins) return dismiss(() => { showPlugins = false })
-    if (showAbout) return dismiss(() => { showAbout = false })
-    if (showUpdateCheck && !updateDownloading) return dismiss(() => { showUpdateCheck = false })
-    if (showImportFeatures) return dismiss(() => { showImportFeatures = false })
-    if (showImport) return dismiss(() => { showImport = false })
+    if (showPluginRun) return dismiss(() => { dialogsStore.close('showPluginRun') })
+    if (showCommandPalette) return dismiss(() => { dialogsStore.close('showCommandPalette') })
+    if (showSnippetPalette) return dismiss(() => { dialogsStore.close('showSnippetPalette') })
+    if (dialogBinds.bindRecordStepPickerOpen) return
+    if (showRecord) return dismiss(() => { dialogsStore.close('showRecord') })
+    if (showSteps) return dismiss(() => { dialogsStore.close('showSteps') })
+    if (showProjectReplace) return dismiss(() => { dialogsStore.close('showProjectReplace') })
+    if (showRunHistory) return dismiss(() => { dialogsStore.close('showRunHistory') })
+    if (showPostRecordDiff && postRecordPath) return dismiss(() => { dialogsStore.close('showPostRecordDiff') })
+    if (showHotkeys) return dismiss(() => { dialogsStore.close('showHotkeys') })
+    if (showPlugins) return dismiss(() => { dialogsStore.close('showPlugins') })
+    if (showAbout) return dismiss(() => { dialogsStore.close('showAbout') })
+    if (showUpdateCheck && !updateDownloading) return dismiss(() => { dialogsStore.close('showUpdateCheck') })
+    if (showImportFeatures) return dismiss(() => { dialogsStore.close('showImportFeatures') })
+    if (showImport) return dismiss(() => { dialogsStore.close('showImport') })
     if (showDuplicateFeature) {
       return dismiss(() => {
-        showDuplicateFeature = false
-        duplicateFeaturePath = ''
+        dialogsStore.close('showDuplicateFeature')
+        featureDialogStore.clearDuplicate()
       })
     }
-    if (showInitProject) return dismiss(() => { showInitProject = false })
-    if (showNewProjectWizard) return dismiss(() => { showNewProjectWizard = false })
-    if (showValidate) return dismiss(() => { showValidate = false })
+    if (showInitProject) return dismiss(() => { dialogsStore.close('showInitProject') })
+    if (showNewProjectWizard) return dismiss(() => { dialogsStore.close('showNewProjectWizard') })
+    if (showValidate) return dismiss(() => { dialogsStore.close('showValidate') })
     if (showMoveFeature) {
       return dismiss(() => {
-        showMoveFeature = false
-        moveFeaturePath = ''
+        dialogsStore.close('showMoveFeature')
+        featureDialogStore.clearMove()
       })
     }
     if (showRenameFeature) {
       return dismiss(() => {
-        showRenameFeature = false
-        renameFeaturePath = ''
+        dialogsStore.close('showRenameFeature')
+        featureDialogStore.clearRename()
       })
     }
-    if (showOpenProject) return dismiss(() => { showOpenProject = false })
-    if (showRefactorUrl) return dismiss(() => { showRefactorUrl = false })
-    if (showExport) return dismiss(() => { showExport = false })
-    if (showVanessaSettings) return dismiss(() => { showVanessaSettings = false })
+    if (showOpenProject) return dismiss(() => { dialogsStore.close('showOpenProject') })
+    if (showRefactorUrl) return dismiss(() => { dialogsStore.close('showRefactorUrl') })
+    if (showExport) return dismiss(() => { dialogsStore.close('showExport') })
+    if (showVanessaSettings) return dismiss(() => { dialogsStore.close('showVanessaSettings') })
     if (showStepsHelp) {
       return dismiss(() => {
-        showStepsHelp = false
-        stepsHelpQuery = ''
+        dialogsStore.close('showStepsHelp')
+        stepsHelpDialogStore.clear()
       })
     }
     if (showTestClient) {
       return dismiss(() => {
-        showTestClient = false
-        testClientSuggestName = ''
+        dialogsStore.close('showTestClient')
+        testClientStore.clearSuggestName()
       })
     }
-    if (showVanessaRun) return dismiss(() => { showVanessaRun = false })
-    if (showRun) return dismiss(() => { showRun = false })
+    if (showVanessaRun) return dismiss(() => { dialogsStore.close('showVanessaRun') })
+    if (showRun) return dismiss(() => { dialogsStore.close('showRun') })
     if (showSettings) return dismiss(cancelSettings)
   }
 
@@ -2774,33 +2316,33 @@
   }
 
   function startResizePreview(e: MouseEvent) {
-    resizingPreview = true
+    layoutStore.setResizing('resizingPreview', true)
     e.preventDefault()
     const startX = e.clientX
     const startW = previewWidth
     const onMove = (ev: MouseEvent) => {
-      previewWidth = Math.max(200, Math.min(720, startW - (ev.clientX - startX)))
+      layoutStore.patchLocal({ previewWidth: Math.max(200, Math.min(720, startW - (ev.clientX - startX))) })
     }
     const onUp = () => {
-      resizingPreview = false
+      layoutStore.setResizing('resizingPreview', false)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
-      saveLayout({ previewWidth })
+      layoutStore.patch({ previewWidth })
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
 
   function startResizeSidebar(e: MouseEvent) {
-    resizingSidebar = true
+    layoutStore.setResizing('resizingSidebar', true)
     e.preventDefault()
     const startX = e.clientX
     const startW = sidebarWidth
     const onMove = (ev: MouseEvent) => {
-      sidebarWidth = clampSidebarWidth(startW + (ev.clientX - startX))
+      uiPrefsStore.patchLocal({ sidebarWidth: clampSidebarWidth(startW + (ev.clientX - startX)) })
     }
     const onUp = async () => {
-      resizingSidebar = false
+      layoutStore.setResizing('resizingSidebar', false)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       await persistSettings()
@@ -2810,17 +2352,16 @@
   }
 
   function startResizeBottom(e: MouseEvent) {
-    resizingBottom = true
+    layoutStore.setResizing('resizingBottom', true)
     e.preventDefault()
     const startY = e.clientY
     const startH = bottomPanelHeight
     const onMove = (ev: MouseEvent) => {
-      bottomPanelHeight = Math.max(80, Math.min(window.innerHeight * 0.6, startH + (startY - ev.clientY)))
-      bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight, window.innerHeight)
+      layoutStore.patchLocal({ bottomPanelHeight: clampBottomPanelHeight(Math.max(80, Math.min(window.innerHeight * 0.6, startH + (startY - ev.clientY))), window.innerHeight) })
     }
     const onUp = () => {
-      resizingBottom = false
-      saveLayout({ bottomPanelHeight })
+      layoutStore.setResizing('resizingBottom', false)
+      layoutStore.patch({ bottomPanelHeight })
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -2829,7 +2370,7 @@
   }
 
   function startResizeSteps(e: MouseEvent) {
-    resizingSteps = true
+    layoutStore.setResizing('resizingSteps', true)
     e.preventDefault()
     const startY = e.clientY
     const startH = stepsPanelHeight
@@ -2838,7 +2379,7 @@
       stepsPanelHeight = clampStepsPanelHeight(stepsPanelHeight, window.innerHeight)
     }
     const onUp = async () => {
-      resizingSteps = false
+      layoutStore.setResizing('resizingSteps', false)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       await persistSettings()
@@ -2861,15 +2402,14 @@
   function onPreviewSplitterKeydown(e: KeyboardEvent) {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
     e.preventDefault()
-    previewWidth = Math.max(200, Math.min(720, previewWidth + (e.key === 'ArrowLeft' ? resizeStep(e) : -resizeStep(e))))
-    saveLayout({ previewWidth })
+    layoutStore.patch({ previewWidth: Math.max(200, Math.min(720, previewWidth + (e.key === 'ArrowLeft' ? resizeStep(e) : -resizeStep(e)))) })
+    layoutStore.patch({ previewWidth })
   }
 
   function onBottomSplitterKeydown(e: KeyboardEvent) {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
-    bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight + (e.key === 'ArrowUp' ? resizeStep(e) : -resizeStep(e)), window.innerHeight)
-    saveLayout({ bottomPanelHeight })
+    layoutStore.patch({ bottomPanelHeight: clampBottomPanelHeight(bottomPanelHeight + (e.key === 'ArrowUp' ? resizeStep(e) : -resizeStep(e)), window.innerHeight) })
   }
 
   function onStepsSplitterKeydown(e: KeyboardEvent) {
@@ -2880,12 +2420,11 @@
   }
 
   function appendLog(line: string) {
-    logText += line + (line.endsWith('\n') ? '' : '\n')
+    journalStore.appendLog(line)
   }
 
   function setStatus(msg: string, tone: typeof statusTone = 'normal') {
-    statusMessage = msg
-    statusTone = tone
+    journalStore.setStatus(msg, tone)
   }
 
   function applyDevUiMock() {
@@ -2898,22 +2437,26 @@
       tags: [],
       featureTags: {},
     })
-    recentFeatures = [
+    recentsStore.patch({
+      features: [
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/smoke.feature',
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/login.feature',
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/api.feature',
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/ui.feature',
       'C:/Users/bafgion/Documents/Projects/camel-1c-integration/target/regress.feature',
-    ]
-    recentProjects = ['target', 'examples', 'test', 'demo', 'sandbox']
+    ],
+      projects: ['target', 'examples', 'test', 'demo', 'sandbox'],
+    })
   }
 
   function syncViewportLayout() {
     if (typeof window === 'undefined') return
-    viewportWidth = window.innerWidth
-    viewportHeight = window.innerHeight
-    viewportAutoCompact = shouldAutoCompactToolbar(viewportWidth)
-    bottomPanelHeight = clampBottomPanelHeight(bottomPanelHeight, viewportHeight)
+    viewportStore.syncWindowSize(
+      window.innerWidth,
+      window.innerHeight,
+      shouldAutoCompactToolbar(window.innerWidth),
+    )
+    layoutStore.patchLocal({ bottomPanelHeight: clampBottomPanelHeight(bottomPanelHeight, viewportHeight) })
     stepsPanelHeight = clampStepsPanelHeight(stepsPanelHeight, viewportHeight)
     syncToolbarDensity()
   }
@@ -2924,7 +2467,7 @@
     const urlBlock = actionBarEl.querySelector('.url-block') as HTMLElement | null
     const urlWidth = urlBlock?.getBoundingClientRect().width ?? 0
     const available = barWidth - urlWidth - 48
-    toolbarIconOnly = available < toolbarIconOnlyThreshold(barWidth)
+    viewportStore.setToolbarIconOnly(available < toolbarIconOnlyThreshold(barWidth))
   }
 
   function observeActionBar(node: HTMLElement) {
@@ -2942,23 +2485,22 @@
   }
 
   function syncIdleStatus() {
-    if (statusTone === 'busy' || statusTone === 'error') return
+    const tone = journalStore.snapshot().statusTone
+    if (tone === 'busy' || tone === 'error') return
     if (projectPath) {
-      statusMessage = projectPath.replace(/\\/g, '/')
-      statusTone = 'normal'
+      journalStore.setStatus(projectPath.replace(/\\/g, '/'), 'normal')
       return
     }
-    statusMessage = tr('statusBar.default')
-    statusTone = 'normal'
+    journalStore.setStatus(tr('statusBar.default'), 'normal')
   }
 
   function toggleMenu(name: string, e: MouseEvent) {
     e.stopPropagation()
-    openMenu = openMenu === name ? null : name
+    menuStore.toggle(name)
   }
 
   function closeMenu() {
-    openMenu = null
+    menuStore.close()
   }
 
   function runMenuAction(action: () => void) {
@@ -2968,9 +2510,9 @@
 
   async function refreshArtifacts() {
     try {
-      projectArtifacts = await ProjectArtifacts()
+      projectStore.setArtifacts(await ProjectArtifacts())
     } catch {
-      projectArtifacts = new gui.ProjectArtifacts()
+      projectStore.setArtifacts(new gui.ProjectArtifacts())
     }
     await refreshAllureStatus()
   }
@@ -2979,12 +2521,10 @@
     try {
       const steps = await ParseEditorSteps(textSnapshot)
       if (!isEditorAnalysisSnapshotVisible(textVersionSnapshot, editorTextVersion)) return
-      editorSteps = steps
-      editorStepsTextVersion = textVersionSnapshot
+      editorStore.setSteps(steps, textVersionSnapshot)
     } catch {
       if (!isEditorAnalysisSnapshotVisible(textVersionSnapshot, editorTextVersion)) return
-      editorSteps = []
-      editorStepsTextVersion = textVersionSnapshot
+      editorStore.clearSteps(textVersionSnapshot)
     }
     monaco?.refreshInlayHints()
   }
@@ -2996,7 +2536,7 @@
     if (result.error) {
       appendLog(tr('journal.error.generic', { error: result.error }))
     } else {
-      allureServeRunning = true
+      reportsStore.setAllureServeRunning(true)
     }
     await refreshAllureStatus(path)
   }
@@ -3004,10 +2544,9 @@
   async function refreshAllureStatus(dir = '') {
     try {
       const status = await AllureStatus(dir || projectArtifacts.allureDir || '')
-      allureInstalled = status.installed !== false
-      allureServeRunning = !!status.running
+      reportsStore.setAllureStatus(status.installed !== false, !!status.running)
     } catch {
-      allureInstalled = true
+      reportsStore.setAllureStatus(true, false)
     }
   }
 
@@ -3045,7 +2584,7 @@
   }) {
     const featurePath = resolveRunResultFeaturePath(req.feature_path)
     if (!featurePath) return
-    bottomPanelOpen = true
+    layoutStore.openBottomPanel()
     if (req.line > 0) {
       await loadFeature(featurePath)
       gotoEditorLine(req.line)
@@ -3090,8 +2629,8 @@
     const featurePath = resolveRunResultFeaturePath(req.feature_path)
     if (!featurePath || !projectPath) return
     await loadFeature(featurePath)
-    bottomPanelOpen = true
-    bottomTab = 'journal'
+    layoutStore.openBottomPanel()
+    layoutStore.setBottomTab('journal')
     await executeRun(runFormFromMode(lastRun, 'single', { dryRun: false, scenario: req.scenario, html: true }), [featurePath])
   }
 
@@ -3145,7 +2684,7 @@
     try {
       const info = await RefreshProject()
       applyProjectScan(info)
-      projectScenarios = await ListScenarioTitles().catch(() => [])
+      projectStore.setScenarios(await ListScenarioTitles().catch((): string[] => []))
       appendLog(tr('journal.catalog.refreshed'))
       setStatus(tr('journal.catalog.refreshedShort'), 'success')
     } catch (e: unknown) {
@@ -3171,26 +2710,26 @@
     if (!projectPath) return
     const info = await RefreshProject()
     applyProjectScan(info)
-    batchSelected = remapBatchSelectedPaths(batchSelected, features)
-    testClients = await ListTestClients().catch(() => [])
-    projectScenarios = await ListScenarioTitles().catch(() => [])
+    catalogStore.remapBatchSelected(features)
+    testClientStore.setClients(await ListTestClients().catch((): string[] => []))
+    projectStore.setScenarios(await ListScenarioTitles().catch((): string[] => []))
     await refreshInstalledPlugins()
   }
 
   async function refreshInstalledPlugins() {
     if (!projectPath) {
-      installedPlugins = []
+      pluginsStore.clear()
       return
     }
     try {
-      installedPlugins = await ListPlugins()
+      pluginsStore.setInstalled(await ListPlugins())
     } catch {
-      installedPlugins = []
+      pluginsStore.clear()
     }
   }
 
   function hasVanessaPlugin(): boolean {
-    return installedPlugins.some((p) => p.vanessa)
+    return pluginsStore.hasVanessa()
   }
 
   function pluginLabel(plugin: gui.PluginEntryDTO): string {
@@ -3199,7 +2738,7 @@
   }
 
   function pluginRunTitle(name: string): string {
-    const entry = installedPlugins.find((p) => p.name === name)
+    const entry = pluginsStore.findByName(name)
     if (entry) return pluginLabel(entry)
     return name
   }
@@ -3210,10 +2749,10 @@
       const newPath = await MoveFeature(src, destDir)
       const wasActive = activeTab === src
       if (tabs.some((t) => t.path === src)) {
-        tabs = tabs.map((t) => (t.path === src ? { ...t, path: newPath } : t))
-        if (wasActive) activeTab = newPath
+        tabsStore.mapTabs((tabs) => tabs.map((t) => (t.path === src ? { ...t, path: newPath } : t)))
+        if (wasActive) tabsStore.setActiveTab(newPath)
       }
-      batchSelected = batchSelected.map((p) => (p === src ? newPath : p))
+      catalogStore.mapBatchSelected((paths) => paths.map((p) => (p === src ? newPath : p)))
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
       appendLog(tr('journal.file.moved', { name: basename(newPath) }))
@@ -3242,7 +2781,7 @@
       path = ''
     }
     if (!path) {
-      showOpenProject = true
+      dialogsStore.open('showOpenProject')
       return
     }
     await openProjectAt(path)
@@ -3250,9 +2789,9 @@
 
   function trimTabsMemory() {
     if (isWelcome || !activeTab) {
-      tabs = trimRetainedTabBodies(tabs, activeTab || '')
+      tabsStore.setTabs(trimRetainedTabBodies(tabs, activeTab || ''))
     } else {
-      tabs = trimRetainedTabBodies(tabs, activeTab)
+      tabsStore.setTabs(trimRetainedTabBodies(tabs, activeTab))
     }
     monaco?.retainTabs(pathsToRetainModels(tabs, isWelcome ? '' : activeTab))
   }
@@ -3267,7 +2806,7 @@
     if (!tabPath || tabPath === WELCOME_KEY) return
     const liveText =
       tabPath === activeTab && monaco ? (monaco.getEditorText() ?? editorText) : editorText
-    tabs = tabs.map((t) => {
+    tabsStore.mapTabs((tabs) => tabs.map((t) => {
       if (t.path !== tabPath) return t
       const dirty = liveText !== t.content
       if (!dirty) {
@@ -3275,7 +2814,7 @@
         return { ...t, dirty: false, draft: undefined }
       }
       return { ...t, draft: liveText, dirty: true }
-    })
+    }))
   }
 
   function syncActiveTabContent() {
@@ -3285,9 +2824,9 @@
 
   function markActiveTabSaved(text: string, tabPath = activeTab) {
     if (isWelcome || !tabPath) return
-    tabs = tabs.map((t) =>
+    tabsStore.mapTabs((tabs) => tabs.map((t) =>
       t.path === tabPath ? { ...t, content: text, dirty: false, draft: undefined } : t,
-    )
+    ))
   }
 
   async function checkActiveTabDiskStale() {
@@ -3307,9 +2846,9 @@
       })
       if (!ok) return
       const currentActive = activeTab
-      tabs = tabs.map((t) =>
+      tabsStore.mapTabs((tabs) => tabs.map((t) =>
         t.path === pathAtStart ? { ...t, content: disk, dirty: false, draft: undefined, unloaded: false } : t,
-      )
+      ))
       if (currentActive === pathAtStart) {
         await applyEditorText(disk, { saved: true, switchTab: true, tabPath: pathAtStart, skipValidate: true })
       }
@@ -3322,7 +2861,7 @@
   async function ensureRecordingTabSwitchAllowed(path: string): Promise<boolean> {
     if (!recording || !recordingTargetPath) return true
     if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) return true
-    if (skipRecordTabSwitchConfirm) return true
+    if (confirmDialogStore.shouldSkipRecordTabSwitchConfirm()) return true
     const ok = await askConfirm({
       title: tr('confirm.recordingActive.title'),
       message: tr('confirm.recordingActive.message', {
@@ -3335,10 +2874,8 @@
     return ok
   }
 
-  let loadFeatureGeneration = 0
-
   function cancelPendingFeatureLoads() {
-    loadFeatureGeneration++
+    tabsStore.bumpLoadFeatureGeneration()
   }
 
   async function loadFeature(
@@ -3349,7 +2886,7 @@
       const allowed = await ensureRecordingTabSwitchAllowed(path)
       if (!allowed) return
     }
-    const generation = ++loadFeatureGeneration
+    const generation = tabsStore.bumpLoadFeatureGeneration()
     const leavingTab = activeTab
     if (leavingTab && !isWelcome && leavingTab !== path) {
       syncTabContent(leavingTab)
@@ -3363,32 +2900,31 @@
       if (tabNeedsDiskReload(existing)) {
         try {
           text = await ReadFeature(path)
-          if (generation !== loadFeatureGeneration) return
-          tabs = tabs.map((t) =>
+          if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
+          tabsStore.mapTabs((tabs) => tabs.map((t) =>
             t.path === path ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
-          )
+          ))
         } catch (e: any) {
           appendLog(tr('journal.file.openError', { error: String(e) }))
           return
         }
       }
-      if (generation !== loadFeatureGeneration) return
-      welcomeTabVisible = false
-      activeTab = path
+      if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
+      tabsStore.patch({ welcomeTabVisible: false, activeTab: path })
       await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
       trimTabsMemory()
-      stepsPanelCollapsed = resolveStepsPanelCollapsed()
+      syncStepsPanelCollapsedFromPrefs()
       schedulePersistSession()
       return
     }
     try {
       const diskContent = await ReadFeature(path)
-      if (generation !== loadFeatureGeneration) return
+      if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
       let content = diskContent
       let dirty = false
       try {
         const draft = await LoadFeatureDraft(path)
-        if (generation !== loadFeatureGeneration) return
+        if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
         if (draft && draft.trim() !== diskContent.trim()) {
           content = draft
           dirty = true
@@ -3397,17 +2933,16 @@
       } catch {
         /* no draft */
       }
-      if (generation !== loadFeatureGeneration) return
-      tabs = [...tabs, { path, content, dirty }]
+      if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
+      tabsStore.appendTab({ path, content, dirty })
       warnManyOpenTabs()
-      welcomeTabVisible = false
+      tabsStore.patch({ welcomeTabVisible: false, activeTab: path })
       await rememberFeature(path)
       const recents = await loadRecents()
-      recentFeatures = recents.features
-      activeTab = path
+      recentsStore.patch({ features: recents.features })
       await applyEditorText(content, { saved: !dirty, switchTab: true, tabPath: path, skipValidate: true })
       trimTabsMemory()
-      stepsPanelCollapsed = resolveStepsPanelCollapsed()
+      syncStepsPanelCollapsedFromPrefs()
       schedulePersistSession()
     } catch (e: any) {
       appendLog(tr('journal.file.openError', { error: String(e) }))
@@ -3428,8 +2963,7 @@
       }
       void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       clearEditorValidation()
-      welcomeTabVisible = true
-      activeTab = WELCOME_KEY
+      tabsStore.patch({ welcomeTabVisible: true, activeTab: WELCOME_KEY })
       trimTabsMemory()
       return
     }
@@ -3438,7 +2972,7 @@
 
   function closeWelcomeTab() {
     if (tabs.length > 0) {
-      welcomeTabVisible = false
+      tabsStore.setWelcomeVisible(false)
       if (activeTab === WELCOME_KEY) {
         const next = tabs[tabs.length - 1]
         if (!next) return
@@ -3472,7 +3006,7 @@
     }
     const tab = tabs.find((t) => t.path === path)
     if (tab && tabIsUnsaved(tab)) {
-      pendingCloseTab = path
+      tabsStore.setPendingCloseTab(path)
       return
     }
     finalizeCloseTab(path)
@@ -3482,13 +3016,11 @@
     evictFeatureSymbolCache(path)
     monaco?.releaseTab(path)
     const reduced = reduceTabsAfterClose(tabs, activeTab, path)
-    tabs = reduced.tabs
+    tabsStore.applyCloseResult(reduced)
     trimTabsMemory()
     if (reduced.openNextPath) {
       void loadFeature(reduced.openNextPath)
     } else if (reduced.showWelcome) {
-      welcomeTabVisible = true
-      activeTab = WELCOME_KEY
       cancelPendingFeatureLoads()
       void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       clearEditorValidation()
@@ -3499,7 +3031,7 @@
   async function saveAndCloseTab() {
     if (!pendingCloseTab) return
     const path = pendingCloseTab
-    pendingCloseTab = null
+    tabsStore.setPendingCloseTab(null)
     if (activeTab !== path) {
       await loadFeature(path)
     }
@@ -3513,12 +3045,12 @@
   function discardAndCloseTab() {
     if (!pendingCloseTab) return
     const path = pendingCloseTab
-    pendingCloseTab = null
+    tabsStore.setPendingCloseTab(null)
     finalizeCloseTab(path)
   }
 
   function cancelCloseTab() {
-    pendingCloseTab = null
+    tabsStore.setPendingCloseTab(null)
   }
 
   async function saveFeatureAs() {
@@ -3530,11 +3062,11 @@
       const text = monaco?.getEditorText() ?? editorText
       await SaveFeature(picked, text)
       const stillActive = activeTab === pathAtStart
-      tabs = tabs.map((t) =>
+      tabsStore.mapTabs((tabs) => tabs.map((t) =>
         t.path === pathAtStart ? { path: picked, content: text, dirty: false, draft: undefined } : t,
-      )
+      ))
       if (stillActive) {
-        activeTab = picked
+        tabsStore.setActiveTab(picked)
         await applyEditorText(text, { saved: true, switchTab: true, tabPath: picked, skipValidate: true })
       }
       monaco?.releaseTab(pathAtStart)
@@ -3557,25 +3089,25 @@
     }
     try {
       let text = monaco?.getEditorText() ?? editorText
-      if (editorSettings.formatOnSave) {
+      if (dialogBinds.bindEditorSettings.formatOnSave) {
         await monaco?.formatDocument()
         text = monaco?.getEditorText() ?? text
         if (activeTab === pathAtStart) {
-          editorText = text
+          editorStore.setText(text)
         }
       }
       const { text: autoFixed, count: autoFixCount } = await runScenarioHintsAutoFix(text)
       if (autoFixCount > 0) {
         text = autoFixed
         if (activeTab === pathAtStart) {
-          editorText = text
+          editorStore.setText(text)
           await monaco?.setContent(text)
         }
         appendLog(tr('journal.hint.autoFixed', { count: autoFixCount }))
       }
       await SaveFeature(pathAtStart, text)
       if (activeTab === pathAtStart) {
-        editorText = text
+        editorStore.setText(text)
       }
       markActiveTabSaved(text, pathAtStart)
       try {
@@ -3591,29 +3123,16 @@
     }
   }
 
-  let validateGeneration = 0
-  let editorTextVersion = 0
-  let validateDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
   function scheduleValidateEditor(delayMs = 300) {
-    if (validateDebounceTimer) clearTimeout(validateDebounceTimer)
-    if (delayMs <= 0) {
-      validateDebounceTimer = null
-      void validateEditor()
-      return
-    }
-    validateDebounceTimer = setTimeout(() => {
-      validateDebounceTimer = null
-      void validateEditor()
-    }, delayMs)
+    diagnosticsStore.scheduleValidateEditor(() => void validateEditor(), delayMs)
   }
 
   function clearEditorValidation() {
     if (activeTab && activeTab !== WELCOME_KEY) {
-      delete editorValidationByTab[activeTab]
+      diagnosticsStore.clearIssuesForTab(activeTab)
     }
     diagnosticsStore.setIssues([])
-    stepStatusError = false
+    diagnosticsStore.setStepStatusError(false)
     monaco?.setMarkers([])
     if (statusMessage === tr('journal.status.scenarioError')) {
       setStatus('', 'normal')
@@ -3621,7 +3140,7 @@
   }
 
   function syncStepStatusFromIssues(issues: gui.ValidationIssue[]) {
-    stepStatusError = issues.length > 0
+    diagnosticsStore.setStepStatusError(issues.length > 0)
     if (!stepStatusError && statusMessage === tr('journal.status.scenarioError')) {
       setStatus('', 'normal')
     }
@@ -3632,49 +3151,47 @@
       clearEditorValidation()
       return
     }
-    const generation = ++validateGeneration
+    const generation = diagnosticsStore.bumpValidateGeneration()
     const tabAtStart = activeTab
     const textAtStart = editorText
     const textVersionAtStart = editorTextVersion
     const started = perfNow()
     try {
-      const analysis = await AnalyzeEditorContent(textAtStart, editorSettings.scenarioHints)
-      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      const analysis = await AnalyzeEditorContent(textAtStart, dialogBinds.bindEditorSettings.scenarioHints)
+      if (generation !== diagnosticsStore.validateGeneration() || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
       const issues = analysis?.issues || []
       diagnosticsStore.setIssues(issues)
       if (tabAtStart) {
-        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: issues }
+        diagnosticsStore.setIssuesForTab(tabAtStart, issues)
       }
       monaco?.setMarkers(issues)
       if (isEditorAnalysisSnapshotVisible(textVersionAtStart, editorTextVersion)) {
-        editorSteps = analysis?.steps || []
-        editorStepsTextVersion = textVersionAtStart
+        editorStore.setSteps(analysis?.steps || [], textVersionAtStart)
         monaco?.refreshInlayHints()
       }
-      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      if (generation !== diagnosticsStore.validateGeneration() || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
       if (issues.length > 0) {
-        stepStatusError = true
+        diagnosticsStore.setStepStatusError(true)
         setStatus(tr('journal.status.scenarioError'), 'error')
       } else {
         syncStepStatusFromIssues(issues)
       }
-      if (editorSettings.scenarioHints) {
+      if (dialogBinds.bindEditorSettings.scenarioHints) {
         const hints = (analysis?.hints || [])
-          .filter((h) => !editorHintsDismissed.has(hintDismissKey(h)))
-          .filter((h) => filterScenarioHints([h], editorSettings).length > 0)
+          .filter((h) => !diagnosticsStore.isHintDismissed(hintDismissKey(h)))
+          .filter((h) => filterScenarioHints([h], dialogBinds.bindEditorSettings).length > 0)
         diagnosticsStore.setHints(hints)
       } else {
         diagnosticsStore.setHints([])
       }
     } catch {
-      if (generation !== validateGeneration || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
+      if (generation !== diagnosticsStore.validateGeneration() || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
       diagnosticsStore.setIssues([])
       if (tabAtStart) {
-        editorValidationByTab = { ...editorValidationByTab, [tabAtStart]: [] }
+        diagnosticsStore.setIssuesForTab(tabAtStart, [])
       }
       if (isEditorAnalysisSnapshotVisible(textVersionAtStart, editorTextVersion)) {
-        editorSteps = []
-        editorStepsTextVersion = textVersionAtStart
+        editorStore.clearSteps(textVersionAtStart)
         monaco?.refreshInlayHints()
       }
       syncStepStatusFromIssues([])
@@ -3686,7 +3203,7 @@
 
   function gotoEditorLine(line: number) {
     monaco?.gotoLine(line)
-    editorCursorLine = line
+    editorStore.setCursorLine(line)
   }
 
   function validateProjectHint(): string {
@@ -3707,12 +3224,11 @@
     if (event.path !== activePath || event.modelUri !== activeModelUri) {
       return
     }
+    editorStore.setTextWithBump(event.text)
     const text = event.text
-    editorTextVersion++
-    editorText = text
     syncActiveTabContent()
     schedulePersistSession()
-    if (editorSettings.validateOnType && !isWelcome) {
+    if (dialogBinds.bindEditorSettings.validateOnType && !isWelcome) {
       scheduleValidateEditor()
     }
   }
@@ -3742,45 +3258,35 @@
   }
 
   function openRunDialog(title: string, defaults: Partial<RunForm>, mode: RunFormMode = 'single') {
-    runDialogTitle = title
-    runDialogScenarios = dialogScenarioNames()
+    runDialogStore.open(title, dialogScenarioNames())
     const cursorScenario = cursorScenarioName()
     const defaultScenario =
       defaults.scenario ??
       (mode === 'tag' || mode === 'batch' ? '' : cursorScenario || lastRun.scenario || '')
-    runForm = runFormFromMode(lastRun, mode, {
+    dialogBinds.syncRunFormBind(mode, lastRun, {
       ...defaults,
       baseUrl: lastRun.baseUrl || startURL || '',
       scenario: defaultScenario,
     })
-    showRun = true
+    dialogsStore.open('showRun')
   }
 
   function openVanessaDialog(dry: boolean, preferRerun = false) {
-    vanessaDry = dry
-    vanessaTag = ''
-    vanessaExcludeTags = ''
-    vanessaScenario = cursorScenarioName()
-    vanessaDialogScenarios = dialogScenarioNames()
-    vanessaRerunDir = ''
-    vanessaPreferRerun = preferRerun
-    vanessaInstallEpf = false
-    vanessaEpfUrl = ''
-    vanessaEpfDest = ''
-    vanessaPlatformExe = ''
-    vanessaEpfPath = ''
-    vanessaIB = ''
-    vanessaReportAllure = false
-    vanessaVaDir = ''
-    vanessaVaFiles = ''
-    showVanessaRun = true
+    vanessaRunStore.prepareDialog({
+      dry,
+      preferRerun,
+      scenario: cursorScenarioName(),
+      dialogScenarios: dialogScenarioNames(),
+    })
+    dialogBinds.syncVanessaBindLocals()
+    dialogsStore.open('showVanessaRun')
   }
 
   async function confirmVanessaRun() {
-    showVanessaRun = false
-    vanessaPlannedTotal = Math.max(1, features.length)
-    showVanessaMonitor = true
-    vanessaSnapshot = new gui.VanessaRunSnapshotDTO()
+    dialogsStore.close('showVanessaRun')
+    vanessaRunStore.patch({ plannedTotal: Math.max(1, features.length) })
+    dialogsStore.open('showVanessaMonitor')
+    vanessaRunStore.setSnapshot(new gui.VanessaRunSnapshotDTO())
     StartVanessaRun(buildVanessaPluginRequest())
   }
 
@@ -3821,10 +3327,10 @@
       }
     }
 
-    lastRun = { ...runOpts }
-    showRun = false
-    bottomPanelOpen = true
-    bottomTab = 'journal'
+    runFormStore.setLastRun({ ...runOpts })
+    dialogsStore.close('showRun')
+    layoutStore.openBottomPanel()
+    layoutStore.setBottomTab('journal')
 
     const initialPlayingLabel =
       runTargets.length > 1
@@ -3844,7 +3350,7 @@
     const summaryJsonPath = runOpts.summaryJson ? await scenariaSubdir('summary.json') : ''
 
     const runIsPlaying = !runOpts.dryRun
-    runningDryRun = runOpts.dryRun
+    runnerStore.setDryRunActive(runOpts.dryRun)
     const initialRunProgressTotal = Math.max(1, diskTargets.length || (runTargets.length > 0 ? runTargets.length : 1))
     runnerStore.setRunId('')
     if (runIsPlaying) {
@@ -3904,7 +3410,7 @@
       runThrown = err
     } finally {
       runnerStore.setLogStreaming(false)
-      runningDryRun = false
+      runnerStore.setDryRunActive(false)
       runnerStore.setCancelling(false)
       runnerStore.setRunId('')
       runnerStore.progress(0, 0, '')
@@ -3914,7 +3420,7 @@
     if (runThrown) {
       appendLog(tr('journal.error.generic', { error: String(runThrown) }))
       setStatus(tr('journal.status.testError'), 'error')
-      bottomTab = 'error'
+      layoutStore.setBottomTab('error')
       return
     }
 
@@ -3923,29 +3429,28 @@
       if (/context canceled/i.test(result.error)) {
         appendLog(tr('journal.run.stopped'))
         setStatus(tr('journal.status.testStopped'), 'busy')
-        bottomTab = 'journal'
+        layoutStore.setBottomTab('journal')
       } else {
         appendLog(tr('journal.error.generic', { error: result.error }))
         setStatus(tr('journal.status.testError'), 'error')
-        bottomTab = 'error'
+        layoutStore.setBottomTab('error')
       }
     } else {
       appendLog(tr('journal.run.done'))
       setStatus(tr('journal.status.testDone'), 'success')
-      welcomePlayedSuccess = true
+      uiPrefsStore.patch({ welcomePlayedSuccess: true })
       if (showOnboardingTour && runOpts.dryRun) {
-        onboardingDryRunDone = true
+        onboardingTourStore.patch({ dryRunDone: true })
       }
       void persistSettings()
-      bottomTab = runOpts.dryRun ? 'journal' : 'results'
+      layoutStore.setBottomTab(runOpts.dryRun ? 'journal' : 'results')
     }
     await refreshRunResults()
     if (result.entries?.length) {
-      lastRunSince = runSince
-      lastRunBatchResults = remapRunResultPaths(result.entries, diskTargets, runTargets)
-      lastErrorEntry = pickLastRunError(lastRunBatchResults)
+      let batchResults = remapRunResultPaths(result.entries, diskTargets, runTargets)
+      let lastError = pickLastRunError(batchResults)
       if (
-        !lastErrorEntry &&
+        !lastError &&
         result.error &&
         !/context canceled/i.test(result.error)
       ) {
@@ -3955,14 +3460,15 @@
             : diskTargets.length === 1
               ? diskTargets[0]
               : tr('journal.run.defaultLabel')
-        lastErrorEntry = buildSyntheticRunError({
+        lastError = buildSyntheticRunError({
           featurePath,
           scenario: runOpts.scenario || cursorScenarioName() || undefined,
           message: result.error,
           runner: runOpts.dryRun ? 'dry-run' : runOpts.engine || 'playwright',
         })
-        lastRunBatchResults = [...lastRunBatchResults, lastErrorEntry]
+        batchResults = [...batchResults, lastError]
       }
+      runnerStore.setLastRunSession(runSince, batchResults, lastError)
     } else {
       finalizeRunPanels(
         runSince,
@@ -4025,18 +3531,18 @@
   }
 
   function confirmRun() {
-    runDialogConfirmed = true
+    uiPrefsStore.patch({ runDialogConfirmed: true })
     void persistSettings()
-    executeRun(runForm)
+    executeRun(dialogBinds.bindRunForm)
   }
 
   async function validateProject(browser: boolean, browserName = settingsBrowser || 'chromium', targets: string[] = []) {
     if (!projectPath) return
     appendLog(browser ? tr('journal.validate.startingBrowser') : tr('journal.validate.starting'))
-    bottomPanelOpen = true
-    bottomTab = browser ? 'validate' : 'journal'
-    validateCliLog = ''
-    validatePanelIssues = []
+    layoutStore.openBottomPanel()
+    layoutStore.setBottomTab(browser ? 'validate' : 'journal')
+    validateDialogStore.setCliLog('')
+    diagnosticsStore.setBrowserPanelIssues([])
 
     if (browser) {
       try {
@@ -4047,15 +3553,16 @@
             targets,
           }),
         )
-        validatePanelIssues = issues || []
-        const missing = validatePanelIssues.filter((i) => i.status === 'missing' || !i.status).length
-        const warnings = validatePanelIssues.filter((i) => i.status === 'warning').length
-        const found = validatePanelIssues.filter((i) => i.status === 'found').length
+        const panelIssues = issues || []
+        diagnosticsStore.setBrowserPanelIssues(panelIssues)
+        const missing = panelIssues.filter((i) => i.status === 'missing' || !i.status).length
+        const warnings = panelIssues.filter((i) => i.status === 'warning').length
+        const found = panelIssues.filter((i) => i.status === 'found').length
         appendLog(tr('journal.validate.browserSummary', { found, warnings, missing }))
         setStatus(missing > 0 ? tr('journal.status.validateBrowserErrors') : tr('journal.status.validateBrowserDone'), missing > 0 ? 'error' : 'success')
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        validateCliLog = msg
+        validateDialogStore.setCliLog(msg)
         appendLog(tr('journal.error.generic', { error: msg }))
         setStatus(tr('journal.status.validateError'), 'error')
       }
@@ -4066,18 +3573,18 @@
           targets,
         }), currentProjectVersion)
       if (result.output) {
-        validateCliLog = result.output.trimEnd()
+        validateDialogStore.setCliLog(result.output.trimEnd())
         appendLog(validateCliLog)
       }
       if (result.error) {
-        validateCliLog = `${validateCliLog}\n${result.error}`.trim()
+        validateDialogStore.appendCliLog(result.error)
         appendLog(tr('journal.error.generic', { error: result.error }))
         setStatus(tr('journal.status.validateError'), 'error')
       } else {
         appendLog(tr('journal.validate.done'))
         setStatus(tr('journal.status.validateDone'), 'success')
         if (showOnboardingTour && !browser) {
-          onboardingValidateDone = true
+          onboardingTourStore.patch({ validateDone: true })
         }
       }
     }
@@ -4086,14 +3593,14 @@
 
   function openValidateDialog(syntaxOnly: boolean) {
     if (!projectPath) return
-    validateSyntaxOnly = syntaxOnly
-    validateBrowser = settingsBrowser || 'chromium'
-    validateScope = !isWelcome && activeTab ? 'current' : 'project'
-    showValidate = true
+    const scope = !isWelcome && activeTab ? 'current' : 'project'
+    validateDialogStore.open(syntaxOnly, settingsBrowser || 'chromium', scope)
+    dialogBinds.syncValidateDialogBindLocals()
+    dialogsStore.open('showValidate')
   }
 
   async function confirmValidate(payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) {
-    showValidate = false
+    dialogsStore.close('showValidate')
     let targets: string[] = []
     if (payload.scope === 'current' && activeTab && !isWelcome) {
       targets = await materializeRunTargets([activeTab])
@@ -4108,20 +3615,20 @@
 
   function openInitProjectDialog() {
     if (!projectPath) return
-    showInitProject = true
+    dialogsStore.open('showInitProject')
   }
 
   async function confirmInitProject() {
-    showInitProject = false
+    dialogsStore.close('showInitProject')
     await initProject()
   }
 
   function openNewProjectWizard() {
-    showNewProjectWizard = true
+    dialogsStore.open('showNewProjectWizard')
   }
 
   async function confirmNewProjectWizard(opts: NewProjectWizardResult) {
-    showNewProjectWizard = false
+    dialogsStore.close('showNewProjectWizard')
     const normalized = opts.path.trim()
     if (!normalized) return
     try {
@@ -4158,10 +3665,12 @@
 
   async function openTestClientDialog() {
     if (!projectPath) return
-    testClientSuggestName = ''
-    testClients = await ListTestClients().catch(() => [])
-    testClientSelection = runForm.testClient || testClients[0] || ''
-    showTestClient = true
+    testClientStore.clearSuggestName()
+    const clients = await ListTestClients().catch((): string[] => [])
+    testClientStore.setClients(clients)
+    dialogBinds.bindTestClientSelection = runForm.testClient || clients[0] || ''
+    testClientStore.patch({ selection: dialogBinds.bindTestClientSelection })
+    dialogsStore.open('showTestClient')
   }
 
   async function openTestClientDialogForCapture() {
@@ -4170,19 +3679,21 @@
       appendLog(tr('journal.browser.openForSession'))
       return
     }
-    testClients = await ListTestClients().catch(() => [])
-    const base = (runForm.testClient || testClientSelection || 'session').trim() || 'session'
-    testClientSuggestName = base
-    testClientSelection = testClients.includes(base) ? base : ''
-    showTestClient = true
+    const clients = await ListTestClients().catch((): string[] => [])
+    testClientStore.setClients(clients)
+    const base = (runForm.testClient || dialogBinds.bindTestClientSelection || 'session').trim() || 'session'
+    dialogBinds.bindTestClientSelection = clients.includes(base) ? base : ''
+    testClientStore.patch({ suggestName: base, selection: dialogBinds.bindTestClientSelection })
+    dialogsStore.open('showTestClient')
   }
 
   function useTestClient(name: string) {
-    testClientSelection = name
-    lastRun.testClient = name
-    runForm.testClient = name
+    dialogBinds.bindTestClientSelection = name
+    testClientStore.patch({ selection: name })
+    runFormStore.patchLastRun({ testClient: name })
+    runFormStore.patchRunForm({ testClient: name })
     appendLog(tr('journal.testClient.selected', { name }))
-    showTestClient = false
+    dialogsStore.close('showTestClient')
   }
 
   async function openStepsDialog() {
@@ -4190,12 +3701,12 @@
       appendLog(tr('journal.record.pauseToInsertStep'))
       return
     }
-    showSteps = true
+    dialogsStore.open('showSteps')
   }
 
   function openVanessaSettingsDialog() {
     if (!projectPath) return
-    showVanessaSettings = true
+    dialogsStore.open('showVanessaSettings')
   }
 
   function openStepsHelp(query: unknown = '') {
@@ -4203,8 +3714,8 @@
       appendLog(tr('journal.record.pauseToOpenStepsHelp'))
       return
     }
-    stepsHelpQuery = typeof query === 'string' ? query : ''
-    showStepsHelp = true
+    stepsHelpDialogStore.setQuery(typeof query === 'string' ? query : '')
+    dialogsStore.open('showStepsHelp')
   }
 
   function openStepHelpFromPanel(step: EditorStepRow) {
@@ -4220,8 +3731,8 @@
     }
     const line = template.endsWith('\n') ? template : template + '\n'
     monaco?.insertAtCursor(line)
-    showSteps = false
-    showStepsHelp = false
+    dialogsStore.close('showSteps')
+    dialogsStore.close('showStepsHelp')
   }
 
   function recordingBlocksManualTools(): boolean {
@@ -4234,15 +3745,14 @@
       setStatus(tr('journal.status.recordingActive'), 'busy')
       return
     }
-    showSnippetPalette = true
+    dialogsStore.open('showSnippetPalette')
   }
 
   async function applyEditorText(
     text: string,
     options?: { saved?: boolean; switchTab?: boolean; tabPath?: string | null; skipValidate?: boolean },
   ) {
-    editorTextVersion++
-    editorText = text
+    editorStore.setTextWithBump(text)
     if (options?.switchTab) {
       const markerPath = options.tabPath ?? null
       const issues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
@@ -4253,9 +3763,9 @@
       if (options?.saved) {
         markActiveTabSaved(text, options.tabPath ?? activeTab)
       } else if (options?.tabPath) {
-        tabs = tabs.map((t) =>
+        tabsStore.mapTabs((tabs) => tabs.map((t) =>
           t.path === options.tabPath ? { ...t, draft: text, dirty: true } : t,
-        )
+        ))
       }
     } else {
       await monaco?.setContent(text)
@@ -4274,7 +3784,7 @@
 
   async function refactorUpdateUrls() {
     if (isWelcome) return
-    showRefactorUrl = true
+    dialogsStore.open('showRefactorUrl')
   }
 
   async function applyRefactorUrl(newUrl: string) {
@@ -4307,30 +3817,31 @@
 
   function openExportDialog() {
     if (!activeTab || isWelcome) return
-    exportInputPath = activeTab
-    showExport = true
+    featureDialogStore.openExport(activeTab)
+    dialogsStore.open('showExport')
   }
 
   function openImportFeaturesDialog() {
     if (!projectPath) return
-    importDestDir = projectPath.replace(/\\/g, '/')
-    showImportFeatures = true
+    featureDialogStore.openImport(projectPath.replace(/\\/g, '/'))
+    dialogBinds.bindImportDestDir = featureDialogStore.snapshot().importDestDir
+    dialogsStore.open('showImportFeatures')
   }
 
   async function confirmImportFeatures(payload: { destDir: string; paths: string[] }) {
     if (!projectPath || importFeaturesBusy) return
-    importFeaturesBusy = true
-    showImportFeatures = false
+    featureDialogStore.patch({ importFeaturesBusy: true })
+    dialogsStore.close('showImportFeatures')
     try {
       await importDroppedFeatures(payload.destDir, payload.paths)
     } finally {
-      importFeaturesBusy = false
+      featureDialogStore.patch({ importFeaturesBusy: false })
     }
   }
 
   function openImportDialog() {
     if (!projectPath) return
-    showImport = true
+    dialogsStore.open('showImport')
   }
 
   async function onImportComplete(featurePath: string) {
@@ -4363,37 +3874,41 @@
   }
 
   function openPluginRun(name: string, dry = false) {
-    const entry = installedPlugins.find((p) => p.name === name)
+    const entry = pluginsStore.findByName(name)
     if (entry?.vanessa || name === 'vanessa') {
       openVanessaDialog(dry)
       return
     }
-    pluginRunName = name
-    pluginRunDry = dry
-    pluginRunTag = ''
-    pluginRunScenario = cursorScenarioName()
-    pluginRunScenarios = dialogScenarioNames()
-    showPluginRun = true
+    pluginRunStore.prepareDialog({
+      name,
+      dry,
+      scenario: cursorScenarioName(),
+      dialogScenarios: dialogScenarioNames(),
+    })
+    dialogBinds.syncPluginRunBindLocals()
+    dialogsStore.open('showPluginRun')
   }
 
   async function confirmPluginRun(payload: { tag: string; scenario: string; dryRun: boolean }) {
-    showPluginRun = false
+    dialogsStore.close('showPluginRun')
     await runPlugin(pluginRunName, payload.dryRun, { tag: payload.tag, scenario: payload.scenario })
   }
 
   function openBaselineRecordDialog() {
     if (!projectPath) return
-    recordMode = 'baseline'
-    recordOutput = 'recorded.feature'
-    recordURL = startURL || recordURL || 'https://example.com'
+    recordFormStore.patch({ recordMode: 'baseline' })
+    recordFormStore.patch({ recordOutput: 'recorded.feature' })
+    recordFormStore.patch({ recordURL: startURL || recordURL || 'https://example.com' })
     if (activeTab && !isWelcome) {
-      recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-      recordScenarioName = tr('dialogs.record.baselineScenarioDefault')
+      recordFormStore.patch({ recordFeatureName: basename(activeTab).replace(/\.feature$/i, '') })
+      recordFormStore.patch({ recordScenarioName: tr('dialogs.record.baselineScenarioDefault') })
     } else {
-      recordFeatureName = tr('dialogs.record.featureDefault')
-      recordScenarioName = tr('dialogs.record.baselineScenarioDefault')
+      recordFormStore.patch({ recordFeatureName: tr('dialogs.record.featureDefault') })
+      recordFormStore.patch({ recordScenarioName: tr('dialogs.record.baselineScenarioDefault') })
     }
-    showRecord = true
+    dialogBinds.syncRecordFormBindLocals()
+    dialogBinds.syncRecorderPrefsBindLocals()
+    dialogsStore.open('showRecord')
   }
 
   async function saveBaselineRecord(payload: {
@@ -4403,8 +3918,8 @@
     steps: string[]
   }) {
     if (!projectPath || baselineBusy) return
-    baselineBusy = true
-    showRecord = false
+    recordFormStore.patch({ baselineBusy: true })
+    dialogsStore.close('showRecord')
     appendLog(tr('journal.record.baselineCreating'))
     try {
       const result = await startRunResultJob('record-baseline-finished', () => StartRecordBaseline({
@@ -4428,7 +3943,7 @@
         : `${projectPath.replace(/\\/g, '/')}/${rel}`
       await loadFeature(featurePath)
     } finally {
-      baselineBusy = false
+      recordFormStore.patch({ baselineBusy: false })
     }
   }
 
@@ -4436,11 +3951,9 @@
     if (!settingsCheckUpdatesOnStartup) return
     try {
       const info = await CheckUpdateInfo()
-      updateCheckInfo = info
-      updateCheckMessage = info.message || ''
-      updateCheckHasUpdate = !!info.updateAvailable
+      updateDialogStore.applyCheckResult(info)
       if (info.updateAvailable) {
-        showUpdateCheck = true
+        dialogsStore.open('showUpdateCheck')
         setStatus(tr('journal.status.updateAvailable'), 'normal')
       }
     } catch {
@@ -4451,7 +3964,7 @@
   async function maybeCheckUpdatesOnStartup() {
     if (!settingsCheckUpdatesOnStartup) return
     if (!projectPath) {
-      pendingUpdateCheckOnStartup = true
+      updateDialogStore.setPendingStartupCheck(true)
       return
     }
     await checkUpdatesOnStartup()
@@ -4461,22 +3974,19 @@
     appendLog(tr('journal.update.checking'))
     try {
       const info = await CheckUpdateInfo()
-      updateCheckInfo = info
-      updateCheckMessage = info.message || ''
-      updateCheckHasUpdate = !!info.updateAvailable
+      updateDialogStore.applyCheckResult(info)
       appendLog(updateCheckMessage)
       if (info.updateAvailable) {
         appendLog(tr('journal.update.release', { url: info.htmlUrl || '—' }))
         if (info.downloadName) appendLog(tr('journal.update.file', { name: info.downloadName }))
       }
       appendLog(tr('journal.validate.done'))
-      showUpdateCheck = true
+      dialogsStore.open('showUpdateCheck')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      updateCheckMessage = msg
-      updateCheckHasUpdate = false
+      updateDialogStore.setMessage(msg, false)
       appendLog(tr('journal.error.generic', { error: msg }))
-      showUpdateCheck = true
+      dialogsStore.open('showUpdateCheck')
     }
   }
 
@@ -4507,11 +4017,12 @@
   function listenUpdateProgress(onFinished: (result: gui.RunResult) => void) {
     let lastLoggedStage = ''
     const onProgress = (raw: unknown) => {
-      updateProgress = normalizeUpdateProgress(raw)
-      const stage = updateProgress?.stage ?? ''
+      updateDialogStore.setProgress(normalizeUpdateProgress(raw))
+      const stage = updateDialogStore.snapshot().progress?.stage ?? ''
       if (stage && stage !== lastLoggedStage) {
         lastLoggedStage = stage
-        if (updateProgress?.message) appendLog(updateProgress.message)
+        const progress = updateDialogStore.snapshot().progress
+        if (progress?.message) appendLog(progress.message)
       }
     }
     EventsOn('update-progress', onProgress)
@@ -4527,18 +4038,17 @@
 
   async function applyUpdate() {
     if (updateDownloading) return
-    updateDownloading = true
-    updateProgress = { stage: 'check', message: tr('journal.update.progressStarting'), percent: 0 }
+    updateDialogStore.setDownloading(true)
+    updateDialogStore.setProgress({ stage: 'check', message: tr('journal.update.progressStarting'), percent: 0 })
     appendLog(tr('journal.update.installing'))
     const unbind = listenUpdateProgress((result) => {
       unbind()
       if (result?.error) {
         appendLog(tr('journal.update.installError', { error: result.error }))
-        updateDownloading = false
-        updateProgress = null
+        updateDialogStore.patch({ downloading: false, progress: null })
         return
       }
-      updateProgress = { stage: 'restart', message: tr('journal.update.progressRestarting'), percent: 100 }
+      updateDialogStore.setProgress({ stage: 'restart', message: tr('journal.update.progressRestarting'), percent: 100 })
       appendLog(tr('journal.update.restarting'))
     })
     try {
@@ -4546,112 +4056,75 @@
     } catch (err) {
       unbind()
       appendLog(tr('journal.update.installError', { error: err instanceof Error ? err.message : String(err) }))
-      updateDownloading = false
-      updateProgress = null
+      updateDialogStore.patch({ downloading: false, progress: null })
     }
   }
 
   async function downloadUpdate() {
     if (updateDownloading) return
-    updateDownloading = true
-    updateProgress = { stage: 'check', message: tr('journal.update.progressDownloading'), percent: 0 }
+    updateDialogStore.setDownloading(true)
+    updateDialogStore.setProgress({ stage: 'check', message: tr('journal.update.progressDownloading'), percent: 0 })
     appendLog(tr('journal.update.downloading'))
     const unbind = listenUpdateProgress(async (result) => {
       unbind()
       if (result?.error) {
         appendLog(tr('journal.update.downloadError', { error: result.error }))
-        updateDownloading = false
-        updateProgress = null
+        updateDialogStore.patch({ downloading: false, progress: null })
         return
       }
       const path = result.output || ''
       appendLog(tr('journal.update.downloaded', { path }))
-      updateCheckMessage = `${updateCheckMessage}\n\n${tr('journal.update.fileSaved', { path })}`.trim()
+      updateDialogStore.appendMessage(tr('journal.update.fileSaved', { path }))
       const folder = path.replace(/[\\/][^\\/]+$/, '')
       if (folder) await OpenFolder(folder)
-      updateDownloading = false
-      updateProgress = null
+      updateDialogStore.patch({ downloading: false, progress: null })
     })
     try {
       await DownloadUpdate()
     } catch (err) {
       unbind()
       appendLog(tr('journal.update.downloadError', { error: err instanceof Error ? err.message : String(err) }))
-      updateDownloading = false
-      updateProgress = null
+      updateDialogStore.patch({ downloading: false, progress: null })
     }
   }
 
   async function openSettings() {
     const s = await LoadSettings()
     applySettingsFromDTO(s)
-    settingsDialogBaseline = s
+    dialogBinds.syncUiPrefsBindLocals()
+    dialogBinds.syncRecorderPrefsBindLocals()
+    dialogBinds.syncEditorSettingsBindLocal()
+    dialogBinds.syncSettingsBindLocals()
+    let htmlMode: 'full' | 'light' = 'full'
     if (projectPath) {
       try {
         const pc = await LoadProjectConfig()
-        settingsHtmlReportOpenMode = pc.htmlReportOpenMode === 'light' ? 'light' : 'full'
+        htmlMode = pc.htmlReportOpenMode === 'light' ? 'light' : 'full'
       } catch {
-        settingsHtmlReportOpenMode = 'full'
+        htmlMode = 'full'
       }
-    } else {
-      settingsHtmlReportOpenMode = 'full'
     }
-    settingsProjectBaseline = settingsHtmlReportOpenMode
-    showSettings = true
+    settingsDialogStore.openWithBaseline(s, htmlMode)
+    dialogBinds.syncSettingsDialogBindLocals()
+    dialogsStore.open('showSettings')
   }
 
   function buildCurrentSettingsDTO(): gui.AppSettingsDTO {
-    syncActiveTabContent()
-    const sessionTabs = buildSessionTabsSnapshot(tabs, activeTab, editorText, WELCOME_KEY)
-    return gui.AppSettingsDTO.createFrom({
-      browser: settingsBrowser,
-      headless: settingsHeadless,
-      parallelWorkers: settingsWorkers,
-      slowMo: settingsSlowMo,
-      maxLoopIterations: settingsLoops,
-      scrollBeforeClick: settingsScrollBeforeClick,
-      hoverRecordMinMs: settingsHoverRecordMinMs,
-      sessionProject: projectPath,
-      openTabs: sessionTabs.openTabs,
-      untitledTabs: sessionTabs.untitledTabs,
-      activeTab: sessionTabs.activeTab,
-      filterRecording,
-      navOnlyRecording,
-      hoverRecord,
-      toolbarCompact,
-      stepsPanelVisible,
-      stepsPanelHeight,
-      sidebarWidth,
-      recentProjects,
-      recentFeatures,
-      checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
-      selectorClickStrategies: settingsSelectorClickStrategies,
-      selectorInputStrategies: settingsSelectorInputStrategies,
-      navWaitUntil: settingsNavWaitUntil,
-      editor: editorSettingsToDTO(editorSettings),
-      checklistDismissed,
-      welcomePlayedSuccess,
-      onboardingCompleted,
-      onboardingDismissed,
-      onboardingVersion: ONBOARDING_TOUR_VERSION,
-      runDialogConfirmed,
-      pickerDuringRecording,
-      uiLocale,
-      startUrl: startURL,
-    })
+    return workspaceSession.buildSettingsDTO()
   }
 
   async function persistSettings() {
-    await SaveSettings(buildCurrentSettingsDTO())
+    await workspaceSession.persistSettings()
   }
 
   async function syncRecordingOptions() {
     try {
       if (recording) {
+        const rec = recorderPrefsStore.snapshot()
         await UpdateRecordingOptions(
-          filterRecording,
-          navOnlyRecording,
-          hoverRecord,
+          rec.filterRecording,
+          rec.navOnlyRecording,
+          rec.hoverRecord,
           settingsHeadless,
           settingsScrollBeforeClick,
           settingsHoverRecordMinMs,
@@ -4677,23 +4150,22 @@
       })
       if (!ok) return
     }
-    settingsHeadless = next
+    settingsStore.patch({ headless: next })
     void syncRecordingOptions()
   }
 
   async function applySettingsCore(closeDialog: boolean) {
-    setLocale(uiLocale)
-    editorSettings = { ...editorSettings }
-    stepsPanelTab = editorSettings.stepsPanelView
-    if (!stepsPanelVisible) stepsPanelCollapsed = true
-    else if (stepsPanelCollapsed && stepsPanelVisible) stepsPanelCollapsed = false
-    setStepHoverEnabled(() => editorSettings.stepHover)
-    lastRun = {
-      ...lastRun,
-      workers: settingsWorkers,
-      slowMo: settingsSlowMo,
-      browser: settingsBrowser,
-    }
+    dialogBinds.flushUiPrefsBindLocals()
+    dialogBinds.flushRecorderPrefsBindLocals()
+    settingsStore.setEditor(dialogBinds.bindEditorSettings)
+    dialogBinds.flushSettingsBindLocals()
+    dialogBinds.flushSettingsDialogBindLocals()
+    setLocale(dialogBinds.bindUiLocale)
+    editorStore.setStepsPanelTab(dialogBinds.bindEditorSettings.stepsPanelView)
+    if (!stepsPanelVisible) uiPrefsStore.setStepsPanelCollapsed(true)
+    else if (stepsPanelCollapsed && stepsPanelVisible) uiPrefsStore.setStepsPanelCollapsed(false)
+    setStepHoverEnabled(() => dialogBinds.bindEditorSettings.stepHover)
+    runFormStore.applyLastRunFromSettings(settingsBrowser, settingsWorkers, settingsSlowMo)
     if (recording || browserOpen) await syncRecordingOptions()
     else await persistSettings()
     if (projectPath) {
@@ -4702,28 +4174,28 @@
         await SaveProjectConfig(
           gui.ProjectConfigDTO.createFrom({
             ...pc,
-            htmlReportOpenMode: settingsHtmlReportOpenMode,
+            htmlReportOpenMode: settingsDialogStore.snapshot().htmlReportOpenMode,
           }),
         )
       } catch {
         /* project.json may be missing until init */
       }
     }
-    monaco?.applyEditorSettings(editorSettings)
-    if (editorSettings.scenarioHints) {
+    monaco?.applyEditorSettings(dialogBinds.bindEditorSettings)
+    if (dialogBinds.bindEditorSettings.scenarioHints) {
       await refreshEditorScenarioHints()
     } else {
       diagnosticsStore.setHints([])
     }
-    if (editorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
+    if (dialogBinds.bindEditorSettings.validateOnType && activeTab && !isWelcome) void validateEditor()
     const saved = buildCurrentSettingsDTO()
     if (closeDialog) {
-      settingsDialogBaseline = null
-      showSettings = false
+      settingsDialogStore.clearBaseline()
+      dialogsStore.close('showSettings')
       appendLog(tr('common.settingsSaved'))
       return saved
     }
-    settingsDialogBaseline = saved
+    settingsDialogStore.markSaved(saved)
     return saved
   }
 
@@ -4739,13 +4211,15 @@
   }
 
   function cancelSettings() {
-    if (settingsDialogBaseline) {
-      applySettingsFromDTO(settingsDialogBaseline)
-      monaco?.applyEditorSettings(editorSettings)
+    const baseline = settingsDialogStore.snapshot().baseline
+    if (baseline) {
+      applySettingsFromDTO(baseline)
+      monaco?.applyEditorSettings(dialogBinds.bindEditorSettings)
     }
-    settingsHtmlReportOpenMode = settingsProjectBaseline
-    settingsDialogBaseline = null
-    showSettings = false
+    settingsDialogStore.restoreProjectBaseline()
+    dialogBinds.syncSettingsDialogBindLocals()
+    settingsDialogStore.clearBaseline()
+    dialogsStore.close('showSettings')
   }
 
   function recordStartURL(): string {
@@ -4758,24 +4232,29 @@
   }
 
   function prepareRecordDialogDefaults(options?: { inheritTestClient?: boolean }) {
-    recordMode = 'live'
-    recordAppendTo = ''
-    recordTestClient = options?.inheritTestClient
+    recordFormStore.patch({ recordMode: 'live' })
+    const recordTestClient = options?.inheritTestClient
       ? (runForm.testClient || testClientSelection || '')
       : ''
     if (activeTab && !isWelcome && activeTab.toLowerCase().endsWith('.feature') && !isUntitled(activeTab)) {
-      recordOutput = activeTab.replace(/\\/g, '/')
-      recordAppendTo = recordOutput
+      const output = activeTab.replace(/\\/g, '/')
+      recordFormStore.patch({ recordTestClient, recordOutput: output, recordAppendTo: output })
     } else if (projectPath) {
-      recordOutput = `${projectPath.replace(/\\/g, '/')}/recorded.feature`
-    }
-    recordURL = recordStartURL()
-    if (activeTab && !isWelcome) {
-      recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-      recordScenarioName = tr('dialogs.record.scenarioDefault')
+      recordFormStore.patch({
+        recordAppendTo: '',
+        recordTestClient,
+        recordOutput: `${projectPath.replace(/\\/g, '/')}/recorded.feature`,
+      })
     } else {
-      recordFeatureName = tr('dialogs.record.featureDefault')
-      recordScenarioName = tr('dialogs.record.scenarioDefault')
+      recordFormStore.patch({ recordAppendTo: '', recordTestClient })
+    }
+    recordFormStore.patch({ recordURL: recordStartURL() })
+    if (activeTab && !isWelcome) {
+      recordFormStore.patch({ recordFeatureName: basename(activeTab).replace(/\.feature$/i, '') })
+      recordFormStore.patch({ recordScenarioName: tr('dialogs.record.scenarioDefault') })
+    } else {
+      recordFormStore.patch({ recordFeatureName: tr('dialogs.record.featureDefault') })
+      recordFormStore.patch({ recordScenarioName: tr('dialogs.record.scenarioDefault') })
     }
   }
 
@@ -4803,7 +4282,9 @@
       return
     }
     prepareRecordDialogDefaults({ inheritTestClient: true })
-    showRecord = true
+    dialogBinds.syncRecordFormBindLocals()
+    dialogBinds.syncRecorderPrefsBindLocals()
+    dialogsStore.open('showRecord')
   }
 
   async function openBrowser() {
@@ -4813,8 +4294,8 @@
       return
     }
     prepareRecordDialogDefaults({ inheritTestClient: false })
-    recordURL = recordStartURL()
-    showRecord = false
+    recordFormStore.patch({ recordURL: recordStartURL() })
+    dialogsStore.close('showRecord')
     openJournalTab()
     setStatus(tr('journal.browser.launching'), 'busy')
     if (recordURL) {
@@ -4835,7 +4316,7 @@
       featureName: recordFeatureName,
       scenarioName: recordScenarioName,
     })
-    recordAppendTo = ''
+    recordFormStore.patch({ recordAppendTo: '' })
   }
 
   async function startRecord(opts?: { headed?: boolean }) {
@@ -4844,7 +4325,7 @@
       if (browserOpen) await focusBrowser()
       return
     }
-    lastRecordTarget = recordAppendTo || recordOutput
+    recorderStore.setLastRecordTarget(recordAppendTo || recordOutput)
     let sessionOpen = browserOpen
     if (!sessionOpen) {
       try {
@@ -4876,7 +4357,7 @@
       scenarioName: recordScenarioName,
       browseOnly: false,
     })
-    recordAppendTo = ''
+    recordFormStore.patch({ recordAppendTo: '' })
   }
 
   function resolveRecordFeaturePath(outputPath = ''): string {
@@ -4923,9 +4404,8 @@
   }
 
   function dismissRecorderPicker() {
-    showPickerStep = false
-    pickerSelector = ''
-    pickerChoices = []
+    dialogsStore.close('showPickerStep')
+    pickerDialogStore.clear()
   }
 
   function shouldApplyRecordStepEvent(event: RecordStepEvent): boolean {
@@ -4944,10 +4424,10 @@
 
   async function applyRecordStepToTarget(event: RecordStepEvent, eventTargetPath = '') {
     if (!shouldApplyRecordStepEvent(event)) return
-    await recordEditorReadyPromise
+    await recorderStore.awaitRecordEditorReady()
     const targetPath = resolveRecordingTargetPath(eventTargetPath, recordingTargetPath)
     if (!targetPath && event.op !== 'reset') return
-    recordStepApplyChain = recordStepApplyChain.then(async () => {
+    recorderStore.chainRecordStepApply(async () => {
       const tab = tabs.find((t) => isSameRecordTab(t.path, targetPath))
       const sourceText = tab
         ? tabEditorText(tab)
@@ -4956,19 +4436,19 @@
           : ''
       if (!tab && !sourceText && event.op !== 'reset') return
       const result = applyRecordStepEvent(sourceText, event, liveRecordStepLines)
-      liveRecordStepLines = result.lineByIndex
+      recorderStore.setLiveRecordStepLines(result.lineByIndex)
       if (tab) {
-        tabs = tabs.map((t) =>
+        tabsStore.mapTabs((tabs) => tabs.map((t) =>
           isSameRecordTab(t.path, targetPath) ? { ...t, draft: result.text, dirty: true } : t,
-        )
+        ))
       }
       if (isSameRecordTab(activeTab, targetPath)) {
-        editorText = result.text
+        editorStore.setText(result.text)
         await monaco?.setContent(result.text)
         scheduleValidateEditor(150)
       }
     })
-    await recordStepApplyChain
+    await recorderStore.awaitRecordStepApplyChain()
   }
 
   async function maybeShowPostRecordBannerAfterStop() {
@@ -4989,7 +4469,7 @@
   function handleRecordStopped(payload?: { reason?: string; idleSeconds?: number }) {
     dismissRecorderPicker()
     recorderStore.reset()
-    liveRecordStepLines = {}
+    recorderStore.clearLiveRecordSession()
     void maybeShowPostRecordBannerAfterStop()
     if (payload?.reason === 'idle') {
       const sec = payload.idleSeconds ?? recordIdle ?? 30
@@ -5009,9 +4489,7 @@
     const recordTarget =
       (recordAppendTo || lastRecordTarget || (activeTab && !isWelcome ? activeTab : '')).trim().replace(/\\/g, '/')
     recorderStore.reset()
-    showRecord = false
-    liveRecordStepLines = {}
-    lastRecordTarget = ''
+    dialogsStore.close('showRecord')
     if (result.output) appendLog(result.output)
     if (result.error) {
       appendLog(tr('journal.record.error', { message: result.error || tr('journal.record.unknownError') }))
@@ -5027,12 +4505,12 @@
         await showPostRecordBanner(activeTab)
       }
     }
-    statusTone = 'normal'
+    journalStore.patch({ statusTone: 'normal' })
     syncIdleStatus()
   }
 
   async function toggleRecordPause() {
-    pauseToggleGuardUntil = Date.now() + 900
+    recorderStore.extendPauseToggleGuard()
     if (recordPaused) {
       await ResumeRecording()
       recorderStore.setRecording(recording, false)
@@ -5052,22 +4530,19 @@
   function handleBrowserLost() {
     if (!browserOpen && !recording) return
     applyBrowserSessionState({ browserOpen: false, recording: false, paused: false })
-    statusTone = 'normal'
+    journalStore.patch({ statusTone: 'normal' })
     syncIdleStatus()
   }
 
   function startBrowserWatch() {
     stopBrowserWatch()
-    browserWatchTimer = setInterval(() => {
+    recorderStore.setBrowserWatchTimer(setInterval(() => {
       void syncBrowserStateFromBackend()
-    }, 400)
+    }, 400))
   }
 
   function stopBrowserWatch() {
-    if (browserWatchTimer) {
-      clearInterval(browserWatchTimer)
-      browserWatchTimer = null
-    }
+    recorderStore.clearBrowserWatchTimer()
   }
 
   async function syncBrowserStateFromBackend() {
@@ -5124,7 +4599,7 @@
   async function submitOtp(code: string) {
     const accepted = await SubmitOTPCode(code)
     if (accepted) {
-      showOtp = false
+      dialogsStore.close('showOtp')
       return
     }
     appendLog(tr('journal.otp.noActiveRequest'))
@@ -5132,7 +4607,7 @@
 
   async function cancelOtp() {
     await CancelOTP()
-    showOtp = false
+    dialogsStore.close('showOtp')
   }
 
   function newScenario() {
@@ -5151,13 +4626,12 @@
       syncTabContent(leavingTab)
     }
     const path = makeUntitledPath(displayName)
-    tabs = [...tabs, { path, content, dirty: true }]
+    tabsStore.appendTab({ path, content, dirty: true })
     warnManyOpenTabs()
-    welcomeTabVisible = false
-    activeTab = path
+    tabsStore.patch({ welcomeTabVisible: false, activeTab: path })
     await applyEditorText(content, { switchTab: true, tabPath: path, skipValidate: true })
     trimTabsMemory()
-    stepsPanelCollapsed = resolveStepsPanelCollapsed()
+    syncStepsPanelCollapsedFromPrefs()
     scheduleValidateEditor()
     schedulePersistSession()
   }
@@ -5182,7 +4656,7 @@
 
   async function quickStart() {
     if (!(await ensureProjectForBrowser())) return
-    recordURL = startURL || 'https://example.com'
+    recordFormStore.patch({ recordURL: startURL || 'https://example.com' })
     prepareRecordDialogDefaults({ inheritTestClient: true })
     openJournalTab()
     setStatus(tr('journal.browser.launching'), 'busy')
@@ -5191,7 +4665,7 @@
   }
 
   function dismissWelcomeChecklist() {
-    checklistDismissed = true
+    uiPrefsStore.patch({ checklistDismissed: true })
     void persistSettings()
   }
 
@@ -5205,12 +4679,14 @@
       beginRecord()
       return
     }
-    recordAppendTo = activeTab
-    recordOutput = activeTab
-    recordFeatureName = basename(activeTab).replace(/\.feature$/i, '')
-    recordScenarioName = tr('dialogs.record.appendScenarioDefault')
-    recordURL = startURL
-    showRecord = true
+    recordFormStore.patch({ recordAppendTo: activeTab })
+    recordFormStore.patch({ recordOutput: activeTab })
+    recordFormStore.patch({ recordFeatureName: basename(activeTab).replace(/\.feature$/i, '') })
+    recordFormStore.patch({ recordScenarioName: tr('dialogs.record.appendScenarioDefault') })
+    recordFormStore.patch({ recordURL: startURL })
+    dialogBinds.syncRecordFormBindLocals()
+    dialogBinds.syncRecorderPrefsBindLocals()
+    dialogsStore.open('showRecord')
     appendLog(tr('journal.record.appendTo', { name: basename(activeTab) }))
   }
 
@@ -5243,12 +4719,12 @@
   }
 
   function openHttpAuthDialog() {
-    httpAuthHost = hostFromURL(recordURL || startURL)
-    showHttpAuth = true
+    httpAuthDialogStore.setHost(hostFromURL(recordURL || startURL))
+    dialogsStore.open('showHttpAuth')
   }
 
   function closeHttpAuthDialog() {
-    showHttpAuth = false
+    dialogsStore.close('showHttpAuth')
   }
 
   async function pickElement() {
@@ -5269,9 +4745,11 @@
       return
     }
     if (!result.selector) return
-    pickerSelector = result.selector
-    pickerChoices = await PickerStepChoices(result.selector, tr('dialogs.record.gherkinGiven'))
-    showPickerStep = true
+    pickerDialogStore.setResult(
+      result.selector,
+      await PickerStepChoices(result.selector, tr('dialogs.record.gherkinGiven')),
+    )
+    dialogsStore.open('showPickerStep')
   }
 
   function insertPickerStep(text: string) {
@@ -5302,7 +4780,8 @@
   }
 
   function syncUrlFromField() {
-    recordURL = startURL
+    settingsStore.patch({ startUrl: dialogBinds.bindStartURL })
+    recordFormStore.patch({ recordURL: dialogBinds.bindStartURL })
   }
 
   function projectLabel(): string {
@@ -5311,11 +4790,104 @@
     if (projectPath) return basename(projectPath)
     return tr('statusBar.default')
   }
+
+  function paletteActions(): PaletteActions {
+    return {
+      openCommandPalette: () => dialogsStore.open('showCommandPalette'),
+      selectWelcome: () => selectTab(WELCOME_KEY),
+      openProject: openProjectDialog,
+      openNewProject: openNewProjectWizard,
+      closeProject,
+      openSettings,
+      openInitProject: openInitProjectDialog,
+      openExamples,
+      newScenario,
+      openFile: openFileDialog,
+      saveFeature,
+      saveFeatureAs,
+      openExport: openExportDialog,
+      openImport: openImportDialog,
+      openImportFeatures: openImportFeaturesDialog,
+      openSteps: openStepsDialog,
+      openSnippets: openSnippetPalette,
+      openFindReplace,
+      openFind: () => monaco?.openFind(),
+      formatDocument: () => monaco?.formatDocument(),
+      openSymbolOutline: () => monaco?.openSymbolOutline(),
+      openProjectReplace: () => dialogsStore.open('showProjectReplace'),
+      openDuplicate: openDuplicateDialog,
+      openRenameFeature: (path) => {
+        featureDialogStore.openRename(path)
+        dialogsStore.open('showRenameFeature')
+      },
+      deleteFeature,
+      refactorIndents: refactorNormalizeIndents,
+      refactorBlanks: refactorCollapseBlank,
+      openStepsHelp: () => openStepsHelp(),
+      openBrowser,
+      beginRecord,
+      toggleRecordPause,
+      stopRecord,
+      openBaselineRecord: openBaselineRecordDialog,
+      runPrimary,
+      runCurrentScenario,
+      openRunDialog,
+      runTagDialog: () => openRunDialog(tr('menus.runTag').replace('…', ''), {}, 'tag'),
+      openPlaywrightRun: () =>
+        openRunDialog('Playwright', { dryRun: false, headed: true, engine: 'playwright', installPW: true }, 'single'),
+      toggleBatchMode,
+      runBatchSelected,
+      rerunFailed,
+      openRunHistory,
+      openTestClient: openTestClientDialog,
+      openTestClientCapture: openTestClientDialogForCapture,
+      openValidate: openValidateDialog,
+      openVanessa: openVanessaDialog,
+      openVanessaSettings: openVanessaSettingsDialog,
+      openVanessaMonitor,
+      openPlugins: () => dialogsStore.open('showPlugins'),
+      openPluginRun,
+      openJournal: () => layoutStore.openBottomTab('journal'),
+      openResults: () => layoutStore.openBottomTab('results'),
+      serveAllure: serveAllureReport,
+      openValidatePanel: () => layoutStore.openBottomTab('validate'),
+      openErrorPanel: () => layoutStore.openBottomTab('error'),
+      showSidebar: () => layoutStore.showSidebar(),
+      hideSidebar: () => layoutStore.hideSidebar(),
+      togglePreview,
+      toggleStepsPanel,
+      toggleToolbarCompact,
+      refactorUrls: refactorUpdateUrls,
+      openHotkeys: () => dialogsStore.open('showHotkeys'),
+      resetLayout: resetWindowLayout,
+      checkUpdates,
+      showAbout: showAboutDialog,
+      hasVanessaPlugin,
+      pluginLabel,
+    }
+  }
+
+  $: [, paletteCommands] = [
+    $locale,
+    buildPaletteCommands(
+      tr,
+      {
+        toolbarCompact,
+        previewVisible,
+        stepsPanelVisible,
+        activeTab,
+        isWelcome,
+        installedPlugins,
+        allureDir: projectArtifacts.allureDir || '',
+      },
+      paletteActions(),
+    ),
+  ]
 </script>
 
 {#if !appReady}
   <SplashScreen
-    {version}
+    version={appVersion}
     message={splashMessage}
     progress={splashProgress}
     fading={splashFading}
@@ -5354,8 +4926,8 @@
             class="menu-item"
             on:click={() => {
               if (!activeTab || isWelcome) return
-              renameFeaturePath = activeTab
-              showRenameFeature = true
+              featureDialogStore.openRename(activeTab)
+              dialogsStore.open('showRenameFeature')
             }}
             disabled={isWelcome}
           >
@@ -5364,7 +4936,7 @@
           <button class="menu-item" on:click={() => activeTab && !isWelcome && deleteFeature(activeTab)} disabled={isWelcome}>{tr('menus.delete')}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openFindReplace} disabled={isWelcome}>{tr('menus.findReplace')}<span class="menu-shortcut">Ctrl+H</span></button>
-          <button class="menu-item" on:click={() => (showProjectReplace = true)} disabled={!projectPath}>{tr('menus.projectReplace')}</button>
+          <button class="menu-item" on:click={() => (dialogsStore.open('showProjectReplace'))} disabled={!projectPath}>{tr('menus.projectReplace')}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={openExportDialog} disabled={isWelcome}>{tr('menus.export')}</button>
           <button class="menu-item" on:click={openImportDialog} disabled={!projectPath}>{tr('menus.importJson')}</button>
@@ -5443,7 +5015,7 @@
       <button class="menu-trigger" on:click={(e) => toggleMenu('plugins', e)}>{tr('menus.pluginsMenu')}</button>
       {#if openMenu === 'plugins'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={() => (showPlugins = true)} disabled={!projectPath}>{tr('menus.plugins')}</button>
+          <button class="menu-item" on:click={() => (dialogsStore.open('showPlugins'))} disabled={!projectPath}>{tr('menus.plugins')}</button>
           {#if installedPlugins.length > 0}
             <div class="menu-sep"></div>
             {#each installedPlugins as plugin (plugin.name)}
@@ -5473,21 +5045,21 @@
       {#if openMenu === 'view'}
         <div class="menu-dropdown">
           <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>{tr('menus.start')}</button>
-          <button class="menu-item" on:click={() => { sidebarVisible = true; saveLayout({ sidebarVisible: true }) }}>{tr('menus.scenarios')}</button>
-          <button class="menu-item" on:click={() => { sidebarVisible = false; saveLayout({ sidebarVisible: false }) }}>{tr('menus.hideExplorer')}</button>
-          <button class="menu-item" on:click={() => (showCommandPalette = true)}>{tr('palette.commands.palette')}<span class="menu-shortcut">Ctrl+Shift+P</span></button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>{tr('menus.journal')}</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'results' }}>{tr('menus.resultsPanel')}</button>
+          <button class="menu-item" on:click={() => { layoutStore.showSidebar() }}>{tr('menus.scenarios')}</button>
+          <button class="menu-item" on:click={() => { layoutStore.hideSidebar() }}>{tr('menus.hideExplorer')}</button>
+          <button class="menu-item" on:click={() => (dialogsStore.open('showCommandPalette'))}>{tr('palette.commands.palette')}<span class="menu-shortcut">Ctrl+Shift+P</span></button>
+          <button class="menu-item" on:click={() => { layoutStore.openBottomTab('journal') }}>{tr('menus.journal')}</button>
+          <button class="menu-item" on:click={() => { layoutStore.openBottomTab('results') }}>{tr('menus.resultsPanel')}</button>
           <button class="menu-item" on:click={openRunHistory} disabled={!projectPath}>{tr('menus.runHistory')}</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'validate' }}>{tr('menus.validatePanel')}</button>
-          <button class="menu-item" on:click={() => { bottomPanelOpen = true; bottomTab = 'error' }}>{tr('menus.errorPanel')}</button>
+          <button class="menu-item" on:click={() => { layoutStore.openBottomTab('validate') }}>{tr('menus.validatePanel')}</button>
+          <button class="menu-item" on:click={() => { layoutStore.openBottomTab('error') }}>{tr('menus.errorPanel')}</button>
           <button class="menu-item" on:click={togglePreview}>
             {previewVisible ? tr('menus.hidePreview') : tr('menus.showPreview')}
           </button>
           <button class="menu-item" on:click={toggleStepsPanel}>
             {stepsPanelVisible ? tr('menus.hideStepsPanel') : tr('menus.showStepsPanel')}
           </button>
-          <button class="menu-item" on:click={() => { toolbarCompact = !toolbarCompact; persistSettings() }}>
+          <button class="menu-item" on:click={toggleToolbarCompact}>
             {toolbarCompact ? tr('menus.expandedToolbar') : tr('menus.compactToolbar')}
           </button>
           <button class="menu-item" on:click={resetWindowLayout}>{tr('menus.resetLayout')}</button>
@@ -5502,7 +5074,7 @@
           <button class="menu-item" on:click={restartOnboardingTour}>{tr('menus.training')}</button>
           <div class="menu-sep"></div>
           <button class="menu-item" on:click={() => openStepsHelp()}>{tr('menus.stepsHelp')}<span class="menu-shortcut">F1</span></button>
-          <button class="menu-item" on:click={() => (showHotkeys = true)}>{tr('menus.hotkeys')}<span class="menu-shortcut">Shift+F1</span></button>
+          <button class="menu-item" on:click={() => (dialogsStore.open('showHotkeys'))}>{tr('menus.hotkeys')}<span class="menu-shortcut">Shift+F1</span></button>
           <button class="menu-item" on:click={checkUpdates}>{tr('menus.checkUpdates')}</button>
           <button class="menu-item" on:click={showAboutDialog}>{tr('menus.about')}</button>
         </div>
@@ -5519,8 +5091,7 @@
           class:active={sidebarVisible}
           title={tr('menus.scenarios')}
           on:click={() => {
-            sidebarVisible = !sidebarVisible
-            saveLayout({ sidebarVisible })
+            layoutStore.toggleSidebar()
           }}
         >
           {@html icons.explorer}
@@ -5530,8 +5101,7 @@
           class:active={bottomPanelOpen}
           title={tr('catalog.outputPanel')}
           on:click={() => {
-            bottomPanelOpen = !bottomPanelOpen
-            saveLayout({ bottomPanelOpen })
+            layoutStore.toggleBottomPanel()
           }}
         >
           {@html icons.panel}
@@ -5597,7 +5167,7 @@
                 onFileContextMenu={onFileContextMenu}
                 onFolderContextMenu={onFolderContextMenu}
                 onMoveFeature={moveFeatureInCatalog}
-                onDropTarget={(path) => (catalogDropTarget = path)}
+                onDropTarget={(path) => catalogStore.setDropTarget(path)}
               />
             {/if}
           </div>
@@ -5683,10 +5253,10 @@
                 {@html toolbarIcons.undo()}<span>{tr('toolbar.undoStep')}</span>
               </button>
               <span class="toolbar-sep" aria-hidden="true"></span>
-              <button class="tool-btn" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>
+              <button class="tool-btn" on:click={() => { layoutStore.openBottomTab('journal') }}>
                 {@html toolbarIcons.log()}<span>{tr('toolbar.journal')}</span>
               </button>
-              <button class="tool-btn" on:click={() => { bottomPanelOpen = true; bottomTab = 'results' }}>
+              <button class="tool-btn" on:click={() => { layoutStore.openBottomTab('results') }}>
                 {@html toolbarIcons.results()}<span>{tr('toolbar.results')}</span>
               </button>
             </div>
@@ -5695,8 +5265,8 @@
 
           <div class="url-block">
             <span>URL</span>
-            <input bind:value={startURL} placeholder="https://site.com" on:change={syncUrlFromField} />
-            <button class="icon-btn" title={tr('toolbar.urlFromBrowser')} on:click={() => (recordURL = startURL)}>
+            <input bind:value={dialogBinds.bindStartURL} placeholder="https://site.com" on:change={syncUrlFromField} />
+            <button class="icon-btn" title={tr('toolbar.urlFromBrowser')} on:click={() => recordFormStore.patch({ recordURL: dialogBinds.bindStartURL })}>
               {@html icons.external}
             </button>
           </div>
@@ -5718,7 +5288,7 @@
           {#if isWelcome}
             <WelcomePanel
               tourElevated={onboardingElevateWelcome}
-              bind:startURL
+              bind:startURL={dialogBinds.bindStartURL}
               {recentProjects}
               {recentFeatures}
               projectOpen={welcomeProjectOpen}
@@ -5767,7 +5337,7 @@
               <VanessaMonitorPanel
                 snapshot={vanessaSnapshot}
                 running={vanessaRunning}
-                onClose={() => (showVanessaMonitor = false)}
+                onClose={() => (dialogsStore.close('showVanessaMonitor'))}
               />
             {/if}
             {#if stepStatusError}
@@ -5820,14 +5390,14 @@
                       bind:this={monaco}
                       bind:value={editorText}
                       readOnly={automationActive}
-                      bind:editorSettings
+                      bind:editorSettings={dialogBinds.bindEditorSettings}
                       scenarioHints={editorScenarioHints}
                       hintActions={monacoHintActions}
                       runLensActions={monacoRunLensActions}
                       inlayHintsHandlers={monacoInlayHintsHandlers}
                       on:ready={() => void syncMonacoAfterMount()}
                       on:change={(e) => onEditorChange(e.detail)}
-                      on:cursorline={(e) => (editorCursorLine = e.detail)}
+                      on:cursorline={(e) => editorStore.setCursorLine(e.detail)}
                     />
                 </div>
                 {#if stepsPanelVisible}
@@ -5846,18 +5416,18 @@
                     <button
                       type="button"
                       aria-label={stepsPanelCollapsed ? tr('editor.stepsPanel.expand') : tr('editor.stepsPanel.collapse')}
-                      on:click={() => (stepsPanelCollapsed = !stepsPanelCollapsed)}
+                      on:click={() => uiPrefsStore.toggleStepsPanelCollapsed()}
                     >
                       {#if stepsPanelCollapsed}{@html icons.chevronRight}{:else}{@html icons.chevronDown}{/if}
                     </button>
-                    {#if editorSettings.symbolOutline}
+                    {#if dialogBinds.bindEditorSettings.symbolOutline}
                       <div class="steps-panel-tabs" role="tablist" aria-label={tr('editor.stepsPanel.aria')}>
                         <button
                           type="button"
                           role="tab"
                           class:active={stepsPanelTab === 'outline'}
                           aria-selected={stepsPanelTab === 'outline'}
-                          on:click={() => (stepsPanelTab = 'outline')}
+                          on:click={() => editorStore.setStepsPanelTab('outline')}
                         >
                           {tr('editor.stepsPanel.outline')}
                         </button>
@@ -5866,7 +5436,7 @@
                           role="tab"
                           class:active={stepsPanelTab === 'steps'}
                           aria-selected={stepsPanelTab === 'steps'}
-                          on:click={() => (stepsPanelTab = 'steps')}
+                          on:click={() => editorStore.setStepsPanelTab('steps')}
                         >
                           {tr('editor.stepsPanel.title', { count: stepCount })}
                         </button>
@@ -5877,7 +5447,7 @@
                     {#if stepStatusError}<span class="steps-header-error">{tr('editor.stepsPanel.errors')}</span>{/if}
                   </div>
                   {#if !stepsPanelCollapsed}
-                    {#if editorSettings.symbolOutline && stepsPanelTab === 'outline'}
+                    {#if dialogBinds.bindEditorSettings.symbolOutline && stepsPanelTab === 'outline'}
                       <div class="steps-outline-wrap">
                         <FeatureOutline
                           text={editorText}
@@ -5927,9 +5497,9 @@
                   <div class="preview-header">{tr('editor.preview')}</div>
                   <FeaturePreview
                     text={editorText}
-                    theme={editorSettings.theme}
-                    fontSize={editorSettings.fontSize}
-                    fontFamily={editorSettings.fontFamily}
+                    theme={dialogBinds.bindEditorSettings.theme}
+                    fontSize={dialogBinds.bindEditorSettings.fontSize}
+                    fontFamily={dialogBinds.bindEditorSettings.fontFamily}
                   />
                 </div>
               {/if}
@@ -5952,9 +5522,9 @@
     <div class="bottom-panel" style="--panel-height: {bottomPanelHeight}px">
     <div class="panel-tabs">
       <button class="panel-tab" class:active={bottomTab === 'journal'} data-tour="panel-journal" on:click={() => openJournalTab(true)}>{tr('panels.journal')}</button>
-      <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (bottomTab = 'results')}>{tr('panels.results')}</button>
-      <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (bottomTab = 'validate')}>{tr('panels.validate')}</button>
-      <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (bottomTab = 'error')}>{tr('panels.error')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'results'} on:click={() => (layoutStore.setBottomTab('results'))}>{tr('panels.results')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'validate'} on:click={() => (layoutStore.setBottomTab('validate'))}>{tr('panels.validate')}</button>
+      <button class="panel-tab" class:active={bottomTab === 'error'} on:click={() => (layoutStore.setBottomTab('error'))}>{tr('panels.error')}</button>
     </div>
     <div class="panel-body" class:muted={bottomTab === 'journal' && !logText} class:text-panel={bottomTab === 'journal'}>
       {#if bottomTab === 'journal'}
@@ -6027,7 +5597,7 @@
       {/if}
       <div class="status-segment muted">{tr('statusBar.runner')}</div>
       <div class="status-segment" class:warning={stepStatusError}>{stepStatusDisplay}</div>
-      <button type="button" class="status-segment clickable" on:click={() => { bottomPanelOpen = true; bottomTab = 'journal' }}>
+      <button type="button" class="status-segment clickable" on:click={() => { layoutStore.openBottomTab('journal') }}>
         {@html icons.log} {tr('panels.journal')}
       </button>
       <button type="button" class="status-segment clickable project-segment" on:click={() => (isWelcome ? selectTab(WELCOME_KEY) : openProjectDialog())}>
@@ -6049,12 +5619,12 @@
 {#if showRun}
   <RunDialog
     title={runDialogTitle}
-    bind:form={runForm}
+    bind:form={dialogBinds.bindRunForm}
     {testClients}
     {tags}
     scenarios={runDialogScenarios}
     onConfirm={confirmRun}
-    onCancel={() => (showRun = false)}
+    onCancel={() => (dialogsStore.close('showRun'))}
   />
 {/if}
 
@@ -6062,38 +5632,38 @@
   <VanessaRunDialog
     dryRun={vanessaDry}
     preferRerun={vanessaPreferRerun}
-    bind:tag={vanessaTag}
-    bind:excludeTags={vanessaExcludeTags}
-    bind:scenario={vanessaScenario}
-    bind:rerunFailedRunDir={vanessaRerunDir}
-    bind:installEpf={vanessaInstallEpf}
-    bind:epfUrl={vanessaEpfUrl}
-    bind:epfDest={vanessaEpfDest}
-    bind:platformExe={vanessaPlatformExe}
-    bind:epfPath={vanessaEpfPath}
-    bind:ibConnection={vanessaIB}
-    bind:reportAllure={vanessaReportAllure}
-    bind:vaDir={vanessaVaDir}
-    bind:vaFiles={vanessaVaFiles}
+    bind:tag={dialogBinds.bindVanessaTag}
+    bind:excludeTags={dialogBinds.bindVanessaExcludeTags}
+    bind:scenario={dialogBinds.bindVanessaScenario}
+    bind:rerunFailedRunDir={dialogBinds.bindVanessaRerunDir}
+    bind:installEpf={dialogBinds.bindVanessaInstallEpf}
+    bind:epfUrl={dialogBinds.bindVanessaEpfUrl}
+    bind:epfDest={dialogBinds.bindVanessaEpfDest}
+    bind:platformExe={dialogBinds.bindVanessaPlatformExe}
+    bind:epfPath={dialogBinds.bindVanessaEpfPath}
+    bind:ibConnection={dialogBinds.bindVanessaIB}
+    bind:reportAllure={dialogBinds.bindVanessaReportAllure}
+    bind:vaDir={dialogBinds.bindVanessaVaDir}
+    bind:vaFiles={dialogBinds.bindVanessaVaFiles}
     {tags}
     scenarios={vanessaDialogScenarios}
     onConfirm={confirmVanessaRun}
-    onCancel={() => (showVanessaRun = false)}
+    onCancel={() => (dialogsStore.close('showVanessaRun'))}
   />
 {/if}
 
 {#if showTestClient}
   <TestClientDialog
     {testClients}
-    bind:selectedName={testClientSelection}
+    bind:selectedName={dialogBinds.bindTestClientSelection}
     browserOpen={browserOpen || recording}
     suggestName={testClientSuggestName}
     onUse={useTestClient}
     onClose={() => {
-      showTestClient = false
-      testClientSuggestName = ''
+      dialogsStore.close('showTestClient')
+      testClientStore.clearSuggestName()
     }}
-    onClientsChange={(names) => (testClients = names)}
+    onClientsChange={(names) => testClientStore.setClients(names)}
     onLog={appendLog}
     onAskConfirm={(message) =>
       askConfirm({ title: tr('confirm.generic.title'), message, confirmLabel: tr('confirm.generic.confirmLabelDelete'), danger: true })}
@@ -6103,17 +5673,17 @@
 {#if showStepsHelp}
   <StepsHelpDialog
     initialQuery={stepsHelpQuery}
-    onClose={() => { showStepsHelp = false; stepsHelpQuery = '' }}
+    onClose={() => { dialogsStore.close('showStepsHelp'); stepsHelpDialogStore.clear() }}
     onInsert={insertStep}
   />
 {/if}
 
 {#if showSteps}
-  <StepsInsertDialog onInsert={insertStep} onClose={() => (showSteps = false)} />
+  <StepsInsertDialog onInsert={insertStep} onClose={() => (dialogsStore.close('showSteps'))} />
 {/if}
 
 {#if showVanessaSettings}
-  <VanessaSettingsDialog onClose={() => (showVanessaSettings = false)} onLog={appendLog} />
+  <VanessaSettingsDialog onClose={() => (dialogsStore.close('showVanessaSettings'))} onLog={appendLog} />
 {/if}
 
 {#if showExport}
@@ -6121,7 +5691,7 @@
     inputPath={exportInputPath}
     featureText={editorText}
     {currentProjectVersion}
-    onClose={() => (showExport = false)}
+    onClose={() => (dialogsStore.close('showExport'))}
     onLog={appendLog}
   />
 {/if}
@@ -6130,7 +5700,7 @@
   <RefactorUrlDialog
     initialUrl={startURL || recordURL || 'https://example.com'}
     onConfirm={applyRefactorUrl}
-    onClose={() => (showRefactorUrl = false)}
+    onClose={() => (dialogsStore.close('showRefactorUrl'))}
   />
 {/if}
 
@@ -6139,7 +5709,7 @@
     initialPath={projectPath}
     {recentProjects}
     onConfirm={openProjectAt}
-    onClose={() => (showOpenProject = false)}
+    onClose={() => (dialogsStore.close('showOpenProject'))}
   />
 {/if}
 
@@ -6148,8 +5718,8 @@
     currentPath={renameFeaturePath}
     onConfirm={(name) => renameFeature(renameFeaturePath, name)}
     onClose={() => {
-      showRenameFeature = false
-      renameFeaturePath = ''
+      dialogsStore.close('showRenameFeature')
+      featureDialogStore.clearRename()
     }}
   />
 {/if}
@@ -6158,24 +5728,24 @@
   <MoveFeatureDialog
     featurePath={moveFeaturePath}
     destDirs={moveDestDirs}
-    bind:destDir={moveDestDir}
+    bind:destDir={dialogBinds.bindMoveDestDir}
     onConfirm={confirmMoveFeature}
     onCancel={() => {
-      showMoveFeature = false
-      moveFeaturePath = ''
+      dialogsStore.close('showMoveFeature')
+      featureDialogStore.clearMove()
     }}
   />
 {/if}
 
 {#if showValidate}
   <ValidateDialog
-    bind:browser={validateBrowser}
-    bind:syntaxOnly={validateSyntaxOnly}
-    bind:scope={validateScope}
+    bind:browser={dialogBinds.bindValidateBrowser}
+    bind:syntaxOnly={dialogBinds.bindValidateSyntaxOnly}
+    bind:scope={dialogBinds.bindValidateScope}
     canValidateCurrent={!isWelcome && !!activeTab}
     currentFileName={!isWelcome && activeTab ? basename(activeTab) : ''}
     onConfirm={confirmValidate}
-    onCancel={() => (showValidate = false)}
+    onCancel={() => (dialogsStore.close('showValidate'))}
   />
 {/if}
 
@@ -6183,7 +5753,7 @@
   <NewProjectWizardDialog
     defaultStartUrl={startURL || 'https://example.com'}
     onConfirm={confirmNewProjectWizard}
-    onCancel={() => (showNewProjectWizard = false)}
+    onCancel={() => (dialogsStore.close('showNewProjectWizard'))}
   />
 {/if}
 
@@ -6191,19 +5761,19 @@
   <InitProjectDialog
     {projectPath}
     onConfirm={confirmInitProject}
-    onCancel={() => (showInitProject = false)}
+    onCancel={() => (dialogsStore.close('showInitProject'))}
   />
 {/if}
 
 {#if showUpdateCheck}
   <UpdateCheckDialog
-    currentVersion={version}
+    currentVersion={appVersion}
     info={updateCheckInfo}
     message={updateCheckMessage}
     hasUpdate={updateCheckHasUpdate}
     downloading={updateDownloading}
     progress={updateProgress}
-    onClose={() => (showUpdateCheck = false)}
+    onClose={() => (dialogsStore.close('showUpdateCheck'))}
     onOpenRelease={openUpdateRelease}
     onDownload={downloadUpdate}
     onApply={applyUpdate}
@@ -6214,11 +5784,11 @@
 {#if showDuplicateFeature}
   <DuplicateFeatureDialog
     featurePath={duplicateFeaturePath}
-    bind:newName={duplicateNewName}
+    bind:newName={dialogBinds.bindDuplicateNewName}
     onConfirm={confirmDuplicateFeature}
     onCancel={() => {
-      showDuplicateFeature = false
-      duplicateFeaturePath = ''
+      dialogsStore.close('showDuplicateFeature')
+      featureDialogStore.clearDuplicate()
     }}
   />
 {/if}
@@ -6226,10 +5796,10 @@
 {#if showImportFeatures}
   <ImportFeaturesDialog
     destDirs={collectProjectDirs()}
-    bind:destDir={importDestDir}
+    bind:destDir={dialogBinds.bindImportDestDir}
     busy={importFeaturesBusy}
     onImport={confirmImportFeatures}
-    onClose={() => (showImportFeatures = false)}
+    onClose={() => (dialogsStore.close('showImportFeatures'))}
   />
 {/if}
 
@@ -6237,7 +5807,7 @@
   <ImportJSONDialog
     {projectPath}
     {currentProjectVersion}
-    onClose={() => (showImport = false)}
+    onClose={() => (dialogsStore.close('showImport'))}
     onLog={appendLog}
     onImported={onImportComplete}
   />
@@ -6245,37 +5815,37 @@
 
 {#if showSettings}
   <SettingsDialog
-    bind:browser={settingsBrowser}
-    bind:headless={settingsHeadless}
-    bind:workers={settingsWorkers}
-    bind:slowMo={settingsSlowMo}
-    bind:loops={settingsLoops}
-    bind:filterRecording
-    bind:navOnlyRecording
-    bind:hoverRecord
-    bind:scrollBeforeClick={settingsScrollBeforeClick}
-    bind:hoverRecordMinMs={settingsHoverRecordMinMs}
-    bind:toolbarCompact
-    bind:stepsPanelVisible
-    bind:stepsPanelHeight
-    bind:checkUpdatesOnStartup={settingsCheckUpdatesOnStartup}
-    bind:selectorClickStrategies={settingsSelectorClickStrategies}
-    bind:selectorInputStrategies={settingsSelectorInputStrategies}
-    bind:navWaitUntil={settingsNavWaitUntil}
-    bind:htmlReportOpenMode={settingsHtmlReportOpenMode}
+    bind:browser={dialogBinds.bindSettingsBrowser}
+    bind:headless={dialogBinds.bindSettingsHeadless}
+    bind:workers={dialogBinds.bindSettingsWorkers}
+    bind:slowMo={dialogBinds.bindSettingsSlowMo}
+    bind:loops={dialogBinds.bindSettingsLoops}
+    bind:filterRecording={dialogBinds.bindFilterRecording}
+    bind:navOnlyRecording={dialogBinds.bindNavOnlyRecording}
+    bind:hoverRecord={dialogBinds.bindHoverRecord}
+    bind:scrollBeforeClick={dialogBinds.bindSettingsScrollBeforeClick}
+    bind:hoverRecordMinMs={dialogBinds.bindSettingsHoverRecordMinMs}
+    bind:toolbarCompact={dialogBinds.bindToolbarCompact}
+    bind:stepsPanelVisible={dialogBinds.bindStepsPanelVisible}
+    bind:stepsPanelHeight={dialogBinds.bindStepsPanelHeight}
+    bind:checkUpdatesOnStartup={dialogBinds.bindSettingsCheckUpdatesOnStartup}
+    bind:selectorClickStrategies={dialogBinds.bindSettingsSelectorClickStrategies}
+    bind:selectorInputStrategies={dialogBinds.bindSettingsSelectorInputStrategies}
+    bind:navWaitUntil={dialogBinds.bindSettingsNavWaitUntil}
+    bind:htmlReportOpenMode={dialogBinds.bindHtmlReportOpenMode}
     projectOpen={!!projectPath}
-    bind:pickerDuringRecording
-    bind:uiLocale
-    bind:editorSettings
+    bind:pickerDuringRecording={dialogBinds.bindPickerDuringRecording}
+    bind:uiLocale={dialogBinds.bindUiLocale}
+    bind:editorSettings={dialogBinds.bindEditorSettings}
     onSave={applySettings}
     onApply={applySettingsKeepOpen}
     onCancel={cancelSettings}
     onOpenPlugins={() => {
-      showSettings = false
-      showPlugins = true
+      dialogsStore.close('showSettings')
+      dialogsStore.open('showPlugins')
     }}
     onOpenVanessa={() => {
-      showSettings = false
+      dialogsStore.close('showSettings')
       openVanessaSettingsDialog()
     }}
     onInstallLog={appendLog}
@@ -6283,28 +5853,28 @@
 {/if}
 
 {#if showCommandPalette}
-  <CommandPalette commands={paletteCommands} onClose={() => (showCommandPalette = false)} />
+  <CommandPalette commands={paletteCommands} onClose={() => (dialogsStore.close('showCommandPalette'))} />
 {/if}
 
 {#if showSnippetPalette}
-  <SnippetPalette onClose={() => (showSnippetPalette = false)} onInsert={insertStep} />
+  <SnippetPalette onClose={() => (dialogsStore.close('showSnippetPalette'))} onInsert={insertStep} />
 {/if}
 
 {#if showRecord}
   <RecordDialog
-    bind:mode={recordMode}
-    bind:stepPickerOpen={recordStepPickerOpen}
-    bind:url={recordURL}
-    bind:output={recordOutput}
-    bind:featureName={recordFeatureName}
-    bind:scenarioName={recordScenarioName}
-    bind:testClient={recordTestClient}
-    bind:idleSeconds={recordIdle}
-    bind:appendTo={recordAppendTo}
-    bind:headless={settingsHeadless}
-    bind:filterRecording
-    bind:navOnlyRecording
-    bind:hoverRecord
+    bind:mode={dialogBinds.bindRecordMode}
+    bind:stepPickerOpen={dialogBinds.bindRecordStepPickerOpen}
+    bind:url={dialogBinds.bindRecordURL}
+    bind:output={dialogBinds.bindRecordOutput}
+    bind:featureName={dialogBinds.bindRecordFeatureName}
+    bind:scenarioName={dialogBinds.bindRecordScenarioName}
+    bind:testClient={dialogBinds.bindRecordTestClient}
+    bind:idleSeconds={dialogBinds.bindRecordIdle}
+    bind:appendTo={dialogBinds.bindRecordAppendTo}
+    bind:headless={dialogBinds.bindSettingsHeadless}
+    bind:filterRecording={dialogBinds.bindFilterRecording}
+    bind:navOnlyRecording={dialogBinds.bindNavOnlyRecording}
+    bind:hoverRecord={dialogBinds.bindHoverRecord}
     {testClients}
     {recording}
     {recordPaused}
@@ -6314,7 +5884,10 @@
     onTogglePause={toggleRecordPause}
     onStop={stopRecord}
     onSaveBaseline={saveBaselineRecord}
-    onClose={() => (showRecord = false)}
+    onClose={() => {
+      dialogBinds.flushRecordFormBindLocals()
+      dialogsStore.close('showRecord')
+    }}
     childModalOpen={showHttpAuth}
   />
 {/if}
@@ -6324,7 +5897,7 @@
 {/if}
 
 {#if showAbout}
-  <AboutDialog {version} onClose={() => (showAbout = false)} />
+  <AboutDialog version={appVersion} onClose={() => (dialogsStore.close('showAbout'))} />
 {/if}
 
 {#if pendingCloseTab}
@@ -6337,14 +5910,14 @@
 {/if}
 
 {#if showHotkeys}
-  <HotkeysDialog commands={paletteCommands} onClose={() => (showHotkeys = false)} />
+  <HotkeysDialog commands={paletteCommands} onClose={() => (dialogsStore.close('showHotkeys'))} />
 {/if}
 
 {#if showPlugins}
   <PluginsDialog
     childModalOpen={showPluginRun}
     onClose={() => {
-      showPlugins = false
+      dialogsStore.close('showPlugins')
       void refreshInstalledPlugins()
     }}
     onRunPlugin={(name, dry) => openPluginRun(name, dry)}
@@ -6357,13 +5930,13 @@
   <PluginRunDialog
     pluginName={pluginRunName}
     pluginTitle={pluginRunTitle(pluginRunName)}
-    bind:tag={pluginRunTag}
-    bind:scenario={pluginRunScenario}
-    bind:dryRun={pluginRunDry}
+    bind:tag={dialogBinds.bindPluginRunTag}
+    bind:scenario={dialogBinds.bindPluginRunScenario}
+    bind:dryRun={dialogBinds.bindPluginRunDry}
     scenarios={pluginRunScenarios}
     {tags}
     onConfirm={confirmPluginRun}
-    onCancel={() => (showPluginRun = false)}
+    onCancel={() => (dialogsStore.close('showPluginRun'))}
   />
 {/if}
 
@@ -6373,8 +5946,8 @@
     flakyByPath={flakyByPath}
     flakyStepByPath={flakyStepByPath}
     onOpenFeature={openFeatureFromHistory}
-    onRerunFailed={() => { showRunHistory = false; rerunFailed() }}
-    onClose={() => (showRunHistory = false)}
+    onRerunFailed={() => { dialogsStore.close('showRunHistory'); rerunFailed() }}
+    onClose={() => (dialogsStore.close('showRunHistory'))}
   />
 {/if}
 
@@ -6383,18 +5956,18 @@
     path={postRecordPath}
     original={postRecordBaselineText}
     modified={monaco?.getEditorText() ?? editorText}
-    onClose={() => (showPostRecordDiff = false)}
+    onClose={() => (dialogsStore.close('showPostRecordDiff'))}
   />
 {/if}
 
 {#if showProjectReplace}
   <ProjectReplaceDialog
-    bind:findText
-    bind:replaceText
-    bind:caseSensitive={replaceCaseSensitive}
+    bind:findText={dialogBinds.bindProjectReplaceFind}
+    bind:replaceText={dialogBinds.bindProjectReplaceReplace}
+    bind:caseSensitive={dialogBinds.bindProjectReplaceCaseSensitive}
     busy={projectReplaceBusy}
     onConfirm={confirmProjectReplace}
-    onClose={() => (showProjectReplace = false)}
+    onClose={() => (dialogsStore.close('showProjectReplace'))}
   />
 {/if}
 
@@ -6407,7 +5980,7 @@
     selector={pickerSelector}
     choices={pickerChoices}
     onInsert={insertPickerStep}
-    onClose={() => (showPickerStep = false)}
+    onClose={() => (dialogsStore.close('showPickerStep'))}
   />
 {/if}
 
@@ -6456,7 +6029,7 @@
   />
 {/if}
 
-{#if confirmDialog}
+{#if confirmDialogOpen && confirmDialog}
   <ConfirmDialog
     title={confirmDialog.title}
     message={confirmDialog.message}

@@ -9,15 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/player"
-	"github.com/bafgion/scenaria-golang/internal/recorder"
 	"github.com/bafgion/scenaria-golang/internal/report"
-	"github.com/bafgion/scenaria-golang/internal/scenario"
 	"github.com/bafgion/scenaria-golang/internal/selector"
 	"github.com/bafgion/scenaria-golang/internal/settings"
-	"github.com/bafgion/scenaria-golang/internal/stepcatalog"
 	"github.com/bafgion/scenaria-golang/internal/version"
 )
 
@@ -33,23 +29,11 @@ type Service struct {
 	fileOps                    *FileOperationService
 	recorderService            *RecorderService
 	settingsService            *SettingsService
+	testClientService          *TestClientService
+	pluginService              *PluginService
+	catalogService             *CatalogService
 	cliOps                     *CLIOps
 	projectVersion             uint64
-	runSession                 *RunSession
-	liveSession                *recorder.LiveSession
-	recordCtx                  context.Context
-	recordCancel               context.CancelFunc
-	recordEmit                 func(string, any)
-	recordGen                  uint64
-	recordSessionID            string
-	browserSessionID           string
-	recordTargetPath           string
-	lastClosedRecordSessionID  string
-	lastClosedBrowserSessionID string
-	recordIdleSeconds          int
-	runCtx                     context.Context
-	runCancel                  context.CancelFunc
-	runGen                     uint64
 	validateCancel             context.CancelFunc
 	validateGen                uint64
 	tempFeatureMu              sync.Mutex
@@ -67,11 +51,14 @@ func NewService() *Service {
 	svc := &Service{settingsStore: settings.DefaultStore()}
 	svc.projectService = NewProjectService(svc.withProjectFSReadLock)
 	svc.editorAnalysisService = NewEditorAnalysisService()
-	svc.reportService = NewReportService(svc.ProjectPath)
+	svc.reportService = svc.buildReportService()
 	svc.runService = NewRunService(svc.ProjectPath)
-	svc.fileOps = NewFileOperationService(svc.confineFeaturePath, svc.withProjectFSReadLock, svc.withProjectFSWriteLock)
+	svc.fileOps = NewFileOperationService(svc.confineFeaturePath, svc.ProjectPath, svc.withProjectFSReadLock, svc.withProjectFSWriteLock)
 	svc.recorderService = NewRecorderService()
 	svc.settingsService = NewSettingsService(svc.settingsStore)
+	svc.testClientService = NewTestClientService(svc.ProjectPath)
+	svc.pluginService = NewPluginService(svc.ProjectPath, func() pluginCLIRunner { return svc.cliRunner() })
+	svc.catalogService = NewCatalogService()
 	svc.cliOps = NewCLIOps()
 	return svc
 }
@@ -309,15 +296,7 @@ func (s *Service) ProjectVersion() uint64 {
 }
 
 func (s *Service) CurrentRunSession() *RunSession {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.runSession == nil {
-		return nil
-	}
-	copy := *s.runSession
-	copy.RequestSnapshot = cloneRunRequest(copy.RequestSnapshot)
-	copy.TempResources = append([]string(nil), copy.TempResources...)
-	return &copy
+	return s.runner().CurrentSession()
 }
 
 func (s *Service) editorAnalyzer() *EditorAnalysisService {
@@ -335,6 +314,19 @@ func (s *Service) editorAnalyzer() *EditorAnalysisService {
 	return s.editorAnalysisService
 }
 
+func (s *Service) buildReportService() *ReportService {
+	return NewReportService(
+		s.ProjectPath,
+		func() string {
+			if session := s.CurrentRunSession(); session != nil {
+				return session.RunID
+			}
+			return ""
+		},
+		s.ReportBridgeCredentials,
+	)
+}
+
 func (s *Service) reporter() *ReportService {
 	s.mu.RLock()
 	reporter := s.reportService
@@ -345,7 +337,7 @@ func (s *Service) reporter() *ReportService {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.reportService == nil {
-		s.reportService = NewReportService(s.ProjectPath)
+		s.reportService = s.buildReportService()
 	}
 	return s.reportService
 }
@@ -375,7 +367,7 @@ func (s *Service) fileOperator() *FileOperationService {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fileOps == nil {
-		s.fileOps = NewFileOperationService(s.confineFeaturePath, s.withProjectFSReadLock, s.withProjectFSWriteLock)
+		s.fileOps = NewFileOperationService(s.confineFeaturePath, s.ProjectPath, s.withProjectFSReadLock, s.withProjectFSWriteLock)
 	}
 	return s.fileOps
 }
@@ -455,19 +447,15 @@ func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	}
 	s.mu.Lock()
 	// Project switch is a lifecycle boundary: retire project-scoped async work.
-	if s.runCancel != nil {
-		s.runCancel()
-		s.runCancel = nil
-		s.runCtx = nil
+	if s.runService != nil {
+		s.runService.CancelIfActive()
 	}
 	if s.validateCancel != nil {
 		s.validateCancel()
 		s.validateCancel = nil
 	}
-	if s.recordCancel != nil {
-		s.recordCancel()
-		s.recordCancel = nil
-		s.recordCtx = nil
+	if s.recorderService != nil {
+		s.recorderService.Session().CancelContextOnProjectSwitch()
 	}
 	s.rotateProjectSessionLocked(path)
 	s.mu.Unlock()
@@ -496,40 +484,6 @@ func (s *Service) projectInfo() (ProjectInfo, error) {
 		s.mu.Unlock()
 	}
 	return projectService.ProjectInfo(path, version)
-}
-
-func collectFeatureTags(store *scenario.FeatureStore, files []string) map[string][]string {
-	out := make(map[string][]string, len(files))
-	for _, file := range files {
-		feature, err := store.Load(file)
-		if err != nil {
-			continue
-		}
-		tags := gherkin.CollectFeatureTags(feature)
-		if len(tags) > 0 {
-			out[file] = tags
-		}
-	}
-	return out
-}
-
-func collectProjectTags(store *scenario.FeatureStore, files []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, 16)
-	for _, file := range files {
-		feature, err := store.Load(file)
-		if err != nil {
-			continue
-		}
-		for _, tag := range gherkin.CollectFeatureTags(feature) {
-			if _, ok := seen[tag]; ok {
-				continue
-			}
-			seen[tag] = struct{}{}
-			out = append(out, tag)
-		}
-	}
-	return out
 }
 
 func (s *Service) ReadFeature(path string) (string, error) {
@@ -625,8 +579,19 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 		return RunResult{Error: "нет файлов для запуска — откройте сценарий или проект"}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultRunTimeout)
-	runID := fmt.Sprintf("run-%d", time.Now().UnixNano())
+	begin, err := s.runner().TryBegin(s.ProjectVersion(), req, s.tempFeatureDirsForTargets(req.Targets), DefaultRunTimeout)
+	if err != nil {
+		return RunResult{Error: err.Error()}
+	}
+	ctx := begin.Context
+	runID := begin.RunID
+	myGen := begin.Gen
+	defer begin.Cancel()
+	defer func() {
+		s.cleanupTempFeatureResources(begin.TempResources)
+		s.runner().Finish(myGen)
+	}()
+
 	emitRunEvent := func(name string, payload any) {
 		if emit == nil {
 			return
@@ -667,40 +632,6 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 			emit(name, payload)
 		}
 	}
-	s.mu.Lock()
-	// Explicit concurrent run policy: reject overlapping runs; caller should CancelRun first.
-	if s.runCancel != nil && s.runCtx != nil && s.runCtx.Err() == nil {
-		s.mu.Unlock()
-		cancel()
-		return RunResult{Error: "запуск уже выполняется — нажмите «Стоп» и попробуйте снова"}
-	}
-	s.runGen++
-	myGen := s.runGen
-	projectVersion := s.projectVersion
-	s.runCtx = ctx
-	s.runCancel = cancel
-	s.runSession = &RunSession{
-		RunID:           runID,
-		ProjectVersion:  projectVersion,
-		RequestSnapshot: cloneRunRequest(req),
-		Context:         ctx,
-		TempResources:   s.tempFeatureDirsForTargets(req.Targets),
-	}
-	runTempResources := append([]string(nil), s.runSession.TempResources...)
-	s.mu.Unlock()
-	defer func() {
-		s.cleanupTempFeatureResources(runTempResources)
-		s.mu.Lock()
-		if s.runGen == myGen {
-			s.runCtx = nil
-			s.runCancel = nil
-			s.runSession = nil
-		} else {
-			logx.Debug("stale run cleanup skipped", "run_id", runID, "expected_gen", myGen, "current_gen", s.runGen)
-		}
-		s.mu.Unlock()
-		cancel()
-	}()
 
 	result, artifacts, err := s.runInProcess(ctx, req, emitRunEvent)
 	logx.Debug("run completed", "targets", len(req.Targets), "cases", result.Scenarios, "executed", len(result.ScenarioResults))
@@ -795,13 +726,10 @@ func (s *Service) cleanupTempFeatureResources(resources []string) {
 
 // CancelRun aborts an in-progress GUI scenario run.
 func (s *Service) CancelRun() {
+	s.runner().Cancel()
 	s.mu.Lock()
-	cancel := s.runCancel
 	validateCancel := s.validateCancel
 	s.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
 	if validateCancel != nil {
 		validateCancel()
 	}
@@ -829,21 +757,7 @@ func (s *Service) Validate(req ValidateRequest) RunResult {
 	}()
 
 	path := s.ProjectPath()
-	if path == "" {
-		return RunResult{Error: "open a project folder first"}
-	}
-	args := []string{}
-	if len(req.Targets) > 0 {
-		args = append(args, req.Targets...)
-	} else {
-		args = append(args, path)
-	}
-	if req.SkipBrowser {
-		args = append(args, "--no-browser")
-	} else if req.Browser != "" {
-		args = append(args, "--browser", req.Browser)
-	}
-	out, err := s.cliRunner().Validate(ctx, args)
+	out, err := s.cliRunner().ValidateProject(ctx, path, req)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
@@ -859,89 +773,38 @@ func (s *Service) CheckUpdate() RunResult {
 }
 
 func (s *Service) ListTestClients() ([]string, error) {
-	path := s.ProjectPath()
-	if path == "" {
-		return nil, fmt.Errorf("open a project folder first")
-	}
-	return settings.ListTestClientNames(path)
+	return s.testClientOps().List()
 }
 
 func (s *Service) TestClientDetails(name string) (string, error) {
-	path := s.ProjectPath()
-	if path == "" {
-		return "", fmt.Errorf("open a project folder first")
-	}
-	client, err := settings.LoadTestClientByName(path, name)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("name=%s base_url=%s cookies=%d local_storage=%d",
-		client.Name, client.BaseURL, len(client.Cookies), len(client.LocalStorage)), nil
+	return s.testClientOps().Details(name)
 }
 
 func (s *Service) ReadTestClientJSON(name string) (string, error) {
-	path := s.ProjectPath()
-	if path == "" {
-		return "", fmt.Errorf("open a project folder first")
-	}
-	return settings.ReadTestClientJSON(path, name)
+	return s.testClientOps().ReadJSON(name)
 }
 
 func (s *Service) SaveTestClientJSON(name, content string) error {
-	path := s.ProjectPath()
-	if path == "" {
-		return fmt.Errorf("open a project folder first")
-	}
-	return settings.SaveTestClientFromJSON(path, name, content)
+	return s.testClientOps().SaveJSON(name, content)
 }
 
 func (s *Service) DeleteTestClient(name string) error {
-	path := s.ProjectPath()
-	if path == "" {
-		return fmt.Errorf("open a project folder first")
-	}
-	return settings.DeleteTestClient(path, name)
+	return s.testClientOps().Delete(name)
 }
 
-func (s *Service) SearchSteps(query string) []StepCatalogEntry {
-	entries := stepcatalog.Search(query)
-	out := make([]StepCatalogEntry, 0, len(entries))
-	for _, entry := range entries {
-		out = append(out, StepCatalogEntry{
-			Label:       entry.Label,
-			Action:      entry.Action,
-			Category:    entry.Category,
-			Description: entry.Description,
-			Template:    entry.Template,
-			Example:     entry.Example,
-			Parameters:  entry.Parameters,
-			Help:        entry.Help,
-		})
+func (s *Service) testClientOps() *TestClientService {
+	s.mu.RLock()
+	ops := s.testClientService
+	s.mu.RUnlock()
+	if ops != nil {
+		return ops
 	}
-	return out
-}
-
-func (s *Service) CompletionsForLine(line string, column int, language string) StepCompletionsDTO {
-	started := time.Now()
-	defer logWailsTiming("CompletionsForLine", started)
-	lang := strings.TrimSpace(language)
-	if lang == "" {
-		lang = string(gherkin.LangRU)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.testClientService == nil {
+		s.testClientService = NewTestClientService(s.ProjectPath)
 	}
-	result := stepcatalog.CompletionsForLineLang(line, column, lang)
-	out := StepCompletionsDTO{
-		Start: result.Start,
-		End:   result.End,
-		Items: make([]StepCompletionSnippet, 0, len(result.Items)),
-	}
-	for _, item := range result.Items {
-		out.Items = append(out.Items, StepCompletionSnippet{
-			Label:       item.Label,
-			Insert:      item.Insert,
-			Description: item.Description,
-		})
-	}
-	return out
+	return s.testClientService
 }
 
 func (s *Service) LoadSettings() (AppSettingsDTO, error) {

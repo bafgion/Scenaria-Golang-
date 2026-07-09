@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/scenario"
@@ -62,74 +61,9 @@ func (s *Service) ReplaceInProject(req ProjectReplaceRequest) (ProjectReplaceRes
 }
 
 func (s *Service) DeleteFeature(path string) error {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return fmt.Errorf("feature path is required")
-	}
-	project := s.ProjectPath()
-	if project == "" {
-		return fmt.Errorf("open a project folder first")
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	projectAbs, err := filepath.Abs(project)
-	if err != nil {
-		return err
-	}
-	rel, err := filepath.Rel(projectAbs, abs)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("feature is outside the project")
-	}
-	if err := s.withProjectFSWriteLock(func() error { return os.Remove(abs) }); err != nil {
-		return fmt.Errorf("delete feature: %w", err)
-	}
-	return nil
+	return s.fileOperator().DeleteFeature(path)
 }
 
 func (s *Service) DuplicateFeature(path, newName string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", fmt.Errorf("feature path is required")
-	}
-	srcAbs, err := s.confineFeaturePath(path)
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Dir(srcAbs)
-	ext := filepath.Ext(srcAbs)
-	target := ""
-	if name := strings.TrimSpace(newName); name != "" {
-		name = strings.TrimSuffix(name, ext)
-		name = strings.TrimSuffix(name, ".feature")
-		if name == "" {
-			return "", fmt.Errorf("new feature name is required")
-		}
-		target = filepath.Join(dir, name+ext)
-		if _, err := os.Stat(target); err == nil {
-			return "", fmt.Errorf("file already exists: %s", filepath.Base(target))
-		} else if !os.IsNotExist(err) {
-			return "", err
-		}
-	} else {
-		base := strings.TrimSuffix(filepath.Base(srcAbs), ext)
-		target = filepath.Join(dir, base+"-copy"+ext)
-		for i := 2; i < 100; i++ {
-			if _, err := os.Stat(target); os.IsNotExist(err) {
-				break
-			}
-			target = filepath.Join(dir, fmt.Sprintf("%s-copy-%d%s", base, i, ext))
-		}
-	}
-	if err := s.withProjectFSWriteLock(func() error {
-		payload, err := os.ReadFile(srcAbs)
-		if err != nil {
-			return fmt.Errorf("read feature: %w", err)
-		}
-		return os.WriteFile(target, payload, 0o644)
-	}); err != nil {
-		return "", fmt.Errorf("write duplicate: %w", err)
-	}
-	return target, nil
+	return s.fileOperator().DuplicateFeature(path, newName)
 }

@@ -25,6 +25,10 @@ describe('runnerStore', () => {
       label: 'running',
       logStreaming: true,
       cancelling: true,
+      lastRunSince: null,
+      lastRunBatchResults: [],
+      lastErrorEntry: null,
+      dryRunActive: false,
     })
   })
 
@@ -37,6 +41,10 @@ describe('runnerStore', () => {
       label: 'x',
       logStreaming: true,
       cancelling: true,
+      lastRunSince: 't',
+      lastRunBatchResults: [],
+      lastErrorEntry: null,
+      dryRunActive: false,
     })
     store.reset()
     expect(currentValue(store)).toEqual(defaultRunnerState)
