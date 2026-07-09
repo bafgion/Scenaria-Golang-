@@ -3,6 +3,7 @@ package gui
 import (
 	"testing"
 
+	"github.com/bafgion/scenaria-golang/internal/player"
 	"github.com/bafgion/scenaria-golang/internal/runstatus"
 )
 
@@ -62,5 +63,22 @@ func TestRunServiceFlakyMetrics(t *testing.T) {
 	}
 	if len(metrics.Scenarios) == 0 {
 		t.Fatal("expected scenario stats")
+	}
+}
+
+func TestRunProgressPayloadIncludesCaseAndMessage(t *testing.T) {
+	payload := runProgressPayload(player.RunProgressEvent{
+		Phase:       player.ProgressScenarioDone,
+		Index:       2,
+		Total:       3,
+		CaseID:      "case-2",
+		FeaturePath: "demo.feature",
+		Scenario:    "Demo",
+		Success:     false,
+		Message:     "boom",
+	}, "run-1")
+
+	if payload["caseId"] != "case-2" || payload["message"] != "boom" || payload["runId"] != "run-1" {
+		t.Fatalf("progress payload lost identity/message fields: %#v", payload)
 	}
 }

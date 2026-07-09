@@ -34,7 +34,7 @@ func TestBrowserPoolCancelWithTwoWorkersDoesNotDeadlock(t *testing.T) {
 	}
 	slot2, err := pool.acquire(ctx)
 	if err != nil {
-		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{})
+		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{}, "test-run")
 		pool.Close()
 		t.Fatal(err)
 	}
@@ -43,9 +43,9 @@ func TestBrowserPoolCancelWithTwoWorkersDoesNotDeadlock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		slot1.session.abortRun()
-		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{})
+		pool.release(ctx, slot1, options, ScenarioResult{}, RunCase{}, "test-run")
 		slot2.session.abortRun()
-		pool.release(ctx, slot2, options, ScenarioResult{}, RunCase{})
+		pool.release(ctx, slot2, options, ScenarioResult{}, RunCase{}, "test-run")
 		pool.Close()
 		close(done)
 	}()

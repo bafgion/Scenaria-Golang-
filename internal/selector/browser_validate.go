@@ -122,12 +122,13 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 	issues := make([]StepValidation, 0)
 	for _, runnable := range gherkin.ExpandFeatureAtPath(feature, path) {
 		steps := collectBrowserValidateSteps(runnable.Steps)
+		flowReplayCursor := 0
 		for i, item := range steps {
 			if err := ctx.Err(); err != nil {
 				return issues, err
 			}
 			if opts.Mode == ValidationModeFlow {
-				for j := 0; j < i; j++ {
+				for j := flowReplayCursor; j < i; j++ {
 					if err := replaySafeStep(ctx, page, steps[j].action, opts.BaseURL, opts.Timeout); err != nil {
 						issues = append(issues, StepValidation{
 							Line:       steps[j].step.Line,
@@ -140,6 +141,7 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 						})
 					}
 				}
+				flowReplayCursor = i
 			}
 			step := item.step
 			action := item.action
@@ -157,6 +159,9 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 						Limitation: limitation,
 					})
 				} else {
+					if opts.Mode == ValidationModeFlow {
+						flowReplayCursor = i + 1
+					}
 					issues = append(issues, StepValidation{
 						Line:       step.Line,
 						StepText:   stepText,

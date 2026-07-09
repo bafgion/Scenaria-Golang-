@@ -36,6 +36,13 @@ func TestFileOperationServiceReadAndSaveFeature(t *testing.T) {
 	if string(raw) != "Функционал: Updated" {
 		t.Fatalf("unexpected saved content: %q", string(raw))
 	}
+	matches, err := filepath.Glob(filepath.Join(root, "demo.feature.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected atomic save cleanup, found temp files: %v", matches)
+	}
 }
 
 func TestFileOperationServiceDeleteFeature(t *testing.T) {

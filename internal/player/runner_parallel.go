@@ -182,19 +182,7 @@ func (r BrowserRunner) executeParallelWithPool(
 				i, rc := job.index, job.runCase
 				if err := runCtx.Err(); err != nil {
 					failed := canceledScenarioResult(rc, err)
-					mu.Lock()
-					results[i] = failed
-					mu.Unlock()
-					recordScenarioRunStatus(runCtx, failed)
-					emitRunProgress(runCtx, RunProgressEvent{
-						Phase:       ProgressScenarioDone,
-						Index:       i + 1,
-						Total:       len(plan.Cases),
-						FeaturePath: rc.FeaturePath,
-						Scenario:    rc.Name,
-						Success:     false,
-						Message:     err.Error(),
-					})
+					finalizeParallelScenario(runCtx, &mu, results, i, len(plan.Cases), rc, failed)
 					continue
 				}
 
@@ -208,61 +196,30 @@ func (r BrowserRunner) executeParallelWithPool(
 
 				slot, err := pool.acquire(runCtx)
 				if err != nil {
+					runResult := terminalScenarioResult(rc, ScenarioResult{}, err)
+					finalizeParallelScenario(runCtx, &mu, results, i, len(plan.Cases), rc, runResult)
 					mu.Lock()
 					if firstErr == nil {
 						firstErr = err
 						failFastParallelCancel(runCtx, cancel, pool)
 					}
-					results[i] = ScenarioResult{
-						FeaturePath: rc.FeaturePath,
-						Scenario:    rc.Name,
-						Status:      "failed",
-						Message:     err.Error(),
-					}
 					mu.Unlock()
 					continue
 				}
 				runResult, err := exec.ExecuteScenarioOnSession(runCtx, slot.session, scenarioInputFromCase(rc))
-				pool.release(runCtx, slot, exec.options, runResult, rc)
+				pool.release(runCtx, slot, exec.options, runResult, rc, runID)
+				runResult = terminalScenarioResult(rc, runResult, err)
 
 				mu.Lock()
-				scenarioFailed := err != nil || runResult.Status == "failed"
-				if scenarioFailed {
+				runErr := terminalScenarioError(runResult, err)
+				if runErr != nil {
 					if firstErr == nil {
-						if err != nil {
-							firstErr = err
-						} else {
-							firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
-						}
+						firstErr = runErr
 						failFastParallelCancel(runCtx, cancel, pool)
 					}
-					if err != nil && runResult.Scenario == "" {
-						runResult = ScenarioResult{
-							FeaturePath: rc.FeaturePath,
-							Scenario:    rc.Name,
-							Status:      "failed",
-							Message:     err.Error(),
-						}
-					} else if runResult.Status == "" {
-						runResult.Status = "failed"
-						if runResult.Message == "" && err != nil {
-							runResult.Message = err.Error()
-						}
-					}
 				}
-				results[i] = runResult
 				mu.Unlock()
-
-				recordScenarioRunStatus(runCtx, runResult)
-				emitRunProgress(runCtx, RunProgressEvent{
-					Phase:       ProgressScenarioDone,
-					Index:       i + 1,
-					Total:       len(plan.Cases),
-					FeaturePath: rc.FeaturePath,
-					Scenario:    rc.Name,
-					Success:     !scenarioFailed,
-					Message:     runResult.Message,
-				})
+				finalizeParallelScenario(runCtx, &mu, results, i, len(plan.Cases), rc, runResult)
 			}
 		}()
 	}
@@ -309,19 +266,7 @@ func (r BrowserRunner) executeParallel(
 				i, rc := job.index, job.runCase
 				if err := runCtx.Err(); err != nil {
 					failed := canceledScenarioResult(rc, err)
-					mu.Lock()
-					results[i] = failed
-					mu.Unlock()
-					recordScenarioRunStatus(runCtx, failed)
-					emitRunProgress(runCtx, RunProgressEvent{
-						Phase:       ProgressScenarioDone,
-						Index:       i + 1,
-						Total:       len(plan.Cases),
-						FeaturePath: rc.FeaturePath,
-						Scenario:    rc.Name,
-						Success:     false,
-						Message:     err.Error(),
-					})
+					finalizeParallelScenario(runCtx, &mu, results, i, len(plan.Cases), rc, failed)
 					continue
 				}
 
@@ -334,46 +279,17 @@ func (r BrowserRunner) executeParallel(
 				})
 
 				runResult, err := r.Executor.ExecuteScenario(runCtx, scenarioInputFromCase(rc))
+				runResult = terminalScenarioResult(rc, runResult, err)
 				mu.Lock()
-				scenarioFailed := err != nil || runResult.Status == "failed"
-				if scenarioFailed {
+				runErr := terminalScenarioError(runResult, err)
+				if runErr != nil {
 					if firstErr == nil {
-						if err != nil {
-							firstErr = err
-						} else {
-							firstErr = fmt.Errorf("scenario %q failed: %s", rc.Name, runResult.Message)
-						}
+						firstErr = runErr
 						failFastParallelCancel(runCtx, cancel, nil)
 					}
-					if err != nil {
-						if runResult.Scenario == "" {
-							runResult = ScenarioResult{
-								FeaturePath: rc.FeaturePath,
-								Scenario:    rc.Name,
-								Status:      "failed",
-								Message:     err.Error(),
-							}
-						} else if runResult.Status == "" {
-							runResult.Status = "failed"
-							if runResult.Message == "" {
-								runResult.Message = err.Error()
-							}
-						}
-					}
 				}
-				results[i] = runResult
 				mu.Unlock()
-
-				recordScenarioRunStatus(runCtx, runResult)
-				emitRunProgress(runCtx, RunProgressEvent{
-					Phase:       ProgressScenarioDone,
-					Index:       i + 1,
-					Total:       len(plan.Cases),
-					FeaturePath: rc.FeaturePath,
-					Scenario:    rc.Name,
-					Success:     !scenarioFailed,
-					Message:     runResult.Message,
-				})
+				finalizeParallelScenario(runCtx, &mu, results, i, len(plan.Cases), rc, runResult)
 			}
 		}()
 	}
@@ -671,6 +587,77 @@ func canceledScenarioResult(runCase RunCase, err error) ScenarioResult {
 	return result
 }
 
+func terminalScenarioResult(runCase RunCase, runResult ScenarioResult, err error) ScenarioResult {
+	if runResult.FeaturePath == "" {
+		runResult.FeaturePath = runCase.FeaturePath
+	}
+	if runResult.Scenario == "" {
+		runResult.Scenario = runCase.Name
+	}
+	if runResult.CaseID == "" {
+		runResult.CaseID = runCase.CaseID
+	}
+	if runResult.ExampleIndex == 0 {
+		runResult.ExampleIndex = runCase.ExampleIndex
+	}
+	if err != nil {
+		if runResult.Status == "" {
+			runResult.Status = "failed"
+		}
+		if runResult.Message == "" {
+			runResult.Message = UserFacingBrowserError(err)
+		}
+		if IsBrowserSessionClosed(err) && runResult.FailedStep == nil {
+			runResult.FailedStep = failedStepIndex(0)
+		}
+	} else if runResult.Status == "" {
+		runResult.Status = "passed"
+	}
+	runResult.Message = NormalizeScenarioMessage(runResult.Message)
+	return runResult
+}
+
+func terminalScenarioError(runResult ScenarioResult, err error) error {
+	if err != nil {
+		return err
+	}
+	if runResult.Status == "failed" {
+		return fmt.Errorf("scenario %q failed: %s", runResult.Scenario, runResult.Message)
+	}
+	return nil
+}
+
+func finalizeParallelScenario(
+	ctx context.Context,
+	mu *sync.Mutex,
+	results []ScenarioResult,
+	index, total int,
+	runCase RunCase,
+	runResult ScenarioResult,
+) {
+	runResult = terminalScenarioResult(runCase, runResult, nil)
+	if index >= 0 && index < len(results) {
+		if mu != nil {
+			mu.Lock()
+		}
+		results[index] = runResult
+		if mu != nil {
+			mu.Unlock()
+		}
+	}
+	recordScenarioRunStatus(ctx, runResult)
+	emitRunProgress(ctx, RunProgressEvent{
+		Phase:       ProgressScenarioDone,
+		Index:       index + 1,
+		Total:       total,
+		CaseID:      runResult.CaseID,
+		FeaturePath: runResult.FeaturePath,
+		Scenario:    runResult.Scenario,
+		Success:     runResult.Status == "passed",
+		Message:     runResult.Message,
+	})
+}
+
 func enqueueJobs(ctx context.Context, jobs chan<- indexedRunCase, cases []RunCase) {
 	for index, runCase := range cases {
 		select {
@@ -686,10 +673,11 @@ func fillCanceledResults(ctx context.Context, results []ScenarioResult, cases []
 	if err == nil {
 		return
 	}
+	var mu sync.Mutex
 	for i := range results {
 		if results[i].Scenario != "" || i >= len(cases) {
 			continue
 		}
-		results[i] = canceledScenarioResult(cases[i], err)
+		finalizeParallelScenario(ctx, &mu, results, i, len(cases), cases[i], canceledScenarioResult(cases[i], err))
 	}
 }

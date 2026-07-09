@@ -67,6 +67,16 @@ func (p *browserPool) acquire(ctx context.Context) (*browserPoolSlot, error) {
 	if p == nil {
 		return nil, fmt.Errorf("browser pool is nil")
 	}
+	p.mu.Lock()
+	closed := p.closed
+	exhausted := p.retired >= p.size
+	p.mu.Unlock()
+	if closed {
+		return nil, fmt.Errorf("browser pool is closed")
+	}
+	if exhausted {
+		return nil, fmt.Errorf("browser pool has no healthy slots")
+	}
 	select {
 	case slot, ok := <-p.slots:
 		if !ok {
@@ -84,6 +94,7 @@ func (p *browserPool) release(
 	options PlaywrightExecutorOptions,
 	result ScenarioResult,
 	runCase RunCase,
+	runID string,
 ) {
 	if p == nil || slot == nil {
 		return
@@ -102,7 +113,7 @@ func (p *browserPool) release(
 	if !needsReplace {
 		if err := slot.session.resetForScenario(); err != nil {
 			needsReplace = true
-			logPoolResetFailure(slot, err)
+			logPoolResetFailure(slot, err, runCase, runID)
 		}
 	}
 	if needsReplace {
@@ -111,7 +122,9 @@ func (p *browserPool) release(
 			return
 		}
 		logx.Debug("pool slot replaced after browser close",
-			"slot", slot.index,
+			"run_id", runID,
+			"worker_id", slot.index,
+			"case_id", runCase.CaseID,
 			"scenario", runCase.Name,
 		)
 	}
@@ -150,6 +163,10 @@ func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
 	p.retired++
 	retired := p.retired
 	size := p.size
+	if retired >= size && !p.closed {
+		p.closed = true
+		close(p.slots)
+	}
 	p.mu.Unlock()
 	logx.Warn("pool slot retired",
 		"slot", slot.index,
@@ -160,14 +177,23 @@ func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
 	)
 }
 
-func logPoolResetFailure(slot *browserPoolSlot, err error) {
+func logPoolResetFailure(slot *browserPoolSlot, err error, runCase RunCase, runID string) {
 	state := "nil"
+	browserNil, contextNil, pageNil, sessionClosed := true, true, true, true
 	if slot != nil && slot.session != nil {
 		state = slot.session.poolDiagState()
+		browserNil, contextNil, pageNil, sessionClosed, _ = slot.session.poolDiagFlags()
 	}
 	logx.Warn("pool reset failed",
-		"slot", slot.index,
+		"run_id", runID,
+		"worker_id", slot.index,
+		"case_id", runCase.CaseID,
+		"scenario", runCase.Name,
 		"error", err,
+		"browser_nil", browserNil,
+		"context_nil", contextNil,
+		"page_nil", pageNil,
+		"session_closed", sessionClosed,
 		"session", state,
 	)
 }
@@ -206,11 +232,16 @@ func (p *browserPool) Close() {
 	}
 	p.closed = true
 	size := p.size
+	retired := p.retired
+	active := size - retired
+	if active < 0 {
+		active = 0
+	}
 	p.mu.Unlock()
 
 	started := time.Now()
-	logx.Debug("browser pool closing", "workers", size)
-	for i := 0; i < size; i++ {
+	logx.Debug("browser pool closing", "workers", size, "retired", retired, "active", active)
+	for i := 0; i < active; i++ {
 		slotStart := time.Now()
 		select {
 		case slot := <-p.slots:
@@ -224,9 +255,6 @@ func (p *browserPool) Close() {
 			)
 		}
 	}
-	p.mu.Lock()
-	retired := p.retired
-	p.mu.Unlock()
 	logx.Debug("browser pool closed",
 		"elapsed_ms", time.Since(started).Milliseconds(),
 		"retired", retired,

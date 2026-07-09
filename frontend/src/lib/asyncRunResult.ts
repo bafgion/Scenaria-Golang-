@@ -28,10 +28,12 @@ function unwrapAsyncPayload(raw: AsyncRunResultPayload | ProjectEventEnvelope<As
 export async function startRunResultJob(
   finishedEvent: string,
   start: () => Promise<string>,
-  currentProjectVersion = 0,
+  currentProjectVersion: number | (() => number) = 0,
 ): Promise<gui.RunResult> {
   let jobId = ''
   const pending: AsyncRunResultPayload[] = []
+  const getCurrentProjectVersion =
+    typeof currentProjectVersion === 'function' ? currentProjectVersion : () => currentProjectVersion
   return new Promise((resolve, reject) => {
     const finish = (payload: AsyncRunResultPayload) => {
       unsubscribe?.()
@@ -39,7 +41,8 @@ export async function startRunResultJob(
     }
     const unsubscribe = EventsOn(finishedEvent, (raw: AsyncRunResultPayload | ProjectEventEnvelope<AsyncRunResultPayload>) => {
       const { payload, projectVersion } = unwrapAsyncPayload(raw)
-      if (projectVersion !== null && currentProjectVersion > 0 && projectVersion !== currentProjectVersion) return
+      const activeProjectVersion = getCurrentProjectVersion()
+      if (projectVersion !== null && activeProjectVersion > 0 && projectVersion !== activeProjectVersion) return
       if (!payload?.jobId) return
       if (!jobId) {
         pending.push(payload)

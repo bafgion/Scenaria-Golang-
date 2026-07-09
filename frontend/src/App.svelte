@@ -2552,7 +2552,7 @@
 
   async function serveAllureReport(path = '') {
     appendLog(tr('journal.reports.allureServe'))
-    const result = await startRunResultJob('allure-serve-finished', () => StartServeAllure(path), currentProjectVersion)
+    const result = await startRunResultJob('allure-serve-finished', () => StartServeAllure(path), () => currentProjectVersion)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) {
       appendLog(tr('journal.error.generic', { error: result.error }))
@@ -3422,7 +3422,7 @@
           reuseLiveBrowser: runOpts.reuseLiveBrowser,
           reportLocale: $locale,
           targets: diskTargets,
-        }), currentProjectVersion)
+        }), () => currentProjectVersion)
       journalStreamed = runLogStreaming
     } catch (err) {
       runThrown = err
@@ -3590,7 +3590,8 @@
           browser: browserName || 'chromium',
           skipBrowser: true,
           targets,
-        }), currentProjectVersion)
+          mode: validationMode,
+        }), () => currentProjectVersion)
       if (result.output) {
         validateDialogStore.setCliLog(result.output.trimEnd())
         appendLog(validateCliLog)
@@ -3887,7 +3888,7 @@
         reportAllure: opts.reportAllure || false,
         vaDir: opts.vaDir || '',
         vaFiles: opts.vaFiles || '',
-      }), currentProjectVersion)
+      }), () => currentProjectVersion)
     if (result.output) appendLog(result.output.trimEnd())
     if (result.error) appendLog(tr('journal.error.generic', { error: result.error }))
   }
@@ -3946,7 +3947,7 @@
           featureName: payload.featureName,
           scenarioName: payload.scenarioName,
           steps: payload.steps,
-        }), currentProjectVersion)
+      }), () => currentProjectVersion)
       if (result.output) appendLog(result.output.trimEnd())
       if (result.error) {
         appendLog(tr('journal.error.generic', { error: result.error }))

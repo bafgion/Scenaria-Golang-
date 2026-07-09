@@ -111,7 +111,7 @@
           format,
           baseURL: baseURL.trim(),
           force: forceOverwrite,
-        }), currentProjectVersion)
+        }), () => currentProjectVersion)
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         onLog(`${tr('dialogs.export.errorPrefix')} ${result.error}`)

@@ -82,7 +82,7 @@
           jsonPath,
           outputPath: outputPath.trim(),
           force: forceOverwrite,
-        }), currentProjectVersion)
+        }), () => currentProjectVersion)
       if (result.output) onLog(result.output.trimEnd())
       if (result.error) {
         error = result.error

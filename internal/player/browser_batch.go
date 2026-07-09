@@ -14,6 +14,7 @@ func appendNotStartedScenario(
 ) {
 	runResult := notStartedScenarioResult(runCase)
 	result.ScenarioResults = append(result.ScenarioResults, runResult)
+	recordScenarioRunStatus(ctx, runResult)
 	emitRunProgress(ctx, RunProgressEvent{
 		Phase:       ProgressScenarioDone,
 		Index:       index,

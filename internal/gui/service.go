@@ -19,32 +19,32 @@ import (
 
 // Service exposes project and runner operations without UI framework dependencies.
 type Service struct {
-	mu                         sync.RWMutex
-	projectPath                string
-	projectSession             *ProjectSession
-	projectService             *ProjectService
-	editorAnalysisService      *EditorAnalysisService
-	reportService              *ReportService
-	runService                 *RunService
-	fileOps                    *FileOperationService
-	recorderService            *RecorderService
-	settingsService            *SettingsService
-	testClientService          *TestClientService
-	pluginService              *PluginService
-	catalogService             *CatalogService
-	cliOps                     *CLIOps
-	projectVersion             uint64
-	validateCancel             context.CancelFunc
-	validateGen                uint64
-	tempFeatureMu              sync.Mutex
-	tempFeatureDirs            []string
-	reportBridgeMu             sync.Mutex
-	reportBridge               *reportBridge
-	allureServe                allureServeState
-	activePlaywright           sync.WaitGroup
-	activeBackground           sync.WaitGroup
-	settingsStore              *settings.Store
-	projectFSMu                sync.RWMutex
+	mu                    sync.RWMutex
+	projectPath           string
+	projectSession        *ProjectSession
+	projectService        *ProjectService
+	editorAnalysisService *EditorAnalysisService
+	reportService         *ReportService
+	runService            *RunService
+	fileOps               *FileOperationService
+	recorderService       *RecorderService
+	settingsService       *SettingsService
+	testClientService     *TestClientService
+	pluginService         *PluginService
+	catalogService        *CatalogService
+	cliOps                *CLIOps
+	projectVersion        uint64
+	validateCancel        context.CancelFunc
+	validateGen           uint64
+	tempFeatureMu         sync.Mutex
+	tempFeatureDirs       []string
+	reportBridgeMu        sync.Mutex
+	reportBridge          *reportBridge
+	allureServe           allureServeState
+	activePlaywright      sync.WaitGroup
+	activeBackground      sync.WaitGroup
+	settingsStore         *settings.Store
+	projectFSMu           sync.RWMutex
 }
 
 func NewService() *Service {
@@ -613,15 +613,7 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 			}
 		case "run-progress":
 			if ev, ok := payload.(player.RunProgressEvent); ok {
-				emit(name, map[string]any{
-					"phase":       ev.Phase,
-					"index":       ev.Index,
-					"total":       ev.Total,
-					"featurePath": ev.FeaturePath,
-					"scenario":    ev.Scenario,
-					"success":     ev.Success,
-					"runId":       runID,
-				})
+				emit(name, runProgressPayload(ev, runID))
 				return
 			}
 			if m, ok := payload.(map[string]any); ok {
@@ -652,6 +644,20 @@ func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
 		return runResultWithArtifacts(RunResult{Output: out, Error: err.Error(), Entries: entries}, artifacts)
 	}
 	return runResultWithArtifacts(RunResult{Output: out, Entries: entries}, artifacts)
+}
+
+func runProgressPayload(ev player.RunProgressEvent, runID string) map[string]any {
+	return map[string]any{
+		"phase":       ev.Phase,
+		"index":       ev.Index,
+		"total":       ev.Total,
+		"caseId":      ev.CaseID,
+		"featurePath": ev.FeaturePath,
+		"scenario":    ev.Scenario,
+		"success":     ev.Success,
+		"message":     ev.Message,
+		"runId":       runID,
+	}
 }
 
 func runResultWithArtifacts(result RunResult, artifacts report.RunArtifactLayout) RunResult {

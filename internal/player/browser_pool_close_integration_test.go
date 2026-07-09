@@ -66,7 +66,7 @@ func TestBrowserPoolReplacesSlotAfterCloseBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("close-browser scenario: %v", err)
 	}
-	pool.release(ctx, slot, options, ScenarioResult{Status: "passed"}, closeCase)
+	pool.release(ctx, slot, options, ScenarioResult{Status: "passed"}, closeCase, "test-run")
 
 	slot, err = pool.acquire(ctx)
 	if err != nil {
@@ -80,5 +80,5 @@ func TestBrowserPoolReplacesSlotAfterCloseBrowser(t *testing.T) {
 	if result.Status != "passed" {
 		t.Fatalf("follow-up status = %q message = %q", result.Status, result.Message)
 	}
-	pool.release(ctx, slot, options, result, followUp)
+	pool.release(ctx, slot, options, result, followUp, "test-run")
 }

@@ -69,7 +69,9 @@ func TestWriteReportE2EFixture(t *testing.T) {
 	}
 	if _, _, err := WriteHTMLModePair(out, result, HTMLOptions{
 		Plan: plan, Locale: "ru", ProjectRoot: projectRoot,
-		BridgeURL: "http://127.0.0.1:19999",
+		GeneratedAt: "2026-01-01T00:00:00Z",
+		ReportDir:   "fixtures/report",
+		BridgeURL:   "http://127.0.0.1:19999",
 		PreviousSummary: &RunSummaryDetailed{
 			GeneratedAt: "2026-06-01T10:00:00Z",
 			Items: []ScenarioSummary{

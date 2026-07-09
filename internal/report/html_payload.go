@@ -15,18 +15,19 @@ import (
 
 // HTMLOptions configures interactive HTML report generation.
 type HTMLOptions struct {
-	Plan              player.ExecutionPlan
-	ProjectRoot       string
-	LightMode         bool
-	BridgeURL         string
-	BridgeToken       string
-	Locale            string
-	ReportDir         string
-	RunID             string
-	MaxJSONBytes      int
-	PreviousSummary   *RunSummaryDetailed
-	ModePairFullPath  string
-	ModePairLightPath string
+	Plan               player.ExecutionPlan
+	ProjectRoot        string
+	LightMode          bool
+	BridgeURL          string
+	BridgeToken        string
+	Locale             string
+	ReportDir          string
+	GeneratedAt        string
+	RunID              string
+	MaxJSONBytes       int
+	PreviousSummary    *RunSummaryDetailed
+	ModePairFullPath   string
+	ModePairLightPath  string
 	SkipStepValidation bool
 	ValidationBrowser  string
 	ValidationHeadless bool
@@ -76,52 +77,52 @@ type htmlSummary struct {
 }
 
 type htmlScenario struct {
-	ID                string             `json:"id"`
-	FeaturePath       string             `json:"feature_path"`
-	Scenario          string             `json:"scenario"`
-	Tags              []string           `json:"tags,omitempty"`
-	ExampleIndex      int                `json:"example_index,omitempty"`
-	Status            string             `json:"status"`
-	Message           string             `json:"message,omitempty"`
-	FailedStep        *int               `json:"failed_step,omitempty"`
-	DurationMS        int64              `json:"duration_ms"`
-	Steps             []htmlStep         `json:"steps"`
-	Screenshot        string             `json:"screenshot,omitempty"`
-	TracePath         string             `json:"trace_path,omitempty"`
-	TraceCommand      string             `json:"trace_command,omitempty"`
-	TraceEvents       []htmlTraceEvent   `json:"trace_events,omitempty"`
-	RerunCommand      string             `json:"rerun_command,omitempty"`
-	History           *htmlHistory       `json:"history,omitempty"`
-	HistoryRuns       []htmlHistoryEntry `json:"history_runs,omitempty"`
-	Regressions       []htmlRegression   `json:"regressions,omitempty"`
-	DurationSparkline []int              `json:"duration_sparkline,omitempty"`
-	RunDiff           *htmlRunDiff       `json:"run_diff,omitempty"`
-	ValidationMode        string `json:"validation_mode,omitempty"`
-	ValidationLimitation  string `json:"validation_limitation,omitempty"`
+	ID                   string             `json:"id"`
+	FeaturePath          string             `json:"feature_path"`
+	Scenario             string             `json:"scenario"`
+	Tags                 []string           `json:"tags,omitempty"`
+	ExampleIndex         int                `json:"example_index,omitempty"`
+	Status               string             `json:"status"`
+	Message              string             `json:"message,omitempty"`
+	FailedStep           *int               `json:"failed_step,omitempty"`
+	DurationMS           int64              `json:"duration_ms"`
+	Steps                []htmlStep         `json:"steps"`
+	Screenshot           string             `json:"screenshot,omitempty"`
+	TracePath            string             `json:"trace_path,omitempty"`
+	TraceCommand         string             `json:"trace_command,omitempty"`
+	TraceEvents          []htmlTraceEvent   `json:"trace_events,omitempty"`
+	RerunCommand         string             `json:"rerun_command,omitempty"`
+	History              *htmlHistory       `json:"history,omitempty"`
+	HistoryRuns          []htmlHistoryEntry `json:"history_runs,omitempty"`
+	Regressions          []htmlRegression   `json:"regressions,omitempty"`
+	DurationSparkline    []int              `json:"duration_sparkline,omitempty"`
+	RunDiff              *htmlRunDiff       `json:"run_diff,omitempty"`
+	ValidationMode       string             `json:"validation_mode,omitempty"`
+	ValidationLimitation string             `json:"validation_limitation,omitempty"`
 }
 
 type htmlStep struct {
-	Index             int      `json:"index"`
-	Line              int      `json:"line,omitempty"`
-	Keyword           string   `json:"keyword,omitempty"`
-	Text              string   `json:"text"`
-	Selector          string   `json:"selector,omitempty"`
-	Status            string   `json:"status"`
-	DurationMS        int64    `json:"duration_ms,omitempty"`
-	RetryAttempts     int      `json:"retry_attempts,omitempty"`
-	IterationPath     string   `json:"iteration_path,omitempty"`
-	TerminalAction    string   `json:"terminal_action,omitempty"`
-	Error             string   `json:"error,omitempty"`
-	Network           string   `json:"network,omitempty"`
-	Screenshot        string   `json:"screenshot,omitempty"`
-	FlakyFailures     int      `json:"flaky_failures,omitempty"`
-	PageContext       string   `json:"page_context,omitempty"`
-	DOMSnapshot       string   `json:"dom_snapshot,omitempty"`
-	A11ySnapshot      string   `json:"a11y_snapshot,omitempty"`
-	TraceOffsetMS     int64    `json:"trace_offset_ms,omitempty"`
-	DurationSparkline []int    `json:"duration_sparkline,omitempty"`
-	Tips              []string `json:"tips,omitempty"`
-	Gherkin           string   `json:"gherkin,omitempty"`
+	Index             int                 `json:"index"`
+	Line              int                 `json:"line,omitempty"`
+	Keyword           string              `json:"keyword,omitempty"`
+	Text              string              `json:"text"`
+	Selector          string              `json:"selector,omitempty"`
+	Status            string              `json:"status"`
+	DurationMS        int64               `json:"duration_ms,omitempty"`
+	RetryAttempts     int                 `json:"retry_attempts,omitempty"`
+	IterationPath     string              `json:"iteration_path,omitempty"`
+	TerminalAction    string              `json:"terminal_action,omitempty"`
+	Error             string              `json:"error,omitempty"`
+	Network           string              `json:"network,omitempty"`
+	Screenshot        string              `json:"screenshot,omitempty"`
+	FlakyFailures     int                 `json:"flaky_failures,omitempty"`
+	PageContext       string              `json:"page_context,omitempty"`
+	DOMSnapshot       string              `json:"dom_snapshot,omitempty"`
+	A11ySnapshot      string              `json:"a11y_snapshot,omitempty"`
+	TraceOffsetMS     int64               `json:"trace_offset_ms,omitempty"`
+	DurationSparkline []int               `json:"duration_sparkline,omitempty"`
+	Tips              []string            `json:"tips,omitempty"`
+	Gherkin           string              `json:"gherkin,omitempty"`
 	Validation        *htmlStepValidation `json:"validation,omitempty"`
 }
 
@@ -184,11 +185,15 @@ type htmlSlowStep struct {
 }
 
 func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPath string) (htmlReportPayload, error) {
+	generatedAt := strings.TrimSpace(opts.GeneratedAt)
+	if generatedAt == "" {
+		generatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	payload := htmlReportPayload{
 		Version:     "1",
 		RunID:       strings.TrimSpace(opts.RunID),
 		Brand:       brand.Name,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		GeneratedAt: generatedAt,
 		Mode:        result.Mode,
 		LightMode:   opts.LightMode,
 		BridgeURL:   strings.TrimSpace(opts.BridgeURL),
@@ -460,11 +465,11 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 				IterationPath:  player.FormatIterationPath(rec.IterationPath),
 				TerminalAction: rec.TerminalAction,
 				Error:          rec.Error,
-				Network:      rec.Network,
-				PageContext:  rec.PageContext,
-				DOMSnapshot:  rec.DOMSnapshot,
-				A11ySnapshot: rec.A11ySnapshot,
-				Gherkin:      gherkinLine(rec.Keyword, rec.Text),
+				Network:        rec.Network,
+				PageContext:    rec.PageContext,
+				DOMSnapshot:    rec.DOMSnapshot,
+				A11ySnapshot:   rec.A11ySnapshot,
+				Gherkin:        gherkinLine(rec.Keyword, rec.Text),
 			}
 			if traceHints {
 				step.TraceOffsetMS = offset

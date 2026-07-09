@@ -23,7 +23,7 @@ func TestBrowserPoolReleaseAfterAbortDoesNotDeadlockClose(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		pool.release(ctx, slot, options, ScenarioResult{}, RunCase{})
+		pool.release(ctx, slot, options, ScenarioResult{}, RunCase{}, "test-run")
 		pool.Close()
 		close(done)
 	}()
@@ -35,4 +35,33 @@ func TestBrowserPoolReleaseAfterAbortDoesNotDeadlockClose(t *testing.T) {
 		t.Fatal("pool Close deadlocked after aborted release")
 	}
 	cancel()
+}
+
+func TestBrowserPoolCloseIgnoresRetiredSlots(t *testing.T) {
+	pool := &browserPool{
+		slots:   make(chan *browserPoolSlot, 1),
+		size:    1,
+		retired: 1,
+	}
+	done := make(chan struct{})
+	go func() {
+		pool.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("pool Close waited for a retired slot")
+	}
+}
+
+func TestBrowserPoolAcquireFailsWhenAllSlotsRetired(t *testing.T) {
+	pool := &browserPool{
+		slots:   make(chan *browserPoolSlot, 1),
+		size:    1,
+		retired: 1,
+	}
+	if _, err := pool.acquire(context.Background()); err == nil {
+		t.Fatal("expected acquire to fail when all slots are retired")
+	}
 }

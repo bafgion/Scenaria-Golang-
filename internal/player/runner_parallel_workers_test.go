@@ -98,6 +98,28 @@ func TestParallelWorkersIsolateScenarioVariables(t *testing.T) {
 	}
 }
 
+func TestParallelWorkersStressTenScenarios(t *testing.T) {
+	for _, workers := range []int{2, 4} {
+		t.Run(fmt.Sprintf("workers-%d", workers), func(t *testing.T) {
+			executor := &countingParallelExecutor{}
+			runner := BrowserRunner{Executor: executor, ParallelWorkers: workers}
+			plan := makeWorkerParityPlan(10)
+			result, err := runner.Execute(context.Background(), plan)
+			if err != nil {
+				t.Fatalf("execute failed: %v", err)
+			}
+			if len(result.ScenarioResults) != 10 {
+				t.Fatalf("expected 10 results, got %d", len(result.ScenarioResults))
+			}
+			for _, sr := range result.ScenarioResults {
+				if sr.Status != "passed" {
+					t.Fatalf("scenario %q status = %q", sr.Scenario, sr.Status)
+				}
+			}
+		})
+	}
+}
+
 func TestCloneVariables(t *testing.T) {
 	source := map[string]string{"BASE": "https://example.com"}
 	cloned := CloneVariables(source)

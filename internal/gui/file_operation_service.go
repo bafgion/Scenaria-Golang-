@@ -67,7 +67,7 @@ func (s *FileOperationService) SaveFeature(path, content string) error {
 		return err
 	}
 	if err := s.withWriteLock(func() error {
-		return os.WriteFile(abs, []byte(content), 0o644)
+		return writeFileAtomic(abs, []byte(content), 0o644)
 	}); err != nil {
 		return fmt.Errorf("save feature: %w", err)
 	}
@@ -252,7 +252,7 @@ func (s *FileOperationService) SaveFeatureDraft(featurePath, content string) err
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	return writeFileAtomic(path, append(data, '\n'), 0o644)
 }
 
 func (s *FileOperationService) LoadFeatureDraft(featurePath string) (string, error) {
@@ -371,4 +371,44 @@ func copyFeatureFile(src, dest string) error {
 		return err
 	}
 	return out.Close()
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create dir %q: %w", dir, err)
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file %q: %w", path, err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		_ = tmp.Close()
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("write temp file %q: %w", path, err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		return fmt.Errorf("chmod temp file %q: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file %q: %w", path, err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		if removeErr := os.Remove(path); removeErr == nil {
+			if retryErr := os.Rename(tmpPath, path); retryErr == nil {
+				cleanup = false
+				return nil
+			}
+		}
+		return fmt.Errorf("replace file %q: %w", path, err)
+	}
+	cleanup = false
+	return nil
 }

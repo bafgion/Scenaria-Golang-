@@ -162,19 +162,26 @@ func (s *browserSession) poolDiagState() string {
 	if s == nil {
 		return "nil"
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	closed := s.isClosed()
-	alive := !closed && s.page != nil && !s.page.IsClosed()
+	browserNil, contextNil, pageNil, closed, external := s.poolDiagFlags()
+	alive := !closed && !pageNil
 	return fmt.Sprintf(
 		"closed=%v alive=%v browser=%v context=%v page=%v external=%v",
 		closed,
 		alive,
-		s.browser != nil,
-		s.context != nil,
-		s.page != nil,
-		s.external,
+		!browserNil,
+		!contextNil,
+		!pageNil,
+		external,
 	)
+}
+
+func (s *browserSession) poolDiagFlags() (browserNil, contextNil, pageNil, closed, external bool) {
+	if s == nil {
+		return true, true, true, true, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.browser == nil, s.context == nil, s.page == nil, s.isClosed(), s.external
 }
 
 func (s *browserSession) close() {

@@ -7,6 +7,7 @@ export type RunProgressPayload = {
   scenario?: string
   featurePath?: string
   success?: boolean
+  message?: string
 }
 
 export function resolveRunProgressCounters(

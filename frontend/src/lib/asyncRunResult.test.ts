@@ -59,6 +59,23 @@ describe('startRunResultJob', () => {
     await expect(resultPromise).resolves.toMatchObject({ output: 'current', error: '' })
   })
 
+  it('checks project version at event time', async () => {
+    let currentProjectVersion = 4
+    const resultPromise = startRunResultJob('run-finished', async () => 'job-12', () => currentProjectVersion)
+
+    currentProjectVersion = 5
+    emit('run-finished', {
+      projectVersion: 4,
+      payload: { jobId: 'job-12', result: { output: 'stale', error: '' } },
+    })
+    emit('run-finished', {
+      projectVersion: 5,
+      payload: { jobId: 'job-12', result: { output: 'current', error: '' } },
+    })
+
+    await expect(resultPromise).resolves.toMatchObject({ output: 'current', error: '' })
+  })
+
   it('handles project envelope with null payload', async () => {
     const resultPromise = startRunResultJob('run-finished', async () => 'job-11', 7)
 

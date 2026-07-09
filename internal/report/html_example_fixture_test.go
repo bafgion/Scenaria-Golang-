@@ -58,7 +58,11 @@ func TestWriteReportExampleFixture(t *testing.T) {
 	}
 	out := filepath.Join(outDir, "example-report.html")
 	if err := WriteHTML(out, result, HTMLOptions{
-		Plan: plan, Locale: "ru", ProjectRoot: t.TempDir(),
+		Plan:        plan,
+		Locale:      "ru",
+		ProjectRoot: t.TempDir(),
+		GeneratedAt: "2026-01-01T00:00:00Z",
+		ReportDir:   "fixtures/report",
 	}); err != nil {
 		t.Fatal(err)
 	}

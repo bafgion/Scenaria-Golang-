@@ -631,12 +631,12 @@ export namespace gui {
 	    unique: boolean;
 	    visible: boolean;
 	    matches_picked: boolean;
-	    warnings: string[];
-
+	    warnings?: string[];
+	
 	    static createFrom(source: any = {}) {
 	        return new SelectorCandidate(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.selector = source["selector"];
@@ -652,15 +652,15 @@ export namespace gui {
 	export class PickSelectorResult {
 	    selector: string;
 	    error: string;
-	    suggested_action: string;
-	    suggested_choice: number;
-	    warnings: string[];
-	    candidates: SelectorCandidate[];
-
+	    suggested_action?: string;
+	    suggested_choice?: number;
+	    warnings?: string[];
+	    candidates?: SelectorCandidate[];
+	
 	    static createFrom(source: any = {}) {
 	        return new PickSelectorResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.selector = source["selector"];
@@ -670,37 +670,24 @@ export namespace gui {
 	        this.warnings = source["warnings"];
 	        this.candidates = this.convertValues(source["candidates"], SelectorCandidate);
 	    }
-
-	    convertValues(a: any, classs: any, asMap: boolean = false): any {
-	        if (!a) {
-	            return a;
-	        }
-	        if (a.slice) {
-	            return (a as any[]).map(elem => {
-	                if (typeof elem === "object" && elem !== null) {
-	                    if (asMap) {
-	                        for (const key of Object.keys(elem)) {
-	                            elem[key] = new classs(elem[key]);
-	                        }
-	                        return elem;
-	                    }
-	                    return new classs(elem);
-	                } else {
-	                    return elem;
-	                }
-	            });
-	        }
-	        if (typeof a === "object" && a !== null) {
-	            if (asMap) {
-	                for (const key of Object.keys(a)) {
-	                    a[key] = new classs(a[key]);
-	                }
-	                return a;
-	            }
-	            return new classs(a);
-	        }
-	        return a;
-	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class PickerStepChoice {
 	    label: string;
@@ -1039,6 +1026,7 @@ export namespace gui {
 	        this.stepIndex = source["stepIndex"];
 	    }
 	}
+	
 	export class StepCatalogEntry {
 	    label: string;
 	    action: string;
@@ -1284,6 +1272,7 @@ export namespace player {
 	    phase: string;
 	    index: number;
 	    total: number;
+	    caseId?: string;
 	    featurePath?: string;
 	    scenario?: string;
 	    success?: boolean;
@@ -1298,6 +1287,7 @@ export namespace player {
 	        this.phase = source["phase"];
 	        this.index = source["index"];
 	        this.total = source["total"];
+	        this.caseId = source["caseId"];
 	        this.featurePath = source["featurePath"];
 	        this.scenario = source["scenario"];
 	        this.success = source["success"];
