@@ -125,6 +125,29 @@ func TestBuildExecutionPlan_TestClientOverride(t *testing.T) {
 	}
 }
 
+func TestBuildExecutionPlan_IsolatesVariablesPerCase(t *testing.T) {
+	feature := &gherkin.Feature{
+		Title: "Demo",
+		Scenarios: []gherkin.Scenario{
+			{Title: "One", Steps: []gherkin.Step{{Keyword: "Когда", Text: "шаг"}}},
+			{Title: "Two", Steps: []gherkin.Step{{Keyword: "Когда", Text: "шаг"}}},
+		},
+	}
+	source := map[string]string{"BASE": "shared"}
+	plan := BuildExecutionPlan([]FeatureInput{{Path: "demo.feature", Feature: feature}}, "", source)
+	if len(plan.Cases) != 2 {
+		t.Fatalf("expected 2 cases, got %d", len(plan.Cases))
+	}
+	plan.Cases[0].Variables["MUT"] = "a"
+	if _, ok := plan.Cases[1].Variables["MUT"]; ok {
+		t.Fatal("variables map was shared between cases")
+	}
+	source["MUT"] = "b"
+	if plan.Cases[0].Variables["MUT"] != "a" {
+		t.Fatal("mutating source vars affected case variables")
+	}
+}
+
 func TestBuildExecutionPlanFreshEachCall(t *testing.T) {
 	feature := &gherkin.Feature{
 		Title: "Demo",

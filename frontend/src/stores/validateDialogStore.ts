@@ -3,6 +3,7 @@ import { writable } from 'svelte/store'
 export type ValidateDialogState = {
   browser: string
   syntaxOnly: boolean
+  flowAware: boolean
   scope: 'project' | 'current'
   cliLog: string
 }
@@ -10,6 +11,7 @@ export type ValidateDialogState = {
 export const defaultValidateDialogState: ValidateDialogState = {
   browser: 'chromium',
   syntaxOnly: false,
+  flowAware: false,
   scope: 'project',
   cliLog: '',
 }
@@ -21,10 +23,11 @@ export function createValidateDialogStore(initial: ValidateDialogState = default
     patch(partial: Partial<ValidateDialogState>) {
       store.update((s) => ({ ...s, ...partial }))
     },
-    open(syntaxOnly: boolean, browser: string, scope: 'project' | 'current') {
+    open(syntaxOnly: boolean, browser: string, scope: 'project' | 'current', flowAware = false) {
       store.set({
         browser,
         syntaxOnly,
+        flowAware,
         scope,
         cliLog: '',
       })

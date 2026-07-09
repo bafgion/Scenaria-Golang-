@@ -29,6 +29,7 @@ type LiveOptions struct {
 	HoverRecord       bool
 	ScrollBeforeClick bool
 	HoverRecordMinMs  int
+	DisableRecordURLWait    bool
 	TestClient      *settings.TestClient
 	HTTPCredentials *playwright.HttpCredentials
 	BrowseOnly      bool
@@ -48,6 +49,7 @@ type recorderEvent struct {
 	Type   string            `json:"type"`
 	Detail map[string]string `json:"detail"`
 	TS     int64             `json:"ts"`
+	Seq    int64             `json:"seq"`
 }
 
 // RecordLive opens a browser, injects RecorderScript and writes captured steps to a feature file.
@@ -85,7 +87,7 @@ func RecordLive(ctx context.Context, opts LiveOptions) error {
 		session = NewLiveSession()
 	}
 	session.InitHeadless(opts.Headless)
-	session.SetRecorderOptions(opts.FilterImportant, opts.NavOnly, opts.HoverRecord, opts.ScrollBeforeClick, opts.HoverRecordMinMs)
+	session.SetRecorderOptions(opts.FilterImportant, opts.NavOnly, opts.HoverRecord, opts.ScrollBeforeClick, opts.HoverRecordMinMs, !opts.DisableRecordURLWait)
 	if opts.BrowseOnly {
 		session.InitBrowseMode()
 	} else {

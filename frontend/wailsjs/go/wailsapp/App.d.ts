@@ -234,7 +234,7 @@ export function UndoRecordedStep():Promise<boolean>;
 
 export function UninstallPlugin(arg1:string):Promise<void>;
 
-export function UpdateRecordingOptions(arg1:boolean,arg2:boolean,arg3:boolean,arg4:boolean,arg5:boolean,arg6:number):Promise<void>;
+export function UpdateRecordingOptions(arg1:boolean,arg2:boolean,arg3:boolean,arg4:boolean,arg5:boolean,arg6:number,arg7:boolean):Promise<void>;
 
 export function Validate(arg1:gui.ValidateRequest):Promise<gui.RunResult>;
 

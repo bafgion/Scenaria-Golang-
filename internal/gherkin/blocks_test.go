@@ -48,6 +48,13 @@ func TestDetectBlockHeadersEnabled(t *testing.T) {
 	}
 }
 
+func TestDetectBlockHeaderRepeatRejectsZeroCount(t *testing.T) {
+	_, err := detectBlockHeader(Step{Line: 3, Text: "Повторяю 0 раз"}, LangRU)
+	if err == nil {
+		t.Fatal("expected repeat count 0 to fail")
+	}
+}
+
 func TestParseTestClientName(t *testing.T) {
 	name, err := ParseTestClientName([]Step{{Line: 1, Text: `я подключаю TestClient "Demo"`}})
 	if err != nil || name != "Demo" {

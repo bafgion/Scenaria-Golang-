@@ -13,42 +13,108 @@ import (
 
 const nestedLabelFormHTML = `<!doctype html><html><body>
 <div><div>
-<label><div>ИНН</div><div><input type="text"></div></label>
-<label><div>E-mail</div><div><input type="email"></div></label>
-<label><div>Имя</div><div><input type="text"></div></label>
+<label><div>ИНН</div><div><input type="text" name="inn"></div></label>
+<label><div>E-mail</div><div><input type="email" id="email-field"></div></label>
+<label for="name-field"><div>Имя</div></label><input type="text" id="name-field">
 </div></div></body></html>`
+
+const sameOriginIframeHTML = `<!doctype html><html><body>
+<iframe id="inner-frame" style="width:320px;height:80px;border:0" srcdoc="<!doctype html><html><body style='margin:0'><button id='inner-btn' style='width:100%;height:100%'>OK</button></body></html>"></iframe>
+</body></html>`
+
+const shadowDomHTML = `<!doctype html><html><body>
+<div id="host" style="display:inline-block;padding:12px"></div>
+<script>
+const host = document.getElementById('host');
+const root = host.attachShadow({mode:'open'});
+root.innerHTML = '<button id="shadow-btn" style="padding:8px 16px">Shadow</button>';
+</script>
+</body></html>`
+
+const svgButtonHTML = `<!doctype html><html><body>
+<button id="icon-btn"><svg width="20" height="20"><circle cx="10" cy="10" r="8"/></svg></button>
+</body></html>`
 
 const iframeWidgetHTML = `<!doctype html><html><body>
 <iframe id="tg-login" title="Telegram login" src="https://oauth.telegram.org/embed/demo"
   style="width:240px;height:52px;border:0"></iframe>
 </body></html>`
 
-func TestPickerNestedLabelInputReturnsLabelHasText(t *testing.T) {
+func TestPickerNestedLabelInputReturnsControlSelector(t *testing.T) {
 	selector := pickAtSelector(t, nestedLabelFormHTML, "", `label:nth-of-type(1) input`)
 	if selector == "" {
 		t.Fatal("no selector picked")
 	}
-	if !strings.HasPrefix(selector, `label:has-text("`) || !strings.Contains(selector, "ИНН") {
+	if selector != `input[name="inn"]` && (!strings.Contains(selector, `>> input`) || !strings.Contains(selector, "ИНН")) {
 		t.Fatalf("got %q", selector)
 	}
 }
 
-func TestPickerLabelCaptionDivReturnsInputLabelHasText(t *testing.T) {
+func TestPickerLabelForReturnsControlSelector(t *testing.T) {
+	selector := pickAtSelector(t, nestedLabelFormHTML, "", `#name-field`)
+	if selector == "" {
+		t.Fatal("no selector picked")
+	}
+	if selector != `#name-field` {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerInputWithIdPreferredOverLabel(t *testing.T) {
+	selector := pickAtSelector(t, nestedLabelFormHTML, "", `#email-field`)
+	if selector != `#email-field` {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerAdjacentLabelReturnsChainedSelector(t *testing.T) {
+	html := `<!doctype html><html><body>
+<label>Город</label>
+<input type="text">
+</body></html>`
+	selector := pickAtSelector(t, html, "", `input`)
+	if !strings.Contains(selector, `label:has-text("Город")`) || !strings.Contains(selector, `>>`) {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerSameOriginIframeReturnsChainedSelector(t *testing.T) {
+	selector := pickAtPoint(t, sameOriginIframeHTML, "", pickInnerIframeButton)
+	if !strings.Contains(selector, `#inner-frame`) || !strings.Contains(selector, `>>`) || !strings.Contains(selector, `#inner-btn`) {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerShadowDOMReturnsInnerButton(t *testing.T) {
+	selector := pickAtSelector(t, shadowDomHTML, "", `#host`)
+	if selector != `#host >> #shadow-btn` && selector != `#shadow-btn` {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerSvgClickNormalizesToButton(t *testing.T) {
+	selector := pickAtSelector(t, svgButtonHTML, "", `#icon-btn svg circle`)
+	if selector != `#icon-btn` {
+		t.Fatalf("got %q", selector)
+	}
+}
+
+func TestPickerLabelCaptionDivReturnsInputSelector(t *testing.T) {
 	selector := pickAtSelector(t, nestedLabelFormHTML, "", `label:nth-of-type(2) > div:first-child`)
 	if selector == "" {
 		t.Fatal("no selector picked")
 	}
-	if !strings.HasPrefix(selector, `label:has-text("`) || !strings.Contains(strings.ToLower(selector), "mail") {
+	if selector != `#email-field` {
 		t.Fatalf("got %q", selector)
 	}
 }
 
-func TestPickerShortCaptionReturnsLabelHasText(t *testing.T) {
-	selector := pickAtSelector(t, nestedLabelFormHTML, "", `label:nth-of-type(3) input`)
+func TestPickerShortCaptionReturnsControlSelector(t *testing.T) {
+	selector := pickAtSelector(t, nestedLabelFormHTML, "", `#name-field`)
 	if selector == "" {
 		t.Fatal("no selector picked")
 	}
-	if !strings.Contains(selector, `label:has-text("Имя")`) {
+	if selector != `#name-field` {
 		t.Fatalf("got %q", selector)
 	}
 }
@@ -89,24 +155,47 @@ func pickAtSelector(t *testing.T, html, routePattern, clickSelector string) stri
 	t.Helper()
 	page := openPickerFixture(t, html, routePattern)
 	defer page.Close()
-
-	picked := installPickerBindings(t, page)
-	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
-		t.Fatalf("heuristics: %v", err)
-	}
-	if _, err := page.Evaluate(PickerInstallScript); err != nil {
-		t.Fatalf("picker: %v", err)
-	}
-
 	loc := page.Locator(clickSelector)
 	box, err := loc.BoundingBox()
 	if err != nil || box == nil {
 		t.Fatalf("bounding box for %q: %v", clickSelector, err)
 	}
-	if err := page.Mouse().Click(box.X+box.Width/2, box.Y+box.Height/2); err != nil {
+	return pickAtPagePoint(t, page, box.X+box.Width/2, box.Y+box.Height/2)
+}
+
+func pickInnerIframeButton(t *testing.T, page playwright.Page) (float64, float64) {
+	t.Helper()
+	btn := page.FrameLocator("#inner-frame").Locator("#inner-btn")
+	box, err := btn.BoundingBox()
+	if err != nil || box == nil {
+		t.Fatalf("inner button box: %v", err)
+	}
+	return box.X + box.Width/2, box.Y + box.Height/2
+}
+
+func pickAtPoint(t *testing.T, html, routePattern string, pointFn func(*testing.T, playwright.Page) (float64, float64)) string {
+	t.Helper()
+	page := openPickerFixture(t, html, routePattern)
+	defer page.Close()
+	x, y := pointFn(t, page)
+	return pickAtPagePoint(t, page, x, y)
+}
+
+func pickAtPagePoint(t *testing.T, page playwright.Page, x, y float64) string {
+	t.Helper()
+	picked := installPickerBindings(t, page)
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	if err := ApplyLibraryHeuristics(page, true, true); err != nil {
+		t.Fatalf("library heuristics: %v", err)
+	}
+	if _, err := page.Evaluate(PickerInstallScript); err != nil {
+		t.Fatalf("picker: %v", err)
+	}
+	if err := page.Mouse().Click(x, y); err != nil {
 		t.Fatalf("click: %v", err)
 	}
-
 	select {
 	case value := <-picked:
 		return value
@@ -156,6 +245,19 @@ func openPickerFixture(t *testing.T, html, routePattern string) playwright.Page 
 	if err := page.SetContent(html); err != nil {
 		t.Fatalf("set content: %v", err)
 	}
+	if strings.Contains(html, "inner-frame") {
+		if _, err := page.WaitForFunction(`() => {
+			const frame = document.getElementById('inner-frame');
+			return !!(frame && frame.contentDocument && frame.contentDocument.getElementById('inner-btn'));
+		}`, nil); err != nil {
+			t.Fatalf("iframe content: %v", err)
+		}
+	}
+	if strings.Contains(html, "attachShadow") {
+		if _, err := page.WaitForFunction(`() => !!document.getElementById('host')?.shadowRoot?.querySelector('#shadow-btn')`, nil); err != nil {
+			t.Fatalf("shadow root: %v", err)
+		}
+	}
 	return page
 }
 
@@ -165,11 +267,9 @@ func installPickerBindings(t *testing.T, page playwright.Page) chan string {
 	ctx := page.Context()
 	if err := ctx.ExposeBinding("pickSelectorDone", func(_ *playwright.BindingSource, args ...any) any {
 		if len(args) > 0 {
-			if value, ok := args[0].(string); ok {
-				select {
-				case picked <- value:
-				default:
-				}
+			select {
+			case picked <- pickerBindingSelector(args[0]):
+			default:
 			}
 		}
 		return nil
@@ -186,6 +286,18 @@ func installPickerBindings(t *testing.T, page playwright.Page) chan string {
 		t.Fatalf("expose cancel: %v", err)
 	}
 	return picked
+}
+
+func pickerBindingSelector(arg any) string {
+	switch v := arg.(type) {
+	case string:
+		return v
+	case map[string]interface{}:
+		if s, ok := v["selector"].(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func frameByURLContains(page playwright.Page, needle string) playwright.Frame {

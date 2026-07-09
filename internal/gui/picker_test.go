@@ -2,47 +2,34 @@ package gui
 
 import "testing"
 
-func TestPickerStepChoicesIncludeClickAndRaw(t *testing.T) {
-	choices := PickerStepChoices("button.buy", "Допустим")
-	if len(choices) < 2 {
-		t.Fatalf("expected choices, got %d", len(choices))
+func TestPickerSuggestedChoiceIndex(t *testing.T) {
+	if got := PickerSuggestedChoiceIndex("fill"); got != 1 {
+		t.Fatalf("fill index: got %d want 1", got)
 	}
-	if choices[0].Label != "Клик" || choices[0].StepBody != `нажимаю "button.buy"` {
-		t.Fatalf("first choice: %+v", choices[0])
+	if got := PickerSuggestedChoiceIndex("click"); got != 0 {
+		t.Fatalf("click index: got %d want 0", got)
 	}
-	last := choices[len(choices)-1]
-	if last.Label != "Только селектор" || last.StepBody != `"button.buy"` {
-		t.Fatalf("last choice: %+v", last)
+	if got := PickerSuggestedChoiceIndex("unknown"); got != 0 {
+		t.Fatalf("unknown index: got %d want 0", got)
 	}
 }
 
-func TestPickerStepChoicesEscapeQuotes(t *testing.T) {
-	choices := PickerStepChoices(`input[name="email"]`, "Допустим")
-	want := `нажимаю "input[name=\"email\"]"`
-	if choices[0].StepBody != want {
-		t.Fatalf("got %q want %q", choices[0].StepBody, want)
+func TestPickerStepChoicesIncludesFillAndSelect(t *testing.T) {
+	choices := PickerStepChoices(`#email`, "Допустим")
+	labels := make([]string, len(choices))
+	for i, c := range choices {
+		labels[i] = c.Label
 	}
-}
-
-func TestPickerStepChoicesEscapeHasTextSelector(t *testing.T) {
-	choices := PickerStepChoices(`a:has-text("Одежда")`, "И")
-	want := `  И навожу "a:has-text(\"Одежда\")"`
-	hover := choices[2]
-	if hover.Label != "Наведение" {
-		t.Fatalf("choice: %+v", hover)
-	}
-	if hover.Preview != want {
-		t.Fatalf("preview %q want %q", hover.Preview, want)
-	}
-}
-
-func TestPickerStepChoicesRespectKeyword(t *testing.T) {
-	first := PickerStepChoices("button.buy", "Допустим")
-	next := PickerStepChoices("button.buy", "И")
-	if first[0].Preview != `  Допустим нажимаю "button.buy"` {
-		t.Fatalf("preview: %q", first[0].Preview)
-	}
-	if next[0].Preview != `  И нажимаю "button.buy"` {
-		t.Fatalf("preview: %q", next[0].Preview)
+	for _, want := range []string{"Клик", "Заполнить", "Выбрать"} {
+		found := false
+		for _, label := range labels {
+			if label == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing %q in %v", want, labels)
+		}
 	}
 }

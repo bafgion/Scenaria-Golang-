@@ -121,6 +121,7 @@ type ValidateRequest struct {
 	Browser     string   `json:"browser"`
 	SkipBrowser bool     `json:"skipBrowser"`
 	Targets     []string `json:"targets"`
+	Mode        string   `json:"mode"`
 }
 
 type PluginRunRequest struct {
@@ -191,6 +192,7 @@ type AppSettingsDTO struct {
 	NavWaitUntil            string                  `json:"navWaitUntil"`
 	FilterRecording         bool                    `json:"filterRecording"`
 	NavOnlyRecording        bool                    `json:"navOnlyRecording"`
+	DisableRecordURLWait    bool                    `json:"disableRecordUrlWait"`
 	HoverRecord             bool                    `json:"hoverRecord"`
 	ToolbarCompact          bool                    `json:"toolbarCompact"`
 	StepsPanelVisible       bool                    `json:"stepsPanelVisible"`
@@ -206,6 +208,8 @@ type AppSettingsDTO struct {
 	HoverRecordMinMs        int                     `json:"hoverRecordMinMs"`
 	SelectorClickStrategies []string                `json:"selectorClickStrategies"`
 	SelectorInputStrategies []string                `json:"selectorInputStrategies"`
+	LibraryHeuristicsMUI    bool                    `json:"libraryHeuristicsMui"`
+	LibraryHeuristicsAnt    bool                    `json:"libraryHeuristicsAnt"`
 	CheckUpdatesOnStartup   bool                    `json:"checkUpdatesOnStartup"`
 	Editor                  settings.EditorSettings `json:"editor"`
 	ChecklistDismissed      bool                    `json:"checklistDismissed"`
@@ -837,6 +841,7 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		NavWaitUntil:            strings.TrimSpace(cfg.NavWaitUntil),
 		FilterRecording:         cfg.RecordingFilterMode,
 		NavOnlyRecording:        cfg.NavOnlyRecording,
+		DisableRecordURLWait:    cfg.DisableRecordURLWait,
 		HoverRecord:             cfg.RecordingHoverMode,
 		ToolbarCompact:          cfg.ToolbarCompact,
 		StepsPanelVisible:       cfg.StepsPanelVisible,
@@ -852,6 +857,8 @@ func appSettingsFromCfg(cfg *settings.AppSettings) AppSettingsDTO {
 		HoverRecordMinMs:        maxInt(0, cfg.HoverRecordMinMs),
 		SelectorClickStrategies: selector.NormalizeClickStrategies(cfg.SelectorClickStrategies),
 		SelectorInputStrategies: selector.NormalizeInputStrategies(cfg.SelectorInputStrategies),
+		LibraryHeuristicsMUI:    selector.LibraryHeuristicsMUIEnabled(cfg),
+		LibraryHeuristicsAnt:    selector.LibraryHeuristicsAntEnabled(cfg),
 		CheckUpdatesOnStartup:   settings.CheckUpdatesOnStartupEnabled(cfg),
 		Editor:                  settings.NormalizeEditorSettings(cfg.Editor),
 		ChecklistDismissed:      cfg.ChecklistDismissed,

@@ -116,6 +116,7 @@ func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateReques
 			BrowserName: browserName,
 			Headless:    headless,
 			BaseURL:     baseURL,
+			Mode:        selector.NormalizeValidationMode(req.Mode),
 		})
 		if err != nil {
 			out = append(out, ValidationIssue{Line: 1, Message: err.Error(), Status: "missing"})
@@ -126,11 +127,15 @@ func (s *Service) ValidateBrowserContext(ctx context.Context, req ValidateReques
 				continue
 			}
 			out = append(out, ValidationIssue{
-				Line:     step.Line,
-				Message:  step.Message,
-				Selector: step.Selector,
-				Status:   step.Status,
-				StepText: step.StepText,
+				Line:       step.Line,
+				Message:    step.Message,
+				Selector:   step.Selector,
+				Status:     step.Status,
+				StepText:   step.StepText,
+				Mode:       step.Mode,
+				ActionKind: step.ActionKind,
+				MatchCount: step.MatchCount,
+				Limitation: step.Limitation,
 			})
 		}
 	}

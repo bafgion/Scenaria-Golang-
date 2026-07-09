@@ -14,6 +14,14 @@
   const HINT_ID = '__shopPickerHint';
   const SKIP_IDS = new Set([SHIELD_ID, OVERLAY_ID, HINT_ID]);
 
+  function isCrossOriginIframe(iframeEl) {
+    try {
+      return !iframeEl.contentDocument;
+    } catch (_) {
+      return true;
+    }
+  }
+
   function buildIframeSelector(el) {
     if (!el || el.tagName !== 'IFRAME') return null;
     const src = el.getAttribute('src') || '';
@@ -36,34 +44,110 @@
     return H.buildSelector(el);
   }
 
-  function resolvePickTarget(rawEl) {
-    if (!rawEl || rawEl.nodeType !== 1) return { el: null, selector: null };
-    if (SKIP_IDS.has(rawEl.id)) return { el: null, selector: null };
-    if (rawEl.tagName === 'IFRAME') {
-      return { el: rawEl, selector: buildIframeSelector(rawEl) };
+  function pickHitAt(doc, x, y, iframeEl) {
+    const base = doc.nodeType === 11 ? doc : doc;
+    let elements = [];
+    try {
+      elements = base.elementsFromPoint(x, y);
+    } catch (_) {
+      elements = (doc.nodeType === 9 ? doc : document).elementsFromPoint(x, y);
     }
-    const canvas = H.findCanvas(rawEl);
-    if (canvas) {
-      return { el: canvas, selector: H.buildCanvasSelector(canvas) || H.buildSelector(canvas) };
+    for (const el of elements) {
+      if (!el || el.nodeType !== 1) continue;
+      if (SKIP_IDS.has(el.id)) continue;
+      const tag = (el.tagName || '').toUpperCase();
+      if (tag === 'HTML' || tag === 'BODY') continue;
+      if (el.shadowRoot) {
+        const inner = pickHitAt(el.shadowRoot, x, y, iframeEl);
+        if (inner && inner.el) return inner;
+      }
+      if (el.tagName === 'IFRAME' && !iframeEl) {
+        if (isCrossOriginIframe(el)) {
+          return { el, iframe: null, crossOriginIframe: true };
+        }
+        try {
+          const frameDoc = el.contentDocument || (el.contentWindow && el.contentWindow.document);
+          if (frameDoc) {
+            const rect = el.getBoundingClientRect();
+            const inner = pickHitAt(frameDoc, x - rect.left, y - rect.top, el);
+            if (inner && inner.el) return inner;
+          }
+        } catch (_) {
+          return { el, iframe: null, crossOriginIframe: true };
+        }
+      }
+      return { el, iframe: iframeEl, crossOriginIframe: false };
     }
-    const textInput =
-      rawEl.tagName === 'INPUT' || rawEl.tagName === 'TEXTAREA'
-        ? rawEl
-        : rawEl.closest('label')?.querySelector('input:not([type="checkbox"]):not([type="radio"]), textarea');
-    if (textInput) {
-      return { el: textInput, selector: H.buildInputSelector(textInput) || H.buildSelector(textInput) };
-    }
-    return { el: rawEl, selector: H.buildSelector(rawEl) };
+    return null;
   }
 
   function elementUnderPointer(x, y) {
-    const stack = document.elementsFromPoint(x, y);
-    for (const el of stack) {
-      if (!el || el.nodeType !== 1) continue;
-      if (SKIP_IDS.has(el.id)) continue;
-      return el;
+    return pickHitAt(document, x, y, null);
+  }
+
+  function normalizeSvgTarget(rawEl) {
+    if (!rawEl || rawEl.nodeType !== 1) return rawEl;
+    if (rawEl.namespaceURI === 'http://www.w3.org/2000/svg' || (rawEl.tagName && rawEl.tagName.toLowerCase() === 'svg')) {
+      const clickable = H.clickableAncestor(rawEl);
+      if (clickable && clickable !== rawEl) return clickable;
     }
-    return null;
+    return rawEl;
+  }
+
+  function resolvePickTarget(hit) {
+    if (!hit || !hit.el) return { el: null, kind: null, iframePrefix: null };
+    if (hit.crossOriginIframe) {
+      return { el: hit.el, kind: 'iframe', iframePrefix: null };
+    }
+    let rawEl = normalizeSvgTarget(hit.el);
+    if (SKIP_IDS.has(rawEl.id)) return { el: null, kind: null, iframePrefix: null };
+    const iframePrefix = hit.iframe ? buildIframeSelector(hit.iframe) : null;
+
+    if (rawEl.tagName === 'IFRAME') {
+      return { el: rawEl, kind: 'iframe', iframePrefix: null };
+    }
+
+    const canvas = H.findCanvas(rawEl);
+    if (canvas) {
+      return { el: canvas, kind: 'click', iframePrefix };
+    }
+
+    const inputControl = H.resolveInputFromPick(rawEl);
+    if (inputControl) {
+      return { el: inputControl, kind: 'input', iframePrefix };
+    }
+
+    return { el: rawEl, kind: 'click', iframePrefix };
+  }
+
+  function buildPickPayload(target) {
+    if (!target.el) return null;
+    if (target.kind === 'iframe') {
+      const selector = buildIframeSelector(target.el);
+      if (!selector) return null;
+      const crossOrigin = isCrossOriginIframe(target.el);
+      const warnings = crossOrigin ? ['cross-origin-iframe'] : ['iframe'];
+      return {
+        selector,
+        candidates: [{ selector, strategy: 'iframe', score: 0, matches_count: -1, unique: true, visible: true, matches_picked: true, warnings }],
+        warnings,
+        suggested_action: 'click',
+      };
+    }
+    const canvasSel = target.el.tagName === 'CANVAS' ? H.buildCanvasSelector(target.el) : null;
+    if (canvasSel && target.el.tagName === 'CANVAS') {
+      const warnings = canvasSel === 'canvas' ? ['generic-canvas'] : [];
+      const payload = {
+        selector: canvasSel,
+        candidates: [{ selector: canvasSel, strategy: 'canvas', score: 0, matches_count: -1, unique: true, visible: H.isElementVisible(target.el), matches_picked: true, warnings }],
+        warnings,
+        suggested_action: 'click',
+      };
+      return target.iframePrefix ? H.prefixPickerResult(target.iframePrefix, payload) : payload;
+    }
+    const result = H.buildPickerResult(target.el, target.kind);
+    if (!result) return null;
+    return target.iframePrefix ? H.prefixPickerResult(target.iframePrefix, result) : result;
   }
 
   function removeOverlay() {
@@ -109,17 +193,17 @@
   ].join(';');
   document.body.appendChild(hint);
 
-  function finishPick(selector) {
+  function finishPick(payload) {
     const done = window.pickSelectorDone;
     if (typeof done === 'function') {
-      Promise.resolve(done(selector)).catch(() => {});
+      Promise.resolve(done(payload)).catch(() => {});
     }
     window.__shopPickerCleanup && window.__shopPickerCleanup();
   }
 
   function onMove(event) {
-    const raw = elementUnderPointer(event.clientX, event.clientY);
-    const target = resolvePickTarget(raw);
+    const hit = elementUnderPointer(event.clientX, event.clientY);
+    const target = resolvePickTarget(hit);
     if (!target.el) return;
     showOverlay(target.el);
   }
@@ -128,10 +212,11 @@
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    const raw = elementUnderPointer(event.clientX, event.clientY);
-    const target = resolvePickTarget(raw);
-    if (!target.el || !target.selector) return;
-    finishPick(target.selector);
+    const hit = elementUnderPointer(event.clientX, event.clientY);
+    const target = resolvePickTarget(hit);
+    const payload = buildPickPayload(target);
+    if (!payload || !payload.selector) return;
+    finishPick(payload);
   }
 
   function blockPointerDown(event) {

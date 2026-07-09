@@ -21,14 +21,19 @@ type BrowserValidateOptions struct {
 	Headless    bool
 	BaseURL     string
 	Timeout     time.Duration
+	Mode        ValidationMode
 }
 
 type StepValidation struct {
-	Line     int
-	StepText string
-	Selector string
-	Status   string
-	Message  string
+	Line       int
+	StepText   string
+	Selector   string
+	Status     string
+	Message    string
+	Mode       string
+	ActionKind string
+	MatchCount int
+	Limitation string
 }
 
 func (v Validator) ValidateFeatureInBrowser(ctx context.Context, path string, feature *gherkin.Feature, opts BrowserValidateOptions) ([]ValidationIssue, error) {
@@ -64,6 +69,8 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 	if opts.Timeout <= 0 {
 		opts.Timeout = 8 * time.Second
 	}
+	opts.Mode = NormalizeValidationMode(string(opts.Mode))
+	limitation := validationLimitation(opts.Mode)
 
 	if err := paths.EnsurePlaywrightEngine(opts.BrowserName); err != nil {
 		return nil, fmt.Errorf("install playwright: %w", err)
@@ -114,33 +121,50 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 
 	issues := make([]StepValidation, 0)
 	for _, runnable := range gherkin.ExpandFeatureAtPath(feature, path) {
-		for _, step := range gherkin.FlattenSteps(runnable.Steps) {
+		steps := collectBrowserValidateSteps(runnable.Steps)
+		for i, item := range steps {
 			if err := ctx.Err(); err != nil {
 				return issues, err
 			}
-			if step.Block != "" {
-				continue
+			if opts.Mode == ValidationModeFlow {
+				for j := 0; j < i; j++ {
+					if err := replaySafeStep(ctx, page, steps[j].action, opts.BaseURL, opts.Timeout); err != nil {
+						issues = append(issues, StepValidation{
+							Line:       steps[j].step.Line,
+							StepText:   steps[j].text,
+							Status:     "warning",
+							Message:    fmt.Sprintf("flow replay: %v", err),
+							Mode:       string(opts.Mode),
+							ActionKind: steps[j].action.Kind,
+							Limitation: limitation,
+						})
+					}
+				}
 			}
-			action, err := stepdsl.Parse(step)
-			if err != nil {
-				continue
-			}
-			stepText := strings.TrimSpace(step.Keyword + " " + step.Text)
+			step := item.step
+			action := item.action
+			stepText := item.text
 			if action.Kind == "goto" {
 				url := stepdsl.ResolveURL(action.Value1, opts.BaseURL)
 				if _, err := page.Goto(url, playwright.PageGotoOptions{Timeout: playwright.Float(float64(opts.Timeout.Milliseconds()))}); err != nil {
 					issues = append(issues, StepValidation{
-						Line:     step.Line,
-						StepText: stepText,
-						Status:   "missing",
-						Message:  fmt.Sprintf("goto failed: %v", err),
+						Line:       step.Line,
+						StepText:   stepText,
+						Status:     "missing",
+						Message:    fmt.Sprintf("goto failed: %v", err),
+						Mode:       string(opts.Mode),
+						ActionKind: action.Kind,
+						Limitation: limitation,
 					})
 				} else {
 					issues = append(issues, StepValidation{
-						Line:     step.Line,
-						StepText: stepText,
-						Status:   "found",
-						Message:  "страница открыта",
+						Line:       step.Line,
+						StepText:   stepText,
+						Status:     "found",
+						Message:    "страница открыта",
+						Mode:       string(opts.Mode),
+						ActionKind: action.Kind,
+						Limitation: limitation,
 					})
 				}
 				continue
@@ -148,40 +172,92 @@ func (v Validator) ValidateFeatureInBrowserDetailed(ctx context.Context, path st
 			selectors := selectorsFromAction(action)
 			if len(selectors) == 0 {
 				issues = append(issues, StepValidation{
-					Line:     step.Line,
-					StepText: stepText,
-					Status:   "skipped",
-					Message:  "без селектора",
+					Line:       step.Line,
+					StepText:   stepText,
+					Status:     "skipped",
+					Message:    "без селектора",
+					Mode:       string(opts.Mode),
+					ActionKind: action.Kind,
+					Limitation: limitation,
 				})
 				continue
 			}
-			expectHidden := action.Kind == "assert-hidden" || action.Kind == "wait-hidden"
+			priorFlow := countPriorFlowSteps(steps, i)
 			for _, sel := range selectors {
 				result := StepValidation{
-					Line:     step.Line,
-					StepText: stepText,
-					Selector: sel,
+					Line:       step.Line,
+					StepText:   stepText,
+					Selector:   sel,
+					Mode:       string(opts.Mode),
+					ActionKind: action.Kind,
+					Limitation: limitation,
 				}
-				if expectHidden {
-					if err := v.validateHidden(ctx, page, sel, opts.Timeout); err != nil {
-						result.Status = "warning"
-						result.Message = err.Error()
-					} else {
-						result.Status = "found"
-						result.Message = "элемент скрыт"
-					}
-				} else if err := v.ValidateVisible(ctx, page, sel, opts.Timeout); err != nil {
-					result.Status = "missing"
-					result.Message = err.Error()
-				} else {
+				validation := v.ValidateActionTarget(ctx, page, action, sel, opts.Timeout)
+				result.MatchCount = validation.MatchCount
+				if validation.OK {
 					result.Status = "found"
-					result.Message = "элемент найден"
+					result.Message = validation.Message
+					if len(validation.Warnings) > 0 {
+						result.Status = "warning"
+						result.Message = validation.Message + "; " + strings.Join(validation.Warnings, "; ")
+					}
+				} else if opts.Mode == ValidationModeStatic && priorFlow > 0 {
+					result.Status = "warning"
+					result.Message = validation.Message + "; возможно требуются предыдущие шаги сценария (dynamic UI)"
+				} else {
+					result.Status = "missing"
+					result.Message = validation.Message
 				}
 				issues = append(issues, result)
 			}
 		}
 	}
 	return issues, nil
+}
+
+type browserValidateStep struct {
+	step   gherkin.Step
+	action stepdsl.Action
+	text   string
+}
+
+func collectBrowserValidateSteps(steps []gherkin.Step) []browserValidateStep {
+	out := make([]browserValidateStep, 0)
+	for _, step := range gherkin.FlattenSteps(steps) {
+		if step.Block != "" {
+			continue
+		}
+		action, err := stepdsl.Parse(step)
+		if err != nil {
+			continue
+		}
+		out = append(out, browserValidateStep{
+			step:   step,
+			action: action,
+			text:   strings.TrimSpace(step.Keyword + " " + step.Text),
+		})
+	}
+	return out
+}
+
+func countPriorFlowSteps(steps []browserValidateStep, index int) int {
+	count := 0
+	for i := 0; i < index && i < len(steps); i++ {
+		if isPriorFlowStep(steps[i].action) {
+			count++
+		}
+	}
+	return count
+}
+
+func isPriorFlowStep(action stepdsl.Action) bool {
+	switch action.Kind {
+	case "click", "double-click", "hover", "fill", "fill-generated", "select", "check", "uncheck",
+		"scroll-to", "clear", "upload", "press-in", "download-click":
+		return true
+	default:
+		return false
+	}
 }
 
 func (v Validator) validateHidden(ctx context.Context, page playwright.Page, selector string, timeout time.Duration) error {

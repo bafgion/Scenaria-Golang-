@@ -13,6 +13,7 @@ func (e *PlaywrightExecutor) ExecuteScenario(ctx context.Context, input Scenario
 		MaxLoopIterations: e.options.MaxLoopIterations,
 		MaxActionRetries:  e.options.MaxActionRetries,
 		RetryBackoff:      e.options.RetryBackoff,
+		RetryPolicy:       e.options.RetryPolicy,
 	})
 	prompt := e.options.PromptEmailCode
 	if prompt == nil {
@@ -44,6 +45,7 @@ func (e *PlaywrightExecutor) ExecuteScenarioOnSession(ctx context.Context, sessi
 		MaxLoopIterations: e.options.MaxLoopIterations,
 		MaxActionRetries:  e.options.MaxActionRetries,
 		RetryBackoff:      e.options.RetryBackoff,
+		RetryPolicy:       e.options.RetryPolicy,
 	})
 	prompt := e.options.PromptEmailCode
 	if prompt == nil {

@@ -78,9 +78,12 @@ func detectBlockHeader(step Step, _ Language) (*blockHeader, error) {
 		if countStr == "" {
 			countStr = groups[2]
 		}
-		count, _ := strconv.Atoi(countStr)
+		count, err := strconv.Atoi(countStr)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: invalid repeat count %q: %w", step.Line, countStr, err)
+		}
 		if count < 1 {
-			count = 1
+			return nil, fmt.Errorf("line %d: repeat count must be at least 1, got %d", step.Line, count)
 		}
 		return &blockHeader{Kind: BlockRepeat, Count: count}, nil
 	}

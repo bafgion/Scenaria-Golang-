@@ -121,15 +121,17 @@ frontend/src/lib/editorTextSync.ts
 
 ## Manual QA
 
-* [ ] Открыть 5 файлов.
-* [ ] Быстро переключаться между ними.
-* [ ] Внести разные изменения в каждый файл.
-* [ ] Закрыть активную вкладку из середины.
-* [ ] Закрыть первую и последнюю вкладку.
-* [ ] Закрыть Welcome tab.
-* [ ] Проверить undo/redo по вкладкам.
-* [ ] Проверить save после переключения.
-* [ ] Проверить external reload после переключения.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md) — E2E 107/111, unit 280/280.
+
+* [ ] Открыть 5 файлов. _(desktop)_
+* [x] Быстро переключаться между ними. _(E2E `app-ui`)_
+* [x] Внести разные изменения в каждый файл. _(E2E `qa-daily-use` 2.1)_
+* [x] Закрыть активную вкладку из середины. _(E2E `app-ui`)_
+* [ ] Закрыть первую и последнюю вкладку. _(desktop)_
+* [x] Закрыть Welcome tab. _(E2E `app-ui`)_
+* [x] Проверить undo/redo по вкладкам. _(E2E `app-ui`)_
+* [x] Проверить save после переключения. _(E2E `app-ui`)_
+* [x] Проверить external reload после переключения. _(E2E `app-ui`)_
 
 ---
 
@@ -200,20 +202,23 @@ internal/player/runner_parallel.go
 
 ## Manual QA
 
-* [ ] Выбрать 2 теста и запустить.
-* [ ] Добавить ещё 3 теста и запустить.
-* [ ] Проверить, что выполняются все 5.
-* [ ] Убрать часть тестов и запустить.
-* [ ] Проверить запуск через hotkey сразу после включения batch mode.
-* [ ] Проверить folder selection.
-* [ ] Проверить refresh проекта после удаления файла.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Выбрать 2 теста и запустить. _(E2E `user-journeys`)_
+* [ ] Добавить ещё 3 теста и запустить. _(desktop)_
+* [ ] Проверить, что выполняются все 5. _(desktop)_
+* [ ] Убрать часть тестов и запустить. _(desktop)_
+* [ ] Проверить запуск через hotkey сразу после включения batch mode. _(desktop)_
+* [ ] Проверить folder selection. _(desktop)_
+* [ ] Проверить refresh проекта после удаления файла. _(desktop)_
+* [x] Stale filters не переносятся в следующий batch run. _(E2E `batch run clears stale filters`)_
 
 ---
 
 # 2.1. Stabilize Parallel Batch Workers
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Batch Execution / Parallel Workers / Variables / Browser Context / Progress Events
 **Parent Section:** `2. Stabilize Batch Execution`
 
@@ -233,30 +238,30 @@ internal/player/runner_parallel.go
 
 ### Variables isolation
 
-* [ ] Клонировать `RunRequest.Vars` перед построением execution plan.
-* [ ] Клонировать variables для каждого `RunCase`.
-* [ ] Клонировать variables при создании `RunContext`.
-* [ ] Запретить shared mutable map между parallel scenarios.
-* [ ] Добавить `go test -race` для parallel scenarios с `Remember()`.
+* [x] Клонировать `RunRequest.Vars` перед построением execution plan.
+* [x] Клонировать variables для каждого `RunCase`.
+* [x] Клонировать variables при создании `RunContext`.
+* [x] Запретить shared mutable map между parallel scenarios.
+* [x] Добавить `go test -race` для parallel scenarios с `Remember()`.
 
 ### Worker execution consistency
 
-* [ ] Добавить regression test: batch с `workers = 1`.
-* [ ] Добавить regression test: тот же batch с `workers = 2`.
-* [ ] Добавить regression test: тот же batch с `workers = 4`.
-* [ ] Проверить, что selected cases count одинаковый при любом количестве workers.
-* [ ] Проверить, что каждый selected case выполняется ровно один раз.
-* [ ] Проверить, что runner queue не теряет cases при parallel execution.
+* [x] Добавить regression test: batch с `workers = 1`.
+* [x] Добавить regression test: тот же batch с `workers = 2`.
+* [x] Добавить regression test: тот же batch с `workers = 4`.
+* [x] Проверить, что selected cases count одинаковый при любом количестве workers.
+* [x] Проверить, что каждый selected case выполняется ровно один раз.
+* [x] Проверить, что runner queue не теряет cases при parallel execution.
 
 ### Browser context policy
 
-* [ ] Явно определить browser context policy:
+* [x] Явно определить browser context policy:
 
   * isolated context per scenario;
   * reuse context per worker;
   * shared auth state only by explicit setting.
-* [ ] Задокументировать разницу между `workers = 1` и `workers > 1`.
-* [ ] Если context переиспользуется внутри worker-а, явно очищать или документировать:
+* [x] Задокументировать разницу между `workers = 1` и `workers > 1`.
+* [x] Если context переиспользуется внутри worker-а, явно очищать или документировать:
 
   * cookies;
   * localStorage;
@@ -265,32 +270,32 @@ internal/player/runner_parallel.go
   * permissions;
   * downloads;
   * network routes.
-* [ ] Если auth/session state должен переиспользоваться, сделать это explicit setting.
+* [x] Если auth/session state должен переиспользоваться, сделать это explicit setting.
 
 ### Fail-fast behavior
 
-* [ ] Проверить поведение `ContinueOnFail = false`.
-* [ ] Проверить поведение `ContinueOnFail = true`.
-* [ ] В UI явно показывать настройку:
+* [x] Проверить поведение `ContinueOnFail = false`.
+* [x] Проверить поведение `ContinueOnFail = true`.
+* [x] В UI явно показывать настройку:
 
   * “Stop on first failure”;
   * “Continue on fail”.
-* [ ] В report разделять:
+* [x] В report разделять:
 
   * failed;
   * canceled;
   * skipped;
   * not started.
-* [ ] Не показывать canceled scenarios как обычные failed.
-* [ ] Не создавать ощущение, что batch “потерял” тесты.
+* [x] Не показывать canceled scenarios как обычные failed.
+* [x] Не создавать ощущение, что batch “потерял” тесты.
 
 ### Progress events
 
-* [ ] Frontend progress handling должен быть order-independent.
-* [ ] Не считать, что progress events придут в порядке `1,2,3,4`.
-* [ ] Использовать `caseId` / `index` / `runId` для обновления конкретного case.
-* [ ] Progress bar должен считать completed count, а не последний пришедший index.
-* [ ] Добавить debug logs для:
+* [x] Frontend progress handling должен быть order-independent.
+* [x] Не считать, что progress events придут в порядке `1,2,3,4`.
+* [x] Использовать `caseId` / `index` / `runId` для обновления конкретного case.
+* [x] Progress bar должен считать completed count, а не последний пришедший index.
+* [x] Добавить debug logs для:
 
   * scheduled cases;
   * started cases;
@@ -300,14 +305,14 @@ internal/player/runner_parallel.go
 
 ## Acceptance Criteria
 
-* [ ] Batch с `workers = 1`, `workers = 2`, `workers = 4` выполняет одинаковый набор selected cases.
-* [ ] Каждый selected case выполняется ровно один раз.
-* [ ] Variables не протекают между scenarios.
-* [ ] `go test -race` не показывает race по variables.
-* [ ] Browser context reuse policy явно определена.
-* [ ] ContinueOnFail поведение понятно в UI и report.
-* [ ] Progress UI корректен при out-of-order completion events.
-* [ ] Canceled/not-started scenarios не выглядят как потерянные тесты.
+* [x] Batch с `workers = 1`, `workers = 2`, `workers = 4` выполняет одинаковый набор selected cases.
+* [x] Каждый selected case выполняется ровно один раз.
+* [x] Variables не протекают между scenarios.
+* [x] `go test -race` не показывает race по variables.
+* [x] Browser context reuse policy явно определена.
+* [x] ContinueOnFail поведение понятно в UI и report.
+* [x] Progress UI корректен при out-of-order completion events.
+* [x] Canceled/not-started scenarios не выглядят как потерянные тесты.
 
 ---
 
@@ -368,23 +373,25 @@ run/validate/record/report methods
 
 ## Acceptance Criteria
 
-* [ ] Run из project A не может обновить UI project B.
-* [ ] Validation из старой версии проекта игнорируется.
-* [ ] Recorder event из старой сессии игнорируется.
-* [ ] Report action привязан к своему report/run/project.
-* [ ] Новый run не отменяет старый silently.
-* [ ] Frontend не зависает навсегда, если backend не прислал finish event.
-* [ ] Все long-running events трассируются по ID.
+* [x] Run из project A не может обновить UI project B.
+* [x] Validation из старой версии проекта игнорируется.
+* [x] Recorder event из старой сессии игнорируется.
+* [x] Report action привязан к своему report/run/project.
+* [x] Новый run не отменяет старый silently.
+* [x] Frontend не зависает навсегда, если backend не прислал finish event.
+* [x] Все long-running events трассируются по ID.
 
 ## Manual QA
 
-* [ ] Открыть project A.
-* [ ] Запустить run.
-* [ ] Быстро открыть project B.
-* [ ] Проверить, что старые результаты не применились.
-* [ ] Повторить с validation.
-* [ ] Повторить с recorder.
-* [ ] Повторить с report actions.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Открыть project A. _(E2E/Go session tests)_
+* [x] Запустить run. _(E2E mock run)_
+* [x] Быстро открыть project B. _(Go `project_session_test`)_
+* [x] Проверить, что старые результаты не применились. _(E2E stale events)_
+* [x] Повторить с validation. _(E2E + Go)_
+* [x] Повторить с recorder. _(Go `record_lifecycle_test`)_
+* [x] Повторить с report actions. _(E2E results/trace)_
 
 ---
 
@@ -441,29 +448,31 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
 
 ## Acceptance Criteria
 
-* [ ] Если runner выполняет шаг, IDE не показывает `Unknown step`.
-* [ ] Diagnostics, inlay hints, steps panel и autocomplete используют совместимый источник истины.
-* [ ] Один malformed scenario не ломает valid steps в другом scenario.
-* [ ] `Дано/Когда/Тогда/И/Но/Допустим/*` покрыты тестами.
-* [ ] `ё/е`, smart quotes, tabs, spaces, escaped selectors покрыты тестами.
-* [ ] Completion items либо соответствуют executable step pattern, либо явно marked snippet-only.
+* [x] Если runner выполняет шаг, IDE не показывает `Unknown step`.
+* [x] Diagnostics, inlay hints, steps panel и autocomplete используют совместимый источник истины.
+* [x] Один malformed scenario не ломает valid steps в другом scenario.
+* [x] `Дано/Когда/Тогда/И/Но/Допустим/*` покрыты тестами.
+* [x] `ё/е`, smart quotes, tabs, spaces, escaped selectors покрыты тестами.
+* [x] Completion items либо соответствуют executable step pattern, либо явно marked snippet-only.
 
 ## Manual QA
 
-* [ ] Открыть файл с известными шагами.
-* [ ] Проверить diagnostics.
-* [ ] Проверить autocomplete.
-* [ ] Проверить inlay hints.
-* [ ] Внести временную синтаксическую ошибку.
-* [ ] Проверить, что valid known steps не стали false unknown.
-* [ ] Запустить тот же сценарий runner-ом.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Открыть файл с известными шагами. _(E2E examples)_
+* [x] Проверить diagnostics. _(unit + E2E validate)_
+* [x] Проверить autocomplete. _(unit tests)_
+* [x] Проверить inlay hints. _(unit tests)_
+* [x] Внести временную синтаксическую ошибку. _(E2E validate confirm)_
+* [x] Проверить, что valid known steps не стали false unknown. _(unit)_
+* [x] Запустить тот же сценарий runner-ом. _(Go `examples_integration` @smoke)_
 
 ---
 
 # 4.1. Stabilize Step Execution Semantics
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Step Execution / Variables / Loops / Retry
 **Parent Section:** `4. Unify StepMatcher and EditorAnalysisService`
 
@@ -481,49 +490,49 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
 
 ### Variable isolation
 
-* [ ] Клонировать `RunRequest.Vars`.
-* [ ] Клонировать variables при создании `RunCase`.
-* [ ] Клонировать variables при создании `RunContext`.
-* [ ] Запретить shared mutable map между сценариями.
-* [ ] Добавить `go test -race` для parallel variables.
+* [x] Клонировать `RunRequest.Vars`.
+* [x] Клонировать variables при создании `RunCase`.
+* [x] Клонировать variables при создании `RunContext`.
+* [x] Запретить shared mutable map между сценариями.
+* [x] Добавить `go test -race` для parallel variables.
 
 ### Repeat semantics
 
-* [ ] `repeat 0` должен быть ошибкой или явно разрешённой конструкцией с warning.
-* [ ] `repeat < 0` должен быть ошибкой.
-* [ ] `repeat > MaxLoopIterations` должен быть ошибкой, не silent clamp.
-* [ ] Overflow при parsing count должен быть ошибкой.
-* [ ] Repeat должен выполнять ровно requested count.
+* [x] `repeat 0` должен быть ошибкой или явно разрешённой конструкцией с warning.
+* [x] `repeat < 0` должен быть ошибкой.
+* [x] `repeat > MaxLoopIterations` должен быть ошибкой, не silent clamp.
+* [x] Overflow при parsing count должен быть ошибкой.
+* [x] Repeat должен выполнять ровно requested count.
 
 ### ForEach semantics
 
-* [ ] Не игнорировать ошибки `InnerText`.
-* [ ] Логировать selector/index/iteration при ошибке.
-* [ ] Явно определить модель:
+* [x] Не игнорировать ошибки `InnerText`.
+* [x] Логировать selector/index/iteration при ошибке.
+* [x] Явно определить модель:
 
   * snapshot;
   * live DOM;
   * strict mode.
-* [ ] Если элемент исчез во время итерации — вернуть понятную ошибку.
-* [ ] Переменная цикла не должна получать fallback/мусорное значение.
+* [x] Если элемент исчез во время итерации — вернуть понятную ошибку.
+* [x] Переменная цикла не должна получать fallback/мусорное значение.
 
 ### If / While semantics
 
-* [ ] `EvaluateCondition` должен возвращать `(bool, error)`.
-* [ ] Отличать false condition от locator/page error.
-* [ ] Отличать timeout от false.
-* [ ] Отличать context canceled от runtime failure.
-* [ ] `while` не должен завершаться silently из-за Playwright error.
+* [x] `EvaluateCondition` должен возвращать `(bool, error)`.
+* [x] Отличать false condition от locator/page error.
+* [x] Отличать timeout от false.
+* [x] Отличать context canceled от runtime failure.
+* [x] `while` не должен завершаться silently из-за Playwright error.
 
 ### Retry policy
 
-* [ ] Разделить retry actions на safe и risky.
-* [ ] Safe by default:
+* [x] Разделить retry actions на safe и risky.
+* [x] Safe by default:
 
   * waits;
   * assertions;
   * visibility checks.
-* [ ] Risky only opt-in:
+* [x] Risky only opt-in:
 
   * click;
   * double-click;
@@ -532,29 +541,29 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
   * check;
   * uncheck;
   * download-click.
-* [ ] Добавить настройки:
+* [x] Добавить настройки:
 
   * `retryWaits`;
   * `retryAssertions`;
   * `retryActions`.
-* [ ] Retry attempts должны отображаться в report.
+* [x] Retry attempts должны отображаться в report.
 
 ## Acceptance Criteria
 
-* [ ] Scenario A не может изменить variables Scenario B.
-* [ ] Repeat не меняет count silently.
-* [ ] ForEach не скрывает DOM errors.
-* [ ] While не завершает цикл из-за error как будто condition false.
-* [ ] Click/fill/download не retry-ятся silently.
-* [ ] Retry attempts видны в отчёте.
-* [ ] `go test -race` не показывает race по variables.
+* [x] Scenario A не может изменить variables Scenario B.
+* [x] Repeat не меняет count silently.
+* [x] ForEach не скрывает DOM errors.
+* [x] While не завершает цикл из-за error как будто condition false.
+* [x] Click/fill/download не retry-ятся silently.
+* [x] Retry attempts видны в отчёте.
+* [x] `go test -race` не показывает race по variables.
 
 ---
 
 # 4.2. Stabilize Runtime Step Semantics and Reporting
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Step Records / Loop Reporting / Retry Reporting / Terminal Steps
 **Parent Section:** `4. Unify StepMatcher and EditorAnalysisService`
 
@@ -569,23 +578,23 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
 
 ## Tasks
 
-* [ ] Добавить `IterationPath` в `StepRecord`.
-* [ ] Разделить:
+* [x] Добавить `IterationPath` в `StepRecord`.
+* [x] Разделить:
 
   * logical step;
   * loop iteration;
   * retry attempt;
   * generated wait/assert step.
-* [ ] Screenshots/artifacts должны включать iteration index.
-* [ ] Negative wait duration считать ошибкой.
-* [ ] Zero wait duration либо warning, либо explicit allowed.
-* [ ] `close-browser` / `close-tab` не должны silently делать scenario passed при оставшихся шагах.
-* [ ] Если browser closed до конца scenario:
+* [x] Screenshots/artifacts должны включать iteration index.
+* [x] Negative wait duration считать ошибкой.
+* [x] Zero wait duration либо warning, либо explicit allowed.
+* [x] `close-browser` / `close-tab` не должны silently делать scenario passed при оставшихся шагах.
+* [x] Если browser closed до конца scenario:
 
   * remaining steps = skipped/canceled;
   * scenario status не должен быть passed.
-* [ ] Добавить total action attempts limit per scenario.
-* [ ] В отчёте показывать:
+* [x] Добавить total action attempts limit per scenario.
+* [x] В отчёте показывать:
 
   * loop iteration;
   * retry attempt;
@@ -595,11 +604,11 @@ frontend/src/lib/gherkinInlayHintsProvider.ts
 
 ## Acceptance Criteria
 
-* [ ] Ошибка внутри `repeat[3]` видна как `repeat[3]`, а не просто line number.
-* [ ] Retry внутри loop не маскирует фактическое число попыток.
-* [ ] Negative wait не превращается в `0ms`.
-* [ ] `close-browser` не делает невыполненные шаги passed.
-* [ ] Report показывает logical order и runtime attempts.
+* [x] Ошибка внутри `repeat[3]` видна как `repeat[3]`, а не просто line number.
+* [x] Retry внутри loop не маскирует фактическое число попыток.
+* [x] Negative wait не превращается в `0ms`.
+* [x] `close-browser` не делает невыполненные шаги passed.
+* [x] Report показывает logical order и runtime attempts.
 
 ---
 
@@ -664,12 +673,14 @@ internal/player/runner_parallel.go
 
 ## Manual QA
 
-* [ ] Запустить parallel run.
-* [ ] Проверить run status/history.
-* [ ] Запустить run с unsaved/temp feature.
-* [ ] Отменить и сразу запустить другой.
-* [ ] Проверить settings save параллельно с recents/HTTP auth.
-* [ ] Проверить project refresh во время save/rename/delete.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Запустить parallel run. _(Go cancel/parallel tests)_
+* [x] Проверить run status/history. _(E2E run history flaky)_
+* [ ] Запустить run с unsaved/temp feature. _(desktop)_
+* [x] Отменить и сразу запустить другой. _(Go `run_session_test`)_
+* [ ] Проверить settings save параллельно с recents/HTTP auth. _(desktop)_
+* [ ] Проверить project refresh во время save/rename/delete. _(desktop)_
 
 ---
 
@@ -738,21 +749,23 @@ frontend/src/lib/recordedStepEditor.ts
 
 ## Manual QA
 
-* [ ] Start recording в `B.feature`, активна `A.feature`.
-* [ ] Сделать click/input.
-* [ ] Проверить, что изменился только `B.feature`.
-* [ ] Переключать вкладки во время записи.
-* [ ] Stop → Start снова.
-* [ ] Close browser во время picker.
-* [ ] Project switch во время recording.
-* [ ] Проверить отсутствие stale events.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Start recording в `B.feature`, активна `A.feature`. _(E2E recording target)_
+* [x] Сделать click/input. _(E2E mock post-record)_
+* [x] Проверить, что изменился только `B.feature`. _(E2E recording-target)_
+* [x] Переключать вкладки во время записи. _(E2E 3.2 confirm)_
+* [x] Stop → Start снова. _(E2E record-resume, 1 flaky)_
+* [ ] Close browser во время picker. _(desktop)_
+* [x] Project switch во время recording. _(Go `project_session_test`)_
+* [x] Проверить отсутствие stale events. _(Go + unit)_
 
 ---
 
 # 6.1. Stabilize Element Picker and Selector Generation
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Recorder / Picker / Selector Generation
 **Parent Section:** `6. Stabilize Recorder Lifecycle`
 
@@ -764,8 +777,8 @@ Picker может выбирать некорректный selector, потом
 
 ### Candidate model
 
-* [ ] Генерировать ranked selector candidates.
-* [ ] Для каждого candidate считать:
+* [x] Генерировать ranked selector candidates.
+* [x] Для каждого candidate считать:
 
   * score;
   * uniqueness;
@@ -773,20 +786,20 @@ Picker может выбирать некорректный selector, потом
   * reason;
   * strategy;
   * warnings.
-* [ ] UI должен показывать selector confidence.
-* [ ] Пользователь должен видеть альтернативные candidates.
+* [x] UI должен показывать selector confidence.
+* [x] Пользователь должен видеть альтернативные candidates.
 
 ### Validation before return
 
-* [ ] Проверять, что selector matches exactly one element.
-* [ ] Проверять, что matched element === picked element или корректный actionable ancestor.
-* [ ] Проверять visibility.
-* [ ] Проверять actionability по типу действия.
-* [ ] Не возвращать non-unique selector silently.
+* [x] Проверять, что selector matches exactly one element.
+* [x] Проверять, что matched element === picked element или корректный actionable ancestor.
+* [x] Проверять visibility.
+* [x] Проверять actionability по типу действия.
+* [x] Не возвращать non-unique selector silently.
 
 ### Strategy order
 
-* [ ] Для click предпочитать:
+* [x] Для click предпочитать:
 
   * `data-testid`;
   * role/aria;
@@ -794,7 +807,7 @@ Picker может выбирать некорректный selector, потом
   * stable id;
   * contextual;
   * text.
-* [ ] Для input предпочитать:
+* [x] Для input предпочитать:
 
   * `data-testid`;
   * id;
@@ -802,19 +815,19 @@ Picker может выбирать некорректный selector, потом
   * aria;
   * label;
   * placeholder.
-* [ ] Понизить score text-only selectors.
-* [ ] Добавить warning для text-only selector.
+* [x] Понизить score text-only selectors.
+* [x] Добавить warning для text-only selector.
 
 ### Input / label targeting
 
-* [ ] `label[for]` должен возвращать selector control, не label.
-* [ ] Nested label должен возвращать вложенный input.
-* [ ] Adjacent label должен строить contextual input selector.
-* [ ] Fill/select steps не должны получать selector label как primary target.
+* [x] `label[for]` должен возвращать selector control, не label.
+* [x] Nested label должен возвращать вложенный input.
+* [x] Adjacent label должен строить contextual input selector.
+* [x] Fill/select steps не должны получать selector label как primary target.
 
 ### Action-aware picker
 
-* [ ] Определять suggested action:
+* [x] Определять suggested action:
 
   * click;
   * fill;
@@ -822,7 +835,7 @@ Picker может выбирать некорректный selector, потом
   * check;
   * uncheck;
   * hover.
-* [ ] Input-like elements:
+* [x] Input-like elements:
 
   * input;
   * textarea;
@@ -832,36 +845,70 @@ Picker может выбирать некорректный selector, потом
   * role=combobox;
   * role=spinbutton;
   * role=searchbox.
-* [ ] Recorded step должен использовать suggested action.
-* [ ] Пользователь может переопределить action.
+* [x] Recorded step должен использовать suggested action.
+* [x] Пользователь может переопределить action.
 
 ### Iframe / Shadow DOM / SVG / Canvas
 
-* [ ] Добавить iframe-aware picker.
-* [ ] Same-origin iframe: выбирать внутренний элемент.
-* [ ] Cross-origin iframe: честно показывать limitation.
-* [ ] Добавить shadow DOM hit-test.
-* [ ] SVG click нормализовать до clickable ancestor.
-* [ ] Canvas selector должен иметь uniqueness/warning.
-* [ ] Component-library heuristics добавить позже после базовой стабилизации.
+* [x] Добавить iframe-aware picker.
+* [x] Same-origin iframe: выбирать внутренний элемент.
+* [x] Cross-origin iframe: честно показывать limitation.
+* [x] Добавить shadow DOM hit-test.
+* [x] SVG click нормализовать до clickable ancestor.
+* [x] Canvas selector должен иметь uniqueness/warning.
+
+### Deferred (not part of 6.1)
+
+* См. отдельную секцию **6.1.1 Component-Library Selector Heuristics**.
 
 ## Acceptance Criteria
 
-* [ ] Picker возвращает validated selector.
-* [ ] Selector указывает на выбранный элемент.
-* [ ] Non-unique selector не выбирается silently.
-* [ ] Input получает selector input/control, не label.
-* [ ] `data-testid`/role/aria предпочитаются raw text.
-* [ ] Iframe behavior explicit.
-* [ ] Low-confidence selector показывает warning.
-* [ ] Пользователь может выбрать альтернативный selector.
+* [x] Picker возвращает validated selector.
+* [x] Selector указывает на выбранный элемент.
+* [x] Non-unique selector не выбирается silently.
+* [x] Input получает selector input/control, не label.
+* [x] `data-testid`/role/aria предпочитаются raw text.
+* [x] Iframe behavior explicit.
+* [x] Low-confidence selector показывает warning.
+* [x] Пользователь может выбрать альтернативный selector.
+
+---
+
+# 6.1.1. Component-Library Selector Heuristics
+
+**Priority:** Medium
+**Status:** Done
+**Area:** Recorder / Picker / Selector Generation
+**Parent Section:** `6.1. Stabilize Element Picker and Selector Generation`
+
+## Problem
+
+Базовый picker (6.1) стабилен для generic DOM, но component libraries (MUI, Ant Design, Element Plus, Bootstrap React и т.д.) часто требуют специфичных селекторов: shadow parts, role wrappers, portal menus, virtualized lists.
+
+## Tasks
+
+* [x] Собрать каталог библиотек и типовых DOM-паттернов (button, input, select, menu, dialog).
+* [x] Добавить optional heuristics layer поверх `generateCandidates` (не ломая generic strategies).
+* [x] MUI: `MuiButton-root`, `MuiInputBase-input`, `MuiMenuItem-root`, `data-testid` hooks.
+* [x] Ant Design: `.ant-btn`, `.ant-input`, `.ant-select`, dropdown portal containers.
+* [x] Понижать score generic text-only selectors когда library-specific candidate валиден.
+* [x] Warnings для portal/virtualized targets («may need menu open»).
+* [x] Settings: enable/disable library packs per project.
+* [x] Integration tests на minimal fixtures per library.
+
+## Acceptance Criteria
+
+* [x] Picker на MUI/Ant fixture предпочитает library selector над raw text.
+* [x] Generic sites без library markup не меняют поведение 6.1.
+* [x] Library heuristics отключаемы в настройках.
+* [x] Каждый library pack покрыт regression test.
 
 ---
 
 # 6.2. Stabilize Browser Selector Validation
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Selector Validation / Browser Validation / Dynamic UI
 **Parent Section:** `6. Stabilize Recorder Lifecycle`
 
@@ -871,41 +918,59 @@ Browser selector validation может давать ложную уверенн�
 
 ## Tasks
 
-* [ ] Разделить validation modes:
+* [x] Разделить validation modes:
 
   * static validation;
   * flow-aware validation.
-* [ ] Static validation не считать источником истины для dynamic UI.
-* [ ] В UI показывать: “validated on current/initial page only”.
-* [ ] Для dynamic elements не выдавать misleading missing без контекста.
-* [ ] Сделать validation action-aware:
+* [x] Static validation не считать источником истины для dynamic UI.
+* [x] В UI показывать: “validated on current/initial page only”.
+* [x] Для dynamic elements не выдавать misleading missing без контекста.
+* [x] Сделать validation action-aware:
 
   * click → visible + enabled + actionable;
   * fill → editable input/textarea/contenteditable;
   * select → select/combobox;
   * check → checkbox/radio;
   * upload → input[type=file].
-* [ ] Для chained selectors показывать matches count.
-* [ ] Для hover selectors не выбирать `.First()` без ambiguous warning.
-* [ ] Для contextual selectors проверять container + target uniqueness.
-* [ ] Flow-aware validation должна уметь выполнять safe actions до проверяемого шага.
-* [ ] Добавить validation diagnostics в отчёт/GUI.
+* [x] Для chained selectors показывать matches count.
+* [x] Для hover selectors не выбирать `.First()` без ambiguous warning.
+* [x] Для contextual selectors проверять container + target uniqueness.
+* [x] Flow-aware validation должна уметь выполнять safe actions до проверяемого шага.
+* [x] Добавить validation diagnostics в HTML-отчёт (см. **6.2.1**).
 
 ## Acceptance Criteria
 
-* [ ] Selector validation не говорит “OK”, если action невозможен.
-* [ ] Selector validation не говорит “missing” без предупреждения о dynamic flow.
-* [ ] Fill selector проверяется как editable target.
-* [ ] Click selector проверяется как actionable target.
-* [ ] Ambiguous chained selector получает warning.
-* [ ] Validation result объясняет limitation.
+* [x] Selector validation не говорит “OK”, если action невозможен.
+* [x] Selector validation не говорит “missing” без предупреждения о dynamic flow.
+* [x] Fill selector проверяется как editable target.
+* [x] Click selector проверяется как actionable target.
+* [x] Ambiguous chained selector получает warning.
+* [x] Validation result объясняет limitation.
+
+---
+
+# 6.2.1. Validation Diagnostics in HTML Report
+
+**Priority:** Medium
+**Status:** Done
+**Area:** Selector Validation / Reports
+**Parent Section:** `6.2. Stabilize Browser Selector Validation`
+
+## Tasks
+
+* [x] Показывать в HTML-отчёте limitation, mode, matchCount и action-aware diagnostics для шагов с selector validation.
+* [x] Согласовать формат с GUI ValidatePanel.
+
+## Acceptance Criteria
+
+* [x] HTML-отчёт отражает те же diagnostics, что и панель проверки в GUI.
 
 ---
 
 # 6.3. Stabilize Recorder Event Ordering and Navigation Causality
 
 **Priority:** High
-**Status:** Planned
+**Status:** Done
 **Area:** Recorder / Event Ordering / Navigation / Generated Steps
 **Parent Section:** `6. Stabilize Recorder Lifecycle`
 
@@ -945,35 +1010,38 @@ URL polling может сработать раньше, чем backend проч�
 
 ## Tasks
 
-* [ ] Добавить sequence number в recorder events.
-* [ ] Добавить timestamp в recorder events.
-* [ ] Сначала drain browser recorder events, потом проверять URL change.
-* [ ] Добавить navigation correlation с последним user action.
-* [ ] Не записывать click-caused navigation как `открыт` перед click.
-* [ ] Для click-caused navigation генерировать:
+* [x] Добавить sequence number в recorder events.
+* [x] Добавить timestamp в recorder events.
+* [x] Сначала drain browser recorder events, потом проверять URL change.
+* [x] Добавить navigation correlation с последним user action.
+* [x] Не записывать click-caused navigation как `открыт` перед click.
+* [x] Для click-caused navigation генерировать:
 
   * click step;
   * optional `ожидаю адрес`.
-* [ ] `открыт` использовать только для explicit navigation/open.
-* [ ] Добавить correlation window, например 0–2000ms.
-* [ ] Добавить immediate event flush для navigation-causing actions.
-* [ ] Защититься от потери old-page event queue при full page navigation.
-* [ ] Добавить тесты:
+* [x] `открыт` использовать только для explicit navigation/open.
+* [x] Добавить correlation window, например 0–2000ms.
+* [x] Добавить immediate event flush для navigation-causing actions.
+* [x] Защититься от потери old-page event queue при full page navigation.
+* [x] Настройка отключения `ожидаю адрес` после click (URL wait disabled).
+* [x] Добавить тесты:
 
   * full navigation after click;
+  * redirect without click;
+* [x] Добавить тесты:
+
   * SPA route after click;
   * delayed navigation;
-  * redirect without click;
   * old page destroyed before polling.
 
 ## Acceptance Criteria
 
-* [ ] Click, вызывающий navigation, записывается до navigation step.
-* [ ] Recorder не выводит `открыт URL` перед click, который вызвал этот URL.
-* [ ] Full page navigation не теряет preceding click.
-* [ ] SPA route change не меняет порядок событий.
-* [ ] Initial page open всё ещё записывается как `открыт`.
-* [ ] Generated scenario replays in logical user order.
+* [x] Click, вызывающий navigation, записывается до navigation step.
+* [x] Recorder не выводит `открыт URL` перед click, который вызвал этот URL.
+* [x] Full page navigation не теряет preceding click.
+* [x] SPA route change не меняет порядок событий.
+* [x] Initial page open всё ещё записывается как `открыт`.
+* [x] Generated scenario replays in logical user order.
 
 ---
 
@@ -1047,13 +1115,15 @@ frontend report opening logic
 
 ## Manual QA
 
-* [ ] Run с HTML/Allure/traces.
-* [ ] Открыть report.
-* [ ] Run повторно.
-* [ ] Проверить старый report и latest report.
-* [ ] Проверить scenario outline с двумя examples.
-* [ ] Проверить canceled run partial report.
-* [ ] Проверить Allure output после failed write simulation.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Run с HTML/Allure/traces. _(Go report write tests)_
+* [x] Открыть report. _(E2E `html-report.spec.ts`)_
+* [ ] Run повторно. _(desktop — проверить latest pointer)_
+* [ ] Проверить старый report и latest report. _(desktop)_
+* [x] Проверить scenario outline с двумя examples. _(Go fixtures)_
+* [ ] Проверить canceled run partial report. _(desktop)_
+* [ ] Проверить Allure output после failed write simulation. _(desktop)_
 
 ---
 
@@ -1095,22 +1165,24 @@ internal/player/runner_parallel.go
 * [x] Browser pool закрывает все sessions.
 * [x] Долгие stuck calls видны в logs/metrics.
 * [x] Cancel/shutdown latency измерима.
-* [ ] Live browser reuse не ломается.
+* [x] Live browser reuse не ломается.
 
 ## Manual QA
 
-* [ ] Run/cancel 20 раз.
-* [ ] Cancel во время navigation/wait/download.
-* [ ] Parallel run с failure.
-* [ ] Close app during run.
-* [ ] Проверить, что browsers закрылись.
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md).
+
+* [x] Run/cancel 20 раз. _(Go cancel/goroutine tests)_
+* [x] Cancel во время navigation/wait/download. _(Go integration)_
+* [x] Parallel run с failure. _(Go `parallel_cancel_integration`)_
+* [ ] Close app during run. _(desktop — вручную)_
+* [x] Проверить, что browsers закрылись. _(desktop-smoke 26/26)_
 
 ---
 
 # 8.1. Stabilize Browser Context Isolation
 
 **Priority:** Medium / High
-**Status:** Planned
+**Status:** Done
 **Area:** Browser Context / Scenario Isolation / Parallel Execution
 **Parent Section:** `8. Stabilize Playwright Runner Lifecycle`
 
@@ -1129,11 +1201,11 @@ internal/player/runner_parallel.go
 
 ## Tasks
 
-* [ ] Явно задокументировать browser context reuse policy.
-* [ ] Проверить context/page lifecycle per scenario.
-* [ ] Проверить behavior в parallel workers.
-* [ ] Определить, когда context reuse допустим.
-* [ ] Если reuse disabled — очищать:
+* [x] Явно задокументировать browser context reuse policy (`docs/architecture/browser-context-policy.md`).
+* [x] Проверить context/page lifecycle per scenario.
+* [x] Проверить behavior в parallel workers.
+* [x] Определить, когда context reuse допустим.
+* [x] Если reuse disabled — очищать:
 
   * cookies;
   * localStorage;
@@ -1142,18 +1214,18 @@ internal/player/runner_parallel.go
   * downloads;
   * permissions;
   * route/network state.
-* [ ] Если auth state reuse включён — сделать это explicit setting.
-* [ ] Artifacts/downloads/traces изолировать per case.
-* [ ] Добавить тест: Scenario A не влияет на Scenario B.
-* [ ] Добавить тест: parallel scenarios не делят storage accidentally.
+* [x] Если auth state reuse включён — сделать это explicit setting (TestClient profile).
+* [x] Artifacts/downloads/traces изолировать per case.
+* [x] Добавить тест: Scenario A не влияет на Scenario B.
+* [x] Добавить тест: parallel scenarios не делят storage accidentally.
 
 ## Acceptance Criteria
 
-* [ ] Сценарии изолированы по умолчанию или reuse явно включён.
-* [ ] Parallel workers не делят mutable browser state случайно.
-* [ ] Auth reuse контролируемый, не implicit.
-* [ ] Downloads/artifacts не смешиваются между cases.
-* [ ] Scenario A не влияет на Scenario B.
+* [x] Сценарии изолированы по умолчанию или reuse явно включён.
+* [x] Parallel workers не делят mutable browser state случайно.
+* [x] Auth reuse контролируемый, не implicit.
+* [x] Downloads/artifacts не смешиваются между cases.
+* [x] Scenario A не влияет на Scenario B.
 
 ---
 
@@ -1224,6 +1296,8 @@ internal/scenario
 * [x] Performance можно измерить через benchmarks/profiles.
 
 ## Manual QA
+
+> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md). Все пункты — desktop.
 
 * [ ] Открыть large feature.
 * [ ] Быстро печатать 100 символов.
@@ -1332,7 +1406,9 @@ docs/architecture
 5. Stabilize Backend Storage, Locks and File Operations
 6. Stabilize Recorder Lifecycle
 6.1. Stabilize Element Picker and Selector Generation
+6.1.1. Component-Library Selector Heuristics
 6.2. Stabilize Browser Selector Validation
+6.2.1. Validation Diagnostics in HTML Report
 6.3. Stabilize Recorder Event Ordering and Navigation Causality
 7. Stabilize Reports and Artifacts
 8. Stabilize Playwright Runner Lifecycle

@@ -17,9 +17,14 @@ var ErrPickerCancelled = errors.New("выбор элемента отменён"
 
 type pickerBinding struct {
 	mu            sync.Mutex
-	result        chan string
+	result        chan pickBindingResult
 	allowedPage   playwright.Page
 	allowedOrigin string
+}
+
+type pickBindingResult struct {
+	cancelled bool
+	payload   PickPayload
 }
 
 func pageOrigin(raw string) string {
@@ -89,7 +94,7 @@ func ensurePickerBindings(ctx playwright.BrowserContext) (*pickerBinding, error)
 		pickerMu.Unlock()
 		return pb, nil
 	}
-	pb := &pickerBinding{result: make(chan string, 1)}
+	pb := &pickerBinding{result: make(chan pickBindingResult, 1)}
 	pickerBindings[ctx] = pb
 	pickerMu.Unlock()
 
@@ -100,9 +105,12 @@ func ensurePickerBindings(ctx playwright.BrowserContext) (*pickerBinding, error)
 		if len(args) == 0 {
 			return nil
 		}
-		selector, _ := args[0].(string)
+		payload, err := parsePickPayload(args[0])
+		if err != nil {
+			return nil
+		}
 		select {
-		case pb.result <- selector:
+		case pb.result <- pickBindingResult{payload: payload}:
 		default:
 		}
 		return nil
@@ -115,7 +123,7 @@ func ensurePickerBindings(ctx playwright.BrowserContext) (*pickerBinding, error)
 			return nil
 		}
 		select {
-		case pb.result <- "":
+		case pb.result <- pickBindingResult{cancelled: true}:
 		default:
 		}
 		return nil
@@ -136,27 +144,28 @@ func drainPickerResults(pb *pickerBinding) {
 	}
 }
 
-func PickSelectorOnPage(ctx context.Context, page playwright.Page) (string, error) {
+func PickSelectorOnPage(ctx context.Context, page playwright.Page) (PickPayload, error) {
 	if page == nil {
-		return "", fmt.Errorf("страница браузера недоступна")
+		return PickPayload{}, fmt.Errorf("страница браузера недоступна")
 	}
 	bctx := page.Context()
 	pb, err := ensurePickerBindings(bctx)
 	if err != nil {
-		return "", fmt.Errorf("picker bindings: %w", err)
+		return PickPayload{}, fmt.Errorf("picker bindings: %w", err)
 	}
 	drainPickerResults(pb)
 
 	if _, err := page.Evaluate(selector.HeuristicsJS); err != nil {
-		return "", fmt.Errorf("inject heuristics: %w", err)
+		return PickPayload{}, fmt.Errorf("inject heuristics: %w", err)
 	}
 	if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
 		_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+		_ = selector.ApplyLibraryHeuristicsFromSettings(page, appCfg)
 	}
 
 	if _, err := page.Evaluate(selector.PickerInstallScript); err != nil {
 		uninstallPicker(page)
-		return "", fmt.Errorf("install picker: %w", err)
+		return PickPayload{}, fmt.Errorf("install picker: %w", err)
 	}
 	pb.setAllowedPage(page)
 	defer pb.clearAllowedPage()
@@ -167,16 +176,16 @@ func PickSelectorOnPage(ctx context.Context, page playwright.Page) (string, erro
 	select {
 	case <-ctx.Done():
 		uninstallPicker(page)
-		return "", ctx.Err()
+		return PickPayload{}, ctx.Err()
 	case <-timeout.C:
 		uninstallPicker(page)
-		return "", fmt.Errorf("время выбора элемента истекло")
+		return PickPayload{}, fmt.Errorf("время выбора элемента истекло")
 	case value := <-pb.result:
 		uninstallPicker(page)
-		if value == "" {
-			return "", ErrPickerCancelled
+		if value.cancelled {
+			return PickPayload{}, ErrPickerCancelled
 		}
-		return value, nil
+		return value.payload, nil
 	}
 }
 

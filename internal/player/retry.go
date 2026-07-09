@@ -16,22 +16,42 @@ const (
 	defaultRetryBackoff     = 200 * time.Millisecond
 )
 
-func isRetryableAction(kind string) bool {
-	switch kind {
-	case "click", "double-click", "hover", "fill", "check", "uncheck", "clear",
-		"select", "select-option", "press-in", "scroll-to", "scroll-into-view",
-		"drag-drop", "upload", "download-click",
-		"assert-visible", "assert-hidden", "assert-enabled", "assert-disabled", "assert-selected",
-		"assert-text", "assert-text-regex", "assert-value", "assert-count",
-		"assert-url", "assert-url-contains",
-		"wait-visible", "wait-hidden", "wait-enabled", "wait-disabled", "wait-url":
-		return true
-	default:
-		return false
+func (e *StepExecutor) runAction(ctx context.Context, session *browserSession, action stepdsl.Action, runCtx *RunContext, stepIdx int) error {
+	if !e.shouldRetryAction(action.Kind) {
+		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
 	}
+	attempts, err := e.runWithRetries(ctx, action.Kind, func() error {
+		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
+	})
+	if runCtx != nil && stepIdx >= 0 && attempts > 1 {
+		runCtx.setStepRetryAttempts(stepIdx, attempts-1)
+	}
+	return err
 }
 
-// isRetryableStepError reports transient Playwright / network failures worth retrying.
+func (e *StepExecutor) runWithRetries(ctx context.Context, label string, fn func() error) (int, error) {
+	attempts := e.maxActionRetries() + 1
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return attempt + 1, err
+		}
+		if attempt > 0 {
+			logx.Debug("step retry", "kind", label, "attempt", attempt+1, "max", attempts, "error", lastErr)
+			if err := sleepRetryBackoff(ctx, attempt, e.retryBackoff()); err != nil {
+				return attempt + 1, err
+			}
+		}
+		lastErr = fn()
+		if lastErr == nil {
+			return attempt + 1, nil
+		}
+		if !isRetryableStepError(lastErr) {
+			return attempt + 1, lastErr
+		}
+	}
+	return attempts, lastErr
+}
 func isRetryableStepError(err error) bool {
 	if err == nil {
 		return false
@@ -100,39 +120,6 @@ func (e *StepExecutor) retryBackoff() time.Duration {
 		return e.options.RetryBackoff
 	}
 	return defaultRetryBackoff
-}
-
-func (e *StepExecutor) runAction(ctx context.Context, session *browserSession, action stepdsl.Action, runCtx *RunContext) error {
-	if !isRetryableAction(action.Kind) {
-		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
-	}
-	return e.runWithRetries(ctx, action.Kind, func() error {
-		return executeAction(ctx, session, action, e.options.BaseURL, runCtx)
-	})
-}
-
-func (e *StepExecutor) runWithRetries(ctx context.Context, label string, fn func() error) error {
-	attempts := e.maxActionRetries() + 1
-	var lastErr error
-	for attempt := 0; attempt < attempts; attempt++ {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if attempt > 0 {
-			logx.Debug("step retry", "kind", label, "attempt", attempt+1, "max", attempts, "error", lastErr)
-			if err := sleepRetryBackoff(ctx, attempt, e.retryBackoff()); err != nil {
-				return err
-			}
-		}
-		lastErr = fn()
-		if lastErr == nil {
-			return nil
-		}
-		if !isRetryableStepError(lastErr) {
-			return lastErr
-		}
-	}
-	return lastErr
 }
 
 func sleepRetryBackoff(ctx context.Context, attempt int, base time.Duration) error {

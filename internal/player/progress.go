@@ -15,6 +15,7 @@ type RunProgressEvent struct {
 	Phase       RunProgressPhase `json:"phase"`
 	Index       int              `json:"index"`
 	Total       int              `json:"total"`
+	CaseID      string           `json:"caseId,omitempty"`
 	FeaturePath string           `json:"featurePath,omitempty"`
 	Scenario    string           `json:"scenario,omitempty"`
 	Success     bool             `json:"success,omitempty"`

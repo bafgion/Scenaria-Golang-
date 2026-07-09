@@ -456,6 +456,7 @@
     parallelWorkers: settingsWorkers,
     slowMo: settingsSlowMo,
     scrollBeforeClick: settingsScrollBeforeClick,
+    disableRecordUrlWait: settingsDisableRecordUrlWait,
     hoverRecordMinMs: settingsHoverRecordMinMs,
     maxLoopIterations: settingsLoops,
     checkUpdatesOnStartup: settingsCheckUpdatesOnStartup,
@@ -655,6 +656,10 @@
   $: projectReplaceBusy = $projectReplaceStore.busy
   $: pickerSelector = $pickerDialogStore.selector
   $: pickerChoices = $pickerDialogStore.choices
+  $: pickerCandidates = $pickerDialogStore.candidates
+  $: pickerWarnings = $pickerDialogStore.warnings
+  $: pickerSuggestedAction = $pickerDialogStore.suggestedAction
+  $: pickerSuggestedChoice = $pickerDialogStore.suggestedChoice
   $: httpAuthHost = $httpAuthDialogStore.host
   $: stepsHelpQuery = $stepsHelpDialogStore.query
   $: otpEmail = $otpDialogStore.email
@@ -879,6 +884,7 @@
       layoutStore.showSidebar()
     }
     if (id === 'validate' || id === 'dry-run') {
+      menuStore.open('run')
       void tick().then(() => tick().then(() => onboardingTour?.relayout()))
     }
     if (id === 'journal') {
@@ -1145,7 +1151,7 @@
     unsubscribers.push(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }))
     unsubscribers.push(() => window.removeEventListener('click', onDocClick))
     unsubscribers.push(() => document.removeEventListener('visibilitychange', onVisibility))
-    if (new URLSearchParams(location.search).has('e2e')) {
+    if (new URLSearchParams(location.search).has('e2e') || (window as unknown as { __SCENARIA_E2E_MOCK__?: boolean }).__SCENARIA_E2E_MOCK__) {
       ;(window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale = () =>
         checkActiveTabDiskStale()
       ;(window as unknown as {
@@ -1154,6 +1160,10 @@
       ;(window as unknown as {
         __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
       }).__e2eLoadFeature = (path, forceActivate = false) => loadFeature(path, { forceActivate })
+      ;(window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession = async () => {
+        sessionStore.flushPersist(() => void persistSettings())
+        await persistSettings()
+      }
       unsubscribers.push(() => {
         delete (window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale
         delete (window as unknown as {
@@ -1162,6 +1172,7 @@
         delete (window as unknown as {
           __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
         }).__e2eLoadFeature
+        delete (window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession
       })
     }
     } catch (err) {
@@ -1855,6 +1866,7 @@
       await refreshRunResults()
       await refreshArtifacts()
       schedulePersistSession()
+      await flushPendingStartupUpdateCheck()
     } catch (e: any) {
       appendLog(tr('journal.error.generic', { error: String(e) }))
       setStatus(String(e), 'error')
@@ -3491,7 +3503,7 @@
     const allowPartialCanceledReport =
       runCancelled &&
       (result.entries?.some((e) => e.success || (e.message || '').trim().length > 0) ?? false)
-    const actualHtmlPath = (result.reportPath || result.htmlPath || htmlPath || '').trim()
+    const actualHtmlPath = (result.reportPath || result.htmlPath || '').trim()
     if (runOpts.html && actualHtmlPath && (!runCancelled || allowPartialCanceledReport)) {
       try {
         if (await ArtifactExists(actualHtmlPath)) {
@@ -3542,7 +3554,7 @@
     executeRun(dialogBinds.bindRunForm)
   }
 
-  async function validateProject(browser: boolean, browserName = settingsBrowser || 'chromium', targets: string[] = []) {
+  async function validateProject(browser: boolean, browserName = settingsBrowser || 'chromium', targets: string[] = [], validationMode: 'static' | 'flow' = 'static') {
     if (!projectPath) return
     appendLog(browser ? tr('journal.validate.startingBrowser') : tr('journal.validate.starting'))
     layoutStore.openBottomPanel()
@@ -3557,6 +3569,7 @@
             browser: browserName || 'chromium',
             skipBrowser: false,
             targets,
+            mode: validationMode,
           }),
         )
         const panelIssues = issues || []
@@ -3605,7 +3618,7 @@
     dialogsStore.open('showValidate')
   }
 
-  async function confirmValidate(payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) {
+  async function confirmValidate(payload: { browser: string; syntaxOnly: boolean; flowAware: boolean; scope: 'project' | 'current' }) {
     dialogsStore.close('showValidate')
     let targets: string[] = []
     if (payload.scope === 'current' && activeTab && !isWelcome) {
@@ -3616,7 +3629,7 @@
         return
       }
     }
-    await validateProject(!payload.syntaxOnly, payload.browser, targets)
+    await validateProject(!payload.syntaxOnly, payload.browser, targets, payload.flowAware ? 'flow' : 'static')
   }
 
   function openInitProjectDialog() {
@@ -3976,6 +3989,12 @@
     await checkUpdatesOnStartup()
   }
 
+  async function flushPendingStartupUpdateCheck() {
+    if (!updateDialogStore.snapshot().pendingStartupCheck) return
+    updateDialogStore.setPendingStartupCheck(false)
+    await checkUpdatesOnStartup()
+  }
+
   async function checkUpdates() {
     appendLog(tr('journal.update.checking'))
     try {
@@ -4134,6 +4153,7 @@
           settingsHeadless,
           settingsScrollBeforeClick,
           settingsHoverRecordMinMs,
+          !settingsDisableRecordUrlWait,
         )
       }
       await persistSettings()
@@ -4754,8 +4774,24 @@
     pickerDialogStore.setResult(
       result.selector,
       await PickerStepChoices(result.selector, tr('dialogs.record.gherkinGiven')),
+      result.candidates || [],
+      result.warnings || [],
+      result.suggested_action || '',
+      result.suggested_choice ?? 0,
     )
     dialogsStore.open('showPickerStep')
+  }
+
+  async function refreshPickerChoices(selector: string) {
+    const state = pickerDialogStore.snapshot()
+    pickerDialogStore.setResult(
+      selector,
+      await PickerStepChoices(selector, tr('dialogs.record.gherkinGiven')),
+      state.candidates,
+      state.warnings,
+      state.suggestedAction,
+      state.suggestedChoice,
+    )
   }
 
   function insertPickerStep(text: string) {
@@ -5747,6 +5783,7 @@
   <ValidateDialog
     bind:browser={dialogBinds.bindValidateBrowser}
     bind:syntaxOnly={dialogBinds.bindValidateSyntaxOnly}
+    bind:flowAware={dialogBinds.bindValidateFlowAware}
     bind:scope={dialogBinds.bindValidateScope}
     canValidateCurrent={!isWelcome && !!activeTab}
     currentFileName={!isWelcome && activeTab ? basename(activeTab) : ''}
@@ -5830,6 +5867,7 @@
     bind:navOnlyRecording={dialogBinds.bindNavOnlyRecording}
     bind:hoverRecord={dialogBinds.bindHoverRecord}
     bind:scrollBeforeClick={dialogBinds.bindSettingsScrollBeforeClick}
+    bind:disableRecordUrlWait={dialogBinds.bindSettingsDisableRecordUrlWait}
     bind:hoverRecordMinMs={dialogBinds.bindSettingsHoverRecordMinMs}
     bind:toolbarCompact={dialogBinds.bindToolbarCompact}
     bind:stepsPanelVisible={dialogBinds.bindStepsPanelVisible}
@@ -5837,6 +5875,8 @@
     bind:checkUpdatesOnStartup={dialogBinds.bindSettingsCheckUpdatesOnStartup}
     bind:selectorClickStrategies={dialogBinds.bindSettingsSelectorClickStrategies}
     bind:selectorInputStrategies={dialogBinds.bindSettingsSelectorInputStrategies}
+    bind:libraryHeuristicsMui={dialogBinds.bindSettingsLibraryHeuristicsMui}
+    bind:libraryHeuristicsAnt={dialogBinds.bindSettingsLibraryHeuristicsAnt}
     bind:navWaitUntil={dialogBinds.bindSettingsNavWaitUntil}
     bind:htmlReportOpenMode={dialogBinds.bindHtmlReportOpenMode}
     projectOpen={!!projectPath}
@@ -5985,7 +6025,12 @@
   <PickerStepDialog
     selector={pickerSelector}
     choices={pickerChoices}
+    candidates={pickerCandidates}
+    warnings={pickerWarnings}
+    suggestedAction={pickerSuggestedAction}
+    suggestedChoice={pickerSuggestedChoice}
     onInsert={insertPickerStep}
+    onSelectorChange={refreshPickerChoices}
     onClose={() => (dialogsStore.close('showPickerStep'))}
   />
 {/if}

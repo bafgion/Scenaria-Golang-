@@ -4,6 +4,7 @@ import {
   createEventStalenessGuards,
   createStaleEventLogger,
   formatRunProgressLabel,
+  resolveRunProgressCounters,
   shouldRefreshRunResultsFromProgress,
   unwrapProjectEvent,
 } from './wailsEventsController'
@@ -18,11 +19,19 @@ describe('wailsEventsController', () => {
   it('formats progress label with fallback counters', () => {
     expect(
       formatRunProgressLabel(
-        { scenario: 'Scenario A', total: 5, index: 2 },
+        { scenario: 'Scenario A', total: 5, index: 2, phase: 'scenario_start' },
         0,
         0,
       ),
     ).toBe('Scenario A (2/5)')
+
+    expect(
+      formatRunProgressLabel(
+        { scenario: 'Scenario B', total: 5, phase: 'scenario_done' },
+        5,
+        3,
+      ),
+    ).toBe('Scenario B (3/5)')
 
     expect(
       formatRunProgressLabel(
@@ -31,6 +40,17 @@ describe('wailsEventsController', () => {
         1,
       ),
     ).toBe('demo.feature (1/3)')
+  })
+
+  it('increments completed count only on scenario_done', () => {
+    expect(resolveRunProgressCounters({ phase: 'scenario_start', total: 4 }, 0, 1)).toEqual({
+      total: 4,
+      completed: 1,
+    })
+    expect(resolveRunProgressCounters({ phase: 'scenario_done', total: 4 }, 4, 2)).toEqual({
+      total: 4,
+      completed: 3,
+    })
   })
 
   it('unwraps project event envelopes including null payload', () => {

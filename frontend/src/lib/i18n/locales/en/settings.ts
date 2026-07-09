@@ -85,6 +85,10 @@ export const settings = {
       title: 'Record hover',
       description: 'Add steps when the cursor hovers over elements.',
     },
+    recordUrlWait: {
+      title: 'Wait for URL after click',
+      description: 'After a click that navigates, record `ожидаю адрес` instead of `открыт` before the click.',
+    },
     hoverMin: {
       title: 'Minimum hover',
       description: 'How many milliseconds the cursor must stay on an element before a hover step is recorded.',
@@ -255,6 +259,10 @@ export const settings = {
     resetInputs: 'Reset inputs',
     contextual: 'Contextual has-text',
     text: 'has-text by text',
+    libraryTitle: 'Component libraries',
+    libraryDesc: 'Optional selector hints for Material UI and Ant Design. Generic sites are unaffected when no library markup is detected.',
+    libraryMui: 'Material UI (MUI)',
+    libraryAnt: 'Ant Design',
   },
   plugins: {
     playwright: 'Playwright',

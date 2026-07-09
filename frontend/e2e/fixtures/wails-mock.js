@@ -288,6 +288,14 @@
     targetPath: '',
   }
 
+  const emitRecordSteps = () => {
+    setTimeout(() => {
+      for (const step of liveRecord.steps) {
+        emitE2E('record-step', step)
+      }
+    }, 80)
+  }
+
   const postRecordSteps = [
     { index: 0, line: 'нажимаю "#login"' },
     { index: 1, line: 'ввожу "user" в "#email"' },
@@ -673,12 +681,13 @@
             : req.output || (mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : `${E2E_PROJECT}/smoke.feature`)
         liveRecord.targetPath = mode === 'record-resume' ? '' : recordOutput
         emitE2E('browser-opened', {})
-        emitE2E('record-started', { resume: false, output: recordOutput })
-        queueMicrotask(() => {
-          for (const step of liveRecord.steps) {
-            emitE2E('record-step', step)
-          }
+        emitE2E('record-started', {
+          resume: false,
+          output: recordOutput,
+          recordSessionId: liveRecord.recordSessionId,
+          browserSessionId: liveRecord.browserSessionId,
         })
+        emitRecordSteps()
         if (mode === 'record-idle') {
           setTimeout(() => emitE2E('record-stopped', { reason: 'idle', idleSeconds: 30 }), 400)
         }
@@ -708,12 +717,13 @@
       if (mode === 'record-resume') {
         liveRecord.steps = [...resumeRecordSteps]
         liveRecord.targetPath = ''
-        emitE2E('record-started', { append: true, resume: true })
-        queueMicrotask(() => {
-          for (const step of liveRecord.steps) {
-            emitE2E('record-step', step)
-          }
+        emitE2E('record-started', {
+          append: true,
+          resume: true,
+          recordSessionId: liveRecord.recordSessionId,
+          browserSessionId: liveRecord.browserSessionId,
         })
+        emitRecordSteps()
         return
       }
       liveRecord.steps = []
@@ -840,5 +850,6 @@
   window.__e2eEmit = emitE2E
   window.__e2eLastRunRequest = () => lastRunRequest
   window.__e2eFocusBrowserCalls = () => focusBrowserCalls
+  window.__SCENARIA_E2E_MOCK__ = true
   window.go = { wailsapp: { App: app } }
 })()

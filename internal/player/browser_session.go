@@ -33,6 +33,7 @@ type PlaywrightExecutorOptions struct {
 	StepScreenshots   bool
 	MaxActionRetries  int
 	RetryBackoff      time.Duration
+	RetryPolicy       RetryPolicy
 }
 
 type PlaywrightExecutor struct {
@@ -556,6 +557,11 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 			return err
 		}
 		return nil
+	case "wait-url":
+		if err := waitForURL(ctx, page, action.Value1, false); err != nil {
+			return err
+		}
+		return nil
 	case "assert-url-contains":
 		if err := waitForURL(ctx, page, action.Value1, true); err != nil {
 			return err
@@ -604,10 +610,13 @@ func executeAction(ctx context.Context, session *browserSession, action stepdsl.
 		if err != nil {
 			return err
 		}
-		duration = capWaitDuration(ctx, duration)
-		if duration <= 0 {
-			return ctx.Err()
+		if duration < 0 {
+			return fmt.Errorf("wait duration must not be negative: %q", action.Value1)
 		}
+		if duration == 0 {
+			return nil
+		}
+		duration = capWaitDuration(ctx, duration)
 		timer := time.NewTimer(duration)
 		defer timer.Stop()
 		select {

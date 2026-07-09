@@ -143,6 +143,11 @@ func (s *Service) OpenHTMLReport(path string) RunResult {
 		}
 		path = paths.RemapScenariaArtifact(root, confined)
 	}
+	resolved, err := report.ResolveHTMLReportPath(root, path)
+	if err != nil {
+		return RunResult{Error: err.Error()}
+	}
+	path = resolved
 	if _, err := os.Stat(path); err != nil {
 		return RunResult{Error: fmt.Sprintf("report not found: %s", path)}
 	}

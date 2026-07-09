@@ -44,6 +44,11 @@ func recordedStepLine(step RecordedStep) (string, bool) {
 			return "", false
 		}
 		return fmt.Sprintf(`перетаскиваю "%s" в "%s"`, escapeStepText(step.Selector), escapeStepText(step.Value)), true
+	case "wait-url":
+		if step.Value == "" {
+			return "", false
+		}
+		return fmt.Sprintf(`ожидаю адрес "%s"`, escapeStepText(step.Value)), true
 	default:
 		return "", false
 	}

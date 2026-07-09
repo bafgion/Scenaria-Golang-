@@ -85,6 +85,10 @@ export const settings = {
       title: 'Записывать наведение',
       description: 'Добавлять шаги при наведении курсора на элементы.',
     },
+    recordUrlWait: {
+      title: 'Ожидать адрес после клика',
+      description: 'После клика с переходом записывать `ожидаю адрес`, а не `открыт` перед кликом.',
+    },
     hoverMin: {
       title: 'Минимальное наведение',
       description: 'Сколько миллисекунд курсор должен оставаться на элементе перед записью hover.',
@@ -255,6 +259,10 @@ export const settings = {
     resetInputs: 'Сбросить поля',
     contextual: 'Контекстный has-text',
     text: 'has-text по тексту',
+    libraryTitle: 'UI-библиотеки',
+    libraryDesc: 'Дополнительные подсказки для Material UI и Ant Design. На обычных сайтах без разметки библиотек поведение не меняется.',
+    libraryMui: 'Material UI (MUI)',
+    libraryAnt: 'Ant Design',
   },
   plugins: {
     playwright: 'Playwright',

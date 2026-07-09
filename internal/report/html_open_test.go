@@ -34,3 +34,41 @@ func TestPreferredHTMLReportPathFallback(t *testing.T) {
 		t.Fatalf("fallback to full: got %q", got)
 	}
 }
+
+func TestResolveHTMLReportPathPrefersLatestRun(t *testing.T) {
+	root := t.TempDir()
+	scenaria := filepath.Join(root, ".scenaria")
+	legacy := filepath.Join(scenaria, "report.html")
+	latestHTML := filepath.Join(scenaria, "runs", "run-1", "report.html")
+	if err := os.MkdirAll(filepath.Dir(latestHTML), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(latestHTML, []byte("fresh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteLatestRunPointer(root, RunArtifactLayout{
+		RunID:    "run-1",
+		Dir:      filepath.Dir(latestHTML),
+		HTMLPath: latestHTML,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveHTMLReportPath(root, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != latestHTML {
+		t.Fatalf("ResolveHTMLReportPath = %q, want %q", got, latestHTML)
+	}
+	got, err = ResolveHTMLReportPath(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != latestHTML {
+		t.Fatalf("empty path = %q, want %q", got, latestHTML)
+	}
+}

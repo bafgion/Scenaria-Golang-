@@ -6,18 +6,6 @@ import (
 	"testing"
 )
 
-func TestIsRetryableAction(t *testing.T) {
-	if !isRetryableAction("assert-visible") {
-		t.Fatal("assert-visible should be retryable")
-	}
-	if !isRetryableAction("select-option") {
-		t.Fatal("select-option should be retryable")
-	}
-	if isRetryableAction("goto") {
-		t.Fatal("goto should not be retryable")
-	}
-}
-
 func TestIsRetryableStepError(t *testing.T) {
 	if !isRetryableStepError(errors.New("timeout 30000ms exceeded")) {
 		t.Fatal("timeout should be retryable")

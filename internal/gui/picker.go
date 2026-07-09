@@ -12,9 +12,24 @@ type PickerStepChoice struct {
 	Preview     string `json:"preview"`
 }
 
+type SelectorCandidate struct {
+	Selector      string   `json:"selector"`
+	Strategy      string   `json:"strategy"`
+	Score         int      `json:"score"`
+	MatchesCount  int      `json:"matches_count"`
+	Unique        bool     `json:"unique"`
+	Visible       bool     `json:"visible"`
+	MatchesPicked bool     `json:"matches_picked"`
+	Warnings      []string `json:"warnings,omitempty"`
+}
+
 type PickSelectorResult struct {
-	Selector string `json:"selector"`
-	Error    string `json:"error"`
+	Selector        string              `json:"selector"`
+	Error           string              `json:"error"`
+	SuggestedAction string              `json:"suggested_action,omitempty"`
+	SuggestedChoice int                 `json:"suggested_choice,omitempty"`
+	Warnings        []string            `json:"warnings,omitempty"`
+	Candidates      []SelectorCandidate `json:"candidates,omitempty"`
 }
 
 func PickerStepChoices(selector, keyword string) []PickerStepChoice {
@@ -30,6 +45,8 @@ func PickerStepChoices(selector, keyword string) []PickerStepChoice {
 		selectorOnly bool
 	}{
 		{"Клик", fmt.Sprintf(`нажимаю %s`, quoted), "Клик по элементу", false},
+		{"Заполнить", fmt.Sprintf(`ввожу "" в %s`, quoted), "Ввод текста в поле", false},
+		{"Выбрать", fmt.Sprintf(`выбираю "" в %s`, quoted), "Выбор значения в списке", false},
 		{"Двойной клик", fmt.Sprintf(`дважды нажимаю %s`, quoted), "Двойной клик", false},
 		{"Наведение", fmt.Sprintf(`навожу %s`, quoted), "Наведение курсора", false},
 		{"Видимость", fmt.Sprintf(`вижу %s`, quoted), "Элемент виден", false},
@@ -56,6 +73,29 @@ func PickerStepChoices(selector, keyword string) []PickerStepChoice {
 		})
 	}
 	return out
+}
+
+// PickerSuggestedChoiceIndex maps picker suggested_action to PickerStepChoices label index.
+func PickerSuggestedChoiceIndex(suggestedAction string) int {
+	labelByAction := map[string]string{
+		"click":   "Клик",
+		"fill":    "Заполнить",
+		"select":  "Выбрать",
+		"check":   "Галочка",
+		"uncheck": "Снять галочку",
+		"hover":   "Наведение",
+	}
+	label, ok := labelByAction[strings.TrimSpace(suggestedAction)]
+	if !ok {
+		return 0
+	}
+	choices := PickerStepChoices("x", "Допустим")
+	for i, choice := range choices {
+		if choice.Label == label {
+			return i
+		}
+	}
+	return 0
 }
 
 func (s *Service) PickSelector() PickSelectorResult {

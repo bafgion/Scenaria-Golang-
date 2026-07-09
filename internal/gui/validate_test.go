@@ -55,3 +55,20 @@ func TestValidateFeatureContent_TestClientContext(t *testing.T) {
 		t.Fatalf("expected no issues for TestClient context, got %#v", issues)
 	}
 }
+
+func TestValidateFeatureContent_MalformedScenarioDoesNotBreakSibling(t *testing.T) {
+	content := `Функционал: X
+Сценарий: Good
+  Допустим открыт "https://example.com"
+  И закрываю браузер
+Сценарий: Bad
+  Когда битый шаг
+`
+	issues := ValidateFeatureContent(content)
+	if len(issues) != 1 {
+		t.Fatalf("expected 1 issue in malformed scenario only, got %d: %#v", len(issues), issues)
+	}
+	if issues[0].Line != 6 {
+		t.Fatalf("expected issue on malformed step line 6, got line %d", issues[0].Line)
+	}
+}

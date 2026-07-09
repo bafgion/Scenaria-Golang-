@@ -27,6 +27,12 @@ type HTMLOptions struct {
 	PreviousSummary   *RunSummaryDetailed
 	ModePairFullPath  string
 	ModePairLightPath string
+	SkipStepValidation bool
+	ValidationBrowser  string
+	ValidationHeadless bool
+	ValidationBaseURL  string
+	ValidationMode     string
+	StepValidations    map[string]map[int]htmlStepValidation
 }
 
 type htmlReportPayload struct {
@@ -89,6 +95,8 @@ type htmlScenario struct {
 	Regressions       []htmlRegression   `json:"regressions,omitempty"`
 	DurationSparkline []int              `json:"duration_sparkline,omitempty"`
 	RunDiff           *htmlRunDiff       `json:"run_diff,omitempty"`
+	ValidationMode        string `json:"validation_mode,omitempty"`
+	ValidationLimitation  string `json:"validation_limitation,omitempty"`
 }
 
 type htmlStep struct {
@@ -99,6 +107,9 @@ type htmlStep struct {
 	Selector          string   `json:"selector,omitempty"`
 	Status            string   `json:"status"`
 	DurationMS        int64    `json:"duration_ms,omitempty"`
+	RetryAttempts     int      `json:"retry_attempts,omitempty"`
+	IterationPath     string   `json:"iteration_path,omitempty"`
+	TerminalAction    string   `json:"terminal_action,omitempty"`
 	Error             string   `json:"error,omitempty"`
 	Network           string   `json:"network,omitempty"`
 	Screenshot        string   `json:"screenshot,omitempty"`
@@ -110,6 +121,7 @@ type htmlStep struct {
 	DurationSparkline []int    `json:"duration_sparkline,omitempty"`
 	Tips              []string `json:"tips,omitempty"`
 	Gherkin           string   `json:"gherkin,omitempty"`
+	Validation        *htmlStepValidation `json:"validation,omitempty"`
 }
 
 type htmlHistory struct {
@@ -211,11 +223,23 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 	_ = os.MkdirAll(screenshotsDir, 0o755)
 
 	flakySteps := flakyStepFailures(payload.Flaky.Steps)
+	stepValidations := resolveStepValidations(result, opts)
 
 	payload.Scenarios = make([]htmlScenario, 0, len(result.ScenarioResults))
 	for i, sr := range result.ScenarioResults {
 		casePlan := findPlanCase(opts.Plan, sr)
 		sc := buildHTMLScenario(sr, casePlan, i, tracesDir, screenshotsDir, opts.LightMode, flakySteps)
+		featureKey := normalizeFeaturePath(sr.FeaturePath)
+		if byLine := stepValidations[featureKey]; len(byLine) > 0 {
+			applyStepValidations(&sc, byLine)
+		} else {
+			for key, byLine := range stepValidations {
+				if pathsMatchFeature(key, sr.FeaturePath) {
+					applyStepValidations(&sc, byLine)
+					break
+				}
+			}
+		}
 		sc.History = lookupHistory(history, sr)
 		sc.HistoryRuns = lookupHistoryRuns(history, sr, 5)
 		sc.Regressions = computeRegressions(sc)
@@ -421,14 +445,17 @@ func buildHTMLSteps(sr player.ScenarioResult, casePlan *player.RunCase, flaky ma
 		var offset int64
 		for _, rec := range sr.StepRecords {
 			step := htmlStep{
-				Index:        rec.Index,
-				Line:         rec.Line,
-				Keyword:      rec.Keyword,
-				Text:         rec.Text,
-				Selector:     rec.Selector,
-				Status:       rec.Status,
-				DurationMS:   rec.DurationMS,
-				Error:        rec.Error,
+				Index:          rec.Index,
+				Line:           rec.Line,
+				Keyword:        rec.Keyword,
+				Text:           rec.Text,
+				Selector:       rec.Selector,
+				Status:         rec.Status,
+				DurationMS:     rec.DurationMS,
+				RetryAttempts:  rec.RetryAttempts,
+				IterationPath:  player.FormatIterationPath(rec.IterationPath),
+				TerminalAction: rec.TerminalAction,
+				Error:          rec.Error,
 				Network:      rec.Network,
 				PageContext:  rec.PageContext,
 				DOMSnapshot:  rec.DOMSnapshot,

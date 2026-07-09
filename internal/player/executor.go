@@ -15,6 +15,15 @@ type ExecutorOptions struct {
 	MaxLoopIterations int
 	MaxActionRetries  int // 0 = default; <0 = disable retries
 	RetryBackoff      time.Duration
+	RetryPolicy       RetryPolicy
+	MaxActionAttempts int // 0 = DefaultMaxActionAttempts
+}
+
+func (e *StepExecutor) maxActionAttempts() int {
+	if e != nil && e.options.MaxActionAttempts > 0 {
+		return e.options.MaxActionAttempts
+	}
+	return DefaultMaxActionAttempts
 }
 
 func (e *StepExecutor) maxLoopIterations() int {
@@ -38,7 +47,7 @@ func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession
 			runCtx.SetPage(page)
 		}
 	}
-	for _, step := range steps {
+	for i, step := range steps {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -46,6 +55,13 @@ func (e *StepExecutor) ExecuteSteps(ctx context.Context, session *browserSession
 			return fmt.Errorf("line %d: %w", step.Line, err)
 		}
 		if session.isClosed() {
+			terminal := terminalActionFromStep(step)
+			if terminal == "" {
+				terminal = "close-browser"
+			}
+			if err := e.finishIfBrowserClosed(runCtx, steps, i+1, terminal); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
@@ -81,8 +97,11 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 				break
 			}
 			iterations++
-			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
-				return err
+			iterErr := runCtx.withIteration("while", iterations, func() error {
+				return e.ExecuteSteps(ctx, session, step.Children, runCtx)
+			})
+			if iterErr != nil {
+				return iterErr
 			}
 			if session.isClosed() {
 				return nil
@@ -112,8 +131,11 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
-				return err
+			iterErr := runCtx.withIteration("repeat", i+1, func() error {
+				return e.ExecuteSteps(ctx, session, step.Children, runCtx)
+			})
+			if iterErr != nil {
+				return iterErr
 			}
 			if session.isClosed() {
 				return nil
@@ -126,6 +148,12 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 
 	if gherkin.IsTestClientStep(step) {
 		return nil
+	}
+
+	if runCtx != nil {
+		if err := runCtx.consumeActionAttempt(e.maxActionAttempts()); err != nil {
+			return err
+		}
 	}
 
 	idx := -1
@@ -155,13 +183,16 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 	if session != nil {
 		session.clearNetworkFailure()
 	}
-	if err := e.runAction(ctx, session, action, runCtx); err != nil {
+	if err := e.runAction(ctx, session, action, runCtx, idx); err != nil {
 		if runCtx != nil && idx >= 0 {
 			runCtx.completeLeafStep(idx, selector, started, session, err)
 		}
 		return e.failLeafStep(runCtx, err)
 	}
 	if runCtx != nil {
+		if action.Kind == "close-browser" || action.Kind == "close-tab" {
+			runCtx.setStepTerminalAction(idx, action.Kind)
+		}
 		if idx >= 0 {
 			runCtx.completeLeafStep(idx, selector, started, session, nil)
 		}
@@ -189,9 +220,10 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 	if err != nil {
 		return err
 	}
+	// for_each uses live DOM: count is re-checked before each iteration.
 	locators, err := page.Locator(selector).Count()
 	if err != nil {
-		return fmt.Errorf("for_each locator failed: %w", err)
+		return fmt.Errorf("for_each locator %q: %w", selector, err)
 	}
 	for index := 0; index < locators; index++ {
 		if err := ctx.Err(); err != nil {
@@ -200,15 +232,28 @@ func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSessi
 		if index >= e.maxLoopIterations() {
 			return fmt.Errorf("превышен лимит итераций for_each (%d)", e.maxLoopIterations())
 		}
+		currentCount, err := page.Locator(selector).Count()
+		if err != nil {
+			return fmt.Errorf("for_each index %d selector %q: count failed: %w", index, selector, err)
+		}
+		if index >= currentCount {
+			return fmt.Errorf("for_each index %d selector %q: element removed during iteration (count %d)", index, selector, currentCount)
+		}
 		locator := page.Locator(selector).Nth(index)
-		text, _ := locator.InnerText()
+		text, err := locator.InnerText()
+		if err != nil {
+			return fmt.Errorf("for_each index %d selector %q: %w", index, selector, err)
+		}
 		text = strings.TrimSpace(text)
 		if text == "" {
-			text = fmt.Sprintf("%d", index+1)
+			return fmt.Errorf("for_each index %d selector %q: empty inner text", index, selector)
 		}
 		runCtx.Remember(step.ForEachVariable, text)
-		if err := e.ExecuteSteps(ctx, session, step.Children, runCtx); err != nil {
-			return err
+		iterErr := runCtx.withIteration("for_each", index+1, func() error {
+			return e.ExecuteSteps(ctx, session, step.Children, runCtx)
+		})
+		if iterErr != nil {
+			return iterErr
 		}
 		if session.isClosed() {
 			return nil

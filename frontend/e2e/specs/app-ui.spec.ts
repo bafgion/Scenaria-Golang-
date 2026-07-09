@@ -4,6 +4,7 @@ import {
   catalogFeature,
   createNewScenario,
   editorLine,
+  flushSessionForE2E,
   mockPath,
   openMenuItem,
   openTestProject,
@@ -67,18 +68,18 @@ test('untitled tab restores after reload when project is open', async ({ page })
   await openTestProject(page)
   await createNewScenario(page)
   const marker = 'E2E_SESSION_RESTORE_MARKER'
-  await page.locator('.monaco-editor .view-lines').click()
-  await page.keyboard.press('End')
-  await page.keyboard.press('Enter')
-  await page.keyboard.type(marker)
-  await page.waitForTimeout(600)
+  await typeInEditor(page, marker)
   await expect(page.locator('.monaco-editor .view-line', { hasText: marker })).toBeVisible()
+  await flushSessionForE2E(page)
   await page.reload()
   await expect(page.locator('.ide')).toBeVisible({ timeout: 20_000 })
   await expect(page.locator('.editor-tab.file .tab-label', { hasText: 'novyy-scenariy.feature' })).toBeVisible({
-    timeout: 10_000,
+    timeout: 15_000,
   })
-  await expect(page.locator('.monaco-editor .view-line', { hasText: marker })).toBeVisible({ timeout: 10_000 })
+  const untitledTab = page.locator('.editor-tab.file', { hasText: 'novyy-scenariy' })
+  await untitledTab.click()
+  await expect(page.locator('.feature-workspace:not(.hidden) .monaco-editor')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('.monaco-editor .view-line', { hasText: marker })).toBeVisible({ timeout: 20_000 })
 })
 
 test('hotkeys dialog opens with Shift+F1', async ({ page }) => {

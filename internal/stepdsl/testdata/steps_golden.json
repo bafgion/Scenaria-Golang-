@@ -19,6 +19,7 @@
   {"text": "проверяю текст \"OK\" в \"#status\"", "kind": "assert-text", "v1": "OK", "v2": "#status"},
   {"text": "проверяю что текст соответствует regex \"Pay.*1795\" в \"#pay\"", "kind": "assert-text-regex", "v1": "Pay.*1795", "v2": "#pay"},
   {"text": "проверяю url \"https://example.com/dashboard\"", "kind": "assert-url", "v1": "https://example.com/dashboard"},
+  {"text": "ожидаю адрес \"https://example.com/dashboard\"", "kind": "wait-url", "v1": "https://example.com/dashboard"},
   {"text": "url содержит \"dashboard\"", "kind": "assert-url-contains", "v1": "dashboard"},
   {"text": "скроллю к \"#footer\"", "kind": "scroll-to", "v1": "#footer"},
   {"text": "перетаскиваю \"#item\" в \"#list\"", "kind": "drag-drop", "v1": "#item", "v2": "#list"},

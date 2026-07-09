@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/player"
@@ -34,6 +35,7 @@ type LiveSession struct {
 	hoverRecord       bool
 	scrollBeforeClick bool
 	hoverRecordMinMs  int
+	recordURLWait     bool
 	resumeURL         string
 	mu                sync.Mutex
 	page              playwright.Page
@@ -41,7 +43,7 @@ type LiveSession struct {
 }
 
 func NewLiveSession() *LiveSession {
-	return &LiveSession{}
+	return &LiveSession{recordURLWait: true}
 }
 
 func (s *LiveSession) InitHeadless(headless bool) {
@@ -49,17 +51,24 @@ func (s *LiveSession) InitHeadless(headless bool) {
 }
 
 func (s *LiveSession) SetRecorderFlags(filterImportant, navOnly, hoverRecord bool) {
-	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0)
+	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0, true)
 }
 
-func (s *LiveSession) SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int) {
+func (s *LiveSession) SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int, recordURLWait bool) {
 	s.recMu.Lock()
 	s.filterImportant = filterImportant
 	s.navOnly = navOnly
 	s.hoverRecord = hoverRecord
 	s.scrollBeforeClick = scrollBeforeClick
 	s.hoverRecordMinMs = hoverRecordMinMs
+	s.recordURLWait = recordURLWait
 	s.recMu.Unlock()
+}
+
+func (s *LiveSession) RecordURLWaitAfterClick() bool {
+	s.recMu.RLock()
+	defer s.recMu.RUnlock()
+	return s.recordURLWait
 }
 
 func (s *LiveSession) RecorderPageConfig() PageRecorderConfig {
@@ -204,6 +213,7 @@ func (s *LiveSession) BeginCapture() error {
 		}
 		if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {
 			_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+			_ = selector.ApplyLibraryHeuristicsFromSettings(page, appCfg)
 		}
 		if err := ApplyPageRecorderConfig(page, s.RecorderPageConfig()); err != nil {
 			return fmt.Errorf("configure recorder: %w", err)
@@ -245,6 +255,25 @@ func (s *LiveSession) AppendGotoStep(url string, notify StepNotifier) {
 		return
 	}
 	appendGotoStep(s.steps, url, notify)
+}
+
+// AppendWaitURLStep records a post-interaction URL wait (thread-safe).
+func (s *LiveSession) AppendWaitURLStep(url string, notify StepNotifier) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.steps == nil {
+		return
+	}
+	appendWaitURLStep(s.steps, url, notify)
+}
+
+func (s *LiveSession) applyRecorderPollBatch(state *recorderPollState, events []recorderEvent, currentURL string, now time.Time, notify StepNotifier) (hadEvents bool, urlChanged bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.steps == nil {
+		return false, false
+	}
+	return applyRecorderPollBatch(s.steps, state, events, currentURL, now, notify)
 }
 
 func (s *LiveSession) RecordedStepCount() int {
@@ -329,11 +358,11 @@ func (s *LiveSession) FocusBrowser() error {
 }
 
 func (s *LiveSession) ApplyRecorderConfig(filterImportant, navOnly, hoverRecord bool) error {
-	return s.ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0)
+	return s.ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, false, 0, s.RecordURLWaitAfterClick())
 }
 
-func (s *LiveSession) ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int) error {
-	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick, hoverRecordMinMs)
+func (s *LiveSession) ApplyRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick bool, hoverRecordMinMs int, recordURLWait bool) error {
+	s.SetRecorderOptions(filterImportant, navOnly, hoverRecord, scrollBeforeClick, hoverRecordMinMs, recordURLWait)
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
@@ -371,15 +400,15 @@ func (s *LiveSession) ExportTestClient(name string) (*settings.TestClient, error
 	return player.CaptureTestClientFromPage(page, name)
 }
 
-func (s *LiveSession) PickSelector(ctx context.Context) (string, error) {
+func (s *LiveSession) PickSelector(ctx context.Context) (PickPayload, error) {
 	s.mu.Lock()
 	page := s.page
 	s.mu.Unlock()
 	if page == nil || page.IsClosed() {
-		return "", ErrBrowserClosed
+		return PickPayload{}, ErrBrowserClosed
 	}
 	if s.CaptureEnabled() && !s.IsPaused() {
-		return "", fmt.Errorf("поставьте запись на паузу")
+		return PickPayload{}, fmt.Errorf("поставьте запись на паузу")
 	}
 	return PickSelectorOnPage(ctx, page)
 }

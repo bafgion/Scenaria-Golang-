@@ -101,6 +101,7 @@ func runLiveBrowserSession(
 	})
 
 	lastURL := page.URL()
+	pollState := newRecorderPollState(lastURL, session.RecordURLWaitAfterClick())
 	lastEventAt := time.Now()
 	stepNotify := func(event RecordStepEvent) {
 		if opts.Callbacks.OnStepRecorded != nil {
@@ -214,39 +215,16 @@ func runLiveBrowserSession(
 			continue
 		}
 
-		urlChanged := false
-		if currentURL := page.URL(); currentURL != "" && currentURL != lastURL {
-			session.AppendGotoStep(currentURL, stepNotify)
-			lastURL = currentURL
-			lastEventAt = time.Now()
-			urlChanged = true
-		}
-
-		raw, err := page.Evaluate(`() => {
-			const r = window.__scenariaRecorder;
-			if (!r || !r.events.length) return [];
-			const out = r.events.splice(0, r.events.length);
-			return out;
-		}`)
-		if err != nil {
-			return fmt.Errorf("read recorder events: %w", err)
-		}
-		events, err := decodeEvents(raw)
+		events, err := drainRecorderEvents(page)
 		if err != nil {
 			return err
 		}
-		if len(events) > 0 {
+		hadEvents, urlChanged := session.applyRecorderPollBatch(&pollState, events, page.URL(), now, stepNotify)
+		if hadEvents || urlChanged {
 			lastEventAt = time.Now()
 		}
-		for _, event := range events {
-			detail := normalizeDetail(event.Detail)
-			step, ok := EventToRecordedStep(event.Type, detail)
-			if !ok {
-				continue
-			}
-			session.AppendCoalescedStep(step, stepNotify)
-		}
-		if len(events) > 0 || urlChanged {
+		lastURL = pollState.lastURL
+		if hadEvents || urlChanged {
 			idlePolls = 0
 			nextEvaluateAt = time.Now().Add(100 * time.Millisecond)
 		} else {
@@ -338,6 +316,7 @@ func injectSelectorOrderFromSettings(page playwright.Page) {
 		return
 	}
 	_ = selector.ApplySelectorOrder(page, appCfg.SelectorClickStrategies, appCfg.SelectorInputStrategies)
+	_ = selector.ApplyLibraryHeuristicsFromSettings(page, appCfg)
 }
 
 func injectRecorderOnPage(page playwright.Page) error {

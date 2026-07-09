@@ -9,6 +9,34 @@ import (
 	"github.com/bafgion/scenaria-golang/internal/report"
 )
 
+func TestReportServiceProjectArtifactsPrefersLatestRun(t *testing.T) {
+	root := t.TempDir()
+	sc := filepath.Join(root, ".scenaria")
+	legacy := filepath.Join(sc, "report.html")
+	latestHTML := filepath.Join(sc, "runs", "run-1", "report.html")
+	if err := os.MkdirAll(filepath.Dir(latestHTML), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(latestHTML, []byte("fresh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteLatestRunPointer(root, report.RunArtifactLayout{
+		RunID:    "run-1",
+		HTMLPath: latestHTML,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewReportService(func() string { return root }, nil, nil)
+	art := svc.ProjectArtifacts()
+	if art.HTMLReport != latestHTML {
+		t.Fatalf("HTMLReport = %q, want %q", art.HTMLReport, latestHTML)
+	}
+}
+
 func TestReportServiceProjectArtifacts(t *testing.T) {
 	root := t.TempDir()
 	sc := filepath.Join(root, ".scenaria")

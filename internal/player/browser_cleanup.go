@@ -41,12 +41,12 @@ func (s *browserSession) abortRun() {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.external {
-		s.setClosed()
+		// IDE live browser: cancel in-flight work via context, keep the page open for recording.
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.setClosed()
 }
 

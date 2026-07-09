@@ -109,11 +109,11 @@ func (s *RecorderService) FocusBrowser(session *recorder.LiveSession) error {
 	return session.FocusBrowser()
 }
 
-func (s *RecorderService) UpdateRecordingOptions(session *recorder.LiveSession, filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int) error {
+func (s *RecorderService) UpdateRecordingOptions(session *recorder.LiveSession, filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int, recordURLWait bool) error {
 	if session == nil {
 		return fmt.Errorf("запись не активна")
 	}
-	_ = session.ApplyRecorderOptions(filter, navOnly, hover, scrollBefore, hoverMinMs)
+	_ = session.ApplyRecorderOptions(filter, navOnly, hover, scrollBefore, hoverMinMs, recordURLWait)
 	session.RequestHeadless(headless)
 	return nil
 }
@@ -125,12 +125,37 @@ func (s *RecorderService) PickSelector(session *recorder.LiveSession, ctx contex
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	selector, err := session.PickSelector(ctx)
+	payload, err := session.PickSelector(ctx)
 	if err != nil {
 		if errors.Is(err, recorder.ErrPickerCancelled) {
 			return PickSelectorResult{Error: "отменено"}
 		}
 		return PickSelectorResult{Error: err.Error()}
 	}
-	return PickSelectorResult{Selector: selector}
+	return pickSelectorResultFromPayload(payload)
+}
+
+func pickSelectorResultFromPayload(payload recorder.PickPayload) PickSelectorResult {
+	out := PickSelectorResult{
+		Selector:        payload.Selector,
+		SuggestedAction: payload.SuggestedAction,
+		SuggestedChoice: PickerSuggestedChoiceIndex(payload.SuggestedAction),
+		Warnings:        payload.Warnings,
+	}
+	if len(payload.Candidates) > 0 {
+		out.Candidates = make([]SelectorCandidate, len(payload.Candidates))
+		for i, cand := range payload.Candidates {
+			out.Candidates[i] = SelectorCandidate{
+				Selector:      cand.Selector,
+				Strategy:      cand.Strategy,
+				Score:         cand.Score,
+				MatchesCount:  cand.MatchesCount,
+				Unique:        cand.Unique,
+				Visible:       cand.Visible,
+				MatchesPicked: cand.MatchesPicked,
+				Warnings:      cand.Warnings,
+			}
+		}
+	}
+	return out
 }

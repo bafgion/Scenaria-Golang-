@@ -14,11 +14,14 @@ export type AppSettingsState = {
   parallelWorkers: number
   slowMo: number
   scrollBeforeClick: boolean
+  disableRecordUrlWait: boolean
   hoverRecordMinMs: number
   maxLoopIterations: number
   checkUpdatesOnStartup: boolean
   selectorClickStrategies: string[]
   selectorInputStrategies: string[]
+  libraryHeuristicsMui: boolean
+  libraryHeuristicsAnt: boolean
   navWaitUntil: string
   editor: EditorSettings
   startUrl: string
@@ -31,11 +34,14 @@ export const defaultAppSettingsState: AppSettingsState = {
   parallelWorkers: 1,
   slowMo: 0,
   scrollBeforeClick: false,
+  disableRecordUrlWait: false,
   hoverRecordMinMs: 600,
   maxLoopIterations: 100,
   checkUpdatesOnStartup: true,
   selectorClickStrategies: ['text', 'contextual', 'aria', 'title', 'testid', 'id'],
   selectorInputStrategies: ['label', 'placeholder', 'aria', 'name', 'testid', 'id'],
+  libraryHeuristicsMui: true,
+  libraryHeuristicsAnt: true,
   navWaitUntil: 'domcontentloaded',
   editor: { ...DEFAULT_EDITOR_SETTINGS },
   startUrl: '',
@@ -60,6 +66,7 @@ export function createSettingsStore(initial: AppSettingsState = defaultAppSettin
         parallelWorkers: dto.parallelWorkers || 1,
         slowMo: dto.slowMo ?? 0,
         scrollBeforeClick: dto.scrollBeforeClick ?? false,
+        disableRecordUrlWait: dto.disableRecordUrlWait ?? false,
         hoverRecordMinMs: dto.hoverRecordMinMs || 600,
         maxLoopIterations: dto.maxLoopIterations || 100,
         checkUpdatesOnStartup: dto.checkUpdatesOnStartup !== false,
@@ -69,6 +76,8 @@ export function createSettingsStore(initial: AppSettingsState = defaultAppSettin
         selectorInputStrategies: dto.selectorInputStrategies?.length
           ? [...dto.selectorInputStrategies]
           : s.selectorInputStrategies,
+        libraryHeuristicsMui: dto.libraryHeuristicsMui !== false,
+        libraryHeuristicsAnt: dto.libraryHeuristicsAnt !== false,
         navWaitUntil: dto.navWaitUntil || 'domcontentloaded',
         editor: editorSettingsFromDTO(dto.editor),
         startUrl: dto.startUrl || '',
@@ -94,10 +103,13 @@ export function createSettingsStore(initial: AppSettingsState = defaultAppSettin
         slowMo: state.slowMo,
         maxLoopIterations: state.maxLoopIterations,
         scrollBeforeClick: state.scrollBeforeClick,
+        disableRecordUrlWait: state.disableRecordUrlWait,
         hoverRecordMinMs: state.hoverRecordMinMs,
         checkUpdatesOnStartup: state.checkUpdatesOnStartup,
         selectorClickStrategies: state.selectorClickStrategies,
         selectorInputStrategies: state.selectorInputStrategies,
+        libraryHeuristicsMui: state.libraryHeuristicsMui,
+        libraryHeuristicsAnt: state.libraryHeuristicsAnt,
         navWaitUntil: state.navWaitUntil,
         editor: editorSettingsToDTO(state.editor),
         startUrl: state.startUrl,

@@ -3,8 +3,8 @@ package selector
 import "strings"
 
 var (
-	DefaultClickStrategies = []string{"text", "contextual", "aria", "title", "testid", "id"}
-	DefaultInputStrategies = []string{"label", "placeholder", "aria", "name", "testid", "id"}
+	DefaultClickStrategies = []string{"testid", "aria", "title", "id", "contextual", "text"}
+	DefaultInputStrategies = []string{"testid", "id", "name", "aria", "label", "adjacent", "placeholder"}
 )
 
 var allowedClickStrategies = map[string]struct{}{
@@ -12,7 +12,7 @@ var allowedClickStrategies = map[string]struct{}{
 }
 
 var allowedInputStrategies = map[string]struct{}{
-	"testid": {}, "id": {}, "label": {}, "placeholder": {}, "aria": {}, "name": {},
+	"testid": {}, "id": {}, "label": {}, "adjacent": {}, "placeholder": {}, "aria": {}, "name": {},
 }
 
 func NormalizeClickStrategies(values []string) []string {

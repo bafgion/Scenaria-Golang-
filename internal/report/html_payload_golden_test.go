@@ -30,7 +30,23 @@ func TestBuildHTMLPayloadGolden(t *testing.T) {
 			}},
 		}},
 	}
-	payload, err := buildHTMLPayload(result, HTMLOptions{Plan: plan, LightMode: true}, t.TempDir()+"/report.html")
+	payload, err := buildHTMLPayload(result, HTMLOptions{
+		Plan:               plan,
+		LightMode:          true,
+		SkipStepValidation: true,
+		StepValidations: map[string]map[int]htmlStepValidation{
+			"auth.feature": {
+				4: {
+					Status:     "found",
+					Message:    "элемент найден",
+					Mode:       "static",
+					ActionKind: "click",
+					MatchCount: 1,
+					Limitation: "проверка только на текущей странице",
+				},
+			},
+		},
+	}, t.TempDir()+"/report.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +61,10 @@ func TestBuildHTMLPayloadGolden(t *testing.T) {
 		`"duration_ms":1200`,
 		`"network":"GET https://app.test/api`,
 		`"@smoke"`,
+		`"validation_mode":"static"`,
+		`"action_kind":"click"`,
+		`"match_count":1`,
+		`"limitation":"проверка только на текущей странице"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("payload missing %q:\n%s", want, text)

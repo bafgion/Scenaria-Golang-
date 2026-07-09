@@ -43,6 +43,7 @@ func (r BrowserRunner) Execute(ctx context.Context, plan ExecutionPlan) (result 
 	}
 	defer func() { stampRunID(&result, runID) }()
 	logx.Info("run started", "run_id", runID, "scenarios", len(plan.Cases), "workers", workers)
+	logx.Debug("parallel run scheduled", "run_id", runID, "scheduled_cases", len(plan.Cases), "workers", workers)
 
 	if workers == 1 || len(plan.Cases) <= 1 {
 		if pwExec, ok := r.Executor.(*PlaywrightExecutor); ok {
@@ -491,6 +492,8 @@ func (r BrowserRunner) executeSequentialSession(
 		if err := openSession(); err != nil {
 			return result, err
 		}
+	} else if attached != nil {
+		stopWatch = session.watchContext(ctx)
 	}
 
 	for i, runCase := range plan.Cases {

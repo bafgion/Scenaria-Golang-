@@ -25,6 +25,87 @@
     return '';
   }
 
+  function findControlForLabel(labelEl) {
+    if (!labelEl || labelEl.tagName !== 'LABEL') return null;
+    const forId = labelEl.getAttribute('for');
+    if (forId) {
+      const doc = labelEl.ownerDocument;
+      const byId = doc.getElementById(forId);
+      if (byId && isInputLikeElement(byId)) return byId;
+    }
+    const nested = labelEl.querySelector('input:not([type="checkbox"]):not([type="radio"]), textarea, select');
+    if (nested && isInputLikeElement(nested)) return nested;
+    return null;
+  }
+
+  function isInputLikeElement(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT') {
+      const type = (el.type || 'text').toLowerCase();
+      return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
+    }
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true') return true;
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    return ['textbox', 'combobox', 'searchbox', 'spinbutton'].includes(role);
+  }
+
+  function inputElementTag(el) {
+    if (!el) return 'input';
+    if (el.tagName === 'TEXTAREA') return 'textarea';
+    if (el.tagName === 'SELECT') return 'select';
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true') {
+      return '[contenteditable="true"]';
+    }
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (['textbox', 'combobox', 'searchbox', 'spinbutton'].includes(role)) {
+      const tag = (el.tagName || 'input').toLowerCase();
+      if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
+        return `[role="${cssEscape(role)}"]`;
+      }
+    }
+    return (el.tagName || 'input').toLowerCase();
+  }
+
+  function resolveInputFromPick(rawEl) {
+    if (!rawEl || rawEl.nodeType !== 1) return null;
+    if (isInputLikeElement(rawEl)) return rawEl;
+    if (rawEl.tagName === 'LABEL') return findControlForLabel(rawEl);
+    const nested = rawEl.closest('label')?.querySelector(
+      'input:not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"], [role="textbox"], [role="combobox"], [role="searchbox"], [role="spinbutton"]',
+    );
+    if (nested && isInputLikeElement(nested)) return nested;
+    return null;
+  }
+
+  function buildAdjacentLabelSelector(el) {
+    if (!el || !isInputLikeElement(el)) return null;
+    const id = el.id;
+    if (id) {
+      const label = el.ownerDocument.querySelector(`label[for="${cssEscape(id)}"]`);
+      if (label && !el.closest('label')) {
+        const labelText = visibleText(label).trim();
+        if (labelText.length >= 2) {
+          const escaped = labelText.slice(0, 60).replace(/"/g, '\\"');
+          return `label:has-text("${escaped}") >> ${inputElementTag(el)}`;
+        }
+      }
+    }
+    let prev = el.previousElementSibling;
+    while (prev) {
+      if (prev.tagName === 'LABEL') {
+        const labelText = visibleText(prev).trim();
+        if (labelText.length >= 2) {
+          const escaped = labelText.slice(0, 60).replace(/"/g, '\\"');
+          return `label:has-text("${escaped}") >> ${inputElementTag(el)}`;
+        }
+      }
+      prev = prev.previousElementSibling;
+    }
+    return null;
+  }
+
   function hasTextSelector(el, text) {
     return clickHasTextSelector(el, text);
   }
@@ -50,6 +131,10 @@
 
   function clickableAncestor(el) {
     if (!el || el.nodeType !== 1) return null;
+    if (el.namespaceURI === 'http://www.w3.org/2000/svg' || (el.tagName && el.tagName.toLowerCase() === 'svg')) {
+      const parentInteractive = el.closest('button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"]');
+      if (parentInteractive) return parentInteractive;
+    }
     const interactive = el.closest('button, a, [role="button"], [role="link"], [role="menuitem"], [role="tab"]');
     if (interactive) return interactive;
     let node = el;
@@ -101,8 +186,8 @@
   function strategyOrder(kind) {
     const cfg = window.__scenariaSelectorOrder || {};
     const defaults = kind === 'input'
-      ? ['label', 'placeholder', 'aria', 'name', 'testid', 'id']
-      : ['text', 'contextual', 'aria', 'title', 'testid', 'id'];
+      ? ['testid', 'id', 'name', 'aria', 'label', 'adjacent', 'placeholder']
+      : ['testid', 'aria', 'title', 'id', 'contextual', 'text'];
     const order = cfg[kind];
     return Array.isArray(order) && order.length ? order : defaults;
   }
@@ -144,9 +229,12 @@
       },
       label() {
         const label = labelTextForControl(el);
-        return label && label.length >= 2
-          ? `label:has-text("${label.slice(0, 60).replace(/"/g, '\\"')}")`
-          : null;
+        if (!label || label.length < 2) return null;
+        const escaped = label.slice(0, 60).replace(/"/g, '\\"');
+        return `label:has-text("${escaped}") >> ${tag}`;
+      },
+      adjacent() {
+        return buildAdjacentLabelSelector(el);
       },
       placeholder() {
         const placeholder = el.getAttribute('placeholder');
@@ -164,8 +252,8 @@
   }
 
   function buildInputSelector(el) {
-    if (!el || !['INPUT', 'TEXTAREA'].includes(el.tagName)) return null;
-    const tag = el.tagName.toLowerCase();
+    if (!isInputLikeElement(el)) return null;
+    const tag = inputElementTag(el);
     const builders = inputStrategyBuilders(el, tag);
     for (const key of strategyOrder('input')) {
       const sel = builders[key] && builders[key]();
@@ -266,6 +354,396 @@
     return '';
   }
 
+  function isElementVisible(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 || rect.height > 0;
+  }
+
+  function isActionable(el, action) {
+    if (!el || el.nodeType !== 1) return false;
+    if (!isElementVisible(el)) return false;
+    const style = window.getComputedStyle(el);
+    if (style.pointerEvents === 'none') return false;
+    if (el.disabled) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    const tag = (el.tagName || '').toUpperCase();
+    if (action === 'fill' || action === 'select') {
+      if (el.readOnly) return false;
+      if (el.getAttribute('aria-readonly') === 'true') return false;
+      if (action === 'select' && tag !== 'SELECT' && (el.getAttribute('role') || '').toLowerCase() !== 'combobox') {
+        return false;
+      }
+    }
+    if (action === 'check' || action === 'uncheck') {
+      return tag === 'INPUT' && (el.type || '').toLowerCase() === 'checkbox';
+    }
+    if (action === 'hover' || action === 'click') return true;
+    if (action === 'fill') return isInputLikeElement(el);
+    return true;
+  }
+
+  function countMatchesInDoc(doc, selector) {
+    if (!selector) return 0;
+    if (selector.includes('>>') || selector.includes(':has-text(')) return -1;
+    try {
+      return doc.querySelectorAll(selector).length;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  function matchesPickedElement(selector, pickedEl, actionTarget, matchesCount) {
+    if (!selector || !pickedEl) return false;
+    if (selector.includes('>>') || selector.includes(':has-text(')) return true;
+    if (matchesCount < 0) return true;
+    try {
+      const doc = pickedEl.ownerDocument || document;
+      const nodes = doc.querySelectorAll(selector);
+      if (nodes.length !== 1) return false;
+      const matched = nodes[0];
+      if (matched === pickedEl || matched === actionTarget) return true;
+      if (matched.contains(pickedEl) || pickedEl.contains(matched)) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function strategyScore(kind, key) {
+    const idx = strategyOrder(kind).indexOf(key);
+    return idx >= 0 ? idx : strategyOrder(kind).length;
+  }
+
+  function candidateWarnings(kind, key, selector, matchesCount, visible, matchesPicked, actionable) {
+    const warnings = [];
+    if (key === 'text' || (kind === 'input' && selector.startsWith('label:has-text(') && !selector.includes('>>'))) {
+      warnings.push('text-only');
+    }
+    if (matchesCount > 1) warnings.push('not-unique');
+    if (matchesCount === 0) warnings.push('no-matches');
+    if (!visible) warnings.push('not-visible');
+    if (!matchesPicked && matchesCount === 1) warnings.push('wrong-target');
+    if (!actionable) warnings.push('not-actionable');
+    return warnings;
+  }
+
+  function matchesSelectorOnElement(el, selector) {
+    if (!el || !selector) return false;
+    if (selector.includes('>>') || selector.includes(':has-text(')) return false;
+    try {
+      const root = el.getRootNode();
+      const scope = (typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot) ? root : (el.ownerDocument || document);
+      const found = scope.querySelector(selector);
+      return found === el;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  const LIBRARY_SCORE_BONUS = -100;
+  const TEXT_PENALTY_WHEN_LIBRARY = 50;
+
+  function libraryPacksEnabled() {
+    const cfg = window.__scenariaLibraryHeuristics || {};
+    return { mui: cfg.mui !== false, ant: cfg.ant !== false };
+  }
+
+  function closestLibraryMatch(el, selectors) {
+    if (!el || !el.closest) return null;
+    try {
+      return el.closest(selectors);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isPortalContainer(el) {
+    return !!closestLibraryMatch(el, [
+      '[role="presentation"]',
+      '.MuiPopover-root', '.MuiModal-root', '.MuiMenu-root', '.MuiPopper-root',
+      '.ant-dropdown', '.ant-select-dropdown', '.ant-picker-dropdown', '.ant-menu-submenu',
+    ]);
+  }
+
+  function muiRoot(el) {
+    return closestLibraryMatch(el, '.MuiButton-root, .MuiIconButton-root, .MuiInputBase-root, .MuiMenuItem-root, .MuiCheckbox-root, .MuiSwitch-root, [class*="MuiButton-root"]');
+  }
+
+  function antRoot(el) {
+    return closestLibraryMatch(el, '.ant-btn, .ant-input, .ant-select, .ant-select-selector, .ant-menu-item, [class^="ant-"], [class*=" ant-"]');
+  }
+
+  function buildMuiCandidate(el, kind, actionTarget) {
+    const root = muiRoot(el) || muiRoot(actionTarget);
+    if (!root) return null;
+    const testId = root.getAttribute('data-testid');
+    if (testId) return { selector: `[data-testid="${cssEscape(testId)}"]`, strategy: 'mui-testid' };
+    if (kind === 'input') {
+      const input = el.matches('input, textarea') ? el : root.querySelector('input, textarea, .MuiInputBase-input');
+      if (!input) return null;
+      const name = input.getAttribute('name');
+      if (name) return { selector: `.MuiInputBase-input[name="${cssEscape(name)}"]`, strategy: 'mui-input' };
+      return { selector: '.MuiInputBase-input', strategy: 'mui-input' };
+    }
+    if (root.classList.contains('MuiMenuItem-root')) {
+      const text = visibleText(root).trim();
+      if (text.length >= 2 && text.length <= 60) {
+        const escaped = text.replace(/"/g, '\\"');
+        return { selector: `.MuiMenuItem-root:has-text("${escaped}")`, strategy: 'mui-menu-item' };
+      }
+      return { selector: '.MuiMenuItem-root', strategy: 'mui-menu-item' };
+    }
+    if (root.classList.contains('MuiButton-root') || (root.className && String(root.className).includes('MuiButton-root'))) {
+      const text = visibleText(root).trim();
+      if (text.length >= 2 && text.length <= 60) {
+        const escaped = text.replace(/"/g, '\\"');
+        return { selector: `.MuiButton-root:has-text("${escaped}")`, strategy: 'mui-button' };
+      }
+      return { selector: '.MuiButton-root', strategy: 'mui-button' };
+    }
+    if (root.classList.contains('MuiIconButton-root')) {
+      return { selector: '.MuiIconButton-root', strategy: 'mui-icon-button' };
+    }
+    return null;
+  }
+
+  function buildAntCandidate(el, kind, actionTarget) {
+    const root = antRoot(el) || antRoot(actionTarget);
+    if (!root) return null;
+    const testId = root.getAttribute('data-testid');
+    if (testId) return { selector: `[data-testid="${cssEscape(testId)}"]`, strategy: 'ant-testid' };
+    if (kind === 'input') {
+      const input = el.matches('input, textarea') ? el : root.querySelector('input, textarea, .ant-input');
+      if (!input) return null;
+      const placeholder = input.getAttribute('placeholder');
+      if (placeholder) return { selector: `.ant-input[placeholder="${cssEscape(placeholder)}"]`, strategy: 'ant-input' };
+      return { selector: '.ant-input', strategy: 'ant-input' };
+    }
+    const btn = root.closest('.ant-btn') || (root.classList.contains('ant-btn') ? root : null);
+    if (btn) {
+      const text = visibleText(btn).trim();
+      if (text.length >= 2 && text.length <= 60) {
+        const escaped = text.replace(/"/g, '\\"');
+        return { selector: `.ant-btn:has-text("${escaped}")`, strategy: 'ant-button' };
+      }
+      return { selector: '.ant-btn', strategy: 'ant-button' };
+    }
+    const menuItem = root.closest('.ant-dropdown-menu-item, .ant-select-item, .ant-menu-item')
+      || (root.classList.contains('ant-menu-item') ? root : null);
+    if (menuItem) {
+      const text = visibleText(menuItem).trim();
+      if (text.length >= 2 && text.length <= 60) {
+        const escaped = text.replace(/"/g, '\\"');
+        return { selector: `.ant-menu-item:has-text("${escaped}")`, strategy: 'ant-menu-item' };
+      }
+    }
+    const select = root.closest('.ant-select');
+    if (select) return { selector: '.ant-select', strategy: 'ant-select' };
+    return null;
+  }
+
+  function buildCandidateEntry(kind, key, sel, el, actionTarget, suggested, inShadow, score, extraWarnings) {
+    const doc = el.ownerDocument || document;
+    let matchesCount = countMatchesInDoc(doc, sel);
+    const visible = isElementVisible(actionTarget);
+    let matchesPicked = matchesPickedElement(sel, el, actionTarget, matchesCount);
+    if (inShadow && matchesSelectorOnElement(actionTarget, sel)) {
+      matchesCount = 1;
+      matchesPicked = true;
+    }
+    const actionable = isActionable(actionTarget, suggested);
+    const warnings = candidateWarnings(kind, key, sel, matchesCount, visible, matchesPicked, actionable);
+    if (extraWarnings && extraWarnings.length) {
+      for (const w of extraWarnings) {
+        if (!warnings.includes(w)) warnings.push(w);
+      }
+    }
+    const unique = matchesCount === 1 || matchesCount < 0;
+    const valid = unique && matchesPicked && visible && actionable && matchesCount !== 0;
+    return {
+      selector: sel,
+      strategy: key,
+      score,
+      matches_count: matchesCount,
+      unique,
+      visible,
+      matches_picked: matchesPicked,
+      warnings,
+      valid,
+      actionable,
+    };
+  }
+
+  function generateLibraryCandidates(el, kind) {
+    const packs = libraryPacksEnabled();
+    if (!packs.mui && !packs.ant) return [];
+    const actionTarget = kind === 'input' ? el : (clickableAncestor(el) || el);
+    const suggested = suggestAction(el);
+    const inShadow = (() => {
+      const root = el.getRootNode();
+      return typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot;
+    })();
+    const portalWarnings = isPortalContainer(el) ? ['portal-menu'] : [];
+    const out = [];
+    const seen = new Set();
+    const add = (built, strategyKey) => {
+      if (!built || !built.selector || seen.has(built.selector)) return;
+      seen.add(built.selector);
+      out.push(buildCandidateEntry(
+        kind, strategyKey, built.selector, el, actionTarget, suggested, inShadow, LIBRARY_SCORE_BONUS, portalWarnings,
+      ));
+    };
+    if (packs.mui) add(buildMuiCandidate(el, kind, actionTarget), 'mui');
+    if (packs.ant) add(buildAntCandidate(el, kind, actionTarget), 'ant');
+    return out;
+  }
+
+  function shouldPenalizeGenericText(kind, key, selector) {
+    if (key === 'text') return true;
+    if (kind === 'input' && key === 'label') return true;
+    if (kind === 'input' && key === 'placeholder' && selector && selector.startsWith('label:has-text(')) return true;
+    return false;
+  }
+
+  function generateCandidates(el, kind) {
+    if (!el || el.nodeType !== 1) return [];
+    const actionTarget = kind === 'input' ? el : (clickableAncestor(el) || el);
+    const tag = inputElementTag(el);
+    const builders = kind === 'input' ? inputStrategyBuilders(el, tag) : clickStrategyBuilders(actionTarget);
+    const suggested = suggestAction(el);
+    const inShadow = (() => {
+      const root = el.getRootNode();
+      return typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot;
+    })();
+    const libraryCandidates = generateLibraryCandidates(el, kind);
+    const hasValidLibrary = libraryCandidates.some((c) => c.valid);
+    const seen = new Set(libraryCandidates.map((c) => c.selector));
+    const candidates = [...libraryCandidates];
+    for (const key of strategyOrder(kind)) {
+      if (!builders[key]) continue;
+      const sel = builders[key]();
+      if (!sel || seen.has(sel)) continue;
+      seen.add(sel);
+      let score = strategyScore(kind, key);
+      if (hasValidLibrary && shouldPenalizeGenericText(kind, key, sel)) {
+        score += TEXT_PENALTY_WHEN_LIBRARY;
+      }
+      candidates.push(buildCandidateEntry(
+        kind, key, sel, el, actionTarget, suggested, inShadow, score, [],
+      ));
+    }
+    candidates.sort((a, b) => {
+      if (a.valid !== b.valid) return a.valid ? -1 : 1;
+      if (a.score !== b.score) return a.score - b.score;
+      return (a.matches_count < 0 ? 99 : a.matches_count) - (b.matches_count < 0 ? 99 : b.matches_count);
+    });
+    return candidates;
+  }
+
+  function suggestAction(el) {
+    if (!el || el.nodeType !== 1) return 'click';
+    const tag = (el.tagName || '').toUpperCase();
+    if (tag === 'INPUT') {
+      const type = (el.type || 'text').toLowerCase();
+      if (type === 'checkbox') return el.checked ? 'uncheck' : 'check';
+      if (type === 'radio') return 'click';
+      return 'fill';
+    }
+    if (tag === 'TEXTAREA') return 'fill';
+    if (tag === 'SELECT') return 'select';
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true') return 'fill';
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    if (role === 'combobox') return 'select';
+    if (['textbox', 'searchbox', 'spinbutton'].includes(role)) return 'fill';
+    return 'click';
+  }
+
+  function pickKindForElement(el) {
+    return isInputLikeElement(el) ? 'input' : 'click';
+  }
+
+  function prefixSelectorChain(prefix, selector) {
+    if (!prefix || !selector) return selector || prefix || '';
+    return `${prefix} >> ${selector}`;
+  }
+
+  function prefixPickerResult(prefix, result) {
+    if (!prefix || !result) return result;
+    result.selector = prefixSelectorChain(prefix, result.selector);
+    if (Array.isArray(result.candidates)) {
+      result.candidates = result.candidates.map((cand) => ({
+        ...cand,
+        selector: prefixSelectorChain(prefix, cand.selector),
+      }));
+    }
+    return result;
+  }
+
+  function shadowHostPrefix(el) {
+    const root = el.getRootNode();
+    if (!root || typeof ShadowRoot === 'undefined' || !(root instanceof ShadowRoot)) return '';
+    const host = root.host;
+    if (!host || host.nodeType !== 1) return '';
+    if (host.id) return `#${cssEscape(host.id)}`;
+    const testId = host.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+    return '';
+  }
+
+  function prefixShadowChain(el, selector) {
+    const hostPrefix = shadowHostPrefix(el);
+    if (!hostPrefix || !selector) return selector;
+    if (selector.startsWith(hostPrefix + ' >> ')) return selector;
+    return `${hostPrefix} >> ${selector}`;
+  }
+
+  function prefixPickerResultChains(el, result) {
+    if (!result) return result;
+    result.selector = prefixShadowChain(el, result.selector);
+    if (Array.isArray(result.candidates)) {
+      result.candidates = result.candidates.map((cand) => ({
+        ...cand,
+        selector: prefixShadowChain(el, cand.selector),
+      }));
+    }
+    return result;
+  }
+
+  function buildPickerResult(el, kind) {
+    if (!el || el.nodeType !== 1) return null;
+    const resolvedKind = kind || pickKindForElement(el);
+    const candidates = generateCandidates(el, resolvedKind);
+    if (!candidates.length) {
+      const fallback = resolvedKind === 'input' ? buildInputSelector(el) : buildSelector(el);
+      if (!fallback) return null;
+      const result = {
+        selector: prefixShadowChain(el, fallback),
+        candidates: [],
+        warnings: ['fallback'],
+        suggested_action: suggestAction(el),
+      };
+      return result;
+    }
+    const best = candidates.find((c) => c.valid) || candidates[0];
+    const warnings = [...(best.warnings || [])];
+    if (!best.valid) warnings.push('low-confidence');
+    const result = {
+      selector: prefixShadowChain(el, best.selector),
+      candidates: candidates.slice(0, 8).map((cand) => ({
+        ...cand,
+        selector: prefixShadowChain(el, cand.selector),
+      })),
+      warnings,
+      suggested_action: suggestAction(el),
+    };
+    return result;
+  }
+
   function clickContextCaption(clickEl) {
     let node = clickEl && clickEl.parentElement;
     for (let depth = 0; node && depth < 8; depth++) {
@@ -277,8 +755,8 @@
   }
 
   function collect(el, type) {
-    const isField = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
-    const target = type === 'click' ? (clickableAncestor(el) || el) : el;
+    const isField = isInputLikeElement(el);
+    const target = type === 'click' ? (clickableAncestor(el) || el) : (resolveInputFromPick(el) || el);
     if (!target) return {};
     const detail = {
       tag: (target.tagName || '').toUpperCase(),
@@ -304,6 +782,11 @@
     cssEscape,
     visibleText,
     labelTextForControl,
+    findControlForLabel,
+    isInputLikeElement,
+    inputElementTag,
+    resolveInputFromPick,
+    buildAdjacentLabelSelector,
     hasTextSelector,
     clickHasTextSelector,
     clickTagFor,
@@ -317,5 +800,15 @@
     navScopeTag,
     scopedTextSelector,
     collect,
+    generateCandidates,
+    buildPickerResult,
+    suggestAction,
+    isElementVisible,
+    isActionable,
+    pickKindForElement,
+    prefixPickerResult,
+    prefixSelectorChain,
+    prefixShadowChain,
+    shadowHostPrefix,
   };
 })();

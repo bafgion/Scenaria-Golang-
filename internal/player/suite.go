@@ -35,6 +35,7 @@ func BuildExecutionPlanWithTestClient(features []FeatureInput, tag, scenario str
 }
 
 func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables map[string]string, testClientOverride string) ExecutionPlan {
+	variables = CloneVariables(variables)
 	plan := ExecutionPlan{
 		Cases: make([]RunCase, 0),
 	}
@@ -69,7 +70,7 @@ func buildExecutionPlan(features []FeatureInput, tag, scenario string, variables
 				ExampleIndex: runnable.ExampleIndex,
 				Steps:        runnable.Steps,
 				TestClient:   testClient,
-				Variables:    variables,
+				Variables:    CloneVariables(variables),
 				ProjectRoot:  projectRoot,
 				StartStep:    -1,
 				EndStep:      -1,

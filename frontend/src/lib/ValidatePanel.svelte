@@ -22,11 +22,30 @@
         return status || tr('dialogs.common.notFound')
     }
   }
+
+  $: panelLimitation = issues.find((i) => i.limitation)?.limitation || ''
+  $: panelMode = issues.find((i) => i.mode)?.mode || ''
+  $: showMatches = issues.some((i) => (i.matchCount ?? 0) > 0)
+  $: showAction = issues.some((i) => !!i.actionKind)
+
+  function modeLabel(mode: string | undefined): string {
+    if (mode === 'flow') return tr('results.validate.modeFlow')
+    if (mode === 'static') return tr('results.validate.modeStatic')
+    return mode || ''
+  }
 </script>
 
 <div class="validate-panel">
   {#if cliLog}
     <pre class="cli-log">{cliLog}</pre>
+  {/if}
+  {#if panelLimitation}
+    <p class="limitation-banner">
+      {#if panelMode}
+        <span class="mode-tag">{modeLabel(panelMode)}</span>
+      {/if}
+      {panelLimitation}
+    </p>
   {/if}
   {#if issues.length === 0}
     <p class="empty">{hint || tr('results.validate.empty')}</p>
@@ -36,7 +55,9 @@
         <tr>
           <th>{tr('results.validate.line')}</th>
           <th>{tr('results.validate.status')}</th>
+          {#if showAction}<th>{tr('results.validate.action')}</th>{/if}
           <th>{tr('results.validate.selector')}</th>
+          {#if showMatches}<th>{tr('results.validate.matches')}</th>{/if}
           <th>{tr('results.validate.message')}</th>
         </tr>
       </thead>
@@ -47,7 +68,9 @@
               <button type="button" class="line-btn" on:click={() => onGotoLine(issue.line)}>{issue.line}</button>
             </td>
             <td><span class="status-badge" class:found={issue.status === 'found'} class:warning={issue.status === 'warning'} class:missing={issue.status === 'missing' || !issue.status}>{statusLabel(issue.status)}</span></td>
+            {#if showAction}<td class="action">{issue.actionKind || '—'}</td>{/if}
             <td class="selector">{issue.selector || tr('dialogs.common.notFound')}</td>
+            {#if showMatches}<td class="matches">{(issue.matchCount ?? 0) > 0 ? issue.matchCount : '—'}</td>{/if}
             <td class="msg">{issue.message}</td>
           </tr>
         {/each}
@@ -75,6 +98,28 @@
     border-radius: 3px;
     max-height: 200px;
     overflow: auto;
+  }
+
+  .limitation-banner {
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--color-muted);
+    background: color-mix(in srgb, var(--color-warning, #dcdcaa) 10%, var(--color-input));
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+  }
+
+  .mode-tag {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    text-transform: uppercase;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text);
   }
 
   .empty {
@@ -134,6 +179,14 @@
     word-break: break-word;
     color: var(--color-muted);
     max-width: 220px;
+  }
+
+  .action,
+  .matches {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-muted);
+    white-space: nowrap;
   }
 
   .msg {

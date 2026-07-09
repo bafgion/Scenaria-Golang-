@@ -30,6 +30,14 @@
       traceZipParseFailed: 'Не удалось прочитать trace.zip',
       traceImported: 'Trace импортирован: {n} событий',
       openTraceExternal: 'Открыть в trace.playwright.dev',
+      validation: 'Проверка селекторов',
+      validateAction: 'Действие',
+      validateMatches: 'Совпадения',
+      validateFound: 'found',
+      validateMissing: 'missing',
+      validateWarning: 'warning',
+      validateModeStatic: 'static',
+      validateModeFlow: 'flow-aware',
     },
     en: {
       scenarios: 'Scenarios', timeline: 'Timeline', actionLog: 'Action log', inspector: 'Inspector',
@@ -58,6 +66,14 @@
       traceZipParseFailed: 'Failed to parse trace.zip',
       traceImported: 'Trace imported: {n} events',
       openTraceExternal: 'Open in trace.playwright.dev',
+      validation: 'Selector validation',
+      validateAction: 'Action',
+      validateMatches: 'Matches',
+      validateFound: 'found',
+      validateMissing: 'missing',
+      validateWarning: 'warning',
+      validateModeStatic: 'static',
+      validateModeFlow: 'flow-aware',
     },
   };
   Object.assign(STRINGS.ru, {
@@ -650,10 +666,13 @@
     const spark = renderSparkline(sc.duration_sparkline);
     wrap.innerHTML = (spark ? '<div class="timeline-spark">' + spark + '</div>' : '') + '<div class="timeline">' + (sc.steps || []).map((st) => {
       const flaky = st.flaky_failures >= 2 ? '<span class="flaky-pill">flaky ×' + st.flaky_failures + '</span> ' : '';
+      const iteration = st.iteration_path ? '<span class="retry-pill">' + esc(st.iteration_path) + '</span> ' : '';
+      const terminal = st.terminal_action ? '<span class="retry-pill">' + esc(st.terminal_action) + '</span> ' : '';
+      const retries = st.retry_attempts > 0 ? '<span class="retry-pill">retry ×' + st.retry_attempts + '</span> ' : '';
       const spark = renderSparkline(st.duration_sparkline);
       const active = st.index === state.stepIndex;
       return '<div class="step-node ' + statusClass(st.status) + (st.flaky_failures >= 2 ? ' flaky' : '') + (active ? ' active' : '') + '" role="button" tabindex="0" aria-current="' + (active ? 'step' : 'false') + '" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + st.status) + '" data-idx="' + st.index + '">' +
-        '<div class="line">#' + (st.index + 1) + (st.line ? ' · line ' + st.line : '') + ' ' + flaky + spark + '</div>' +
+        '<div class="line">#' + (st.index + 1) + (st.line ? ' · line ' + st.line : '') + ' ' + flaky + iteration + terminal + retries + spark + '</div>' +
         '<div class="text">' + esc(st.gherkin || st.text) + '</div>' +
         (st.duration_ms ? '<div class="dur">' + st.duration_ms + ' ms</div>' : '') +
       '</div>';
@@ -743,6 +762,79 @@
       '</div>';
   }
 
+  function validationStatusLabel(status) {
+    if (status === 'found') return t('validateFound');
+    if (status === 'missing') return t('validateMissing');
+    if (status === 'warning') return t('validateWarning');
+    return status || '';
+  }
+
+  function validationModeLabel(mode) {
+    if (mode === 'flow') return t('validateModeFlow');
+    if (mode === 'static') return t('validateModeStatic');
+    return mode || '';
+  }
+
+  function renderValidationBanner(sc) {
+    if (!sc.validation_limitation && !sc.validation_mode) return '';
+    let html = '<div class="validation-banner">';
+    if (sc.validation_mode) {
+      html += '<span class="validation-mode">' + esc(validationModeLabel(sc.validation_mode)) + '</span>';
+    }
+    if (sc.validation_limitation) {
+      html += '<span class="validation-limitation">' + esc(sc.validation_limitation) + '</span>';
+    }
+    return html + '</div>';
+  }
+
+  function renderScenarioValidationTable(sc) {
+    const rows = (sc.steps || []).filter((step) => step.validation);
+    if (!rows.length) return '';
+    const showAction = rows.some((step) => step.validation && step.validation.action_kind);
+    const showMatches = rows.some((step) => step.validation && (step.validation.match_count || 0) > 0);
+    let html = '<div class="section"><label>' + t('validation') + '</label><table class="validation-table"><thead><tr>' +
+      '<th>' + t('stepCol') + '</th><th>' + t('status') + '</th>';
+    if (showAction) html += '<th>' + t('validateAction') + '</th>';
+    html += '<th>' + t('selector') + '</th>';
+    if (showMatches) html += '<th>' + t('validateMatches') + '</th>';
+    html += '<th>' + t('message') + '</th></tr></thead><tbody>';
+    rows.forEach((step) => {
+      const v = step.validation;
+      const status = v.status || '';
+      html += '<tr class="validation-row status-' + esc(status) + '">' +
+        '<td>#' + (step.index + 1) + '</td>' +
+        '<td><span class="validation-badge status-' + esc(status) + '">' + esc(validationStatusLabel(status)) + '</span></td>';
+      if (showAction) html += '<td>' + esc(v.action_kind || '—') + '</td>';
+      html += '<td class="mono">' + esc(step.selector || '—') + '</td>';
+      if (showMatches) {
+        html += '<td>' + ((v.match_count || 0) > 0 ? esc(String(v.match_count)) : '—') + '</td>';
+      }
+      html += '<td>' + esc(v.message || '') + '</td></tr>';
+    });
+    return html + '</tbody></table></div>';
+  }
+
+  function renderStepValidation(st) {
+    const v = st.validation;
+    if (!v) return '';
+    let html = '<div class="section"><label>' + t('validation') + '</label><table class="validation-table validation-detail">';
+    html += '<tr><th>' + t('status') + '</th><td><span class="validation-badge status-' + esc(v.status || '') + '">' +
+      esc(validationStatusLabel(v.status)) + '</span></td></tr>';
+    if (v.action_kind) {
+      html += '<tr><th>' + t('validateAction') + '</th><td>' + esc(v.action_kind) + '</td></tr>';
+    }
+    if (st.selector) {
+      html += '<tr><th>' + t('selector') + '</th><td class="mono">' + esc(st.selector) + '</td></tr>';
+    }
+    if ((v.match_count || 0) > 0) {
+      html += '<tr><th>' + t('validateMatches') + '</th><td>' + esc(String(v.match_count)) + '</td></tr>';
+    }
+    if (v.message) {
+      html += '<tr><th>' + t('message') + '</th><td>' + esc(v.message) + '</td></tr>';
+    }
+    return html + '</table></div>';
+  }
+
   function renderInspector() {
     const sc = (DATA.scenarios || []).find((x) => x.id === state.scenarioId);
     const box = $('#inspector');
@@ -756,11 +848,20 @@
       return;
     }
     let html = '<h3>' + tf('stepTitle', { n: st.index + 1 }) + '</h3>';
+    html += renderValidationBanner(sc);
+    html += renderScenarioValidationTable(sc);
     html += '<div class="section"><label>' + t('gherkin') + '</label><div class="mono">' + esc(st.gherkin || st.text) + '</div></div>';
+    if (st.iteration_path) {
+      html += '<div class="section"><label>Iteration</label><div class="mono">' + esc(st.iteration_path) + '</div></div>';
+    }
+    if (st.terminal_action) {
+      html += '<div class="section"><label>Terminal action</label><div class="mono">' + esc(st.terminal_action) + '</div></div>';
+    }
     if (st.selector) {
       html += '<div class="section"><label>' + t('selector') + '</label><div class="mono" id="sel-text">' + esc(st.selector) + '</div>' +
         '<button type="button" id="copy-sel" style="margin-top:6px">' + t('copySelector') + '</button></div>';
     }
+    html += renderStepValidation(st);
     if (st.error) {
       html += '<div class="section"><label>' + t('error') + '</label><div class="mono">' + esc(st.error) + '</div></div>';
     }

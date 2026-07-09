@@ -3,6 +3,7 @@ package wailsapp
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -755,8 +756,8 @@ func (a *App) FocusBrowser() error {
 	return a.svc.FocusBrowser()
 }
 
-func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick bool, hoverRecordMinMs int) error {
-	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick, hoverRecordMinMs)
+func (a *App) UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick bool, hoverRecordMinMs int, recordURLWaitAfterClick bool) error {
+	return a.svc.UpdateRecordingOptions(filterRecording, navOnlyRecording, hoverRecord, headless, scrollBeforeClick, hoverRecordMinMs, recordURLWaitAfterClick)
 }
 
 func (a *App) UndoRecordedStep() bool {
@@ -864,6 +865,9 @@ func (a *App) OpenHTMLReport(path string) gui.RunResult {
 		absPath := strings.TrimSpace(result.Output)
 		if absPath == "" {
 			return gui.RunResult{Error: "report path is empty"}
+		}
+		if os.Getenv("SCENARIA_DESKTOP_SMOKE") != "" {
+			return gui.RunResult{Output: absPath}
 		}
 		if err := paths.OpenWithDefaultApp(absPath); err != nil {
 			return gui.RunResult{Error: fmt.Sprintf("open report: %v", err)}

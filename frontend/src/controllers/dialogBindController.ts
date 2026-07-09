@@ -34,6 +34,7 @@ export function createDialogBindController(stores: DialogBindStores) {
 
   let bindValidateBrowser = 'chromium'
   let bindValidateSyntaxOnly = false
+  let bindValidateFlowAware = false
   let bindValidateScope: 'project' | 'current' = 'project'
   let bindDuplicateNewName = ''
   let bindMoveDestDir = ''
@@ -66,10 +67,13 @@ export function createDialogBindController(stores: DialogBindStores) {
   let bindSettingsSlowMo = 0
   let bindSettingsLoops = 100
   let bindSettingsScrollBeforeClick = false
+  let bindSettingsDisableRecordUrlWait = false
   let bindSettingsHoverRecordMinMs = 600
   let bindSettingsCheckUpdatesOnStartup = true
   let bindSettingsSelectorClickStrategies: string[] = []
   let bindSettingsSelectorInputStrategies: string[] = []
+  let bindSettingsLibraryHeuristicsMui = true
+  let bindSettingsLibraryHeuristicsAnt = true
   let bindSettingsNavWaitUntil = 'domcontentloaded'
   let bindStartURL = ''
   let bindUiLocale: Locale = 'ru'
@@ -111,6 +115,12 @@ export function createDialogBindController(stores: DialogBindStores) {
     },
     set bindValidateSyntaxOnly(value: boolean) {
       bindValidateSyntaxOnly = value
+    },
+    get bindValidateFlowAware() {
+      return bindValidateFlowAware
+    },
+    set bindValidateFlowAware(value: boolean) {
+      bindValidateFlowAware = value
     },
     get bindValidateScope() {
       return bindValidateScope
@@ -292,6 +302,12 @@ export function createDialogBindController(stores: DialogBindStores) {
     set bindSettingsScrollBeforeClick(value: boolean) {
       bindSettingsScrollBeforeClick = value
     },
+    get bindSettingsDisableRecordUrlWait() {
+      return bindSettingsDisableRecordUrlWait
+    },
+    set bindSettingsDisableRecordUrlWait(value: boolean) {
+      bindSettingsDisableRecordUrlWait = value
+    },
     get bindSettingsHoverRecordMinMs() {
       return bindSettingsHoverRecordMinMs
     },
@@ -315,6 +331,18 @@ export function createDialogBindController(stores: DialogBindStores) {
     },
     set bindSettingsSelectorInputStrategies(value: string[]) {
       bindSettingsSelectorInputStrategies = value
+    },
+    get bindSettingsLibraryHeuristicsMui() {
+      return bindSettingsLibraryHeuristicsMui
+    },
+    set bindSettingsLibraryHeuristicsMui(value: boolean) {
+      bindSettingsLibraryHeuristicsMui = value
+    },
+    get bindSettingsLibraryHeuristicsAnt() {
+      return bindSettingsLibraryHeuristicsAnt
+    },
+    set bindSettingsLibraryHeuristicsAnt(value: boolean) {
+      bindSettingsLibraryHeuristicsAnt = value
     },
     get bindSettingsNavWaitUntil() {
       return bindSettingsNavWaitUntil
@@ -493,6 +521,7 @@ export function createDialogBindController(stores: DialogBindStores) {
       const s = stores.validateDialogStore.snapshot()
       bindValidateBrowser = s.browser
       bindValidateSyntaxOnly = s.syntaxOnly
+      bindValidateFlowAware = s.flowAware
       bindValidateScope = s.scope
     },
     syncEditorSettingsBindLocal() {
@@ -512,10 +541,13 @@ export function createDialogBindController(stores: DialogBindStores) {
       bindSettingsSlowMo = s.slowMo
       bindSettingsLoops = s.maxLoopIterations
       bindSettingsScrollBeforeClick = s.scrollBeforeClick
+      bindSettingsDisableRecordUrlWait = s.disableRecordUrlWait
       bindSettingsHoverRecordMinMs = s.hoverRecordMinMs
       bindSettingsCheckUpdatesOnStartup = s.checkUpdatesOnStartup
       bindSettingsSelectorClickStrategies = [...s.selectorClickStrategies]
       bindSettingsSelectorInputStrategies = [...s.selectorInputStrategies]
+      bindSettingsLibraryHeuristicsMui = s.libraryHeuristicsMui
+      bindSettingsLibraryHeuristicsAnt = s.libraryHeuristicsAnt
       bindSettingsNavWaitUntil = s.navWaitUntil
       bindStartURL = s.startUrl
       bindUiLocale = s.uiLocale
@@ -528,10 +560,13 @@ export function createDialogBindController(stores: DialogBindStores) {
         slowMo: bindSettingsSlowMo,
         maxLoopIterations: bindSettingsLoops,
         scrollBeforeClick: bindSettingsScrollBeforeClick,
+        disableRecordUrlWait: bindSettingsDisableRecordUrlWait,
         hoverRecordMinMs: bindSettingsHoverRecordMinMs,
         checkUpdatesOnStartup: bindSettingsCheckUpdatesOnStartup,
         selectorClickStrategies: bindSettingsSelectorClickStrategies,
         selectorInputStrategies: bindSettingsSelectorInputStrategies,
+        libraryHeuristicsMui: bindSettingsLibraryHeuristicsMui,
+        libraryHeuristicsAnt: bindSettingsLibraryHeuristicsAnt,
         navWaitUntil: bindSettingsNavWaitUntil,
         startUrl: bindStartURL,
         uiLocale: bindUiLocale,

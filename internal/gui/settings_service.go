@@ -175,6 +175,7 @@ func (s *SettingsService) SaveSettings(dto AppSettingsDTO) error {
 			NavWaitUntil:            navWaitUntil,
 			RecordingFilterMode:     dto.FilterRecording,
 			NavOnlyRecording:        dto.NavOnlyRecording,
+			DisableRecordURLWait:    dto.DisableRecordURLWait,
 			RecordingHoverMode:      dto.HoverRecord,
 			ToolbarCompact:          dto.ToolbarCompact,
 			StepsPanelVisible:       dto.StepsPanelVisible,
@@ -190,6 +191,8 @@ func (s *SettingsService) SaveSettings(dto AppSettingsDTO) error {
 			HoverRecordMinMs:        normalizeHoverRecordMinMs(dto.HoverRecordMinMs),
 			SelectorClickStrategies: selector.NormalizeClickStrategies(dto.SelectorClickStrategies),
 			SelectorInputStrategies: selector.NormalizeInputStrategies(dto.SelectorInputStrategies),
+			LibraryHeuristicsMUI:    boolPtr(dto.LibraryHeuristicsMUI),
+			LibraryHeuristicsAnt:    boolPtr(dto.LibraryHeuristicsAnt),
 			Editor:                  settings.NormalizeEditorSettings(dto.Editor),
 			ChecklistDismissed:      dto.ChecklistDismissed,
 			WelcomePlayedSuccess:    dto.WelcomePlayedSuccess,
@@ -218,4 +221,8 @@ func (s *SettingsService) SaveSettings(dto AppSettingsDTO) error {
 		*cfg = *next
 		return nil
 	})
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }

@@ -182,8 +182,8 @@ func (s *Service) FocusBrowser() error {
 	return s.recorderOps().FocusBrowser(s.recorderOps().LiveSession())
 }
 
-func (s *Service) UpdateRecordingOptions(filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int) error {
-	return s.recorderOps().UpdateRecordingOptions(s.recorderOps().LiveSession(), filter, navOnly, hover, headless, scrollBefore, hoverMinMs)
+func (s *Service) UpdateRecordingOptions(filter, navOnly, hover, headless, scrollBefore bool, hoverMinMs int, recordURLWait bool) error {
+	return s.recorderOps().UpdateRecordingOptions(s.recorderOps().LiveSession(), filter, navOnly, hover, headless, scrollBefore, hoverMinMs, recordURLWait)
 }
 
 func (s *Service) UndoRecordedStep() bool {

@@ -189,6 +189,7 @@ func (s *RecorderService) startCaptureOnExistingSession(
 		req.HoverRecord,
 		appCfg.ScrollBeforeClick,
 		appCfg.HoverRecordMinMs,
+		!appCfg.DisableRecordURLWait,
 	)
 	if session.CaptureEnabled() {
 		if emit != nil {
@@ -341,6 +342,7 @@ func (s *RecorderService) recordLive(req RecordRequest, emit func(string, any), 
 		HoverRecord:       req.HoverRecord,
 		ScrollBeforeClick: appCfg.ScrollBeforeClick,
 		HoverRecordMinMs:  appCfg.HoverRecordMinMs,
+		DisableRecordURLWait: appCfg.DisableRecordURLWait,
 		TestClient:        testClient,
 		HTTPCredentials:   httpCreds,
 		BrowseOnly:        req.BrowseOnly,

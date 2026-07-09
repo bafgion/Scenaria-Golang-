@@ -466,8 +466,8 @@ export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
 }
 
-export function UpdateRecordingOptions(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4, arg5, arg6);
+export function UpdateRecordingOptions(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+  return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
 export function Validate(arg1) {

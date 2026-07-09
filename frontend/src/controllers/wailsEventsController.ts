@@ -3,8 +3,23 @@ export type RunProgressPayload = {
   phase?: string
   total?: number
   index?: number
+  caseId?: string
   scenario?: string
   featurePath?: string
+  success?: boolean
+}
+
+export function resolveRunProgressCounters(
+  payload: RunProgressPayload,
+  currentTotal: number,
+  currentCompleted: number,
+): { total: number; completed: number } {
+  const total = payload.total && payload.total > 0 ? payload.total : currentTotal
+  let completed = currentCompleted
+  if ((payload.phase || '') === 'scenario_done') {
+    completed = currentCompleted + 1
+  }
+  return { total, completed }
 }
 
 export type ProjectEventEnvelope<T> = {
@@ -26,12 +41,15 @@ export function shouldRefreshRunResultsFromProgress(payload: RunProgressPayload 
   return (payload?.phase || '') === 'scenario_done'
 }
 
-export function formatRunProgressLabel(payload: RunProgressPayload, currentTotal: number, currentIndex: number): string {
-  const total = payload.total ?? currentTotal
-  const index = payload.index ?? currentIndex
+export function formatRunProgressLabel(payload: RunProgressPayload, currentTotal: number, currentCompleted: number): string {
+  const total = payload.total && payload.total > 0 ? payload.total : currentTotal
   if (total <= 0) return ''
   const name = payload.scenario || payload.featurePath || ''
-  return name ? `${name} (${index}/${total})` : ''
+  const position =
+    (payload.phase || '') === 'scenario_done'
+      ? currentCompleted
+      : payload.index || currentCompleted || 0
+  return name ? `${name} (${position}/${total})` : ''
 }
 
 export function unwrapProjectEvent<T>(
@@ -347,14 +365,14 @@ export function bindWailsEvents(options: BindWailsEventsOptions): () => void {
       if (guards.isStaleProjectEvent(projectVersion)) return
       if (!isPlaying() || !payload) return
       if (guards.isStaleRunEvent(payload.runId)) return
-      const total = payload.total ?? runProgress.getTotal()
-      const index = payload.index ?? runProgress.getCurrent()
-      if (total > 0) {
-        runProgress.updateProgress(total, index, runProgress.getLabel())
-      }
-      const label = formatRunProgressLabel(payload, total, index)
-      if (label) {
-        runProgress.updateProgress(Math.max(0, total), Math.max(0, index), label)
+      const { total, completed } = resolveRunProgressCounters(
+        payload,
+        runProgress.getTotal(),
+        runProgress.getCurrent(),
+      )
+      const label = formatRunProgressLabel(payload, total, completed)
+      if (total > 0 || label) {
+        runProgress.updateProgress(Math.max(0, total), Math.max(0, completed), label || runProgress.getLabel())
       }
       if (shouldRefreshRunResultsFromProgress(payload)) {
         scheduleRefreshRunResults()

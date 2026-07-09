@@ -31,13 +31,13 @@ func polishIncomingStep(step RecordedStep) (RecordedStep, bool) {
 		if isGenericTagSelector(step.Selector) {
 			return step, false
 		}
-	case "goto":
+	case "goto", "wait-url":
 		step.Value = strings.TrimSpace(step.Value)
 		return step, step.Value != ""
 	case "press":
 		return step, strings.TrimSpace(step.Value) != ""
 	}
-	if step.Selector == "" && step.Action != "goto" && step.Action != "press" {
+	if step.Selector == "" && step.Action != "goto" && step.Action != "wait-url" && step.Action != "press" {
 		return step, false
 	}
 	return step, true

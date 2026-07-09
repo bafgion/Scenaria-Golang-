@@ -17,7 +17,7 @@ func TestAbortRunAllowsLaterClose(t *testing.T) {
 func TestAbortRunExternalSession(t *testing.T) {
 	session := &browserSession{external: true}
 	session.abortRun()
-	if !session.isClosed() {
-		t.Fatal("expected external session to be marked closed")
+	if session.isClosed() {
+		t.Fatal("external session should stay alive for live browser reuse")
 	}
 }

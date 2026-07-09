@@ -39,3 +39,16 @@ func TestEmailCodeFromEnv(t *testing.T) {
 		t.Fatalf("unexpected email code: %v %q", err, code)
 	}
 }
+
+func TestNewRunContext_ClonesVariables(t *testing.T) {
+	source := map[string]string{"BASE": "https://example.com"}
+	ctx := NewRunContext(source, 1, "")
+	ctx.Remember("TOKEN", "secret")
+	source["BASE"] = "mutated"
+	if ctx.Variables["BASE"] != "https://example.com" {
+		t.Fatalf("run context should not track source mutations: %#v", ctx.Variables)
+	}
+	if source["TOKEN"] != "" {
+		t.Fatalf("run context should not mutate source map: %#v", source)
+	}
+}

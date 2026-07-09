@@ -16,7 +16,10 @@ type StepRecord struct {
 	Selector       string `json:"selector,omitempty"`
 	Status         string `json:"status"`
 	DurationMS     int64  `json:"duration_ms,omitempty"`
-	Error          string `json:"error,omitempty"`
+	RetryAttempts  int               `json:"retry_attempts,omitempty"`
+	IterationPath  []IterationFrame  `json:"iteration_path,omitempty"`
+	TerminalAction string            `json:"terminal_action,omitempty"`
+	Error          string            `json:"error,omitempty"`
 	Network        string `json:"network,omitempty"`
 	PageContext    string `json:"page_context,omitempty"`
 	DOMSnapshot    string `json:"dom_snapshot,omitempty"`
@@ -31,11 +34,12 @@ func (c *RunContext) beginLeafStep(step gherkin.Step) int {
 	}
 	idx := len(c.stepRecords)
 	c.stepRecords = append(c.stepRecords, StepRecord{
-		Index:   idx,
-		Line:    step.Line,
-		Keyword: step.Keyword,
-		Text:    step.Text,
-		Status:  "running",
+		Index:         idx,
+		Line:          step.Line,
+		Keyword:       step.Keyword,
+		Text:          step.Text,
+		Status:        "running",
+		IterationPath: c.copyIterationPath(),
 	})
 	return idx
 }
@@ -55,7 +59,7 @@ func (c *RunContext) completeLeafStep(idx int, selector string, started time.Tim
 			rec.PageContext = capturePageContext(session)
 			rec.DOMSnapshot = captureDOMSnapshot(session)
 			rec.A11ySnapshot = captureA11ySnapshot(session)
-			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), "step-failed"); ok {
+			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), screenshotPrefix(rec.IterationPath, "step-failed")); ok {
 				rec.ScreenshotPath = p
 			}
 		}
@@ -67,11 +71,18 @@ func (c *RunContext) completeLeafStep(idx int, selector string, started time.Tim
 			rec.Network = net
 		}
 		if c != nil && c.stepScreenshots {
-			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), "step"); ok {
+			if p, ok := writeTempScreenshotPNG(captureViewportScreenshot(session), screenshotPrefix(rec.IterationPath, "step")); ok {
 				rec.ScreenshotPath = p
 			}
 		}
 	}
+}
+
+func (c *RunContext) setStepRetryAttempts(idx int, retries int) {
+	if c == nil || idx < 0 || idx >= len(c.stepRecords) || retries <= 0 {
+		return
+	}
+	c.stepRecords[idx].RetryAttempts = retries
 }
 
 func (c *RunContext) StepRecords() []StepRecord {

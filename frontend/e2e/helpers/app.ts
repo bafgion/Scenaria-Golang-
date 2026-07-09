@@ -134,6 +134,14 @@ export async function typeInEditor(page: Page, text: string) {
   await page.keyboard.type(text)
 }
 
+/** Flush debounced session snapshot (e2e hook). */
+export async function flushSessionForE2E(page: Page) {
+  await page.evaluate(async () => {
+    const flush = (window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession
+    if (typeof flush === 'function') await flush()
+  })
+}
+
 export async function openRecordDialog(page: Page) {
   await page.keyboard.press('Control+KeyR')
   const dialog = page.getByRole('dialog', { name: 'Запись сценария' })

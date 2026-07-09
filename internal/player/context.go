@@ -39,6 +39,8 @@ type RunContext struct {
 	downloadDir     string
 	completedSteps  []gherkin.Step
 	stepRecords     []StepRecord
+	iterationPath   []IterationFrame
+	actionAttempts  int
 	failedLeafStep  int
 	stepScreenshots bool
 	PromptEmailCode func(email string) (string, error)
@@ -47,11 +49,8 @@ type RunContext struct {
 const noFailedLeafStep = -1
 
 func NewRunContext(variables map[string]string, seed int64, projectRoot string, opts ...RunContextOption) *RunContext {
-	if variables == nil {
-		variables = map[string]string{}
-	}
 	ctx := &RunContext{
-		Variables:       variables,
+		Variables:       CloneVariables(variables),
 		values:          map[string]string{},
 		resolving:       map[string]bool{},
 		rng:             rand.New(rand.NewSource(seed)),
@@ -168,8 +167,11 @@ func (c *RunContext) EvaluateCondition(cond *gherkin.Condition) bool {
 }
 
 func (c *RunContext) EvaluateConditionResult(cond *gherkin.Condition) (bool, error) {
-	if cond == nil || c.page == nil {
+	if cond == nil {
 		return false, nil
+	}
+	if c.page == nil {
+		return false, fmt.Errorf("evaluate condition %q: page is not available", cond.Type)
 	}
 	switch cond.Type {
 	case "visible":

@@ -13,7 +13,7 @@ func TestRecorderServiceNilSessionGuards(t *testing.T) {
 	if err := svc.FocusBrowser(nil); err == nil {
 		t.Fatal("expected focus error for nil session")
 	}
-	if err := svc.UpdateRecordingOptions(nil, true, true, true, false, false, 500); err == nil {
+	if err := svc.UpdateRecordingOptions(nil, true, true, true, false, false, 500, true); err == nil {
 		t.Fatal("expected update options error for nil session")
 	}
 

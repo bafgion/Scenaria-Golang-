@@ -3,16 +3,26 @@
 
   export let browser = 'chromium'
   export let syntaxOnly = false
+  export let flowAware = false
   export let scope: 'project' | 'current' = 'project'
   export let canValidateCurrent = false
   export let currentFileName = ''
-  export let onConfirm: (payload: { browser: string; syntaxOnly: boolean; scope: 'project' | 'current' }) => void = () => {}
+  export let onConfirm: (payload: { browser: string; syntaxOnly: boolean; flowAware: boolean; scope: 'project' | 'current' }) => void = () => {}
   export let onCancel: () => void = () => {}
+
+  let validationMode: 'static' | 'flow' = 'static'
+
+  $: validationMode = flowAware ? 'flow' : 'static'
+
+  function onValidationModeChange(mode: 'static' | 'flow') {
+    validationMode = mode
+    flowAware = mode === 'flow'
+  }
 
   $: tr = createTranslator($locale)
 
   function confirm() {
-    onConfirm({ browser, syntaxOnly, scope })
+    onConfirm({ browser, syntaxOnly, flowAware: syntaxOnly ? false : validationMode === 'flow', scope })
   }
 
   function onKey(e: KeyboardEvent) {
@@ -42,6 +52,19 @@
       <input type="checkbox" bind:checked={syntaxOnly} />
       {tr('dialogs.validate.syntaxOnly')}
     </label>
+    {#if !syntaxOnly}
+      <fieldset class="mode">
+        <legend>{tr('dialogs.validate.mode')}</legend>
+        <label class="check-row">
+          <input type="radio" bind:group={validationMode} value="static" on:change={() => onValidationModeChange('static')} />
+          {tr('dialogs.validate.modeStatic')}
+        </label>
+        <label class="check-row">
+          <input type="radio" bind:group={validationMode} value="flow" on:change={() => onValidationModeChange('flow')} />
+          {tr('dialogs.validate.modeFlow')}
+        </label>
+      </fieldset>
+    {/if}
     <label>
       {tr('dialogs.validate.browser')}
       <select bind:value={browser} disabled={syntaxOnly}>
@@ -64,7 +87,8 @@
     font-size: 14px;
   }
 
-  fieldset.scope {
+  fieldset.scope,
+  fieldset.mode {
     margin: 0 0 12px;
     padding: 8px 10px;
     border: 1px solid var(--color-border);

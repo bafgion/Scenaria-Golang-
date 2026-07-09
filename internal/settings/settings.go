@@ -15,7 +15,8 @@ type AppSettings struct {
 	Headless            bool   `json:"headless"`
 	RecordingHoverMode  bool   `json:"recording_hover_mode"`
 	RecordingFilterMode bool   `json:"recording_filter_mode"`
-	NavOnlyRecording    bool   `json:"nav_only_recording"`
+	NavOnlyRecording     bool `json:"nav_only_recording"`
+	DisableRecordURLWait bool `json:"disable_record_url_wait,omitempty"`
 	ParallelWorkers     int    `json:"parallel_workers"`
 	SlowMo              int    `json:"slow_mo"`
 	MaxLoopIterations   int    `json:"max_loop_iterations"`
@@ -34,6 +35,8 @@ type AppSettings struct {
 	HoverRecordMinMs    int      `json:"hover_record_min_ms"`
 	SelectorClickStrategies []string `json:"selector_click_strategies,omitempty"`
 	SelectorInputStrategies []string `json:"selector_input_strategies,omitempty"`
+	LibraryHeuristicsMUI    *bool    `json:"library_heuristics_mui,omitempty"`
+	LibraryHeuristicsAnt    *bool    `json:"library_heuristics_ant,omitempty"`
 	CheckUpdatesOnStartup *bool  `json:"check_updates_on_startup,omitempty"`
 	HTTPAuth            map[string]HTTPAuthEntry `json:"http_auth,omitempty"`
 	Editor              EditorSettings             `json:"editor,omitempty"`

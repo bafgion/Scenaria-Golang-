@@ -1,0 +1,143 @@
+//go:build integration
+
+package recorder
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/selector"
+	playwright "github.com/mxschmitt/playwright-go"
+)
+
+const navLinkHTML = `<!doctype html><html><body>
+<a id="go" href="https://recorder.test/target">Go</a>
+</body></html>`
+
+const navTargetHTML = `<!doctype html><html><body><h1>Target</h1></body></html>`
+
+func TestRecorderStashPreservesClickAcrossFullNavigation(t *testing.T) {
+	page := openRecorderFixture(t, navLinkHTML, "https://recorder.test/target", navTargetHTML)
+	if err := page.Click("#go"); err != nil {
+		t.Fatalf("click: %v", err)
+	}
+	if err := page.WaitForURL("https://recorder.test/target", playwright.PageWaitForURLOptions{
+		Timeout: playwright.Float(5000),
+	}); err != nil {
+		t.Fatalf("wait url: %v", err)
+	}
+
+	events, err := drainRecorderEvents(page)
+	if err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if !eventsContainClick(events, "#go") {
+		t.Fatalf("expected click in drained events after navigation, got %+v", events)
+	}
+
+	recorded := []RecordedStep{{Action: "goto", Value: "about:blank"}}
+	state := newRecorderPollState(recorded[0].Value, true)
+	applyRecorderPollBatch(&recorded, &state, events, page.URL(), time.Now(), nil)
+	if len(recorded) < 2 || recorded[1].Action != "click" {
+		t.Fatalf("expected click step first, got %+v", recorded)
+	}
+}
+
+func TestRecorderNavCausingClickStashesBeforeUnload(t *testing.T) {
+	page := openRecorderFixture(t, navLinkHTML, "https://recorder.test/target", navTargetHTML)
+	if err := page.Click("#go"); err != nil {
+		t.Fatalf("click: %v", err)
+	}
+	if err := page.WaitForURL("https://recorder.test/target", playwright.PageWaitForURLOptions{
+		Timeout: playwright.Float(5000),
+	}); err != nil {
+		t.Fatalf("wait url: %v", err)
+	}
+	stashed, err := page.Evaluate(`() => {
+		const raw = sessionStorage.getItem('__scenariaRecorderStash');
+		if (raw) return JSON.parse(raw);
+		const r = window.__scenariaRecorder;
+		return r && r.events ? r.events.slice() : [];
+	}`)
+	if err != nil {
+		t.Fatalf("read stash: %v", err)
+	}
+	events, err := decodeEvents(stashed)
+	if err != nil {
+		t.Fatalf("decode stash: %v", err)
+	}
+	if !eventsContainClick(events, "#go") {
+		t.Fatalf("expected stashed click, got %+v", events)
+	}
+}
+
+func openRecorderFixture(t *testing.T, html, routeURL, routeHTML string) playwright.Page {
+	t.Helper()
+	if err := playwright.Install(); err != nil {
+		t.Fatalf("install playwright: %v", err)
+	}
+	paths.ConfigurePlaywrightBrowsers()
+	pw, err := playwright.Run()
+	if err != nil {
+		t.Fatalf("run playwright: %v", err)
+	}
+	t.Cleanup(func() { _ = pw.Stop() })
+
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{Headless: playwright.Bool(true)})
+	if err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	t.Cleanup(func() { _ = browser.Close() })
+
+	bctx, err := browser.NewContext()
+	if err != nil {
+		t.Fatalf("context: %v", err)
+	}
+	t.Cleanup(func() { _ = bctx.Close() })
+	if err := bctx.AddInitScript(playwright.Script{Content: playwright.String(selector.HeuristicsJS)}); err != nil {
+		t.Fatalf("heuristics init: %v", err)
+	}
+	if err := bctx.AddInitScript(playwright.Script{Content: playwright.String(selector.RecorderListenersJS)}); err != nil {
+		t.Fatalf("recorder init: %v", err)
+	}
+
+	page, err := bctx.NewPage()
+	if err != nil {
+		t.Fatalf("page: %v", err)
+	}
+	startURL := "https://recorder.test/start"
+	for _, spec := range []struct{ pattern, body string }{
+		{startURL, html},
+		{routeURL, routeHTML},
+	} {
+		pattern, body := spec.pattern, spec.body
+		if err := page.Route(pattern, func(route playwright.Route) {
+			_ = route.Fulfill(playwright.RouteFulfillOptions{
+				Status:      playwright.Int(200),
+				ContentType: playwright.String("text/html"),
+				Body:        body,
+			})
+		}); err != nil {
+			t.Fatalf("route %s: %v", pattern, err)
+		}
+	}
+	if _, err := page.Goto(startURL); err != nil {
+		t.Fatalf("goto start: %v", err)
+	}
+	return page
+}
+
+func eventsContainClick(events []recorderEvent, wantSelector string) bool {
+	for _, event := range events {
+		if strings.ToLower(event.Type) != "click" {
+			continue
+		}
+		detail := normalizeDetail(event.Detail)
+		if detail["selector"] == wantSelector {
+			return true
+		}
+	}
+	return false
+}

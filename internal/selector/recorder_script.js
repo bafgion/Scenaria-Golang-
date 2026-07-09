@@ -12,13 +12,63 @@
     collect,
   } = H;
 
-  window.__scenariaRecorder = { events: [], paused: false, filterImportant: false, navOnly: false, hoverRecord: false, scrollBeforeClick: false, hoverRecordMinMs: 600 };
+  window.__scenariaRecorder = { events: [], paused: false, filterImportant: false, navOnly: false, hoverRecord: false, scrollBeforeClick: false, hoverRecordMinMs: 600, seq: 0 };
+  const STASH_KEY = '__scenariaRecorderStash';
   const cfg = () => window.__scenariaRecorder || {};
+
+  function restoreStashedEvents() {
+    try {
+      const raw = sessionStorage.getItem(STASH_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(STASH_KEY);
+      const items = JSON.parse(raw);
+      if (!Array.isArray(items)) return;
+      for (const ev of items) {
+        if (ev && ev.type) window.__scenariaRecorder.events.push(ev);
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function stashEventsForNavigation() {
+    try {
+      const pending = window.__scenariaRecorder.events.slice();
+      if (!pending.length) return;
+      let merged = pending;
+      const prev = sessionStorage.getItem(STASH_KEY);
+      if (prev) {
+        const parsed = JSON.parse(prev);
+        if (Array.isArray(parsed)) merged = parsed.concat(pending);
+      }
+      sessionStorage.setItem(STASH_KEY, JSON.stringify(merged));
+      window.__scenariaRecorder.events.length = 0;
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  restoreStashedEvents();
+
+  function isNavCausingClick(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const root = clickableAncestor(el) || el;
+    if (isNavTarget(root)) return true;
+    const tag = (root.tagName || '').toUpperCase();
+    const type = (root.type || '').toLowerCase();
+    if (tag === 'INPUT' && type === 'submit') return true;
+    if (tag === 'BUTTON') {
+      const form = root.closest ? root.closest('form') : null;
+      if (form && (type === 'submit' || type === '')) return true;
+    }
+    return false;
+  }
 
   function pushDetail(type, detail) {
     if (!detail || cfg().paused) return;
     if (cfg().navOnly && !['goto', 'scroll-to'].includes(type)) return;
-    window.__scenariaRecorder.events.push({ type, detail, ts: Date.now() });
+    window.__scenariaRecorder.seq = (window.__scenariaRecorder.seq || 0) + 1;
+    window.__scenariaRecorder.events.push({ type, detail, ts: Date.now(), seq: window.__scenariaRecorder.seq });
   }
 
   function isNavTarget(el) {
@@ -245,6 +295,9 @@
       detail.hovertext = hover.text || '';
     }
     pushDetail('click', detail);
+    if (isNavCausingClick(el)) {
+      stashEventsForNavigation();
+    }
   }
 
   function onDocumentInput(e) {
@@ -424,4 +477,10 @@
   }
 
   observeRoot(document);
+
+  window.addEventListener('pagehide', () => {
+    if (window.__scenariaRecorder?.events?.length) {
+      stashEventsForNavigation();
+    }
+  });
 })();

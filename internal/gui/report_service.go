@@ -81,12 +81,34 @@ func (s *ReportService) ArtifactExists(path string) bool {
 	return true
 }
 
+func (s *ReportService) latestHTMLReport() string {
+	if s == nil || s.projectPath == nil {
+		return ""
+	}
+	root := strings.TrimSpace(s.projectPath())
+	if root == "" {
+		return ""
+	}
+	latest, err := report.ReadLatestRunPointer(root)
+	if err != nil || latest == nil {
+		return ""
+	}
+	html := strings.TrimSpace(latest.HTMLPath)
+	if html != "" && s.ArtifactExists(html) {
+		return html
+	}
+	return ""
+}
+
 func (s *ReportService) ProjectArtifacts() ProjectArtifacts {
 	dirs := s.scenariaDirs()
 	if len(dirs) == 0 {
 		return ProjectArtifacts{}
 	}
 	out := ProjectArtifacts{}
+	if html := s.latestHTMLReport(); html != "" {
+		out.HTMLReport = html
+	}
 	for _, scenaria := range dirs {
 		if out.AllureDir == "" && s.ArtifactExists(filepath.Join(scenaria, "allure-results")) {
 			out.AllureDir = filepath.Join(scenaria, "allure-results")
@@ -183,15 +205,18 @@ func (s *ReportService) WriteRunReports(projectRoot string, req RunRequest, plan
 			bridgeURL, bridgeToken = s.bridgeCreds()
 		}
 		htmlOpts := report.HTMLOptions{
-			Plan:            plan,
-			ProjectRoot:     projectRoot,
-			LightMode:       req.HTMLLightMode,
-			BridgeURL:       bridgeURL,
-			BridgeToken:     bridgeToken,
-			Locale:          req.ReportLocale,
-			ReportDir:       filepath.Dir(req.HTMLPath),
-			PreviousSummary: prevSummary,
-			RunID:           runID,
+			Plan:               plan,
+			ProjectRoot:        projectRoot,
+			LightMode:          req.HTMLLightMode,
+			BridgeURL:          bridgeURL,
+			BridgeToken:        bridgeToken,
+			Locale:             req.ReportLocale,
+			ReportDir:          filepath.Dir(req.HTMLPath),
+			PreviousSummary:    prevSummary,
+			RunID:              runID,
+			ValidationBrowser:  req.Browser,
+			ValidationHeadless: !req.Headed,
+			ValidationBaseURL:  req.BaseURL,
 		}
 		if _, _, err := report.WriteHTMLModePair(req.HTMLPath, result, htmlOpts); err != nil {
 			writeErr = errors.Join(writeErr, err)

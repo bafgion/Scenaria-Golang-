@@ -39,6 +39,7 @@ export namespace gui {
 	    navWaitUntil: string;
 	    filterRecording: boolean;
 	    navOnlyRecording: boolean;
+	    disableRecordUrlWait: boolean;
 	    hoverRecord: boolean;
 	    toolbarCompact: boolean;
 	    stepsPanelVisible: boolean;
@@ -54,6 +55,8 @@ export namespace gui {
 	    hoverRecordMinMs: number;
 	    selectorClickStrategies: string[];
 	    selectorInputStrategies: string[];
+	    libraryHeuristicsMui: boolean;
+	    libraryHeuristicsAnt: boolean;
 	    checkUpdatesOnStartup: boolean;
 	    editor: settings.EditorSettings;
 	    checklistDismissed: boolean;
@@ -80,6 +83,7 @@ export namespace gui {
 	        this.navWaitUntil = source["navWaitUntil"];
 	        this.filterRecording = source["filterRecording"];
 	        this.navOnlyRecording = source["navOnlyRecording"];
+	        this.disableRecordUrlWait = source["disableRecordUrlWait"];
 	        this.hoverRecord = source["hoverRecord"];
 	        this.toolbarCompact = source["toolbarCompact"];
 	        this.stepsPanelVisible = source["stepsPanelVisible"];
@@ -95,6 +99,8 @@ export namespace gui {
 	        this.hoverRecordMinMs = source["hoverRecordMinMs"];
 	        this.selectorClickStrategies = source["selectorClickStrategies"];
 	        this.selectorInputStrategies = source["selectorInputStrategies"];
+	        this.libraryHeuristicsMui = source["libraryHeuristicsMui"];
+	        this.libraryHeuristicsAnt = source["libraryHeuristicsAnt"];
 	        this.checkUpdatesOnStartup = source["checkUpdatesOnStartup"];
 	        this.editor = this.convertValues(source["editor"], settings.EditorSettings);
 	        this.checklistDismissed = source["checklistDismissed"];
@@ -338,6 +344,10 @@ export namespace gui {
 	    selector?: string;
 	    status?: string;
 	    stepText?: string;
+	    mode?: string;
+	    actionKind?: string;
+	    matchCount?: number;
+	    limitation?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ValidationIssue(source);
@@ -350,6 +360,10 @@ export namespace gui {
 	        this.selector = source["selector"];
 	        this.status = source["status"];
 	        this.stepText = source["stepText"];
+	        this.mode = source["mode"];
+	        this.actionKind = source["actionKind"];
+	        this.matchCount = source["matchCount"];
+	        this.limitation = source["limitation"];
 	    }
 	}
 	export class EditorAnalysisDTO {
@@ -609,18 +623,83 @@ export namespace gui {
 	        this.scenarioName = source["scenarioName"];
 	    }
 	}
+	export class SelectorCandidate {
+	    selector: string;
+	    strategy: string;
+	    score: number;
+	    matches_count: number;
+	    unique: boolean;
+	    visible: boolean;
+	    matches_picked: boolean;
+	    warnings: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new SelectorCandidate(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selector = source["selector"];
+	        this.strategy = source["strategy"];
+	        this.score = source["score"];
+	        this.matches_count = source["matches_count"];
+	        this.unique = source["unique"];
+	        this.visible = source["visible"];
+	        this.matches_picked = source["matches_picked"];
+	        this.warnings = source["warnings"];
+	    }
+	}
 	export class PickSelectorResult {
 	    selector: string;
 	    error: string;
-	
+	    suggested_action: string;
+	    suggested_choice: number;
+	    warnings: string[];
+	    candidates: SelectorCandidate[];
+
 	    static createFrom(source: any = {}) {
 	        return new PickSelectorResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.selector = source["selector"];
 	        this.error = source["error"];
+	        this.suggested_action = source["suggested_action"];
+	        this.suggested_choice = source["suggested_choice"];
+	        this.warnings = source["warnings"];
+	        this.candidates = this.convertValues(source["candidates"], SelectorCandidate);
+	    }
+
+	    convertValues(a: any, classs: any, asMap: boolean = false): any {
+	        if (!a) {
+	            return a;
+	        }
+	        if (a.slice) {
+	            return (a as any[]).map(elem => {
+	                if (typeof elem === "object" && elem !== null) {
+	                    if (asMap) {
+	                        for (const key of Object.keys(elem)) {
+	                            elem[key] = new classs(elem[key]);
+	                        }
+	                        return elem;
+	                    }
+	                    return new classs(elem);
+	                } else {
+	                    return elem;
+	                }
+	            });
+	        }
+	        if (typeof a === "object" && a !== null) {
+	            if (asMap) {
+	                for (const key of Object.keys(a)) {
+	                    a[key] = new classs(a[key]);
+	                }
+	                return a;
+	            }
+	            return new classs(a);
+	        }
+	        return a;
 	    }
 	}
 	export class PickerStepChoice {
@@ -1087,6 +1166,7 @@ export namespace gui {
 	    browser: string;
 	    skipBrowser: boolean;
 	    targets: string[];
+	    mode: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ValidateRequest(source);
@@ -1097,6 +1177,7 @@ export namespace gui {
 	        this.browser = source["browser"];
 	        this.skipBrowser = source["skipBrowser"];
 	        this.targets = source["targets"];
+	        this.mode = source["mode"];
 	    }
 	}
 	

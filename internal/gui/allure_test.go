@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/report"
 )
 
 func TestFileURL(t *testing.T) {
@@ -35,6 +37,41 @@ func TestOpenHTMLReport_Missing(t *testing.T) {
 	result := svc.OpenHTMLReport("")
 	if result.Error == "" {
 		t.Fatal("expected error for missing report")
+	}
+}
+
+func TestOpenHTMLReportPrefersLatestRunPointer(t *testing.T) {
+	root := t.TempDir()
+	scenaria := filepath.Join(root, ".scenaria")
+	legacy := filepath.Join(scenaria, "report.html")
+	latestHTML := filepath.Join(scenaria, "runs", "run-1", "report.html")
+	if err := os.MkdirAll(filepath.Dir(latestHTML), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(latestHTML, []byte("fresh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.WriteLatestRunPointer(root, report.RunArtifactLayout{
+		RunID:    "run-1",
+		Dir:      filepath.Dir(latestHTML),
+		HTMLPath: latestHTML,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewService()
+	if _, err := svc.OpenProject(root); err != nil {
+		t.Fatal(err)
+	}
+	result := svc.OpenHTMLReport(legacy)
+	if result.Error != "" {
+		t.Fatalf("OpenHTMLReport: %s", result.Error)
+	}
+	if result.Output != latestHTML {
+		t.Fatalf("OpenHTMLReport = %q, want %q", result.Output, latestHTML)
 	}
 }
 

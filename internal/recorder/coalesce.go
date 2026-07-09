@@ -86,6 +86,10 @@ func ApplyCoalescedStep(steps []RecordedStep, step RecordedStep) ([]RecordedStep
 		return steps, nil
 	}
 
+	if action == "wait-url" && last.Action == "wait-url" && last.Value == step.Value {
+		return steps, nil
+	}
+
 	out := append(steps, step)
 	if step.Action == "fill" {
 		step = upgradeFillSelector(step)
@@ -147,6 +151,17 @@ func appendGotoStep(steps *[]RecordedStep, url string, notify StepNotifier) {
 		return
 	}
 	step := RecordedStep{Action: "goto", Value: url}
+	updated, emitted := ApplyCoalescedStep(*steps, step)
+	*steps = updated
+	emitRecordedStep(notify, *steps, emitted)
+}
+
+func appendWaitURLStep(steps *[]RecordedStep, url string, notify StepNotifier) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return
+	}
+	step := RecordedStep{Action: "wait-url", Value: url}
 	updated, emitted := ApplyCoalescedStep(*steps, step)
 	*steps = updated
 	emitRecordedStep(notify, *steps, emitted)

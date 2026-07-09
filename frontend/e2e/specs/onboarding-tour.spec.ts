@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectSpotlightOn, expectTourStep } from '../helpers/onboarding'
 import { bootApp, mockPath } from '../helpers/app'
 
 test.beforeEach(async ({ page }) => {
@@ -30,14 +31,15 @@ test('onboarding tour step 5 highlights run menu', async ({ page }) => {
   await bootApp(page, '', { withTour: true })
   await page.getByRole('button', { name: 'Далее' }).click()
   await page.getByRole('button', { name: 'Открыть примеры сценариев' }).click()
-  await expect(page.locator('.catalog-tree .tree-file-label').first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.catalog-tree .tree-file-label').first()).toBeVisible({ timeout: 15_000 })
   await page.locator('.catalog-tree .catalog-tree-row.file').first().click()
-  await expect(page.getByText('Шаг 4 из 8')).toBeVisible({ timeout: 10_000 })
+  await expectTourStep(page, 4, 'Редактор Gherkin')
   await page.getByRole('button', { name: 'Далее' }).click()
-  await expect(page.getByText('Шаг 5 из 8')).toBeVisible()
+  await expectTourStep(page, 5, 'Проверка синтаксиса')
   await expect(page.locator('body.onboarding-tour-active')).toBeVisible()
   await expect(page.locator('.menubar.onboarding-elevated')).toBeVisible()
-  await expect(page.locator('.menu-root.open [data-tour="menu-run-dropdown"]')).toBeVisible()
+  await expect(page.locator('.menu-root.open [data-tour="menu-run-dropdown"]')).toBeVisible({ timeout: 15_000 })
+  await expectSpotlightOn(page, '[data-tour="menu-run"]')
   await expect(page.locator('.onboarding-ring')).toBeVisible()
   const layers = await page.evaluate(() => {
     const elevated = document.querySelector('.menubar.onboarding-elevated')

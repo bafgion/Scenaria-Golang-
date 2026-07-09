@@ -199,11 +199,14 @@ func writeRunReportsWithOutput(opts runOptions, plan player.ExecutionPlan, resul
 	if opts.htmlPath != "" {
 		root := paths.InferProjectRoot(opts.targets)
 		htmlOpts := report.HTMLOptions{
-			Plan:            plan,
-			ProjectRoot:     root,
-			LightMode:       opts.htmlLight,
-			ReportDir:       filepath.Dir(opts.htmlPath),
-			PreviousSummary: prevSummary,
+			Plan:               plan,
+			ProjectRoot:        root,
+			LightMode:          opts.htmlLight,
+			ReportDir:          filepath.Dir(opts.htmlPath),
+			PreviousSummary:    prevSummary,
+			ValidationBrowser:  opts.browser,
+			ValidationHeadless: !opts.headed,
+			ValidationBaseURL:  opts.baseURL,
 		}
 		if _, _, writeErr := report.WriteHTMLModePair(opts.htmlPath, result, htmlOpts); writeErr != nil {
 			return writeErr

@@ -17,6 +17,7 @@
   export let navOnlyRecording = false
   export let hoverRecord = false
   export let scrollBeforeClick = false
+  export let disableRecordUrlWait = false
   export let hoverRecordMinMs = 600
   export let pickerDuringRecording = false
   export let toolbarCompact = false
@@ -26,6 +27,8 @@
   export let uiLocale: Locale = 'ru'
   export let selectorClickStrategies: string[] = ['text', 'contextual', 'aria', 'title', 'testid', 'id']
   export let selectorInputStrategies: string[] = ['testid', 'id', 'label', 'placeholder', 'aria', 'name']
+  export let libraryHeuristicsMui = true
+  export let libraryHeuristicsAnt = true
   export let navWaitUntil = 'domcontentloaded'
   export let htmlReportOpenMode: 'full' | 'light' = 'full'
   export let projectOpen = false
@@ -122,6 +125,13 @@
 
   function moveInputStrategy(index: number, delta: number) {
     selectorInputStrategies = moveStrategy(selectorInputStrategies, index, delta)
+  }
+
+  function onRecordUrlWaitToggle(event: Event) {
+    const target = event.currentTarget
+    if (target instanceof HTMLInputElement) {
+      disableRecordUrlWait = !target.checked
+    }
   }
 
   onMount(async () => {
@@ -320,6 +330,10 @@
               <input type="checkbox" bind:checked={hoverRecord} />
             </SettingCard>
 
+            <SettingCard title={tr('settings.cards.recordUrlWait.title')} description={tr('settings.cards.recordUrlWait.description')}>
+              <input type="checkbox" checked={!disableRecordUrlWait} on:change={onRecordUrlWaitToggle} />
+            </SettingCard>
+
             <SettingCard title={tr('settings.cards.hoverMin.title')} description={tr('settings.cards.hoverMin.description')}>
               <span class="num-with-unit">
                 <input type="number" class="setting-number" bind:value={hoverRecordMinMs} min={100} max={5000} step={50} />
@@ -415,6 +429,14 @@
               {/each}
             </ul>
             <button type="button" class="dialog-link-btn" on:click={() => (selectorInputStrategies = [...defaultInputStrategies])}>{tr('settings.strategies.resetInputs')}</button>
+            <h5 class="strategy-group-title">{tr('settings.strategies.libraryTitle')}</h5>
+            <p class="setting-section-desc">{tr('settings.strategies.libraryDesc')}</p>
+            <SettingCard title={tr('settings.strategies.libraryMui')} description="">
+              <input type="checkbox" bind:checked={libraryHeuristicsMui} />
+            </SettingCard>
+            <SettingCard title={tr('settings.strategies.libraryAnt')} description="">
+              <input type="checkbox" bind:checked={libraryHeuristicsAnt} />
+            </SettingCard>
           </section>
         {:else if tab === 'plugins'}
           <section class="setting-section">
