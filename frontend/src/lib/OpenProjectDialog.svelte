@@ -9,6 +9,12 @@
   $: tr = createTranslator($locale)
 
   let path = initialPath
+  let lastInitialPath = initialPath
+
+  $: if (initialPath !== lastInitialPath) {
+    path = initialPath
+    lastInitialPath = initialPath
+  }
 
   function submit() {
     const value = path.trim()

@@ -1,0 +1,5 @@
+{
+  "featurePath": "C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\examples\\04-tablica-primerov.feature",
+  "content": "@outline\r\nФункционал: Примеры для новичков\r\nСтруктура сценария: Проверка заголовка на разных сайтах\r\n\tДопустим открыт \"\u003curl\u003e\"\r\n\tТогда вижу \"h1\"\r\n\tИ проверяю текст \"Example Domain\" в \"h1\"\r\n\tИ закрываю браузер\r\n\r\nПримеры:\r\n  | url                     |\r\n  | https://example.com     |\r\n  | https://www.example.org |\r\nыыыы",
+  "updatedAt": "2026-07-09T09:59:22Z"
+}

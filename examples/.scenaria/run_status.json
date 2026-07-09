@@ -1,0 +1,17 @@
+[
+  {
+    "path": "C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\examples\\01-pervaya-proverka.feature::Первая проверка страницы",
+    "case_id": "C:/Users/bafgion/Documents/Projects/scenaria_go/examples/01-pervaya-proverka.feature::Первая проверка страницы",
+    "success": true,
+    "message": "",
+    "duration_ms": 944,
+    "step_durations": [
+      677,
+      61,
+      22,
+      183
+    ],
+    "runner": "playwright",
+    "at": "2026-07-09T09:31:47Z"
+  }
+]

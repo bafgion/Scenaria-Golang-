@@ -79,4 +79,39 @@ describe('createTabsStore', () => {
     expect(activeTab).toBe(welcomeKey)
     expect(welcomeTabVisible).toBe(true)
   })
+
+  it('activates next tab immediately after closing active tab', () => {
+    const store = createTabsStore(welcomeKey)
+    store.appendTab({ path: 'a.feature', content: '', dirty: false })
+    store.appendTab({ path: 'b.feature', content: '', dirty: false })
+    store.setActiveTab('b.feature')
+    store.setWelcomeVisible(false)
+    store.applyCloseResult({
+      tabs: [{ path: 'a.feature', content: '', dirty: false }],
+      openNextPath: 'a.feature',
+      showWelcome: false,
+    })
+    const snapshot = store.snapshot()
+    expect(snapshot.tabs.map((t) => t.path)).toEqual(['a.feature'])
+    expect(snapshot.activeTab).toBe('a.feature')
+    expect(snapshot.welcomeTabVisible).toBe(false)
+    expect(snapshot.pendingCloseTab).toBeNull()
+  })
+
+  it('closes pending dirty active tab using current store state', () => {
+    const store = createTabsStore(welcomeKey)
+    store.appendTab({ path: 'a.feature', content: '', dirty: false })
+    store.appendTab({ path: 'b.feature', content: 'old', draft: 'new', dirty: true })
+    store.setActiveTab('b.feature')
+    store.setWelcomeVisible(false)
+    store.setPendingCloseTab('b.feature')
+
+    const result = store.closePath('b.feature')
+    const snapshot = store.snapshot()
+
+    expect(result.openNextPath).toBe('a.feature')
+    expect(snapshot.tabs.map((t) => t.path)).toEqual(['a.feature'])
+    expect(snapshot.activeTab).toBe('a.feature')
+    expect(snapshot.pendingCloseTab).toBeNull()
+  })
 })

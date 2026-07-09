@@ -52,6 +52,7 @@ type browserSession struct {
 	networkMu       sync.Mutex
 	browser         playwright.Browser
 	context         playwright.BrowserContext
+	contextOptions  playwright.BrowserNewContextOptions
 	page            playwright.Page
 	closed          atomic.Bool
 	external        bool
@@ -94,11 +95,12 @@ func newBrowserSession(pw *playwright.Playwright, options PlaywrightExecutorOpti
 		return nil, err
 	}
 	session := &browserSession{
-		browser:      browser,
-		context:      bctx,
-		page:         page,
-		videoEnabled: strings.TrimSpace(options.VideoDir) != "",
-		navWaitUntil: navWaitUntil,
+		browser:        browser,
+		context:        bctx,
+		contextOptions: ctxOpts,
+		page:           page,
+		videoEnabled:   strings.TrimSpace(options.VideoDir) != "",
+		navWaitUntil:   navWaitUntil,
 	}
 	wireNetworkFailureListener(session)
 	if strings.TrimSpace(options.TraceDir) != "" {
@@ -255,22 +257,41 @@ func (s *browserSession) currentPageAndNavWait() (playwright.Page, *playwright.W
 func (s *browserSession) resetForScenario() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.context == nil {
+	if s.browser == nil {
 		return fmt.Errorf("browser session is closed")
 	}
 	if s.isClosed() {
-		// Parallel cancel calls abortRun without tearing down the browser stack — allow pool reuse.
+		// Parallel cancel calls abortRun without tearing down the browser stack - allow pool reuse.
 		s.closed.Store(false)
 	}
-	if s.page != nil {
-		closeBrowserResource("page", func() error { return s.page.Close() })
+	if s.context != nil {
+		if s.traceEnabled && !s.traceStopped {
+			closeBrowserResource("trace", func() error { return s.context.Tracing().Stop() })
+			s.traceStopped = true
+		}
+		closeBrowserResource("context", func() error { return s.context.Close() })
+		s.context = nil
 		s.page = nil
 	}
-	page, err := s.context.NewPage()
+	bctx, err := s.browser.NewContext(s.contextOptions)
 	if err != nil {
+		return fmt.Errorf("reset browser context: %w", err)
+	}
+	page, err := bctx.NewPage()
+	if err != nil {
+		closeBrowserResource("context", func() error { return bctx.Close() })
 		return fmt.Errorf("reset browser page: %w", err)
 	}
+	s.context = bctx
 	s.page = page
+	s.traceStopped = false
+	wireNetworkFailureListenerLocked(s)
+	if s.traceEnabled {
+		if err := startTraceRecording(s); err != nil {
+			return fmt.Errorf("restart playwright trace: %w", err)
+		}
+	}
+	s.clearNetworkFailureLocked()
 	return nil
 }
 

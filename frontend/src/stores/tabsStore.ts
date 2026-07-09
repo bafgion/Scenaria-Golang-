@@ -93,12 +93,42 @@ export function createTabsStore(
             loadFeatureGeneration: s.loadFeatureGeneration,
           }
         }
+        const nextActiveTab = result.openNextPath || s.activeTab
         return {
           ...s,
           tabs: result.tabs,
+          activeTab: nextActiveTab,
           pendingCloseTab: null,
+          welcomeTabVisible: false,
         }
       })
+    },
+    closePath(path: string): TabsCloseResult {
+      let result: TabsCloseResult = {
+        tabs: [],
+        openNextPath: '',
+        showWelcome: false,
+      }
+      store.update((s) => {
+        result = reduceTabsAfterClose(s.tabs, s.activeTab, path)
+        if (result.showWelcome) {
+          return {
+            tabs: result.tabs,
+            activeTab: welcomeKey,
+            welcomeTabVisible: true,
+            pendingCloseTab: null,
+            loadFeatureGeneration: s.loadFeatureGeneration,
+          }
+        }
+        return {
+          ...s,
+          tabs: result.tabs,
+          activeTab: result.openNextPath || s.activeTab,
+          pendingCloseTab: null,
+          welcomeTabVisible: false,
+        }
+      })
+      return result
     },
     setPendingCloseTab(pendingCloseTab: string | null) {
       store.update((s) => ({ ...s, pendingCloseTab }))

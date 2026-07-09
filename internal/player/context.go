@@ -163,63 +163,89 @@ func randomDigits(rng *rand.Rand, count int) string {
 }
 
 func (c *RunContext) EvaluateCondition(cond *gherkin.Condition) bool {
+	ok, err := c.EvaluateConditionResult(cond)
+	return err == nil && ok
+}
+
+func (c *RunContext) EvaluateConditionResult(cond *gherkin.Condition) (bool, error) {
 	if cond == nil || c.page == nil {
-		return false
+		return false, nil
 	}
 	switch cond.Type {
 	case "visible":
 		selector, err := c.ResolveText(cond.Selector)
 		if err != nil {
-			return false
+			return false, err
 		}
 		visible, err := c.page.Locator(selector).IsVisible()
-		return err == nil && visible
+		if err != nil {
+			return false, fmt.Errorf("evaluate visible condition %q: %w", selector, err)
+		}
+		return visible, nil
 	case "hidden":
 		selector, err := c.ResolveText(cond.Selector)
 		if err != nil {
-			return false
+			return false, err
 		}
 		visible, err := c.page.Locator(selector).IsVisible()
-		return err == nil && !visible
+		if err != nil {
+			return false, fmt.Errorf("evaluate hidden condition %q: %w", selector, err)
+		}
+		return !visible, nil
 	case "enabled":
 		selector, err := c.ResolveText(cond.Selector)
 		if err != nil {
-			return false
+			return false, err
 		}
 		locator := c.page.Locator(selector)
 		visible, err := locator.IsVisible()
-		if err != nil || !visible {
-			return false
+		if err != nil {
+			return false, fmt.Errorf("evaluate enabled condition visibility %q: %w", selector, err)
+		}
+		if !visible {
+			return false, nil
 		}
 		enabled, err := locator.IsEnabled()
-		return err == nil && enabled
+		if err != nil {
+			return false, fmt.Errorf("evaluate enabled condition %q: %w", selector, err)
+		}
+		return enabled, nil
 	case "disabled":
 		selector, err := c.ResolveText(cond.Selector)
 		if err != nil {
-			return false
+			return false, err
 		}
 		locator := c.page.Locator(selector)
 		visible, err := locator.IsVisible()
-		if err != nil || !visible {
-			return false
+		if err != nil {
+			return false, fmt.Errorf("evaluate disabled condition visibility %q: %w", selector, err)
+		}
+		if !visible {
+			return false, nil
 		}
 		enabled, err := locator.IsEnabled()
-		return err == nil && !enabled
+		if err != nil {
+			return false, fmt.Errorf("evaluate disabled condition %q: %w", selector, err)
+		}
+		return !enabled, nil
 	case "url_contains":
 		value, err := c.ResolveText(cond.Value)
 		if err != nil {
-			return false
+			return false, err
 		}
-		return strings.Contains(c.page.URL(), value)
+		return strings.Contains(c.page.URL(), value), nil
 	case "page_text":
 		value, err := c.ResolveText(cond.Value)
 		if err != nil {
-			return false
+			return false, err
 		}
 		content, err := c.page.Content()
-		return err == nil && strings.Contains(content, value)
+		if err != nil {
+			return false, fmt.Errorf("evaluate page_text condition: %w", err)
+		}
+		return strings.Contains(content, value), nil
 	default:
-		return false
+		return false, fmt.Errorf("unknown condition type %q", cond.Type)
 	}
 }
 

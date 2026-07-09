@@ -12,6 +12,17 @@ func wireNetworkFailureListener(session *browserSession) {
 	if err != nil {
 		return
 	}
+	wireNetworkFailurePage(session, page)
+}
+
+func wireNetworkFailureListenerLocked(session *browserSession) {
+	if session == nil || session.page == nil {
+		return
+	}
+	wireNetworkFailurePage(session, session.page)
+}
+
+func wireNetworkFailurePage(session *browserSession, page playwright.Page) {
 	page.OnRequestFailed(func(req playwright.Request) {
 		if req == nil {
 			return
@@ -88,4 +99,13 @@ func (s *browserSession) clearNetworkFailure() {
 	s.networkMu.Lock()
 	s.lastNetworkFail = ""
 	s.networkMu.Unlock()
+}
+
+func (s *browserSession) clearNetworkFailureLocked() {
+	if s == nil {
+		return
+	}
+	s.networkMu.Lock()
+	defer s.networkMu.Unlock()
+	s.lastNetworkFail = ""
 }

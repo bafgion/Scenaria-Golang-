@@ -6,7 +6,7 @@
   import CatalogEmptyState from './lib/CatalogEmptyState.svelte'
   import FeatureCatalogTree from './lib/FeatureCatalogTree.svelte'
   import EditorTabBar from './lib/EditorTabBar.svelte'
-  import { buildCatalogViewState, buildCatalogViewStateFromBase, buildRunByPathMap, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
+  import { buildCatalogViewState, buildRunByPathMap, collectFeaturePathsUnder, type CatalogNode } from './lib/catalogTree'
   import {
     buildBatchSelectedSet,
     selectAllFeaturesUnder,
@@ -23,7 +23,7 @@
   } from './controllers/wailsEventsController'
   import { createDialogBindController } from './controllers/dialogBindController'
   import { buildPaletteCommands, type PaletteActions } from './controllers/paletteCommandsController'
-  import { createWorkspaceSessionController } from './controllers/workspaceSessionController'
+  import { createWorkspaceSessionController, hasRestorableWorkspaceSession } from './controllers/workspaceSessionController'
   import { createProjectStore, type ProjectState } from './stores/projectStore'
   import { createRunnerStore } from './stores/runnerStore'
   import { createDiagnosticsStore } from './stores/diagnosticsStore'
@@ -70,7 +70,7 @@
     tabNeedsDiskReload,
     trimRetainedTabBodies,
   } from './lib/tabMemory'
-  import { createTabsStore, reduceTabsAfterClose } from './stores/tabsStore'
+  import { createTabsStore } from './stores/tabsStore'
   import SettingsDialog from './lib/SettingsDialog.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
@@ -165,6 +165,7 @@
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
+  import { resolveProjectPathInput as resolveProjectPathShortcut } from './lib/projectPath'
   import { isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath, shouldApplyLiveRecordedStep } from './lib/recordingTarget'
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
@@ -341,6 +342,7 @@
     saveSettings: SaveSettings,
     saveFeatureDraft: SaveFeatureDraft,
     openProject: OpenProject,
+    resolveProjectPath: resolveProjectPathInput,
     applyProjectScan,
     listTestClients: ListTestClients,
     loadFeature: (path) => loadFeature(path),
@@ -535,7 +537,6 @@
   } = $recorderStore)
 
   $: appVersion = $appMetaStore.version
-  $: catalogBaseTree = $catalogStore.baseTree
   $: stepStatusError = $diagnosticsStore.stepStatusError
   $: hintFixInFlight = $diagnosticsStore.hintFixInFlight
   $: ({ allureInstalled, allureServeRunning } = $reportsStore)
@@ -759,11 +760,9 @@
     return map
   })()
 
-  $: catalogStore.syncBaseTree(projectPath, features)
-
-  $: catalogViewState = buildCatalogViewStateFromBase(
+  $: catalogViewState = buildCatalogViewState(
     projectPath || null,
-    catalogBaseTree,
+    features,
     catalogFilterText,
     runByPath,
     true,
@@ -788,6 +787,7 @@
 
   const MIN_SPLASH_MS = 1400
   const SPLASH_FADE_MS = 320
+  let startupHasRestorableWorkspaceSession = false
 
   function sleep(ms: number) {
     return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
@@ -814,7 +814,7 @@
   }
 
   function shouldAutoStartOnboarding(): boolean {
-    return !onboardingCompleted && !onboardingDismissed
+    return !startupHasRestorableWorkspaceSession && !onboardingCompleted && !onboardingDismissed
   }
 
   async function completeOnboarding() {
@@ -1086,6 +1086,7 @@
     ])
     recentsStore.setRecents(recents.projects, recents.features)
     if (settings) {
+      startupHasRestorableWorkspaceSession = hasRestorableWorkspaceSession(settings)
       applySettingsFromDTO(settings)
       setStepHoverEnabled(() => dialogBinds.bindEditorSettings.stepHover)
       syncStepsPanelCollapsedFromPrefs()
@@ -1094,7 +1095,7 @@
       }
       if (settings.recentProjects?.length) recentsStore.patch({ projects: settings.recentProjects })
       if (settings.recentFeatures?.length) recentsStore.patch({ features: settings.recentFeatures })
-      if (!shouldAutoStartOnboarding()) {
+      if (startupHasRestorableWorkspaceSession || !shouldAutoStartOnboarding()) {
         await restoreWorkspaceSession(settings)
       }
     }
@@ -1824,7 +1825,9 @@
 
   async function openProjectAt(path: string) {
     if (!path) return
-    const switching = !!projectPath && projectPath !== path
+    const resolvedPath = await resolveProjectPathInput(path)
+    if (!resolvedPath) return
+    const switching = !!projectPath && projectPath !== resolvedPath
     if (switching && (tabs.length > 0 || browserOpen || recording)) {
       const dirty = tabs.filter((t) => t.dirty)
       const ok = await askConfirm({
@@ -1839,13 +1842,15 @@
       await resetWorkspaceForProjectSwitch()
     }
     try {
-      const info = await OpenProject(path)
-      applyProjectScan(info)
+      const info = await OpenProject(resolvedPath)
+      const openedPath = info.path || resolvedPath
+      applyProjectScan(info, openedPath)
+      await tick()
       testClientStore.setClients(await ListTestClients().catch((): string[] => []))
-      await rememberProject(projectPath)
+      await rememberProject(openedPath)
       const recents = await loadRecents()
       recentsStore.patch({ projects: recents.projects })
-      appendLog(tr('journal.project.opened', { path: projectPath }))
+      appendLog(tr('journal.project.opened', { path: openedPath }))
       syncIdleStatus()
       await refreshRunResults()
       await refreshArtifacts()
@@ -2423,6 +2428,10 @@
     journalStore.appendLog(line)
   }
 
+  async function resolveProjectPathInput(path: string): Promise<string> {
+    return resolveProjectPathShortcut(path, BundledExamplesPath)
+  }
+
   function setStatus(msg: string, tone: typeof statusTone = 'normal') {
     journalStore.setStatus(msg, tone)
   }
@@ -2694,11 +2703,11 @@
     }
   }
 
-  function applyProjectScan(info: gui.ProjectInfo) {
+  function applyProjectScan(info: gui.ProjectInfo, fallbackPath = '') {
     const raw = (info as unknown as { version?: number }).version
     const version = typeof raw === 'number' && raw > 0 ? raw : currentProjectVersion
     setProjectState({
-      path: info.path || projectPath,
+      path: info.path || fallbackPath || projectPath,
       version,
       features: info.features || [],
       tags: info.tags || [],
@@ -3015,11 +3024,10 @@
   function finalizeCloseTab(path: string) {
     evictFeatureSymbolCache(path)
     monaco?.releaseTab(path)
-    const reduced = reduceTabsAfterClose(tabs, activeTab, path)
-    tabsStore.applyCloseResult(reduced)
+    const reduced = tabsStore.closePath(path)
     trimTabsMemory()
     if (reduced.openNextPath) {
-      void loadFeature(reduced.openNextPath)
+      void loadFeature(reduced.openNextPath, { forceActivate: true })
     } else if (reduced.showWelcome) {
       cancelPendingFeatureLoads()
       void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
@@ -3031,12 +3039,11 @@
   async function saveAndCloseTab() {
     if (!pendingCloseTab) return
     const path = pendingCloseTab
-    tabsStore.setPendingCloseTab(null)
     if (activeTab !== path) {
       await loadFeature(path)
     }
     await saveFeature()
-    const tab = tabs.find((t) => t.path === path)
+    const tab = tabsStore.snapshot().tabs.find((t) => t.path === path)
     if (tab && !tab.dirty) {
       finalizeCloseTab(path)
     }
@@ -3045,7 +3052,6 @@
   function discardAndCloseTab() {
     if (!pendingCloseTab) return
     const path = pendingCloseTab
-    tabsStore.setPendingCloseTab(null)
     finalizeCloseTab(path)
   }
 

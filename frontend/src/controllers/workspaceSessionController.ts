@@ -40,7 +40,8 @@ export type WorkspaceSessionContext = {
   saveSettings: (dto: gui.AppSettingsDTO) => Promise<void>
   saveFeatureDraft: (path: string, text: string) => Promise<void>
   openProject: (path: string) => Promise<gui.ProjectInfo>
-  applyProjectScan: (info: gui.ProjectInfo) => void
+  resolveProjectPath: (path: string) => Promise<string>
+  applyProjectScan: (info: gui.ProjectInfo, fallbackPath?: string) => void
   listTestClients: () => Promise<string[]>
   loadFeature: (path: string) => Promise<void>
   applyEditorText: (text: string, opts: ApplyEditorTextOptions) => Promise<void>
@@ -48,6 +49,15 @@ export type WorkspaceSessionContext = {
   appendLog: (line: string) => void
   setStatus: (msg: string, tone?: 'normal' | 'error' | 'success' | 'busy') => void
   tr: PaletteTr
+}
+
+export function hasRestorableWorkspaceSession(s: Partial<gui.AppSettingsDTO> | null | undefined): boolean {
+  if (!s) return false
+  if ((s.sessionProject || '').trim()) return true
+  if ((s.activeTab || '').trim()) return true
+  if ((s.openTabs || []).some((p) => (p || '').trim())) return true
+  if ((s.untitledTabs || []).some((t) => (t?.path || '').trim())) return true
+  return false
 }
 
 export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
@@ -99,12 +109,14 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
   async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
     const proj = (s.sessionProject || '').trim()
     if (!proj) return
+    const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
+    if (!resolvedProj) return
     try {
-      const info = await ctx.openProject(proj)
-      ctx.applyProjectScan(info)
+      const info = await ctx.openProject(resolvedProj)
+      ctx.applyProjectScan(info, resolvedProj)
       ctx.stores.testClientStore.setClients(await ctx.listTestClients().catch((): string[] => []))
     } catch {
-      ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: proj }))
+      ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: resolvedProj }))
       ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
       return
     }

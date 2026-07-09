@@ -114,6 +114,29 @@
     },
   ]
 
+  const sampleStepsEn = [
+    {
+      label: 'click',
+      action: 'click',
+      category: 'Forms and input',
+      description: 'Click an element',
+      template: 'I click "button.submit"',
+      example: 'I click "button.submit"',
+      parameters: ['selector - CSS/XPath element selector'],
+      help: 'Click an element',
+    },
+    {
+      label: 'open',
+      action: 'goto',
+      category: 'Navigation',
+      description: 'Open a page',
+      template: 'I open "https://site.com"',
+      example: 'I open "https://site.com"',
+      parameters: ['url - page address in quotes'],
+      help: 'Open a page',
+    },
+  ]
+
   const handlers = new Map()
 
   const withRecordIdentity = (event, payload) => {
@@ -392,14 +415,19 @@
       if (text.includes('нажимаю')) return sampleSteps[0]
       return { label: '', action: '', category: '', description: '', template: '', example: '', parameters: [], help: '' }
     },
-    CompletionsForLine: async (line, column, featureText = '') => {
-      const items = sampleSteps.map((s) => ({
+    CompletionsForLine: async (line, column, language = 'ru') => {
+      const steps = language === 'en' ? sampleStepsEn : sampleSteps
+      const items = steps.map((s) => ({
         label: s.label,
         insert: s.template,
         description: s.description,
       }))
-      const match = line.match(/^\s*((?:Допустим|Дано|Когда|Тогда|И|Но)\s+)?(.*)$/i)
-      const body = match?.[2] || ''
+      const keywordRe =
+        language === 'en'
+          ? /^\s*((?:Given|When|Then|And|But)\s+)?(.*)$/i
+          : /^\s*((?:Допустим|Дано|Когда|Тогда|И|Но)\s+)?(.*)$/i
+      const match = line.match(keywordRe)
+      const body = match?.[2] ?? match?.[1] ?? ''
       const bodyOffset = line.length - body.length
       const typed = line.slice(bodyOffset, column).trimStart().toLowerCase()
       const filtered = typed

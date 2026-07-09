@@ -58,7 +58,11 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 	}
 	switch step.Block {
 	case gherkin.BlockIf:
-		if runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
+		ok, err := evaluateRunCondition(runCtx, step.Condition)
+		if err != nil {
+			return err
+		}
+		if ok {
 			return e.ExecuteSteps(ctx, session, step.Children, runCtx)
 		}
 		return nil
@@ -69,7 +73,11 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if runCtx == nil || !runCtx.EvaluateCondition(step.Condition) {
+			ok, err := evaluateRunCondition(runCtx, step.Condition)
+			if err != nil {
+				return err
+			}
+			if !ok {
 				break
 			}
 			iterations++
@@ -80,18 +88,25 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 				return nil
 			}
 		}
-		if iterations >= limit && runCtx != nil && runCtx.EvaluateCondition(step.Condition) {
-			return fmt.Errorf("превышен лимит итераций цикла «пока»")
+		if iterations >= limit {
+			ok, err := evaluateRunCondition(runCtx, step.Condition)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			return fmt.Errorf("while loop exceeded max loop iterations")
 		}
 		return nil
 	case gherkin.BlockRepeat:
 		count := step.RepeatCount
 		if count < 1 {
-			count = 1
+			return fmt.Errorf("repeat count must be at least 1")
 		}
 		limit := e.maxLoopIterations()
 		if count > limit {
-			count = limit
+			return fmt.Errorf("repeat count %d exceeds max loop iterations %d", count, limit)
 		}
 		for i := 0; i < count; i++ {
 			if err := ctx.Err(); err != nil {
@@ -153,6 +168,13 @@ func (e *StepExecutor) executeStep(ctx context.Context, session *browserSession,
 		runCtx.RecordStep(step)
 	}
 	return nil
+}
+
+func evaluateRunCondition(runCtx *RunContext, cond *gherkin.Condition) (bool, error) {
+	if runCtx == nil {
+		return false, nil
+	}
+	return runCtx.EvaluateConditionResult(cond)
 }
 
 func (e *StepExecutor) executeForEach(ctx context.Context, session *browserSession, step gherkin.Step, runCtx *RunContext) error {

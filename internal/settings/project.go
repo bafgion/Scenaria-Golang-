@@ -71,9 +71,5 @@ func SaveProjectConfig(projectRoot string, cfg ProjectConfig) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	payload, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(ProjectConfigPath(projectRoot), append(payload, '\n'), 0o644)
+	return writeJSON(ProjectConfigPath(projectRoot), cfg)
 }

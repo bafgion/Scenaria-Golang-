@@ -57,7 +57,26 @@ func TestChaosMaxLoopIterationsEnforced(t *testing.T) {
 		Line:        1,
 	}}
 	err := exec.ExecuteSteps(context.Background(), &browserSession{}, steps, NewRunContext(nil, 1, t.TempDir()))
-	if err != nil {
-		t.Fatalf("repeat capped execution failed: %v", err)
+	if err == nil {
+		t.Fatal("expected repeat count above max loop iterations to fail")
+	}
+	if !strings.Contains(err.Error(), "exceeds max loop iterations") {
+		t.Fatalf("unexpected repeat limit error: %v", err)
+	}
+}
+
+func TestRepeatCountBelowOneFails(t *testing.T) {
+	exec := NewStepExecutor(ExecutorOptions{MaxLoopIterations: 3})
+	steps := []gherkin.Step{{
+		Block:       gherkin.BlockRepeat,
+		RepeatCount: 0,
+		Line:        1,
+	}}
+	err := exec.ExecuteSteps(context.Background(), &browserSession{}, steps, NewRunContext(nil, 1, t.TempDir()))
+	if err == nil {
+		t.Fatal("expected repeat count below one to fail")
+	}
+	if !strings.Contains(err.Error(), "at least 1") {
+		t.Fatalf("unexpected repeat count error: %v", err)
 	}
 }

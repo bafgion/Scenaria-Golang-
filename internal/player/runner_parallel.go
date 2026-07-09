@@ -505,6 +505,30 @@ func (r BrowserRunner) executeSequentialSession(
 			Scenario:    runCase.Name,
 		})
 
+		if i > 0 && attached == nil {
+			if err := session.resetForScenario(); err != nil {
+				runResult := ScenarioResult{
+					FeaturePath: runCase.FeaturePath,
+					Scenario:    runCase.Name,
+					Status:      "failed",
+					Message:     err.Error(),
+				}
+				result.ScenarioResults = append(result.ScenarioResults, runResult)
+				recordScenarioRunStatus(ctx, runResult)
+				emitRunProgress(ctx, RunProgressEvent{
+					Phase: ProgressScenarioDone, Index: i + 1, Total: total,
+					FeaturePath: runCase.FeaturePath, Scenario: runCase.Name, Success: false, Message: runResult.Message,
+				})
+				if !ContinueOnFail(ctx) {
+					return result, executionFailure(err, result)
+				}
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+		}
+
 		if session == nil || !session.alive() {
 			if session != nil && session.external {
 				runResult := ScenarioResult{
