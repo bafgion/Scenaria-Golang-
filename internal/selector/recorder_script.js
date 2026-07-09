@@ -7,6 +7,7 @@
     clickableAncestor,
     findCanvas,
     buildSelector,
+    buildRecorderSelector,
     buildMenuTriggerSelector,
     isSignatureCanvas,
     collect,
@@ -386,8 +387,8 @@
     if (cfg().paused || !dragSource) return;
     const target = e.target;
     if (!target || target.nodeType !== 1) return;
-    const srcSel = buildSelector(dragSource);
-    const dstSel = buildSelector(target);
+    const srcSel = buildRecorderSelector(dragSource, 'click') || buildSelector(dragSource);
+    const dstSel = buildRecorderSelector(target, 'click') || buildSelector(target);
     dragSource = null;
     if (!srcSel || !dstSel || srcSel === dstSel) return;
     pushDetail('drag-drop', { selector: srcSel, target: dstSel });

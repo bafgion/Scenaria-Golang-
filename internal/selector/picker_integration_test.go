@@ -99,6 +99,100 @@ func TestPickerSvgClickNormalizesToButton(t *testing.T) {
 	}
 }
 
+func TestHeuristicsDuplicateTextButtonsWarnAmbiguous(t *testing.T) {
+	page := openPickerFixture(t, `<!doctype html><html><body>
+<button>Save</button>
+<button>Save</button>
+</body></html>`, "")
+	defer page.Close()
+
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	raw, err := page.Evaluate(`() => {
+		const result = window.__scenariaHeuristics.buildPickerResult(document.querySelectorAll('button')[1], 'click');
+		return { selector: result.selector, warnings: result.warnings, candidates: result.candidates };
+	}`)
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected payload: %#v", raw)
+	}
+	if warningsContain(payload["warnings"], "not-unique") {
+		return
+	}
+	if warningsContain(payload["warnings"], "low-confidence") {
+		return
+	}
+	t.Fatalf("expected ambiguity warning, got %#v", payload)
+}
+
+func TestRecorderCollectDuplicateTextButtonUsesUniqueSelector(t *testing.T) {
+	page := openPickerFixture(t, `<!doctype html><html><body>
+<button>Save</button>
+<button>Save</button>
+</body></html>`, "")
+	defer page.Close()
+
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	raw, err := page.Evaluate(`() => window.__scenariaHeuristics.collect(document.querySelectorAll('button')[1], 'click').selector`)
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	selector, ok := raw.(string)
+	if !ok || selector == "" {
+		t.Fatalf("empty selector: %#v", raw)
+	}
+	if selector == `button:has-text("Save")` {
+		t.Fatalf("recorder kept ambiguous text selector: %q", selector)
+	}
+	count, err := page.Locator(selector).Count()
+	if err != nil {
+		t.Fatalf("locator %q: %v", selector, err)
+	}
+	if count != 1 {
+		t.Fatalf("selector %q matched %d elements", selector, count)
+	}
+}
+
+func TestRecorderCollectRepeatedCardsUsesUniqueButtonSelector(t *testing.T) {
+	page := openPickerFixture(t, `<!doctype html><html><body>
+<section class="card"><h2>Basic</h2><button>Choose</button></section>
+<section class="card"><h2>Pro</h2><button>Choose</button></section>
+</body></html>`, "")
+	defer page.Close()
+
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	raw, err := page.Evaluate(`() => window.__scenariaHeuristics.collect(document.querySelectorAll('button')[1], 'click').selector`)
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	selector, ok := raw.(string)
+	if !ok || selector == "" {
+		t.Fatalf("empty selector: %#v", raw)
+	}
+	count, err := page.Locator(selector).Count()
+	if err != nil {
+		t.Fatalf("locator %q: %v", selector, err)
+	}
+	if count != 1 {
+		t.Fatalf("selector %q matched %d elements", selector, count)
+	}
+	text, err := page.Locator(selector).InnerText()
+	if err != nil {
+		t.Fatalf("inner text %q: %v", selector, err)
+	}
+	if strings.TrimSpace(text) != "Choose" {
+		t.Fatalf("selector %q resolved to %q", selector, text)
+	}
+}
+
 func TestPickerLabelCaptionDivReturnsInputSelector(t *testing.T) {
 	selector := pickAtSelector(t, nestedLabelFormHTML, "", `label:nth-of-type(2) > div:first-child`)
 	if selector == "" {
@@ -320,4 +414,17 @@ func asNumber(value any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func warningsContain(value any, want string) bool {
+	items, ok := value.([]interface{})
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		if s, ok := item.(string); ok && s == want {
+			return true
+		}
+	}
+	return false
 }

@@ -62,6 +62,18 @@ export function createRecorderStore(initial: RecorderState = defaultRecorderStat
     clearLiveRecordSession() {
       store.update((s) => ({ ...s, liveRecordStepLines: {}, lastRecordTarget: '' }))
     },
+    stopCaptureKeepBrowserOpen() {
+      this.resetRecordOrchestration()
+      store.update((s) => ({
+        ...s,
+        browserOpen: true,
+        recording: false,
+        paused: false,
+        targetPath: '',
+        liveRecordStepLines: {},
+        pauseToggleGuardUntil: 0,
+      }))
+    },
     extendPauseToggleGuard(ms = 900) {
       store.update((s) => ({ ...s, pauseToggleGuardUntil: Date.now() + ms }))
     },

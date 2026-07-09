@@ -86,6 +86,41 @@ func TestParseFeature_OutlineExamplesDocStringAndTable(t *testing.T) {
 	}
 }
 
+func TestParseFeature_TableEscapedPipes(t *testing.T) {
+	content := `
+Функционал: Escaped tables
+
+Сценарий: Data table
+  Когда заполняю таблицу
+  | field | value |
+  | name  | A\|B  |
+
+Структура сценария: Outline
+  Тогда вижу "<value>"
+
+Примеры:
+  | value |
+  | A\|B  |
+`
+
+	feature, err := ParseFeature(content)
+	if err != nil {
+		t.Fatalf("ParseFeature returned error: %v", err)
+	}
+	table := feature.Scenarios[0].Steps[0].Table
+	if got := table[1][1]; got != "A|B" {
+		t.Fatalf("step table escaped pipe = %q", got)
+	}
+	exampleRows := feature.Scenarios[1].Examples[0].Rows
+	if got := exampleRows[1][0]; got != "A|B" {
+		t.Fatalf("examples escaped pipe = %q", got)
+	}
+	runnable := ExpandFeature(feature)[1]
+	if got := runnable.Steps[0].Text; got != `вижу "A|B"` {
+		t.Fatalf("expanded escaped pipe step = %q", got)
+	}
+}
+
 func TestParseFeature_ErrorForStepOutsideScenario(t *testing.T) {
 	content := `
 Функционал: Авторизация

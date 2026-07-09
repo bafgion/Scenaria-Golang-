@@ -214,14 +214,37 @@ func parseTableRow(line string) ([]string, error) {
 	if !strings.HasPrefix(trimmed, "|") || !strings.HasSuffix(trimmed, "|") {
 		return nil, fmt.Errorf("table row must start and end with |")
 	}
-	parts := strings.Split(trimmed, "|")
-	if len(parts) < 3 {
-		return nil, fmt.Errorf("empty table row")
-	}
 
-	row := make([]string, 0, len(parts)-2)
-	for i := 1; i < len(parts)-1; i++ {
-		row = append(row, strings.TrimSpace(parts[i]))
+	row := make([]string, 0, 4)
+	var cell strings.Builder
+	escaped := false
+	runes := []rune(trimmed)
+	for i := 1; i < len(runes); i++ {
+		ch := runes[i]
+		if escaped {
+			if ch != '|' && ch != '\\' {
+				cell.WriteRune('\\')
+			}
+			cell.WriteRune(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == '|' {
+			row = append(row, strings.TrimSpace(cell.String()))
+			cell.Reset()
+			continue
+		}
+		cell.WriteRune(ch)
+	}
+	if escaped {
+		cell.WriteRune('\\')
+	}
+	if len(row) == 0 {
+		return nil, fmt.Errorf("empty table row")
 	}
 	return row, nil
 }

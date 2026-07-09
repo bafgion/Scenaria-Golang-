@@ -4495,7 +4495,7 @@
 
   function handleRecordStopped(payload?: { reason?: string; idleSeconds?: number }) {
     dismissRecorderPicker()
-    recorderStore.reset()
+    recorderStore.stopCaptureKeepBrowserOpen()
     recorderStore.clearLiveRecordSession()
     void maybeShowPostRecordBannerAfterStop()
     if (payload?.reason === 'idle') {

@@ -354,6 +354,67 @@
     return '';
   }
 
+  function cssPathSegment(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const tag = (el.tagName || '').toLowerCase();
+    if (!tag || tag === 'html') return tag;
+    if (el.id) return `#${cssEscape(el.id)}`;
+    const testId = el.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+    const parent = el.parentElement;
+    if (!parent) return tag;
+    let sameTagIndex = 0;
+    let sameTagCount = 0;
+    for (const child of Array.from(parent.children)) {
+      if ((child.tagName || '').toLowerCase() !== tag) continue;
+      sameTagCount++;
+      if (child === el) sameTagIndex = sameTagCount;
+    }
+    return sameTagCount > 1 ? `${tag}:nth-of-type(${sameTagIndex})` : tag;
+  }
+
+  function buildCssPathSelector(el) {
+    if (!el || el.nodeType !== 1) return '';
+    const root = el.getRootNode();
+    const parts = [];
+    let node = el;
+    for (let depth = 0; node && node.nodeType === 1 && depth < 8; depth++) {
+      const segment = cssPathSegment(node);
+      if (!segment || segment === 'html') break;
+      parts.unshift(segment);
+      if (segment.startsWith('#') || segment.startsWith('[data-testid=')) break;
+      if ((node.tagName || '').toLowerCase() === 'body') break;
+      node = node.parentElement;
+    }
+    const selector = parts.join(' > ');
+    if (!selector) return '';
+    const scope = (typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot) ? root : (el.ownerDocument || document);
+    const matches = querySelectorAllApprox(scope, selector);
+    if (matches && matches.length === 1 && matches[0] === el) return selector;
+    return '';
+  }
+
+  function buildRecorderSelector(el, kind) {
+    if (!el || el.nodeType !== 1) return '';
+    const resolvedKind = kind || pickKindForElement(el);
+    const candidates = generateCandidates(el, resolvedKind);
+    const exact = candidates.find((cand) => cand.valid && cand.selector);
+    if (exact) return prefixShadowChain(el, exact.selector);
+    const usable = candidates.find((cand) =>
+      cand.selector &&
+      cand.matches_count === 1 &&
+      cand.matches_picked &&
+      cand.visible &&
+      cand.actionable &&
+      !(cand.warnings || []).includes('wrong-target')
+    );
+    if (usable) return prefixShadowChain(el, usable.selector);
+    const cssPath = buildCssPathSelector(resolvedKind === 'input' ? el : (clickableAncestor(el) || el));
+    if (cssPath) return prefixShadowChain(el, cssPath);
+    const fallback = resolvedKind === 'input' ? buildInputSelector(el) : buildSelector(el);
+    return prefixShadowChain(el, fallback);
+  }
+
   function isElementVisible(el) {
     if (!el || el.nodeType !== 1) return false;
     const style = window.getComputedStyle(el);
@@ -387,23 +448,55 @@
     return true;
   }
 
-  function countMatchesInDoc(doc, selector) {
-    if (!selector) return 0;
-    if (selector.includes('>>') || selector.includes(':has-text(')) return -1;
-    try {
-      return doc.querySelectorAll(selector).length;
-    } catch (_) {
-      return -1;
+  function parseHasTextSelector(selector) {
+    const match = String(selector || '').match(/:has-text\("((?:[^"\\]|\\.)*)"\)/);
+    if (!match) return null;
+    const text = match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const css = selector.replace(match[0], '') || '*';
+    return { css, text };
+  }
+
+  function querySelectorAllApprox(root, selector) {
+    if (!root || !selector) return null;
+    const trimmed = String(selector).trim();
+    if (!trimmed) return [];
+    const chainIdx = trimmed.indexOf('>>');
+    if (chainIdx >= 0) {
+      const left = trimmed.slice(0, chainIdx).trim();
+      const right = trimmed.slice(chainIdx + 2).trim();
+      const containers = querySelectorAllApprox(root, left);
+      if (!containers) return null;
+      const out = [];
+      for (const container of containers) {
+        const inner = querySelectorAllApprox(container, right);
+        if (!inner) return null;
+        out.push(...inner);
+      }
+      return out;
     }
+    const hasText = parseHasTextSelector(trimmed);
+    try {
+      if (hasText) {
+        return Array.from(root.querySelectorAll(hasText.css)).filter((el) => visibleText(el).includes(hasText.text));
+      }
+      return Array.from(root.querySelectorAll(trimmed));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function countMatchesInDoc(doc, selector) {
+    const matches = querySelectorAllApprox(doc, selector);
+    return matches ? matches.length : -1;
   }
 
   function matchesPickedElement(selector, pickedEl, actionTarget, matchesCount) {
     if (!selector || !pickedEl) return false;
-    if (selector.includes('>>') || selector.includes(':has-text(')) return true;
     if (matchesCount < 0) return true;
     try {
       const doc = pickedEl.ownerDocument || document;
-      const nodes = doc.querySelectorAll(selector);
+      const nodes = querySelectorAllApprox(doc, selector);
+      if (!nodes) return true;
       if (nodes.length !== 1) return false;
       const matched = nodes[0];
       if (matched === pickedEl || matched === actionTarget) return true;
@@ -758,13 +851,14 @@
     const isField = isInputLikeElement(el);
     const target = type === 'click' ? (clickableAncestor(el) || el) : (resolveInputFromPick(el) || el);
     if (!target) return {};
+    const selectorKind = isInputLikeElement(target) ? 'input' : 'click';
     const detail = {
       tag: (target.tagName || '').toUpperCase(),
       id: target.id || '',
       name: target.getAttribute('name') || '',
       text: visibleText(target).slice(0, 120),
       testid: target.getAttribute('data-testid') || '',
-      selector: buildSelector(el) || buildSelector(target),
+      selector: buildRecorderSelector(target, selectorKind) || buildSelector(el) || buildSelector(target),
       value: target.value || '',
       inputtype: (target.type || 'text').toLowerCase(),
       captiontext: isField ? labelTextForControl(target).slice(0, 120) : '',
@@ -810,5 +904,7 @@
     prefixSelectorChain,
     prefixShadowChain,
     shadowHostPrefix,
+    buildCssPathSelector,
+    buildRecorderSelector,
   };
 })();

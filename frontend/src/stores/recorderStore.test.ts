@@ -44,5 +44,32 @@ describe('recorderStore', () => {
     store.reset()
     expect(currentValue(store)).toEqual(defaultRecorderState)
   })
-})
 
+  it('stops capture without losing the live browser session', () => {
+    const store = createRecorderStore({
+      browserOpen: true,
+      recording: true,
+      paused: true,
+      targetPath: 'x.feature',
+      recordSessionId: 'record-x',
+      browserSessionId: 'browser-x',
+      liveRecordStepLines: { 1: 2 },
+      lastRecordTarget: 'x.feature',
+      pauseToggleGuardUntil: 100,
+    })
+
+    store.stopCaptureKeepBrowserOpen()
+
+    expect(currentValue(store)).toEqual({
+      browserOpen: true,
+      recording: false,
+      paused: false,
+      targetPath: '',
+      recordSessionId: 'record-x',
+      browserSessionId: 'browser-x',
+      liveRecordStepLines: {},
+      lastRecordTarget: 'x.feature',
+      pauseToggleGuardUntil: 0,
+    })
+  })
+})
