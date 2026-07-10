@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,7 +99,7 @@ func LoadDefaultAppSettings() (*AppSettings, error) {
 	}
 	cfg, err := LoadAppSettings(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return &AppSettings{Browser: "chromium"}, nil
 		}
 		return nil, err

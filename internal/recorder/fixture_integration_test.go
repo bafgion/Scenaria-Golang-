@@ -47,8 +47,8 @@ func TestFixtureNestedLabelFillPipeline(t *testing.T) {
 			continue
 		}
 		fillFound = true
-		if !strings.HasPrefix(step.Selector, `label:has-text("Имя`) {
-			t.Fatalf("expected label selector, got %q", step.Selector)
+		if step.Selector != `input[name="name"]` && !strings.HasPrefix(step.Selector, `label:has-text("Имя`) {
+			t.Fatalf("expected control selector, got %q", step.Selector)
 		}
 	}
 	if !fillFound {

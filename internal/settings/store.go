@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -49,7 +50,7 @@ func (s *Store) loadLocked() (*AppSettings, error) {
 	}
 	cfg, err := LoadAppSettings(s.path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return &AppSettings{Browser: "chromium"}, nil
 		}
 		return nil, err
