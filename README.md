@@ -1,5 +1,7 @@
 # Scenaria (Go)
 
+[![CI](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml)
+
 **Scenaria Go** — CLI + Wails IDE for Russian Gherkin scenarios, Playwright runner, live recorder, Vanessa Automation, and plugins.
 
 Legacy **Python/Qt Scenaria is discontinued**. Compatibility: `.feature` / `.scenaria` files and optional export to Python (`scenaria export --format python`).
@@ -56,6 +58,8 @@ Full reference: [docs/en/cli/reference.md](docs/en/cli/reference.md) | [RU](docs
 go test ./internal/... ./cmd/...
 cd frontend && npm test && npm run test:e2e
 ```
+
+CI on `master`: Go **1.26.5**, Node **22**, jobs `test`, `integration`, `desktop-smoke` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 See [docs/en/contributing/development.md](docs/en/contributing/development.md).
 

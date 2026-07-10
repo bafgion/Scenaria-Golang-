@@ -43,8 +43,8 @@ scenaria version
 
 | Компонент | Назначение |
 |-----------|------------|
-| Go 1.26+ | CLI, бэкенд Wails |
-| Node.js 20+ | Сборка frontend |
+| Go 1.26.5+ | CLI, бэкенд Wails |
+| Node.js 22+ | Сборка frontend (в CI — 22) |
 | [Wails CLI](https://wails.io/docs/gettingstarted/installation) | `wails dev` / `wails build` |
 | Inno Setup 6 | Установщик Windows (опционально) |
 

@@ -43,8 +43,8 @@ See [CLI global install notes](../contributing/development.md#global-cli) and `d
 
 | Component | Purpose |
 |-----------|---------|
-| Go 1.26+ | CLI, Wails backend |
-| Node.js 20+ | Frontend build |
+| Go 1.26.5+ | CLI, Wails backend |
+| Node.js 22+ | Frontend build (CI uses 22) |
 | [Wails CLI](https://wails.io/docs/gettingstarted/installation) | `wails dev` / `wails build` |
 | Inno Setup 6 | Windows installer (optional) |
 

@@ -1,5 +1,0 @@
-{
-  "featurePath": "C:\\Users\\bafgion\\Documents\\Projects\\scenaria_go\\examples\\07-chisla-i-peremennye.feature",
-  "content": "@smoke\r\nФункционал: Примеры для новичков\r\nСценарий: Запоминание числа и сравнение переменных\r\n\tДопустим открыт \"data:text/html,\u003chtml\u003e\u003cbody\u003e\u003cdiv id=total\u003e7 180 ₽\u003c/div\u003e\u003cdiv id=pay\u003eОплатить 1 795\u003c/div\u003e\u003c/body\u003e\u003c/html\u003e\"\r\n\tИ запоминаю число из \"#total\" как \"total_amount\"\r\n\tИ запоминаю число из \"#pay\" как \"pay_amount\"\r\n\tТогда проверяю что \"{{total_amount}}\" равно \"7180\"\r\n\tИ проверяю что \"{{pay_amount}}\" содержит \"1795\"\r\n\tИ проверяю что \"{{pay_amount}}\" равно \"{{total_amount / 4}}\"\r\n\tИ закрываю браузер\r\nыв",
-  "updatedAt": "2026-07-09T09:34:02Z"
-}

@@ -6,8 +6,8 @@ For contributors building Scenaria from source.
 
 | Tool | Version |
 |------|---------|
-| Go | 1.26+ |
-| Node.js | 20+ |
+| Go | 1.26.5+ |
+| Node.js | 22+ |
 | Wails CLI | v2 |
 | PowerShell | 7+ (Windows scripts) |
 
@@ -47,7 +47,7 @@ Tag `v*` triggers `.github/workflows/release.yml` on GitHub Actions.
 | Docs screenshots | `cd frontend && npm run docs:screenshots` |
 | Desktop smoke (WebView2) | `./scripts/desktop-smoke.ps1` |
 
-CI: `.github/workflows/ci.yml` — test, integration, desktop-smoke on `master`.
+CI: `.github/workflows/ci.yml` on `master` — Go **1.26.5**, Node **22**, jobs `test`, `integration`, `desktop-smoke`. Release workflow uses the same toolchain (`.github/workflows/release.yml`).
 
 ## Global CLI
 

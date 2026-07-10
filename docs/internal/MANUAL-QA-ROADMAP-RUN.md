@@ -1,4 +1,4 @@
-# Manual QA — прогон по ROADMAP (2026-07-09)
+# Manual QA — прогон по ROADMAP (2026-07-10)
 
 Сводка автоматизированного прогона + оставшиеся ручные шаги в desktop.
 
@@ -23,20 +23,16 @@
 
 | Набор | Результат | Команда |
 |-------|-----------|---------|
-| Frontend unit | **280/280** | `cd frontend && npm test` |
-| E2E (mock Wails) | **107/111** | `cd frontend && npm run test:e2e` |
-| **Desktop smoke (WebView2)** | **26/26** | `./scripts/desktop-smoke.ps1` (2026-07-09) |
+| Frontend unit | **282/282** | `cd frontend && npm test` |
+| E2E (mock Wails) | **109/109** | `cd frontend && npm run test:e2e` |
+| **Desktop smoke (WebView2)** | **26/26** | `./scripts/desktop-smoke.ps1` (2026-07-10, CI green) |
 | Go unit (player/gui/report) | **OK** | `go test ./internal/player/... ./internal/gui/... ./internal/report/... -short` |
+| Go integration (browser) | **OK** | `go test -tags=integration ./internal/recorder/... ./internal/selector/... ./internal/player/...` |
 | Browser isolation integration | **OK** | `go test ./internal/player/... -tags=integration -run Isolation` |
 
-### E2E failures (4, не блокеры ROADMAP core)
+### E2E failures
 
-| Тест | Вероятная причина |
-|------|-------------------|
-| `untitled tab restores after reload` | timing Monaco после reload |
-| `onboarding tour step 5` | селектор меню тура |
-| `1.6 update modal deferred` | mock update flow изменился |
-| `record resume does not duplicate steps` | mock record-step timing |
+Нет известных блокеров в mock E2E (CI `test` job, 2026-07-10). Ранее флаковали 4 теста — см. историю коммитов до 2026-07-09.
 
 ---
 

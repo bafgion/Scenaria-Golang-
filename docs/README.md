@@ -9,6 +9,8 @@
 
 Current release: **v0.29.0** (see [releases](https://github.com/bafgion/Scenaria-Golang-/releases)).
 
+[![CI](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml)
+
 ---
 
 ## Documentation map
@@ -40,6 +42,7 @@ Current release: **v0.29.0** (see [releases](https://github.com/bafgion/Scenaria
 |----------|----------|
 | [internal/ROADMAP.md](internal/ROADMAP.md) | Engineering roadmap (RU) |
 | [internal/QA-DAILY-USE.md](internal/QA-DAILY-USE.md) | Manual QA checklist (RU) |
+| [internal/MANUAL-QA-ROADMAP-RUN.md](internal/MANUAL-QA-ROADMAP-RUN.md) | ROADMAP QA automation summary (RU) |
 | [archive/](archive/) | Historical migration notes |
 
 Legacy single-language files (`RECORDER.md`, `SELECTORS.md`, `ALLURE.md`) redirect to the bilingual guides above.

@@ -121,7 +121,7 @@ frontend/src/lib/editorTextSync.ts
 
 ## Manual QA
 
-> Прогон 2026-07-09: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md) — E2E 107/111, unit 280/280.
+> Прогон 2026-07-10: [MANUAL-QA-ROADMAP-RUN.md](MANUAL-QA-ROADMAP-RUN.md) — mock E2E 109/109, unit 282/282, CI green.
 
 * [ ] Открыть 5 файлов. _(desktop)_
 * [x] Быстро переключаться между ними. _(E2E `app-ui`)_

@@ -6,8 +6,8 @@
 
 | Инструмент | Версия |
 |------------|--------|
-| Go | 1.26+ |
-| Node.js | 20+ |
+| Go | 1.26.5+ |
+| Node.js | 22+ |
 | Wails CLI | v2 |
 | PowerShell | 7+ |
 
@@ -46,7 +46,7 @@ go run ./cmd/scenaria --help
 | Скриншоты для docs | `cd frontend && npm run docs:screenshots` |
 | Desktop smoke | `./scripts/desktop-smoke.ps1` |
 
-CI: `.github/workflows/ci.yml`.
+CI: `.github/workflows/ci.yml` на `master` — Go **1.26.5**, Node **22**, jobs `test`, `integration`, `desktop-smoke`. Release workflow использует тот же toolchain (`.github/workflows/release.yml`).
 
 ## Глобальный CLI
 

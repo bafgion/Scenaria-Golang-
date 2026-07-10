@@ -16,8 +16,10 @@
 
 ## CI
 
-`.github/workflows/ci.yml` — test, integration, desktop-smoke на `master`.  
-Релиз: тег `v*` → `.github/workflows/release.yml`.
+`.github/workflows/ci.yml` на `master` — Go **1.26.5**, Node **22**, jobs `test`, `integration`, `desktop-smoke`.  
+Релиз: тег `v*` → `.github/workflows/release.yml` (тот же toolchain).
+
+Артефакты прогонов в `examples/.scenaria/` — локальные, в git не коммитятся (см. `.gitignore`).
 
 ## QA вручную
 
