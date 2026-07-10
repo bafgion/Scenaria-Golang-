@@ -1,7 +1,7 @@
 export const confirm = {
   deleteFeature: {
     title: 'Delete scenario',
-    message: 'Delete «{name}» permanently?',
+    message: 'Delete «{name}» permanently? It will not be moved to Recycle Bin or Trash.',
     confirmLabel: 'Delete',
   },
   openOtherProject: {
@@ -38,7 +38,7 @@ export const confirm = {
   headless: {
     title: 'Headless',
     message:
-      'Changing the browser window mode applies to the current recording session (may restart the window). Continue?',
+      'Changing between headed and headless mode applies to the current session and may restart the browser. Cookies, session data, and page state can be cleared. Continue?',
     confirmLabel: 'Apply',
   },
   generic: {

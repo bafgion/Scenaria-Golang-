@@ -68,6 +68,7 @@ export function remapRunResultPaths(
     return gui.RunResultEntry.createFrom({
       path,
       success: entry.success,
+      status: entry.status,
       message: entry.message,
       runner: entry.runner,
       at: entry.at,
@@ -87,6 +88,7 @@ export function buildSyntheticRunError(opts: {
   return gui.RunResultEntry.createFrom({
     path,
     success: false,
+    status: 'failed',
     message: opts.message,
     runner: opts.runner || 'playwright',
     at: opts.at || new Date().toISOString(),

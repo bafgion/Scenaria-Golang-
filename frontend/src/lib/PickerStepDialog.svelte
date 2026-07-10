@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createTranslator, locale } from './i18n'
   import type { gui } from '../../wailsjs/go/models'
+  import { pickerCandidateFacts } from './pickerCandidateSummary'
 
   export let selector = ''
   export let choices: gui.PickerStepChoice[] = []
@@ -31,6 +32,22 @@
   function selectCandidate(cand: gui.SelectorCandidate) {
     activeSelector = cand.selector
     onSelectorChange(cand.selector)
+  }
+
+  function candidateMeta(cand: gui.SelectorCandidate): string[] {
+    const facts = pickerCandidateFacts(cand)
+    const meta: string[] = []
+    if (facts.matchesCount != null) {
+      meta.push(tr('dialogs.pickerStep.matches', { count: facts.matchesCount }))
+    }
+    if (facts.score != null) {
+      meta.push(tr('dialogs.pickerStep.score', { score: facts.score }))
+    }
+    if (facts.unique) {
+      meta.push(tr('dialogs.pickerStep.unique'))
+    }
+    meta.push(facts.visible ? tr('dialogs.pickerStep.visible') : tr('dialogs.pickerStep.hidden'))
+    return meta
   }
 
   function confirm() {
@@ -80,16 +97,23 @@
           <div class="candidate-panel">
             <div class="caption">Selectors</div>
             <ul class="choice-list">
-              {#each candidates as cand, i}
+              {#each candidates as cand}
                 <li>
                   <button
                     type="button"
                     class:selected={cand.selector === activeSelector}
                     on:click={() => selectCandidate(cand)}
-                    title={cand.warnings?.join(', ') || cand.strategy}
                   >
                     <span class="strategy">{cand.strategy}</span>
                     <span class="cand-text">{cand.selector}</span>
+                    <span class="cand-meta">{candidateMeta(cand).join(' · ')}</span>
+                    {#if cand.warnings?.length}
+                      <span class="cand-warnings">
+                        {#each cand.warnings as warning}
+                          <span class="warning-pill">{warning}</span>
+                        {/each}
+                      </span>
+                    {/if}
                   </button>
                 </li>
               {/each}
@@ -214,6 +238,28 @@
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     word-break: break-all;
+  }
+
+  .candidate-panel .cand-meta {
+    display: block;
+    margin-top: 3px;
+    font-size: 10px;
+    color: var(--color-muted);
+  }
+
+  .candidate-panel .cand-warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+  }
+
+  .candidate-panel .warning-pill {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(212, 160, 23, 0.12);
+    color: var(--color-warning, #d4a017);
   }
 
   .preview-pane {

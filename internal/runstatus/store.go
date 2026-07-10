@@ -3,6 +3,7 @@ package runstatus
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,23 +13,30 @@ import (
 )
 
 type Entry struct {
-	Path         string `json:"path"`
-	CaseID       string `json:"case_id,omitempty"`
-	RunID        string `json:"run_id,omitempty"`
-	Success      bool   `json:"success"`
-	Message      string `json:"message"`
-	DurationMS     int    `json:"duration_ms"`
-	FailedStep     *int   `json:"failed_step,omitempty"`
-	StepDurations  []int  `json:"step_durations,omitempty"`
-	Runner         string `json:"runner"`
-	At           string `json:"at"`
-	ExampleIndex *int   `json:"example_index,omitempty"`
+	Path          string `json:"path"`
+	CaseID        string `json:"case_id,omitempty"`
+	RunID         string `json:"run_id,omitempty"`
+	Success       bool   `json:"success"`
+	Status        string `json:"status,omitempty"`
+	Message       string `json:"message"`
+	DurationMS    int    `json:"duration_ms"`
+	FailedStep    *int   `json:"failed_step,omitempty"`
+	StepDurations []int  `json:"step_durations,omitempty"`
+	Runner        string `json:"runner"`
+	At            string `json:"at"`
+	ExampleIndex  *int   `json:"example_index,omitempty"`
 }
 
 type Store struct {
 	path string
 	mu   sync.Mutex
 }
+
+var (
+	runStatusCreateTemp = os.CreateTemp
+	runStatusRename     = os.Rename
+	runStatusRemove     = os.Remove
+)
 
 func Open(projectRoot string) (*Store, error) {
 	dir, err := paths.WritableScenariaDir(projectRoot)
@@ -128,28 +136,83 @@ func writeAtomicLocked(path string, data []byte) error {
 			return fmt.Errorf("create run status dir: %w", err)
 		}
 	}
-	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	tmp, err := runStatusCreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("create run status temp: %w", err)
 	}
 	tmpPath := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
+		_ = runStatusRemove(tmpPath)
 		return fmt.Errorf("write run status temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
+		_ = runStatusRemove(tmpPath)
 		return fmt.Errorf("close run status temp: %w", err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		if removeErr := os.Remove(path); removeErr == nil {
-			if retryErr := os.Rename(tmpPath, path); retryErr == nil {
-				return nil
-			}
+	backupPath := ""
+	backupCreated := false
+	if _, err := os.Stat(path); err == nil {
+		backupPath = path + ".bak"
+		if err := runStatusRemove(backupPath); err != nil && !os.IsNotExist(err) {
+			_ = runStatusRemove(tmpPath)
+			return fmt.Errorf("remove stale run status backup: %w", err)
 		}
-		_ = os.Remove(tmpPath)
+		if err := runStatusRename(path, backupPath); err != nil {
+			_ = runStatusRemove(tmpPath)
+			return fmt.Errorf("backup run status: %w", err)
+		}
+		backupCreated = true
+	} else if !os.IsNotExist(err) {
+		_ = runStatusRemove(tmpPath)
+		return fmt.Errorf("stat run status: %w", err)
+	}
+	if err := runStatusRename(tmpPath, path); err != nil {
+		if backupCreated {
+			if restoreErr := runStatusRename(backupPath, path); restoreErr != nil {
+				if copyErr := restoreRunStatusBackupByCopy(backupPath, path); copyErr != nil {
+					_ = runStatusRemove(tmpPath)
+					return fmt.Errorf("replace run status: %w (restore backup %q failed: %v, atomic copy restore failed: %w)", err, backupPath, restoreErr, copyErr)
+				}
+			}
+			_ = runStatusRemove(backupPath)
+		}
+		_ = runStatusRemove(tmpPath)
 		return fmt.Errorf("replace run status: %w", err)
 	}
+	if backupCreated {
+		_ = runStatusRemove(backupPath)
+	}
+	return nil
+}
+
+func restoreRunStatusBackupByCopy(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp, err := runStatusCreateTemp(filepath.Dir(dest), filepath.Base(dest)+".restore-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanupTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if cleanupTemp {
+			_ = runStatusRemove(tmpPath)
+		}
+	}()
+	if _, err := io.Copy(tmp, in); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := runStatusRename(tmpPath, dest); err != nil {
+		return err
+	}
+	cleanupTemp = false
 	return nil
 }

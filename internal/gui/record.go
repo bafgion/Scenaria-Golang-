@@ -86,9 +86,7 @@ func (s *Service) recordExecutionHost() RecorderExecutionHost {
 		LoadAppSettings: s.loadAppSettings,
 		SaveAppSettings: s.saveAppSettings,
 		WithActivePlaywright: func(fn func()) {
-			s.activePlaywright.Add(1)
-			defer s.activePlaywright.Done()
-			fn()
+			s.withActivePlaywright(fn)
 		},
 	}
 }

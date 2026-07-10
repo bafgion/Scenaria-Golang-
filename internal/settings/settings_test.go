@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -81,5 +83,89 @@ func TestAppSettingsUntitledTabsRoundTrip(t *testing.T) {
 	}
 	if got.UntitledTabs[0].Content != input.UntitledTabs[0].Content {
 		t.Fatalf("unexpected untitled content: %q", got.UntitledTabs[0].Content)
+	}
+}
+
+func TestWriteJSONRestoresOriginalOnReplacementFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "settings.json")
+	if err := os.WriteFile(path, []byte("{\"browser\":\"old\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	origRename := atomicRename
+	defer func() { atomicRename = origRename }()
+	calls := 0
+	atomicRename = func(oldpath, newpath string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("replace failed")
+		}
+		return os.Rename(oldpath, newpath)
+	}
+	err := SaveAppSettings(path, &AppSettings{Browser: "new"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	raw, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(raw) != "{\"browser\":\"old\"}\n" {
+		t.Fatalf("expected original content restored, got %q", string(raw))
+	}
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("did not expect backup after restore, stat err=%v", err)
+	}
+}
+
+func TestWriteJSONRetainsBackupWhenRestoreCannotReplaceTarget(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "settings.json")
+	if err := os.WriteFile(path, []byte("{\"browser\":\"old\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	origRename := atomicRename
+	defer func() { atomicRename = origRename }()
+	calls := 0
+	atomicRename = func(oldpath, newpath string) error {
+		calls++
+		switch calls {
+		case 2, 3, 4:
+			return errors.New("rename unavailable")
+		default:
+			return os.Rename(oldpath, newpath)
+		}
+	}
+	err := SaveAppSettings(path, &AppSettings{Browser: "new"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if raw, readErr := os.ReadFile(path); readErr == nil && string(raw) != "" && string(raw) != "{\"browser\":\"old\"}\n" {
+		t.Fatalf("unexpected replacement content after failed restore: %q", string(raw))
+	}
+	backup, readErr := os.ReadFile(path + ".bak")
+	if readErr != nil {
+		t.Fatalf("expected retained backup: %v", readErr)
+	}
+	if string(backup) != "{\"browser\":\"old\"}\n" {
+		t.Fatalf("expected backup to retain original content, got %q", string(backup))
+	}
+}
+
+func TestWriteJSONNewFileSave(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "settings.json")
+	if err := SaveAppSettings(path, &AppSettings{Browser: "chromium"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("expected written settings")
+	}
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("did not expect backup for new file, stat err=%v", err)
 	}
 }

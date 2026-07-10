@@ -19,6 +19,12 @@ type allureServeState struct {
 	dir string
 }
 
+type AllureProcessState struct {
+	Running bool
+	PID     int
+	Dir     string
+}
+
 func (s *Service) defaultAllureDir() (string, error) {
 	path := s.ProjectPath()
 	if path == "" {
@@ -122,6 +128,20 @@ func (s *Service) stopAllureServe() {
 	}
 	s.allureServe.cmd = nil
 	s.allureServe.dir = ""
+}
+
+func (s *Service) AllureProcessState() AllureProcessState {
+	if s == nil {
+		return AllureProcessState{}
+	}
+	s.allureServe.mu.Lock()
+	defer s.allureServe.mu.Unlock()
+	state := AllureProcessState{Dir: s.allureServe.dir}
+	if s.allureServe.cmd != nil && s.allureServe.cmd.Process != nil {
+		state.Running = true
+		state.PID = s.allureServe.cmd.Process.Pid
+	}
+	return state
 }
 
 func (s *Service) OpenHTMLReport(path string) RunResult {

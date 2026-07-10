@@ -17,7 +17,10 @@
       screenshotExpand: 'Открыть скриншот', screenshotHint: 'Нажмите для увеличения', screenshotClose: 'Закрыть',
       lastRun: 'Прошлый прогон', changed: '(изменился)', actions: 'Действия',
       flakyHistory: 'Шаг падал {n} раз в недавней истории', flakyInHistory: 'flaky (история)',
-      canceled: 'отменено', notStarted: 'не запущено', stepCol: 'Шаг',
+      historicallyUnstable: 'исторически нестабильно', failedTimesHistory: 'неудач в истории: {n}',
+      stepRetry: 'повтор шага ×{n}', canceled: 'отменено', notStarted: 'не запущено',
+      passed: 'успешно', failed: 'ошибка', skipped: 'пропущено', running: 'выполняется', notRun: 'не запущено',
+      stepCol: 'Шаг',
       when: 'Когда', status: 'Статус', message: 'Сообщение', stepInTrace: 'шаг #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Перетащите .zip trace сюда — offline-просмотр во вкладке Trace',
@@ -54,7 +57,10 @@
       screenshotExpand: 'Open screenshot', screenshotHint: 'Click to enlarge', screenshotClose: 'Close',
       lastRun: 'Previous run', changed: '(changed)', actions: 'Actions',
       flakyHistory: 'Step failed {n} times recently', flakyInHistory: 'flaky (history)',
-      canceled: 'canceled', notStarted: 'not started', stepCol: 'Step',
+      historicallyUnstable: 'historically unstable', failedTimesHistory: 'failed {n} times in history',
+      stepRetry: 'step retry ×{n}', canceled: 'canceled', notStarted: 'not started',
+      passed: 'passed', failed: 'failed', skipped: 'skipped', running: 'running', notRun: 'not started',
+      stepCol: 'Step',
       when: 'When', status: 'Status', message: 'Message', stepInTrace: 'step #{n}',
       copySelector: 'Copy selector', copyGherkin: 'Copy Gherkin', copyRerun: 'Copy re-run',
       traceFile: 'Trace file', traceDrop: 'Drop .zip trace here — offline viewing in Trace tab',
@@ -250,11 +256,46 @@
     });
   }
 
-  function statusClass(s) {
-    if (s === 'passed') return 'passed';
-    if (s === 'failed') return 'failed';
-    if (s === 'running') return 'running';
+  function normalizeStatus(s) {
+    const status = String(s || '').trim().toLowerCase();
+    if (!status) return 'skipped';
+    if (['passed', 'pass', 'ok', 'success'].includes(status)) return 'passed';
+    if (['failed', 'fail', 'broken', 'error'].includes(status)) return 'failed';
+    if (['canceled', 'cancelled', 'aborted'].includes(status)) return 'canceled';
+    if (['not-started', 'notstarted', 'not-start', 'notstart', 'not started', 'not run', 'not-run'].includes(status)) return 'not-started';
+    if (['running', 'in-progress', 'inprogress'].includes(status)) return 'running';
     return 'skipped';
+  }
+
+  function statusClass(s) {
+    return normalizeStatus(s);
+  }
+
+  function statusLabel(s) {
+    const status = normalizeStatus(s);
+    if (status === 'passed') return t('passed');
+    if (status === 'failed') return t('failed');
+    if (status === 'canceled') return t('canceled');
+    if (status === 'not-started') return t('notStarted');
+    if (status === 'running') return t('running');
+    return t('skipped');
+  }
+
+  function renderStatusBadge(status, extraClass) {
+    const cls = ['badge', statusClass(status), extraClass || ''].filter(Boolean).join(' ');
+    return '<span class="' + esc(cls) + '">' + esc(statusLabel(status)) + '</span>';
+  }
+
+  function historyMetaText(sc) {
+    const flaky = scenarioFlakyStat(sc);
+    if (!flaky) return '';
+    if (flaky.Flaky) {
+      return t('historicallyUnstable');
+    }
+    if ((flaky.Failures || 0) > 0) {
+      return tf('failedTimesHistory', { n: flaky.Failures });
+    }
+    return '';
   }
 
   function normScenarioKey(s) {
@@ -264,11 +305,11 @@
   function scenarioFlakyStat(sc) {
     const flakyList = (DATA.flaky && DATA.flaky.scenarios) || [];
     const keys = [sc.id, (sc.feature_path || '') + '::' + (sc.scenario || '')].map(normScenarioKey);
-    return flakyList.find((x) => x.flaky && keys.includes(normScenarioKey(x.path)));
+    return flakyList.find((x) => keys.includes(normScenarioKey(x.path)));
   }
 
   function flakyScenariosInRun() {
-    return (DATA.scenarios || []).filter((sc) => scenarioFlakyStat(sc));
+    return (DATA.scenarios || []).filter((sc) => historyMetaText(sc));
   }
 
   function filteredScenarios() {
@@ -474,7 +515,7 @@
     let html = '<div class="section"><label>' + t('history') + '</label><table class="history-table"><thead><tr><th>' + t('when') + '</th><th>' + t('status') + '</th><th>ms</th><th>' + t('stepCol') + '</th><th>' + t('message') + '</th></tr></thead><tbody>';
     runs.forEach((run, i) => {
       const changed = i === 0 && sc.history && sc.history.changed ? ' class="changed"' : '';
-      html += '<tr' + changed + '><td>' + esc(run.at) + '</td><td>' + esc(run.status) + '</td><td>' +
+      html += '<tr' + changed + '><td>' + esc(run.at) + '</td><td>' + esc(statusLabel(run.status)) + '</td><td>' +
         (run.duration_ms || '—') + '</td><td>' +
         (run.failed_step != null ? '#' + (run.failed_step + 1) : '—') + '</td><td>' + esc(run.message || '') + '</td></tr>';
     });
@@ -492,12 +533,10 @@
     $('#stat-pass').textContent = (s.passed || 0) + ' passed';
     $('#stat-fail').textContent = (s.failed || 0) + ' failed';
     $('#stat-skip').textContent = (s.skipped || 0) + ' skipped';
-    const canceled = s.canceled || 0;
-    $('#stat-cancel').textContent = canceled ? canceled + ' ' + t('canceled') : '';
-    const notStarted = s.not_started || 0;
-    $('#stat-not-started').textContent = notStarted ? notStarted + ' ' + t('notStarted') : '';
+    $('#stat-cancel').textContent = (s.canceled || 0) + ' ' + t('canceled');
+    $('#stat-not-started').textContent = (s.not_started || 0) + ' ' + t('notStarted');
     const flaky = flakyScenariosInRun().length;
-    $('#stat-flaky').textContent = flaky ? flaky + ' ' + t('flakyInHistory') : '';
+    $('#stat-flaky').textContent = flaky ? flaky + ' ' + t('historicallyUnstable') : '';
     const slow = (DATA.slow_steps || [])[0];
     $('#stat-slow').textContent = slow ? 'Slowest: ' + slow.duration_ms + 'ms' : '';
     $('#light-badge').textContent = DATA.light_mode ? t('light') : t('full');
@@ -650,12 +689,13 @@
       const tags = (sc.tags || []).slice(0, 3).map((t) => '<span class="badge">' + esc(t) + '</span>').join('');
       const spark = renderSparkline(sc.duration_sparkline);
       const active = sc.id === state.scenarioId;
-      const flaky = scenarioFlakyStat(sc);
-      const flakyBadge = flaky ? ' <span class="flaky-pill" title="' + esc(t('flakyInHistory')) + '">flaky</span>' : '';
-      return '<div class="scenario-item' + (active ? ' active' : '') + '" role="button" tabindex="0" aria-selected="' + (active ? 'true' : 'false') + '" aria-label="' + esc(sc.scenario + ' — ' + sc.status) + '" data-id="' + esc(sc.id) + '">' +
-        '<span class="badge ' + esc(sc.status) + '">' + esc(sc.status) + '</span>' + flakyBadge +
+      const historyMeta = historyMetaText(sc);
+      const historyLine = historyMeta ? '<div class="scenario-meta-history">' + esc(historyMeta) + '</div>' : '';
+      return '<div class="scenario-item' + (active ? ' active' : '') + '" role="button" tabindex="0" aria-selected="' + (active ? 'true' : 'false') + '" aria-label="' + esc(sc.scenario + ' — ' + statusLabel(sc.status)) + '" data-id="' + esc(sc.id) + '">' +
+        renderStatusBadge(sc.status) +
         '<div class="title">' + esc(sc.scenario) + spark + '</div>' +
         '<div class="sub">' + esc(sc.feature_path) + '</div>' +
+        historyLine +
         (tags ? '<div class="sub">' + tags + '</div>' : '') +
       '</div>';
     }).join('');
@@ -689,19 +729,49 @@
     $('#timeline-title').textContent = sc.scenario + (sc.example_index ? ' (example #' + sc.example_index + ')' : '') +
       (sc.duration_ms ? ' · ' + sc.duration_ms + ' ms' : '');
     const spark = renderSparkline(sc.duration_sparkline);
-    wrap.innerHTML = (spark ? '<div class="timeline-spark">' + spark + '</div>' : '') + '<div class="timeline">' + (sc.steps || []).map((st) => {
-      const flaky = st.flaky_failures >= 2 ? '<span class="flaky-pill">flaky ×' + st.flaky_failures + '</span> ' : '';
+    const steps = sc.steps || [];
+    const body = [];
+    const renderStepNode = (st) => {
+      const flaky = st.flaky_failures >= 2 ? '<span class="flaky-pill">' + esc(tf('failedTimesHistory', { n: st.flaky_failures })) + '</span> ' : '';
       const iteration = st.iteration_path ? '<span class="retry-pill">' + esc(st.iteration_path) + '</span> ' : '';
       const terminal = st.terminal_action ? '<span class="retry-pill">' + esc(st.terminal_action) + '</span> ' : '';
-      const retries = st.retry_attempts > 0 ? '<span class="retry-pill">retry ×' + st.retry_attempts + '</span> ' : '';
-      const spark = renderSparkline(st.duration_sparkline);
+      const retries = st.retry_attempts > 0 ? '<span class="retry-pill">' + esc(tf('stepRetry', { n: st.retry_attempts })) + '</span> ' : '';
+      const stepSpark = renderSparkline(st.duration_sparkline);
       const active = st.index === state.stepIndex;
-      return '<div class="step-node ' + statusClass(st.status) + (st.flaky_failures >= 2 ? ' flaky' : '') + (active ? ' active' : '') + '" role="button" tabindex="0" aria-current="' + (active ? 'step' : 'false') + '" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + st.status) + '" data-idx="' + st.index + '">' +
-        '<div class="line">#' + (st.index + 1) + (st.line ? ' · line ' + st.line : '') + ' ' + flaky + iteration + terminal + retries + spark + '</div>' +
+      return '<div class="step-node ' + statusClass(st.status) + (st.flaky_failures >= 2 ? ' flaky' : '') + (active ? ' active' : '') + '" role="button" tabindex="0" aria-current="' + (active ? 'step' : 'false') + '" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + statusLabel(st.status)) + '" data-idx="' + st.index + '">' +
+        '<div class="line">#' + (st.index + 1) + (st.line ? ' · line ' + st.line : '') + ' ' + flaky + iteration + terminal + retries + stepSpark + '</div>' +
         '<div class="text">' + esc(st.gherkin || st.text) + '</div>' +
         (st.duration_ms ? '<div class="dur">' + st.duration_ms + ' ms</div>' : '') +
       '</div>';
-    }).join('') + '</div>';
+    };
+    for (let i = 0; i < steps.length;) {
+      const st = steps[i];
+      const path = st.iteration_path || '';
+      if (!path) {
+        body.push(renderStepNode(st));
+        i += 1;
+        continue;
+      }
+      const group = [st];
+      let j = i + 1;
+      while (j < steps.length && steps[j].iteration_path === path) {
+        group.push(steps[j]);
+        j += 1;
+      }
+      const failed = group.some((step) => normalizeStatus(step.status) === 'failed');
+      const active = group.some((step) => step.index === state.stepIndex);
+      const open = failed || active;
+      const groupBody = group.map((step) => renderStepNode(step)).join('');
+      body.push('<details class="iteration-group' + (failed ? ' failed' : '') + '" ' + (open ? 'open' : '') + '>' +
+        '<summary class="iteration-summary">' +
+        '<span class="iteration-label">' + esc(path) + '</span>' +
+        '<span class="iteration-meta">' + esc(group.length + ' steps') + '</span>' +
+        '</summary>' +
+        '<div class="iteration-steps">' + groupBody + '</div>' +
+      '</details>');
+      i = j;
+    }
+    wrap.innerHTML = (spark ? '<div class="timeline-spark">' + spark + '</div>' : '') + '<div class="timeline">' + body.join('') + '</div>';
     wrap.querySelectorAll('.step-node').forEach((el) => {
       activateOnEnterSpace(el, () => {
         state.stepIndex = Number(el.dataset.idx);
@@ -721,7 +791,7 @@
     const rows = (sc.steps || []).map((st) => {
       const cls = [statusClass(st.status), st.index === state.stepIndex ? 'active' : ''].filter(Boolean).join(' ');
       const spark = renderSparkline(st.duration_sparkline);
-      return '<tr class="' + cls + '" role="button" tabindex="0" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + st.status) + '" data-idx="' + st.index + '"><td>#' + (st.index + 1) + '</td><td>' + esc(st.status) +
+      return '<tr class="' + cls + '" role="button" tabindex="0" aria-label="' + esc('#' + (st.index + 1) + ' ' + (st.gherkin || st.text) + ' — ' + statusLabel(st.status)) + '" data-idx="' + st.index + '"><td>#' + (st.index + 1) + '</td><td>' + esc(statusLabel(st.status)) +
         '</td><td>' + esc(st.gherkin || st.text) + spark + '</td><td>' + (st.duration_ms || '—') + '</td></tr>';
     }).join('');
     wrap.innerHTML = '<table class="action-log"><thead><tr><th>#</th><th>Status</th><th>Step</th><th>ms</th></tr></thead><tbody>' +
@@ -877,7 +947,7 @@
     html += renderScenarioValidationTable(sc);
     html += '<div class="section"><label>' + t('gherkin') + '</label><div class="mono">' + esc(st.gherkin || st.text) + '</div></div>';
     if (st.iteration_path) {
-      html += '<div class="section"><label>Iteration</label><div class="mono">' + esc(st.iteration_path) + '</div></div>';
+      html += '<div class="section"><label>Iteration path</label><div class="mono">' + esc(st.iteration_path) + '</div></div>';
     }
     if (st.terminal_action) {
       html += '<div class="section"><label>Terminal action</label><div class="mono">' + esc(st.terminal_action) + '</div></div>';
@@ -916,7 +986,7 @@
         ' <span class="sub">(' + tf('stepInTrace', { n: st.index + 1 }) + ')</span></div></div>';
     }
     if (st.flaky_failures >= 2) {
-      html += '<div class="section"><label>Flaky</label><div class="history-box">' + tf('flakyHistory', { n: st.flaky_failures }) + '</div></div>';
+      html += '<div class="section"><label>History metadata</label><div class="history-box">' + tf('failedTimesHistory', { n: st.flaky_failures }) + '<br><span class="sub">' + t('historicallyUnstable') + '</span></div></div>';
     }
     if ((st.tips || []).length) {
       html += '<div class="section"><label>' + t('tips') + '</label>' + st.tips.map((tip) => '<div class="tip">' + esc(tip) + '</div>').join('') + '</div>';
@@ -932,7 +1002,7 @@
     }
     if (sc.history) {
       html += '<div class="section"><label>' + t('lastRun') + '</label><div class="history-box">' +
-        esc(sc.history.last_status) + ' @ ' + esc(sc.history.last_at) +
+        esc(statusLabel(sc.history.last_status)) + ' @ ' + esc(sc.history.last_at) +
         (sc.history.changed ? ' <strong>' + t('changed') + '</strong>' : '') +
         (sc.history.last_message ? '<br>' + esc(sc.history.last_message) : '') +
       '</div></div>';

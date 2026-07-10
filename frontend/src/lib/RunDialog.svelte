@@ -88,6 +88,9 @@
       <input bind:value={form.baseUrl} placeholder={tr('dialogs.run.baseUrlPlaceholder')} disabled={form.dryRun} />
     </label>
     <label class="check-row"><input type="checkbox" bind:checked={form.dryRun} /> {tr('dialogs.run.dryRun')}</label>
+    {#if form.dryRun}
+      <div class="run-warning" role="status">{tr('dialogs.run.dryRunWarning')}</div>
+    {/if}
     <label class="check-row"><input type="checkbox" bind:checked={form.headed} disabled={form.dryRun} /> {tr('dialogs.run.headed')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.reuseLiveBrowser} disabled={form.dryRun || form.workers > 1} /> {tr('dialogs.run.reuseLiveBrowser')}</label>
     <label class="check-row"><input type="checkbox" bind:checked={form.installPW} disabled={form.dryRun} /> {tr('dialogs.run.installPw')}</label>
@@ -139,6 +142,16 @@
     border-color: var(--color-primary);
     color: var(--color-text);
     background: var(--color-selected);
+  }
+
+  .run-warning {
+    margin: 4px 0 10px 18px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(212, 160, 23, 0.24);
+    background: rgba(212, 160, 23, 0.12);
+    color: var(--color-warning, #d4a017);
+    font-size: 12px;
   }
 
   .check-row.indent {

@@ -13,6 +13,7 @@ export const statusBar = {
   lastRun: 'Запуск · {summary}',
   lastRunTitle: 'Последний запуск (Ctrl+Enter)',
   dryRun: 'Dry-run — редактор доступен',
+  dryRunWarning: 'Активирован dry-run. Браузер не будет открыт.',
   largeFile: '≥{lines} строк · без outline / minimap',
   largeFileTitle: 'Упрощённый режим редактора для больших файлов',
   runner: 'Runner · Playwright',

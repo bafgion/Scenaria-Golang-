@@ -35,7 +35,7 @@ func ApplyDownloaded(assetPath string, kind ApplyKind, installDir string, parent
 		return applyPortableZip(assetPath, installDir, parentPID, report)
 	case ApplyKindSetup:
 		report.report("apply", "Запуск установщика…", 92)
-		err := applySetupExe(assetPath)
+		err := applySetupExe(assetPath, installDir, parentPID)
 		if err == nil {
 			report.report("restart", "Перезапуск приложения…", 100)
 		}
@@ -47,21 +47,12 @@ func ApplyDownloaded(assetPath string, kind ApplyKind, installDir string, parent
 
 const createNoWindow = 0x08000000
 
-func applySetupExe(setupPath string) error {
-	cmd := exec.Command(setupPath,
-		"/VERYSILENT",
-		"/SUPPRESSMSGBOXES",
-		"/CLOSEAPPLICATIONS",
-		"/RESTARTAPPLICATIONS",
-		"/NORESTART",
-	)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
+func applySetupExe(setupPath, installDir string, parentPID int) error {
+	scriptPath := filepath.Join(filepath.Dir(setupPath), updateBatName)
+	if err := os.WriteFile(scriptPath, []byte(setupUpdateScript(setupPath, installDir, parentPID)), 0o644); err != nil {
+		return fmt.Errorf("write setup update script: %w", err)
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start installer: %w", err)
-	}
-	return nil
+	return launchHiddenBatch(scriptPath)
 }
 
 func applyPortableZip(zipPath, installDir string, parentPID int, report Reporter) error {

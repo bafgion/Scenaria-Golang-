@@ -44,6 +44,7 @@ func (s *RunService) ListRunResults(limit int) ([]RunResultEntry, error) {
 		out = append(out, RunResultEntry{
 			Path:       e.Path,
 			Success:    e.Success,
+			Status:     e.Status,
 			Message:    e.Message,
 			Runner:     e.Runner,
 			At:         e.At,
@@ -119,6 +120,15 @@ func (s *RunService) CurrentSession() *RunSession {
 	copy.RequestSnapshot = cloneRunRequest(copy.RequestSnapshot)
 	copy.TempResources = append([]string(nil), copy.TempResources...)
 	return &copy
+}
+
+func (s *RunService) HasActiveRun() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.runCancel != nil && s.runCtx != nil && s.runCtx.Err() == nil
 }
 
 func (s *RunService) TryBegin(projectVersion uint64, req RunRequest, tempResources []string, timeout time.Duration) (RunBeginResult, error) {

@@ -147,7 +147,19 @@
     }
     const result = H.buildPickerResult(target.el, target.kind);
     if (!result) return null;
-    return target.iframePrefix ? H.prefixPickerResult(target.iframePrefix, result) : result;
+    if (target.iframePrefix) {
+      const prefixed = H.prefixPickerResult(target.iframePrefix, result);
+      const warnings = prefixed.warnings || (prefixed.warnings = []);
+      if (!warnings.includes('iframe')) warnings.push('iframe');
+      if (Array.isArray(prefixed.candidates)) {
+        for (const cand of prefixed.candidates) {
+          if (!cand.warnings) cand.warnings = [];
+          if (!cand.warnings.includes('iframe')) cand.warnings.push('iframe');
+        }
+      }
+      return prefixed;
+    }
+    return result;
   }
 
   function removeOverlay() {

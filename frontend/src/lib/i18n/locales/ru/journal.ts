@@ -159,7 +159,7 @@ export const journal = {
     cancelled: 'отменено',
   },
   testClient: {
-    selected: 'TestClient: {name}',
+    selected: 'Тест-клиент: {name}',
   },
   otp: {
     noActiveRequest: 'Нет активного запроса OTP — код не отправлен',

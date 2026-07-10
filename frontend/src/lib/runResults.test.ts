@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { gui } from '../../wailsjs/go/models'
 import {
   buildSyntheticRunError,
@@ -10,7 +10,7 @@ import {
 } from './runResults'
 
 function entry(at: string, success: boolean, path = 'a.feature::S1'): gui.RunResultEntry {
-  return gui.RunResultEntry.createFrom({ at, success, path, message: '', runner: 'playwright' })
+  return gui.RunResultEntry.createFrom({ at, success, path, message: '', runner: 'playwright', status: success ? 'passed' : 'failed' })
 }
 
 describe('runAtOrAfter', () => {
@@ -77,6 +77,7 @@ describe('buildSyntheticRunError', () => {
       message: 'unsupported step',
     })
     expect(e.success).toBe(false)
+    expect(e.status).toBe('failed')
     expect(e.path).toBe('novyy-scenariy.feature::Первая проверка')
     expect(e.message).toBe('unsupported step')
   })
@@ -99,3 +100,4 @@ describe('resolveStaleRunScenario', () => {
     expect(resolveStaleRunScenario('Old', text, 'Первая проверка')).toBe('Первая проверка')
   })
 })
+

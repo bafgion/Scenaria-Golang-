@@ -466,6 +466,10 @@ export function UninstallPlugin(arg1) {
   return window['go']['wailsapp']['App']['UninstallPlugin'](arg1);
 }
 
+export function UpdateDirtyTabsState(arg1) {
+  return window['go']['wailsapp']['App']['UpdateDirtyTabsState'](arg1);
+}
+
 export function UpdateRecordingOptions(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['wailsapp']['App']['UpdateRecordingOptions'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }

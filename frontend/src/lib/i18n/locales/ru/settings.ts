@@ -67,7 +67,7 @@ export const settings = {
   cards: {
     headless: {
       title: 'Без окна браузера',
-      description: 'Headless — окно не показывается при записи и запуске.',
+      description: 'Без окна браузера — окно скрыто при записи и запуске.',
     },
     browserEngine: {
       title: 'Движок браузера',

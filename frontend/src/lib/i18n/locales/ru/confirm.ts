@@ -1,7 +1,7 @@
 export const confirm = {
   deleteFeature: {
     title: 'Удалить сценарий',
-    message: 'Удалить «{name}» без возможности восстановления?',
+    message: 'Удалить «{name}» без возможности восстановления? Файл не попадёт в Корзину или Recycle Bin.',
     confirmLabel: 'Удалить',
   },
   openOtherProject: {
@@ -36,9 +36,9 @@ export const confirm = {
     confirmLabelForceClose: 'Закрыть всё равно',
   },
   headless: {
-    title: 'Headless',
+    title: 'Режим headless',
     message:
-      'Переключение режима окна браузера применится к текущей сессии записи (может перезапустить окно). Продолжить?',
+      'Переключение между headed и headless режимом применится к текущей сессии и может перезапустить браузер. Cookies, данные сессии и состояние страницы могут быть очищены. Продолжить?',
     confirmLabel: 'Применить',
   },
   generic: {

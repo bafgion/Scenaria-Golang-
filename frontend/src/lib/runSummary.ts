@@ -17,7 +17,5 @@ export function formatLastRunSummary(run: RunForm): string {
   if (run.htmlTimestamp) parts.push('HTML+time')
   if (run.workers > 1) parts.push(t('statusBar.runSummary.workers', { count: run.workers }))
   if (run.slowMo > 0) parts.push(t('statusBar.runSummary.slowMo', { ms: run.slowMo }))
-  if (run.scenario) parts.push(`«${run.scenario}»`)
-  else if (run.tag) parts.push(`@${run.tag}`)
   return parts.join(' · ')
 }

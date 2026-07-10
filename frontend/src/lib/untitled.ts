@@ -8,6 +8,10 @@ export function isUntitled(path: string): boolean {
   return path.startsWith(UNTITLED_PREFIX)
 }
 
+export function isRealFeaturePath(path: string): boolean {
+  return Boolean(path && !isUntitled(path))
+}
+
 export function makeUntitledPath(displayName: string): string {
   untitledCounter += 1
   const trimmed = displayName.trim() || t('common.untitledDefault')

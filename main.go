@@ -19,17 +19,18 @@ func main() {
 	logx.Init()
 	app := wailsapp.NewApp()
 	err := wails.Run(&options.App{
-		Title:  brand.Name,
-		Width:  560,
-		Height: 500,
-		MinWidth:  800,
-		MinHeight: 520,
+		Title:       brand.Name,
+		Width:       560,
+		Height:      500,
+		MinWidth:    800,
+		MinHeight:   520,
 		StartHidden: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 20, G: 22, B: 24, A: 1},
 		OnStartup:        app.Startup,
+		OnBeforeClose:    app.BeforeClose,
 		OnShutdown:       app.Shutdown,
 		Bind: []interface{}{
 			app,

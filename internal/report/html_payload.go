@@ -207,6 +207,7 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 			Steps:     result.Steps,
 		},
 	}
+	var totals StatusTotals
 
 	var history []runstatus.Entry
 	if root := strings.TrimSpace(opts.ProjectRoot); root != "" {
@@ -254,20 +255,14 @@ func buildHTMLPayload(result player.ExecutionResult, opts HTMLOptions, reportPat
 		attachStepSparklines(&sc)
 		payload.Scenarios = append(payload.Scenarios, sc)
 
-		switch sr.Status {
-		case "passed":
-			payload.Summary.Passed++
-		case "failed", "broken":
-			payload.Summary.Failed++
-		case "canceled":
-			payload.Summary.Canceled++
-		case "not-started":
-			payload.Summary.NotStarted++
-		default:
-			payload.Summary.Skipped++
-		}
+		addStatusCount(&totals, sr.Status)
 	}
 	payload.Summary.Scenarios = len(payload.Scenarios)
+	payload.Summary.Passed = totals.Passed
+	payload.Summary.Failed = totals.Failed
+	payload.Summary.Skipped = totals.Skipped
+	payload.Summary.Canceled = totals.Canceled
+	payload.Summary.NotStarted = totals.NotStarted
 	payload.SlowSteps = collectSlowSteps(payload.Scenarios, 8)
 	payload.CICompare = buildCICompare(payload.Scenarios, opts.PreviousSummary)
 	if payload.ReportDir == "" {
@@ -760,6 +755,9 @@ func lookupHistory(entries []runstatus.Entry, sr player.ScenarioResult) *htmlHis
 }
 
 func historyStatusFromEntry(entry runstatus.Entry) string {
+	if entry.Status != "" {
+		return classifyScenarioStatus(entry.Status)
+	}
 	if entry.Success {
 		return "passed"
 	}

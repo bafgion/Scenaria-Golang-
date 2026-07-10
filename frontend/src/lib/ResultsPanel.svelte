@@ -2,6 +2,7 @@
   import { createTranslator, locale } from './i18n'
   import { gui } from '../../wailsjs/go/models'
   import { flakyLabel, type FlakyScenarioStat } from './flakyMetrics'
+  import { formatRunResultStatus } from './resultStatus'
   import { isUntitled, untitledLabel } from './untitled'
 
   export let entries: gui.RunResultEntry[] = []
@@ -99,8 +100,9 @@
           {@const parts = splitPath(entry.path)}
           {@const flakyStat = flakyByPath.get(entry.path)}
           {@const stepHint = flakyStepByPath.get(entry.path)}
+          {@const status = formatRunResultStatus(entry, { flaky: flakyStat?.flaky })}
           <tr
-            class:failed={!entry.success}
+            class:failed={status.tone === 'error'}
             class:flaky={flakyStat?.flaky}
             class:clickable={!!parts.feature}
             on:dblclick={() => openEntry(entry)}
@@ -122,8 +124,10 @@
               {/if}
             </td>
             <td class="status">
-              {entry.success ? '✓ OK' : '✗ FAIL'}
-              {#if !entry.success && entry.failed_step != null && entry.failed_step >= 0}
+              <span class={`status-badge status-badge--${status.key} status-badge--${status.tone}`}>
+                {tr(`results.status.${status.key}`)}
+              </span>
+              {#if status.tone === 'error' && entry.failed_step != null && entry.failed_step >= 0}
                 <button type="button" class="goto-step" on:click|stopPropagation={() => onGotoFailedStep(entry)}>
                   {tr('results.gotoStep', { n: entry.failed_step + 1 })}
                 </button>
@@ -205,6 +209,43 @@
 
   tr.failed td.status {
     color: var(--color-error);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.3;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .status-badge--neutral {
+    color: var(--color-muted);
+    background: var(--color-input);
+    border-color: var(--color-border);
+  }
+
+  .status-badge--success {
+    color: var(--color-success);
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.2);
+  }
+
+  .status-badge--warning {
+    color: var(--color-warning, #d4a017);
+    background: rgba(212, 160, 23, 0.14);
+    border-color: rgba(212, 160, 23, 0.24);
+  }
+
+  .status-badge--error {
+    color: var(--color-error);
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.2);
   }
 
   tr.flaky td:first-child {

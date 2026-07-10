@@ -26,16 +26,24 @@ func TestClassifyURLNavigationAfterClick(t *testing.T) {
 func TestClassifyURLNavigationAfterClickWithoutURLWait(t *testing.T) {
 	corr := &navCorrelation{pending: true, since: time.Now()}
 	got := classifyURLNavigation(corr, time.Now(), false)
-	if got != "" {
-		t.Fatalf("got %q want empty", got)
+	if got != "wait-url" {
+		t.Fatalf("got %q want wait-url", got)
 	}
 }
 
 func TestClassifyURLNavigationExpiredCorrelation(t *testing.T) {
-	corr := &navCorrelation{pending: true, since: time.Now().Add(-3 * time.Second)}
+	corr := &navCorrelation{pending: true, since: time.Now().Add(-16 * time.Second)}
 	got := classifyURLNavigation(corr, time.Now(), true)
 	if got != "goto" {
 		t.Fatalf("got %q want goto", got)
+	}
+}
+
+func TestClassifyURLNavigationDelayedClickRemainsCorrelated(t *testing.T) {
+	corr := &navCorrelation{pending: true, since: time.Now().Add(-4 * time.Second)}
+	got := classifyURLNavigation(corr, time.Now(), true)
+	if got != "wait-url" {
+		t.Fatalf("got %q want wait-url", got)
 	}
 }
 
@@ -71,7 +79,7 @@ func TestDelayedNavigationCorrelationAcrossPollTicks(t *testing.T) {
 		{Type: "click", Detail: map[string]string{"selector": "#submit"}},
 	}, "https://example.com", clickAt, nil)
 
-	_, urlChanged := applyRecorderPollBatch(&recorded, &state, nil, "https://example.com/dashboard", clickAt.Add(900*time.Millisecond), nil)
+	_, urlChanged := applyRecorderPollBatch(&recorded, &state, nil, "https://example.com/dashboard", clickAt.Add(4*time.Second), nil)
 	if !urlChanged {
 		t.Fatal("expected delayed url change")
 	}

@@ -147,10 +147,11 @@ func scenarioResultsToEntries(results []player.ScenarioResult, runner string) []
 	at := time.Now().UTC().Format(time.RFC3339)
 	out := make([]RunResultEntry, 0, len(results))
 	for _, r := range results {
-		success := r.Status == "passed" || r.Status == "dry-run"
+		success := player.ResultStatusIsSuccessful(r.Status)
 		out = append(out, RunResultEntry{
 			Path:       r.FeaturePath + "::" + r.Scenario,
 			Success:    success,
+			Status:     r.Status,
 			Message:    r.Message,
 			Runner:     runner,
 			At:         at,

@@ -17,6 +17,12 @@ type projectReadLocker func(func() error) error
 type projectWriteLocker func(func() error) error
 type projectRootGetter func() string
 
+var (
+	atomicCreateTemp = os.CreateTemp
+	atomicRename     = os.Rename
+	atomicRemove     = os.Remove
+)
+
 // FileOperationService owns filesystem read/write operations for feature files.
 type FileOperationService struct {
 	confineFeaturePath featurePathConfiner
@@ -373,22 +379,56 @@ func copyFeatureFile(src, dest string) error {
 	return out.Close()
 }
 
+func restoreFileBackupByCopy(src, dest string, perm os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp, err := atomicCreateTemp(filepath.Dir(dest), filepath.Base(dest)+".restore-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanupTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if cleanupTemp {
+			_ = atomicRemove(tmpPath)
+		}
+	}()
+	if _, err := io.Copy(tmp, in); err != nil {
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := atomicRename(tmpPath, dest); err != nil {
+		return err
+	}
+	cleanupTemp = false
+	return nil
+}
+
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create dir %q: %w", dir, err)
 		}
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	tmp, err := atomicCreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("create temp file %q: %w", path, err)
 	}
 	tmpPath := tmp.Name()
-	cleanup := true
+	cleanupTemp := true
 	defer func() {
 		_ = tmp.Close()
-		if cleanup {
-			_ = os.Remove(tmpPath)
+		if cleanupTemp {
+			_ = atomicRemove(tmpPath)
 		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
@@ -400,15 +440,34 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file %q: %w", path, err)
 	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		if removeErr := os.Remove(path); removeErr == nil {
-			if retryErr := os.Rename(tmpPath, path); retryErr == nil {
-				cleanup = false
-				return nil
+	backupPath := ""
+	backupCreated := false
+	if _, err := os.Stat(path); err == nil {
+		backupPath = path + ".bak"
+		if err := atomicRemove(backupPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale backup %q: %w", backupPath, err)
+		}
+		if err := atomicRename(path, backupPath); err != nil {
+			return fmt.Errorf("backup file %q: %w", path, err)
+		}
+		backupCreated = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat file %q: %w", path, err)
+	}
+	if err := atomicRename(tmpPath, path); err != nil {
+		if backupCreated {
+			if restoreErr := atomicRename(backupPath, path); restoreErr != nil {
+				if copyErr := restoreFileBackupByCopy(backupPath, path, perm); copyErr != nil {
+					return fmt.Errorf("replace file %q: %w (restore backup %q failed: %v, atomic copy restore failed: %w)", path, err, backupPath, restoreErr, copyErr)
+				}
 			}
+			_ = atomicRemove(backupPath)
 		}
 		return fmt.Errorf("replace file %q: %w", path, err)
 	}
-	cleanup = false
+	if backupCreated {
+		_ = atomicRemove(backupPath)
+	}
+	cleanupTemp = false
 	return nil
 }

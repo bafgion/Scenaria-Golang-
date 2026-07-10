@@ -8,6 +8,7 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/gherkin"
 	"github.com/bafgion/scenaria-golang/internal/player"
+	"github.com/bafgion/scenaria-golang/internal/runstatus"
 )
 
 func TestWriteHTML(t *testing.T) {
@@ -60,6 +61,8 @@ func TestBuildHTMLStepsFromRecords(t *testing.T) {
 		Status: "failed",
 		StepRecords: []player.StepRecord{{
 			Index: 0, Text: "click", Selector: "#btn", Status: "passed", DurationMS: 10,
+			IterationPath: []player.IterationFrame{{Kind: "repeat", Index: 2}},
+			RetryAttempts: 3,
 		}, {
 			Index: 1, Text: "assert", Status: "failed", Error: "boom", DurationMS: 5,
 		}},
@@ -70,6 +73,118 @@ func TestBuildHTMLStepsFromRecords(t *testing.T) {
 	}
 	if len(steps[0].Tips) == 0 {
 		t.Fatal("expected selector tip for non-testid selector")
+	}
+	if steps[0].IterationPath != "repeat[2]" {
+		t.Fatalf("unexpected iteration path: %q", steps[0].IterationPath)
+	}
+	if steps[0].RetryAttempts != 3 {
+		t.Fatalf("unexpected retry attempts: %d", steps[0].RetryAttempts)
+	}
+}
+
+func TestSummaryCountsMatchHTMLPayload(t *testing.T) {
+	result := player.ExecutionResult{
+		Mode:      "browser",
+		Files:     2,
+		Scenarios: 6,
+		Steps:     7,
+		ScenarioResults: []player.ScenarioResult{
+			{FeaturePath: "a.feature", Scenario: "passed", Status: "passed"},
+			{FeaturePath: "b.feature", Scenario: "failed", Status: "failed"},
+			{FeaturePath: "c.feature", Scenario: "skipped", Status: "skipped"},
+			{FeaturePath: "d.feature", Scenario: "canceled", Status: "canceled"},
+			{FeaturePath: "e.feature", Scenario: "not started", Status: "not-started"},
+			{FeaturePath: "f.feature", Scenario: "dry", Status: "dry-run"},
+		},
+	}
+	detailed := FromExecutionResultDetailed(result)
+	payload, err := buildHTMLPayload(result, HTMLOptions{}, filepath.Join(t.TempDir(), "report.html"))
+	if err != nil {
+		t.Fatalf("buildHTMLPayload: %v", err)
+	}
+	if detailed.Passed != payload.Summary.Passed || detailed.Failed != payload.Summary.Failed ||
+		detailed.Skipped != payload.Summary.Skipped || detailed.Canceled != payload.Summary.Canceled ||
+		detailed.NotStarted != payload.Summary.NotStarted {
+		t.Fatalf("summary mismatch: detailed=%+v html=%+v", detailed, payload.Summary)
+	}
+	if got := statusTotalsSum(StatusTotals{
+		Passed:     detailed.Passed,
+		Failed:     detailed.Failed,
+		Skipped:    detailed.Skipped,
+		Canceled:   detailed.Canceled,
+		NotStarted: detailed.NotStarted,
+	}); got != detailed.Scenarios {
+		t.Fatalf("scenario invariant failed: got %d want %d", got, detailed.Scenarios)
+	}
+}
+
+func TestHTMLPayloadSeparatesCurrentStatusAndHistory(t *testing.T) {
+	tmp := t.TempDir()
+	store, err := runstatus.Open(tmp)
+	if err != nil {
+		t.Fatalf("open runstatus: %v", err)
+	}
+	pathKey := "demo.feature::Scenario"
+	if err := store.RecordBatch([]runstatus.Entry{{
+		Path:    pathKey,
+		Status:  "failed",
+		Success: false,
+		Message: "first failure",
+		At:      "2024-01-01T00:00:00Z",
+	}, {
+		Path:    pathKey,
+		Status:  "passed",
+		Success: true,
+		At:      "2024-01-02T00:00:00Z",
+	}}); err != nil {
+		t.Fatalf("record history: %v", err)
+	}
+	result := player.ExecutionResult{
+		Mode:      "browser",
+		Files:     1,
+		Scenarios: 1,
+		Steps:     1,
+		ScenarioResults: []player.ScenarioResult{{
+			FeaturePath: "demo.feature",
+			Scenario:    "Scenario",
+			Status:      "failed",
+		}},
+	}
+	payload, err := buildHTMLPayload(result, HTMLOptions{ProjectRoot: tmp}, filepath.Join(tmp, "report.html"))
+	if err != nil {
+		t.Fatalf("buildHTMLPayload: %v", err)
+	}
+	if len(payload.Scenarios) != 1 {
+		t.Fatalf("expected one scenario, got %d", len(payload.Scenarios))
+	}
+	sc := payload.Scenarios[0]
+	if sc.Status != "failed" {
+		t.Fatalf("current status lost: %q", sc.Status)
+	}
+	if sc.History == nil || sc.History.LastStatus != "passed" || !sc.History.Changed {
+		t.Fatalf("history not separated from current status: %+v", sc.History)
+	}
+	if len(sc.HistoryRuns) == 0 || sc.HistoryRuns[0].Status != "passed" {
+		t.Fatalf("history runs missing normalized status: %+v", sc.HistoryRuns)
+	}
+}
+
+func TestHistoryStatusFromEntryUsesRecordedStatus(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry runstatus.Entry
+		want  string
+	}{
+		{name: "canceled", entry: runstatus.Entry{Status: "canceled", Success: true}, want: "canceled"},
+		{name: "not started", entry: runstatus.Entry{Status: "not-started", Success: true}, want: "not-started"},
+		{name: "dry run", entry: runstatus.Entry{Status: "dry-run", Success: true}, want: "skipped"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := historyStatusFromEntry(tt.entry); got != tt.want {
+				t.Fatalf("got %q want %q", got, tt.want)
+			}
+		})
 	}
 }
 

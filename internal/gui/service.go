@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bafgion/scenaria-golang/internal/logx"
@@ -45,6 +46,8 @@ type Service struct {
 	activeBackground      sync.WaitGroup
 	settingsStore         *settings.Store
 	projectFSMu           sync.RWMutex
+	activePlaywrightCount atomic.Int32
+	liveDirtyTabs         atomic.Bool
 }
 
 func NewService() *Service {
@@ -231,6 +234,7 @@ type UntitledTabDTO struct {
 type RunResultEntry struct {
 	Path       string `json:"path"`
 	Success    bool   `json:"success"`
+	Status     string `json:"status,omitempty"`
 	Message    string `json:"message"`
 	Runner     string `json:"runner"`
 	At         string `json:"at"`
@@ -301,6 +305,60 @@ func (s *Service) ProjectVersion() uint64 {
 
 func (s *Service) CurrentRunSession() *RunSession {
 	return s.runner().CurrentSession()
+}
+
+func (s *Service) HasActiveRun() bool {
+	return s.runner().HasActiveRun()
+}
+
+func (s *Service) UpdateDirtyTabsState(dirty bool) {
+	if s == nil {
+		return
+	}
+	s.liveDirtyTabs.Store(dirty)
+}
+
+func (s *Service) HasDirtyTabs() bool {
+	if s == nil {
+		return false
+	}
+	if s.liveDirtyTabs.Load() {
+		return true
+	}
+	cfg, err := s.settingOps().LoadSettings()
+	if err != nil {
+		return false
+	}
+	if len(cfg.UntitledTabs) > 0 {
+		return true
+	}
+	for _, path := range cfg.OpenTabs {
+		draftPath, err := featureDraftPath(path)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(draftPath); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) CloseGuardReasons() []string {
+	if s == nil {
+		return nil
+	}
+	reasons := make([]string, 0, 3)
+	if s.HasActiveRun() {
+		reasons = append(reasons, "active run")
+	}
+	if s.HasLiveBrowser() {
+		reasons = append(reasons, "active recorder/browser")
+	}
+	if s.HasDirtyTabs() {
+		reasons = append(reasons, "unsaved tabs")
+	}
+	return reasons
 }
 
 func (s *Service) editorAnalyzer() *EditorAnalysisService {
@@ -437,6 +495,24 @@ func (s *Service) rotateProjectSessionLocked(path string) {
 	s.projectPath = path
 }
 
+func (s *Service) withActivePlaywright(fn func()) {
+	if s == nil || fn == nil {
+		return
+	}
+	s.activePlaywrightCount.Add(1)
+	s.activePlaywright.Add(1)
+	defer s.activePlaywright.Done()
+	defer s.activePlaywrightCount.Add(-1)
+	fn()
+}
+
+func (s *Service) ActivePlaywrightSessions() int {
+	if s == nil {
+		return 0
+	}
+	return int(s.activePlaywrightCount.Load())
+}
+
 func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -463,6 +539,7 @@ func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	}
 	s.rotateProjectSessionLocked(path)
 	s.mu.Unlock()
+	s.CleanupStartupTempArtifacts(path)
 	return s.projectInfo()
 }
 
@@ -575,8 +652,10 @@ func cloneRunRequest(req RunRequest) RunRequest {
 }
 
 func (s *Service) Run(req RunRequest, emit EventEmitter) RunResult {
+	s.activePlaywrightCount.Add(1)
 	s.activePlaywright.Add(1)
 	defer s.activePlaywright.Done()
+	defer s.activePlaywrightCount.Add(-1)
 	req = cloneRunRequest(req)
 	logx.Debug("run request received", "targets", len(req.Targets), "dry_run", req.DryRun)
 	if len(req.Targets) == 0 && s.ProjectPath() == "" {

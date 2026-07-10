@@ -81,6 +81,7 @@ func (a *App) Startup(ctx context.Context) {
 	player.SetEmailCodePrompt(a.promptEmailCode)
 	player.SetOTPCancelHook(a.CancelOTP)
 	_ = a.svc.EnsureReportBridge(a.emitReportGoto, a.emitReportRerun, a.emitReportTrace)
+	a.svc.CleanupGlobalStartupTemps(os.TempDir())
 }
 
 func (a *App) emitReportGoto(req gui.ReportGotoRequest) {
@@ -113,6 +114,27 @@ func (a *App) Shutdown(ctx context.Context) {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), gui.DefaultShutdownTimeout)
 	defer cancel()
 	a.svc.Shutdown(shutdownCtx)
+}
+
+// BeforeClose asks for confirmation when the app still has unsaved or active work.
+func (a *App) BeforeClose(ctx context.Context) bool {
+	reasons := a.svc.CloseGuardReasons()
+	if len(reasons) == 0 {
+		return false
+	}
+	message := "There is still active or unsaved work:\n- " + strings.Join(reasons, "\n- ") + "\n\nClose the app anyway?"
+	choice, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "Close Scenaria?",
+		Message:       message,
+		Buttons:       []string{"Close", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return true
+	}
+	return choice != "Close"
 }
 
 func (a *App) promptEmailCode(email string) (string, error) {
@@ -529,6 +551,10 @@ func (a *App) LoadSettings() (gui.AppSettingsDTO, error) {
 
 func (a *App) SaveSettings(dto gui.AppSettingsDTO) error {
 	return a.svc.SaveSettings(dto)
+}
+
+func (a *App) UpdateDirtyTabsState(dirty bool) {
+	a.svc.UpdateDirtyTabsState(dirty)
 }
 
 func (a *App) Export(req gui.ExportRequest) gui.RunResult {

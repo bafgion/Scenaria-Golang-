@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const navCorrelationWindow = 2 * time.Second
+const navCorrelationWindow = 15 * time.Second
 
 type navCorrelation struct {
 	pending bool
@@ -31,7 +31,7 @@ func (n *navCorrelation) expire(now time.Time) {
 
 // classifyURLNavigation decides how to record a URL change after browser events
 // were drained for the current poll tick.
-func classifyURLNavigation(correlation *navCorrelation, now time.Time, recordURLWait bool) (kind string) {
+func classifyURLNavigation(correlation *navCorrelation, now time.Time, _ bool) (kind string) {
 	if correlation == nil || !correlation.pending {
 		return "goto"
 	}
@@ -40,10 +40,7 @@ func classifyURLNavigation(correlation *navCorrelation, now time.Time, recordURL
 		return "goto"
 	}
 	correlation.pending = false
-	if recordURLWait {
-		return "wait-url"
-	}
-	return ""
+	return "wait-url"
 }
 
 func isNavCausingStep(step RecordedStep) bool {

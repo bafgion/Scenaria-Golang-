@@ -27,6 +27,8 @@ type RunSummaryDetailed struct {
 	Passed      int               `json:"passed"`
 	Failed      int               `json:"failed"`
 	Skipped     int               `json:"skipped"`
+	Canceled    int               `json:"canceled"`
+	NotStarted  int               `json:"not_started"`
 	Items       []ScenarioSummary `json:"items,omitempty"`
 }
 
@@ -39,17 +41,9 @@ func FromExecutionResultDetailed(result player.ExecutionResult) RunSummaryDetail
 		Steps:       result.Steps,
 		Items:       make([]ScenarioSummary, 0, len(result.ScenarioResults)),
 	}
+	var totals StatusTotals
 	for _, sr := range result.ScenarioResults {
-		switch sr.Status {
-		case "passed":
-			out.Passed++
-		case "failed", "broken":
-			out.Failed++
-		case "canceled":
-			out.Skipped++
-		default:
-			out.Skipped++
-		}
+		addStatusCount(&totals, sr.Status)
 		out.Items = append(out.Items, ScenarioSummary{
 			Path:       sr.FeaturePath,
 			Scenario:   sr.Scenario,
@@ -57,6 +51,11 @@ func FromExecutionResultDetailed(result player.ExecutionResult) RunSummaryDetail
 			DurationMS: sr.DurationMS,
 		})
 	}
+	out.Passed = totals.Passed
+	out.Failed = totals.Failed
+	out.Skipped = totals.Skipped
+	out.Canceled = totals.Canceled
+	out.NotStarted = totals.NotStarted
 	return out
 }
 

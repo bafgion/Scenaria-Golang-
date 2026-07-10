@@ -2,6 +2,7 @@
   import { createTranslator, locale } from './i18n'
   import type { gui } from '../../wailsjs/go/models'
   import { flakyLabel, isFlakyPath, type FlakyScenarioStat } from './flakyMetrics'
+  import { formatRunResultStatus } from './resultStatus'
 
   export let entries: gui.RunResultEntry[] = []
   export let flakyByPath: Map<string, FlakyScenarioStat> = new Map()
@@ -16,9 +17,10 @@
   let query = ''
 
   $: filtered = entries.filter((entry) => {
+    const status = formatRunResultStatus(entry, { flaky: isFlakyPath(flakyByPath, entry.path) })
     if (filter === 'flaky' && !isFlakyPath(flakyByPath, entry.path)) return false
-    if (filter === 'failed' && entry.success) return false
-    if (filter === 'passed' && !entry.success) return false
+    if (filter === 'failed' && status.tone !== 'error') return false
+    if (filter === 'passed' && !(status.key === 'passed' || status.key === 'passedWithRetries')) return false
     const hay = `${entry.path} ${entry.message} ${entry.runner}`.toLowerCase()
     return !query.trim() || hay.includes(query.trim().toLowerCase())
   })
@@ -88,7 +90,8 @@
               {@const parts = splitPath(entry.path)}
               {@const flakyStat = flakyByPath.get(entry.path)}
               {@const stepHint = flakyStepByPath.get(entry.path)}
-              <tr class:failed={!entry.success} class:flaky={flakyStat?.flaky} on:dblclick={() => openEntry(entry)} title={tr('dialogs.runHistory.openFeatureTitle')}>
+              {@const status = formatRunResultStatus(entry, { flaky: flakyStat?.flaky })}
+              <tr class:failed={status.tone === 'error'} class:flaky={flakyStat?.flaky} on:dblclick={() => openEntry(entry)} title={tr('dialogs.runHistory.openFeatureTitle')}>
                 <td>
                   <div class="scenario">{parts.scenario || basename(parts.feature)}</div>
                   <div class="feature">{basename(parts.feature)}</div>
@@ -99,7 +102,11 @@
                     <div class="step-flaky">{stepHint}</div>
                   {/if}
                 </td>
-                <td>{entry.success ? tr('dialogs.runHistory.resultOk') : tr('dialogs.runHistory.resultFail')}</td>
+                <td>
+                  <span class={`status-badge status-badge--${status.key} status-badge--${status.tone}`}>
+                    {tr(`results.status.${status.key}`)}
+                  </span>
+                </td>
                 <td class="msg">{entry.message || tr('dialogs.common.notFound')}</td>
                 <td class="at">{formatAt(entry.at)}</td>
               </tr>
@@ -167,6 +174,43 @@
 
   tr.failed td:nth-child(2) {
     color: var(--color-error);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.3;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .status-badge--neutral {
+    color: var(--color-muted);
+    background: var(--color-input);
+    border-color: var(--color-border);
+  }
+
+  .status-badge--success {
+    color: var(--color-success);
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.2);
+  }
+
+  .status-badge--warning {
+    color: var(--color-warning, #d4a017);
+    background: rgba(212, 160, 23, 0.14);
+    border-color: rgba(212, 160, 23, 0.24);
+  }
+
+  .status-badge--error {
+    color: var(--color-error);
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.2);
   }
 
   tr:not(.failed) td:nth-child(2) {

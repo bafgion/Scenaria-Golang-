@@ -104,7 +104,7 @@
   import RenameFeatureDialog from './lib/RenameFeatureDialog.svelte'
   import { buildFeatureTemplate } from './lib/featureTemplate'
   import { applyRecordStepEvent, type RecordStepEvent } from './lib/recordedStepOps'
-  import { isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
+  import { isRealFeaturePath, isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
   import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
   import { batchRunFormFrom, defaultRunForm, runFormFromMode, type RunForm, type RunFormMode } from './lib/runTypes'
   import { formatLastRunSummary } from './lib/runSummary'
@@ -166,7 +166,7 @@
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
   import { resolveProjectPathInput as resolveProjectPathShortcut } from './lib/projectPath'
-  import { isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath, shouldApplyLiveRecordedStep } from './lib/recordingTarget'
+  import { isRecordingTargetReadOnly, isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath, resolveRecordStartedTargetPath, shouldApplyLiveRecordedStep } from './lib/recordingTarget'
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
@@ -241,6 +241,7 @@
     SaveFeatureDraft,
     LoadFeatureDraft,
     ClearFeatureDraft,
+    UpdateDirtyTabsState,
     DeleteFeature,
     DuplicateFeature,
     MoveFeature,
@@ -556,6 +557,7 @@
   $: toolbarIconOnly = $viewportStore.toolbarIconOnly
 
   let monaco: MonacoEditor | undefined
+  let lastSyncedDirtyTabsState: boolean | null = null
   const unsubscribers: (() => void)[] = []
 
   function askConfirm(opts: {
@@ -675,6 +677,7 @@
   $: editorLineCount = isWelcome ? 0 : editorText.split(/\r?\n/).length
   $: showLargeFileBanner = !isWelcome && isLargeFeatureFile(editorLineCount)
   $: unsavedTabCount = tabs.filter((t) => tabIsUnsaved(t)).length
+  $: syncDirtyTabsState(unsavedTabCount > 0)
   $: [, lastRunSummary] = [$locale, formatLastRunSummary(lastRun)]
   $: automationActive = playing || vanessaRunning
   $: pickerToolbarEnabled =
@@ -789,6 +792,7 @@
         : tr('toolbar.stop')
   $: recordingTargetLabel =
     recording && recordingTargetPath ? basename(recordingTargetPath) : ''
+  $: recordingTargetReadOnly = isRecordingTargetReadOnly(recording, recordingTargetPath, activeTab)
 
   const MIN_SPLASH_MS = 1400
   const SPLASH_FADE_MS = 320
@@ -951,8 +955,9 @@
           }
           if (!syncOnly) {
             const targetFromEvent = m.targetPath || ''
-            if (targetFromEvent) {
-              recorderStore.setTargetPath(normalizeRecordTabPath(targetFromEvent))
+            const uiTarget = resolveRecordStartedTargetPath(targetFromEvent, activeTab, WELCOME_KEY)
+            if (uiTarget) {
+              recorderStore.setTargetPath(uiTarget)
             } else if (activeTab && !isWelcome) {
               recorderStore.setTargetPath(normalizeRecordTabPath(activeTab))
             }
@@ -1273,6 +1278,18 @@
     return tab.dirty || isUntitled(tab.path)
   }
 
+  function syncDirtyTabsState(dirty: boolean) {
+    if (lastSyncedDirtyTabsState === dirty) return
+    lastSyncedDirtyTabsState = dirty
+    try {
+      void Promise.resolve(UpdateDirtyTabsState(dirty)).catch((e) => {
+        console.warn('failed to sync dirty tab state', e)
+      })
+    } catch (e) {
+      console.warn('failed to sync dirty tab state', e)
+    }
+  }
+
   function applySettingsFromDTO(s: gui.AppSettingsDTO) {
     settingsStore.applyFromDTO(s)
     recorderPrefsStore.applyFromDTO(s)
@@ -1416,12 +1433,16 @@
     postRecordStore.open(path)
     diagnosticsStore.clearDismissedHints()
     try {
-      const editorContent = monaco?.getEditorText() ?? editorText
-      if (activeTab === path || isUntitled(path)) {
-        postRecordStore.setStepCount((await ParseEditorSteps(editorContent)).length)
-      } else {
+      const tab = tabs.find((t) => t.path === path)
+      if (activeTab === path) {
+        postRecordStore.setStepCount((await ParseEditorSteps(monaco?.getEditorText() ?? editorText)).length)
+      } else if (tab) {
+        postRecordStore.setStepCount((await ParseEditorSteps(tabEditorText(tab))).length)
+      } else if (isRealFeaturePath(path)) {
         const content = await ReadFeature(path)
         postRecordStore.setStepCount((await ParseEditorSteps(content)).length)
+      } else {
+        postRecordStore.setStepCount(0)
       }
     } catch {
       postRecordStore.setStepCount(0)
@@ -1440,7 +1461,13 @@
 
   function openPostRecordDiff() {
     if (!postRecordPath) return
-    const modified = monaco?.getEditorText() ?? editorText
+    const tab = tabs.find((t) => t.path === postRecordPath)
+    const modified =
+      postRecordPath === activeTab
+        ? (monaco?.getEditorText() ?? editorText)
+        : tab
+          ? tabEditorText(tab)
+          : ''
     if (postRecordBaselineText === modified) {
       appendLog(tr('journal.record.noPostRecordDiff'))
       return
@@ -1534,7 +1561,17 @@
     }
     try {
       await DeleteFeature(path)
-      closeTab(path)
+      try {
+        await ClearFeatureDraft(path)
+      } catch (e) {
+        console.warn('failed to clear deleted feature draft', e)
+      }
+      if (tabs.some((t) => t.path === path)) {
+        finalizeCloseTab(path)
+      } else {
+        evictFeatureSymbolCache(path)
+        monaco?.releaseTab(path)
+      }
       await refreshProject()
       appendLog(tr('journal.file.deleted', { name: basename(path) }))
     } catch (e: any) {
@@ -1685,9 +1722,18 @@
     const src = moveFeaturePath
     featureDialogStore.clearMove()
     if (!src || !destDir) return
+    if (!isRealFeaturePath(src)) {
+      appendLog(tr('journal.project.saveOrOpenFirst'))
+      return
+    }
     try {
       const newPath = await MoveFeature(src, destDir)
       const wasActive = activeTab === src
+      if (tabs.some((t) => t.path === src)) {
+        tabsStore.mapTabs((tabs) => tabs.map((t) => (t.path === src ? { ...t, path: newPath } : t)))
+        if (wasActive) tabsStore.setActiveTab(newPath)
+      }
+      catalogStore.mapBatchSelected((paths) => paths.map((p) => (p === src ? newPath : p)))
       await refreshProject()
       if (wasActive) await loadFeature(newPath)
       appendLog(tr('journal.file.moved', { name: basename(newPath) }))
@@ -1713,6 +1759,10 @@
 
   async function renameFeature(path: string, newName: string) {
     if (!path) return
+    if (!isRealFeaturePath(path)) {
+      appendLog(tr('journal.project.saveOrOpenFirst'))
+      return
+    }
     try {
       const newPath = await RenameFeature(path, newName)
       const wasActive = activeTab === path
@@ -1746,7 +1796,7 @@
       appendLog(tr('journal.file.replaceDone', { replacements: result.replacements, files: result.filesChanged }))
       dialogsStore.close('showProjectReplace')
       await refreshProject()
-      if (activeTab && !isWelcome) {
+      if (activeTab && !isWelcome && isRealFeaturePath(activeTab)) {
         editorStore.setText(await ReadFeature(activeTab))
         tabsStore.mapTabs((tabs) => tabs.map((t) => (t.path === activeTab ? { ...t, content: editorText } : t)))
         validateEditor()
@@ -2766,6 +2816,10 @@
 
   async function moveFeatureInCatalog(src: string, destDir: string) {
     if (!src || !destDir) return
+    if (!isRealFeaturePath(src)) {
+      appendLog(tr('journal.project.saveOrOpenFirst'))
+      return
+    }
     try {
       const newPath = await MoveFeature(src, destDir)
       const wasActive = activeTab === src
@@ -2937,6 +2991,10 @@
       schedulePersistSession()
       return
     }
+    if (isUntitled(path)) {
+      appendLog(tr('journal.file.openError', { error: `untitled tab is not open: ${untitledLabel(path)}` }))
+      return
+    }
     try {
       const diskContent = await ReadFeature(path)
       if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
@@ -3060,9 +3118,14 @@
     }
   }
 
-  function discardAndCloseTab() {
+  async function discardAndCloseTab() {
     if (!pendingCloseTab) return
     const path = pendingCloseTab
+    try {
+      await ClearFeatureDraft(path)
+    } catch (e) {
+      console.warn('failed to clear discarded feature draft', e)
+    }
     finalizeCloseTab(path)
   }
 
@@ -3835,8 +3898,12 @@
     void focusBrowser()
   }
 
-  function openExportDialog() {
+  async function openExportDialog() {
     if (!activeTab || isWelcome) return
+    if (isUntitled(activeTab)) {
+      await saveFeatureAs()
+      if (!activeTab || isWelcome || isUntitled(activeTab)) return
+    }
     featureDialogStore.openExport(activeTab)
     dialogsStore.open('showExport')
   }
@@ -4352,7 +4419,7 @@
       if (browserOpen) await focusBrowser()
       return
     }
-    recorderStore.setLastRecordTarget(recordAppendTo || recordOutput)
+    recorderStore.setLastRecordTarget(activeTab && !isWelcome && isUntitled(activeTab) ? activeTab : (recordAppendTo || recordOutput))
     let sessionOpen = browserOpen
     if (!sessionOpen) {
       try {
@@ -4488,7 +4555,13 @@
       .replace(/\\/g, '/')
     const bannerPath = path && !isUntitled(path) ? path : activeTab && !isWelcome ? activeTab : ''
     if (!bannerPath) return
-    const current = monaco?.getEditorText() ?? editorText
+    const tab = tabs.find((t) => t.path === bannerPath)
+    const current =
+      bannerPath === activeTab
+        ? (monaco?.getEditorText() ?? editorText)
+        : tab
+          ? tabEditorText(tab)
+          : ''
     if (!postRecordBaselineText || current === postRecordBaselineText) return
     await showPostRecordBanner(bannerPath)
   }
@@ -4701,7 +4774,7 @@
       appendLog(tr('journal.project.openFirst'))
       return
     }
-    if (!activeTab || isWelcome || !activeTab.toLowerCase().endsWith('.feature')) {
+    if (!activeTab || isWelcome || isUntitled(activeTab) || !activeTab.toLowerCase().endsWith('.feature')) {
       appendLog(tr('journal.record.openFeatureForAppend'))
       beginRecord()
       return
@@ -5432,7 +5505,7 @@
                     <MonacoEditor
                       bind:this={monaco}
                       bind:value={editorText}
-                      readOnly={automationActive}
+                      readOnly={automationActive || recordingTargetReadOnly}
                       bind:editorSettings={dialogBinds.bindEditorSettings}
                       scenarioHints={editorScenarioHints}
                       hintActions={monacoHintActions}
@@ -5631,7 +5704,9 @@
         </div>
       {/if}
       {#if runningDryRun}
-        <div class="status-segment muted">{tr('statusBar.dryRun')}</div>
+        <div class="status-segment warning" title={tr('statusBar.dryRunWarning')}>
+          {tr('statusBar.dryRunWarning')}
+        </div>
       {/if}
       {#if showLargeFileBanner}
         <div class="status-segment warning large-file-banner" title={tr('statusBar.largeFileTitle')}>

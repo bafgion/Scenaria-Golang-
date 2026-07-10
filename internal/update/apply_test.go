@@ -44,3 +44,19 @@ func TestPortableUpdateScriptContainsRobocopy(t *testing.T) {
 		t.Fatalf("expected gui restart in script")
 	}
 }
+
+func TestSetupUpdateScriptRestartsGuiAfterInstaller(t *testing.T) {
+	script := setupUpdateScript(`C:\Downloads\Scenaria-Setup.exe`, `C:\Program Files\Scenaria`, 12345)
+	if !strings.Contains(script, `start "" /WAIT "C:\Downloads\Scenaria-Setup.exe"`) {
+		t.Fatalf("expected installer to run synchronously: %s", script)
+	}
+	if !strings.Contains(script, brand.GUIExeName) {
+		t.Fatalf("expected gui restart in script")
+	}
+	if !strings.Contains(script, "/NORESTART") {
+		t.Fatalf("expected installer arguments in script")
+	}
+	if strings.Contains(script, "/RESTARTAPPLICATIONS") {
+		t.Fatalf("setup script should restart the gui explicitly instead of relying on installer restart manager")
+	}
+}

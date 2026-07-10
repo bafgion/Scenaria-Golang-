@@ -305,24 +305,87 @@
     return count;
   }
 
+  function selectorUsesNth(selector) {
+    return /:nth-(?:of-type|child)\(|\bnth-of-type\(/i.test(String(selector || ''));
+  }
+
+  function isCardLikeContainer(node) {
+    if (!node || node.nodeType !== 1) return false;
+    const cls = String(node.className || '').toLowerCase();
+    if (node.hasAttribute('data-testid') || node.hasAttribute('data-card') || node.hasAttribute('data-row')) return true;
+    if (cls.includes('card') || cls.includes('panel') || cls.includes('tile') || cls.includes('row') || cls.includes('list-item')) {
+      return true;
+    }
+    return false;
+  }
+
+  function preferredContextSelector(node) {
+    if (!node || node.nodeType !== 1) return null;
+    const doc = node.ownerDocument || document;
+    if (node.id) return `#${cssEscape(node.id)}`;
+    const testId = node.getAttribute('data-testid');
+    if (testId) return `[data-testid="${cssEscape(testId)}"]`;
+
+    const tag = (node.tagName || '').toLowerCase();
+    const role = (node.getAttribute('role') || '').toLowerCase();
+    const text = visibleText(node).trim();
+    const escapedText = text ? text.replace(/"/g, '\\"') : '';
+    const candidates = [];
+
+    if (role === 'row') candidates.push('[role="row"]');
+    if (['tr', 'li', 'form', 'section', 'article', 'fieldset'].includes(tag)) {
+      candidates.push(tag);
+      if (node.classList && node.classList.length) {
+        for (const cls of Array.from(node.classList)) {
+          const lower = String(cls || '').toLowerCase();
+          if (lower.includes('card') || lower.includes('panel') || lower.includes('tile') || lower.includes('list') || lower.includes('row')) {
+            candidates.unshift(`${tag}.${cssEscape(cls)}`);
+            break;
+          }
+        }
+      }
+    }
+    if (isCardLikeContainer(node)) {
+      candidates.push(tag || 'div');
+    }
+
+    if (!text || text.length < 3 || text.length > 120) {
+      for (const candidate of candidates) {
+        if (candidate && countMatchesInDoc(doc, candidate) === 1) return candidate;
+      }
+      return null;
+    }
+
+    for (const base of candidates.length ? candidates : [tag || 'div']) {
+      if (!base) continue;
+      const sel = `${base}:has-text("${escapedText}")`;
+      if (countMatchesInDoc(doc, sel) === 1) return sel;
+    }
+
+    if (isCardLikeContainer(node) || role === 'row') {
+      const sel = `${tag || 'div'}:has-text("${escapedText}")`;
+      if (countMatchesInDoc(doc, sel) === 1) return sel;
+    }
+    return null;
+  }
+
   function buildContextualClickSelector(target) {
     if (!target || target.nodeType !== 1) return null;
     const label = visibleText(target).trim();
     if (!label || label.length > 40) return null;
     if (countMatchingClickables(target.ownerDocument, label) <= 1) return null;
-    const scopeTag = navScopeTag(target);
-    if (scopeTag) {
-      return scopedTextSelector(scopeTag, label, target);
-    }
     let node = target.parentElement;
     for (let depth = 0; node && depth < 8; depth++) {
-      const caption = visibleText(node).trim();
-      if (caption.length >= 6 && caption.length <= 40 && caption !== label) {
-        const escapedCaption = caption.replace(/"/g, '\\"');
-        const escapedLabel = label.replace(/"/g, '\\"');
-        const parentTag = (node.tagName || 'div').toLowerCase();
+      const context = preferredContextSelector(node);
+      if (context) {
         const clickTag = clickTagFor(target);
-        return `${parentTag}:has-text("${escapedCaption}") >> ${clickTag}:has-text("${escapedLabel}")`;
+        const escapedLabel = label.replace(/"/g, '\\"');
+        return `${context} >> ${clickTag}:has-text("${escapedLabel}")`;
+      }
+      const scopeTag = navScopeTag(node);
+      if (scopeTag) {
+        const scoped = scopedTextSelector(scopeTag, label, target);
+        if (scoped) return scoped;
       }
       node = node.parentElement;
     }
@@ -517,11 +580,15 @@
     if (key === 'text' || (kind === 'input' && selector.startsWith('label:has-text(') && !selector.includes('>>'))) {
       warnings.push('text-only');
     }
+    if (kind === 'input' && key === 'adjacent') {
+      warnings.push('unconnected-label');
+    }
     if (matchesCount > 1) warnings.push('not-unique');
     if (matchesCount === 0) warnings.push('no-matches');
     if (!visible) warnings.push('not-visible');
     if (!matchesPicked && matchesCount === 1) warnings.push('wrong-target');
     if (!actionable) warnings.push('not-actionable');
+    if (selectorUsesNth(selector)) warnings.push('low-confidence');
     return warnings;
   }
 
@@ -814,10 +881,12 @@
     if (!candidates.length) {
       const fallback = resolvedKind === 'input' ? buildInputSelector(el) : buildSelector(el);
       if (!fallback) return null;
+      const warnings = ['fallback'];
+      if (selectorUsesNth(fallback)) warnings.push('low-confidence');
       const result = {
         selector: prefixShadowChain(el, fallback),
         candidates: [],
-        warnings: ['fallback'],
+        warnings,
         suggested_action: suggestAction(el),
       };
       return result;

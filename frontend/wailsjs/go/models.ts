@@ -135,6 +135,7 @@ export namespace gui {
 	export class RunResultEntry {
 	    path: string;
 	    success: boolean;
+	    status?: string;
 	    message: string;
 	    runner: string;
 	    at: string;
@@ -148,6 +149,7 @@ export namespace gui {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.success = source["success"];
+	        this.status = source["status"];
 	        this.message = source["message"];
 	        this.runner = source["runner"];
 	        this.at = source["at"];

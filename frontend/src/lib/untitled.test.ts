@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isRealFeaturePath,
   isUntitled,
   makeUntitledPath,
   syncUntitledCounterFromPaths,
@@ -33,5 +34,11 @@ describe('untitled paths', () => {
     syncUntitledCounterFromPaths([`${UNTITLED_PREFIX}3/a.feature`, `${UNTITLED_PREFIX}7/b.feature`])
     const next = makeUntitledPath('c')
     expect(next).toBe(`${UNTITLED_PREFIX}8/c.feature`)
+  })
+
+  it('distinguishes real feature paths from untitled editor ids', () => {
+    expect(isRealFeaturePath('C:/proj/a.feature')).toBe(true)
+    expect(isRealFeaturePath(makeUntitledPath('draft.feature'))).toBe(false)
+    expect(isRealFeaturePath('')).toBe(false)
   })
 })
