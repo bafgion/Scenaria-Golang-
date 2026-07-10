@@ -20,14 +20,7 @@ const navTargetHTML = `<!doctype html><html><body><h1>Target</h1></body></html>`
 
 func TestRecorderStashPreservesClickAcrossFullNavigation(t *testing.T) {
 	page := openRecorderFixture(t, navLinkHTML, "https://recorder.test/target", navTargetHTML)
-	if err := page.Click("#go"); err != nil {
-		t.Fatalf("click: %v", err)
-	}
-	if err := page.WaitForURL("https://recorder.test/target", playwright.PageWaitForURLOptions{
-		Timeout: playwright.Float(5000),
-	}); err != nil {
-		t.Fatalf("wait url: %v", err)
-	}
+	clickAndWaitNavigation(t, page, "#go", "https://recorder.test/target")
 
 	events, err := drainRecorderEvents(page)
 	if err != nil {
@@ -47,14 +40,7 @@ func TestRecorderStashPreservesClickAcrossFullNavigation(t *testing.T) {
 
 func TestRecorderNavCausingClickStashesBeforeUnload(t *testing.T) {
 	page := openRecorderFixture(t, navLinkHTML, "https://recorder.test/target", navTargetHTML)
-	if err := page.Click("#go"); err != nil {
-		t.Fatalf("click: %v", err)
-	}
-	if err := page.WaitForURL("https://recorder.test/target", playwright.PageWaitForURLOptions{
-		Timeout: playwright.Float(5000),
-	}); err != nil {
-		t.Fatalf("wait url: %v", err)
-	}
+	clickAndWaitNavigation(t, page, "#go", "https://recorder.test/target")
 	stashed, err := page.Evaluate(`() => {
 		const raw = sessionStorage.getItem('__scenariaRecorderStash');
 		if (raw) return JSON.parse(raw);
@@ -127,6 +113,20 @@ func openRecorderFixture(t *testing.T, html, routeURL, routeHTML string) playwri
 		t.Fatalf("goto start: %v", err)
 	}
 	return page
+}
+
+func clickAndWaitNavigation(t *testing.T, page playwright.Page, selector, url string) {
+	t.Helper()
+	_, err := page.ExpectNavigation(func() error {
+		return page.Click(selector)
+	}, playwright.PageExpectNavigationOptions{
+		URL:       url,
+		Timeout:   playwright.Float(15000),
+		WaitUntil: playwright.WaitUntilStateCommit,
+	})
+	if err != nil {
+		t.Fatalf("navigate via %s: %v", selector, err)
+	}
 }
 
 func eventsContainClick(events []recorderEvent, wantSelector string) bool {
