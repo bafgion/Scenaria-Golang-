@@ -37,6 +37,8 @@ type LiveSession struct {
 	hoverRecordMinMs  int
 	recordURLWait     bool
 	resumeURL         string
+	pollMu            sync.Mutex
+	pollState         *recorderPollState
 	mu                sync.Mutex
 	page              playwright.Page
 	steps             *[]RecordedStep
@@ -157,12 +159,14 @@ func ShouldSyncRecordedStepsOnCaptureStart(session *LiveSession) bool {
 	return !session.CaptureEverEnabled()
 }
 
-// EndCapture stops step capture but keeps the browser session alive.
-// Recorded steps are cleared so the next «Запись» starts a fresh segment (use Pause to continue).
-func (s *LiveSession) EndCapture() {
+// StopCapturePreserveBuffer disables capture but keeps captureEver and any editor-synced segment metadata.
+func (s *LiveSession) StopCapturePreserveBuffer() {
 	s.captureEnabled.Store(false)
 	s.paused.Store(false)
-	s.captureEver.Store(false)
+}
+
+// ResetCaptureSegment clears the in-browser Go step buffer after the frontend has received a snapshot.
+func (s *LiveSession) ResetCaptureSegment() {
 	s.mu.Lock()
 	page := s.page
 	if s.steps != nil {
@@ -177,6 +181,13 @@ func (s *LiveSession) EndCapture() {
 			logx.Debug("recorder evaluate", "error", err)
 		}
 	}
+}
+
+// EndCapture stops capture and resets the segment so the next recording starts fresh.
+func (s *LiveSession) EndCapture() {
+	s.StopCapturePreserveBuffer()
+	s.captureEver.Store(false)
+	s.ResetCaptureSegment()
 }
 
 // InitBrowseMode opens the browser without capturing interactions until BeginCapture.
@@ -201,14 +212,11 @@ func (s *LiveSession) BeginCapture() error {
 	s.mu.Unlock()
 	if page != nil && !s.recorderInjected.Load() {
 		if err := page.Context().AddInitScript(playwright.Script{
-			Content: playwright.String(selector.RecorderListenersJS),
+			Content: playwright.String(selector.RecorderScript),
 		}); err != nil {
 			return fmt.Errorf("register recorder init script: %w", err)
 		}
-		if _, err := page.Evaluate(selector.HeuristicsJS); err != nil {
-			return fmt.Errorf("inject heuristics: %w", err)
-		}
-		if _, err := page.Evaluate(selector.RecorderListenersJS); err != nil {
+		if _, err := page.Evaluate(selector.RecorderScript); err != nil {
 			return fmt.Errorf("inject recorder script: %w", err)
 		}
 		if appCfg, err := settings.LoadDefaultAppSettings(); err == nil && appCfg != nil {

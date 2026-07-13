@@ -82,6 +82,10 @@ export function CompletionsForLine(arg1, arg2, arg3) {
   return window['go']['wailsapp']['App']['CompletionsForLine'](arg1, arg2, arg3);
 }
 
+export function ConfirmAppClose() {
+  return window['go']['wailsapp']['App']['ConfirmAppClose']();
+}
+
 export function DeleteFeature(arg1) {
   return window['go']['wailsapp']['App']['DeleteFeature'](arg1);
 }

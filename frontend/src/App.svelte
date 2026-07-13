@@ -24,6 +24,7 @@
   import { createDialogBindController } from './controllers/dialogBindController'
   import { buildPaletteCommands, type PaletteActions } from './controllers/paletteCommandsController'
   import { createWorkspaceSessionController, hasRestorableWorkspaceSession } from './controllers/workspaceSessionController'
+  import { pickPersistText } from './lib/sessionTabs'
   import { createProjectStore, type ProjectState } from './stores/projectStore'
   import { createRunnerStore } from './stores/runnerStore'
   import { createDiagnosticsStore } from './stores/diagnosticsStore'
@@ -70,7 +71,7 @@
     tabNeedsDiskReload,
     trimRetainedTabBodies,
   } from './lib/tabMemory'
-  import { createTabsStore } from './stores/tabsStore'
+  import { canShowWelcome, createTabsStore } from './stores/tabsStore'
   import SettingsDialog from './lib/SettingsDialog.svelte'
   import CommandPalette from './lib/CommandPalette.svelte'
   import ProjectReplaceDialog from './lib/ProjectReplaceDialog.svelte'
@@ -106,7 +107,7 @@
   import { applyRecordStepEvent, type RecordStepEvent } from './lib/recordedStepOps'
   import { isRealFeaturePath, isUntitled, makeUntitledPath, untitledLabel } from './lib/untitled'
   import { matchHotkey, monacoOverlayConsumesEscape, shouldIgnoreAppHotkey, type HotkeyId } from './lib/hotkeys'
-  import { batchRunFormFrom, defaultRunForm, runFormFromMode, type RunForm, type RunFormMode } from './lib/runTypes'
+  import { batchRunFormFrom, currentScenarioRunFormFrom, defaultRunForm, runFormFromMode, type RunForm, type RunFormMode } from './lib/runTypes'
   import { formatLastRunSummary } from './lib/runSummary'
   import { scenarioAtLine, listScenarioTitles, mergeScenarioNames } from './lib/scenarioAtLine'
   import {
@@ -157,6 +158,7 @@
   import SplashScreen from './lib/SplashScreen.svelte'
   import { beginSplashWindow, openMainWindow, setSplashDocumentState } from './lib/splashWindow'
   import { prefetchMonacoEditor } from './lib/appBootstrap'
+  import { shouldAcceptMonacoChange } from './lib/monacoHydration'
   import { setStepHoverEnabled } from './lib/gherkinStepHover'
   import { filterScenarioHints, applyAutoFixableScenarioHints } from './lib/scenarioHints'
   import {
@@ -165,8 +167,18 @@
     type EditorSettings,
   } from './lib/editorOptions'
   import { resolveRecordStartURL } from './lib/recordStartUrl'
+  import { formatCloseAppMessage } from './lib/closeAppGuard'
   import { resolveProjectPathInput as resolveProjectPathShortcut } from './lib/projectPath'
-  import { isRecordingTargetReadOnly, isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath, resolveRecordStartedTargetPath, shouldApplyLiveRecordedStep } from './lib/recordingTarget'
+  import { isRecordingTargetReadOnly, isSameRecordTab, normalizeRecordTabPath, recordingTabSwitchAllowed, resolveRecordingTargetPath } from './lib/recordingTarget'
+  import {
+    captureRecordStartedUiTarget,
+    recordStepSourceText,
+    resolveRecordEditorPrepareAction,
+    resolveRecordFeaturePathForUI,
+    resolveApplyRecordStepTarget,
+    shouldApplyRecordStepEvent,
+    shouldBufferEarlyRecordStepEvent,
+  } from './lib/recordingLifecycle'
   import { flakyScenarioMap, flakyStepHints } from './lib/flakyMetrics'
   import { loadRecents, rememberFeature, rememberProject } from './lib/recents'
   import { callWailsWithTimeout } from './lib/wailsTimeout'
@@ -254,6 +266,7 @@
     PollVanessaRun,
     LoadProjectConfig,
     SaveProjectConfig,
+    ConfirmAppClose,
   } from '../wailsjs/go/wailsapp/App'
   import { gui } from '../wailsjs/go/models'
 
@@ -337,7 +350,7 @@
     getProjectPath: () => projectPath,
     getTabs: () => tabs,
     getActiveTab: () => activeTab,
-    getEditorText: () => editorText,
+    getEditorText: () => monaco?.getEditorText() ?? editorText,
     syncActiveTabContent,
     isUntitled,
     saveSettings: SaveSettings,
@@ -529,6 +542,7 @@
   $: ({
     browserOpen,
     recording,
+    captureFinalizing,
     paused: recordPaused,
     targetPath: recordingTargetPath,
     recordSessionId: activeRecordSessionId,
@@ -558,6 +572,12 @@
 
   let monaco: MonacoEditor | undefined
   let lastSyncedDirtyTabsState: boolean | null = null
+  let workspaceSessionFlushed = false
+  let pendingEarlyRecordSteps: Array<{
+    event: RecordStepEvent
+    targetPath: string
+    recordSessionId: string
+  }> = []
   const unsubscribers: (() => void)[] = []
 
   function askConfirm(opts: {
@@ -576,6 +596,21 @@
 
   function closeConfirm(confirmed: boolean, dontAskAgain = false) {
     confirmDialogStore.close(confirmed, dontAskAgain)
+  }
+
+  async function handleAppCloseRequested(reasons: string[]) {
+    if (reasons.length > 0) {
+      const ok = await askConfirm({
+        title: tr('confirm.closeApp.title'),
+        message: formatCloseAppMessage(tr, reasons),
+        confirmLabel: tr('confirm.closeApp.confirmLabel'),
+        danger: true,
+      })
+      if (!ok) return
+    }
+    await flushWorkspaceSession()
+    workspaceSessionFlushed = true
+    await ConfirmAppClose()
   }
 
   const logStaleEvent = createStaleEventLogger()
@@ -667,7 +702,8 @@
   $: otpEmail = $otpDialogStore.email
   $: diagnosticsHints = $diagnosticsStore.hints
 
-  $: isWelcome = activeTab === WELCOME_KEY
+  $: isWelcome = canShowWelcome(tabs)
+  $: editorValuePath = isWelcome || !activeTab ? null : activeTab
   $: activeFeatureTab = tabs.find((t) => t.path === activeTab)
   $: activeTabUnsaved = activeFeatureTab ? tabIsUnsaved(activeFeatureTab) : false
   $: if (dialogBinds.bindEditorSettings.stepsPanelView) {
@@ -792,7 +828,12 @@
         : tr('toolbar.stop')
   $: recordingTargetLabel =
     recording && recordingTargetPath ? basename(recordingTargetPath) : ''
-  $: recordingTargetReadOnly = isRecordingTargetReadOnly(recording, recordingTargetPath, activeTab)
+  $: recordingTargetReadOnly = isRecordingTargetReadOnly(
+    recording,
+    recordingTargetPath,
+    activeTab,
+    captureFinalizing,
+  )
 
   const MIN_SPLASH_MS = 1400
   const SPLASH_FADE_MS = 320
@@ -909,6 +950,9 @@
           WindowShow()
           dialogsStore.open('showOtp')
         },
+        onAppCloseRequested(reasons) {
+          void handleAppCloseRequested(reasons)
+        },
         onBrowserOpened() {
           applyBrowserSessionState({ browserOpen: true, recording: false, paused: false })
           dialogsStore.close('showRecord')
@@ -933,6 +977,10 @@
           const appendOnly = m.append === true
           const syncOnly = m.sync === true
           const wasRecording = recording
+          const uiTarget = captureRecordStartedUiTarget(m.targetPath || '', activeTab, WELCOME_KEY)
+          if (uiTarget) {
+            recorderStore.setTargetPath(uiTarget)
+          }
           applyBrowserSessionState({ browserOpen: true, recording: true, paused: false })
           dialogsStore.close('showRecord')
           setStatus(tr('journal.status.preparingRecord'), 'busy')
@@ -943,7 +991,7 @@
                 recorderStore.setLiveRecordStepLines({})
               }
               if (!appendOnly) {
-                await prepareRecordEditorTab(m.output || '')
+                await prepareRecordEditorTab(m.output || '', uiTarget)
               }
               postRecordStore.setBaselineText(monaco?.getEditorText() ?? editorText)
             }
@@ -953,15 +1001,13 @@
           } catch (e: any) {
             appendLog(tr('journal.record.prepTabError', { error: String(e) }))
           }
-          if (!syncOnly) {
-            const targetFromEvent = m.targetPath || ''
-            const uiTarget = resolveRecordStartedTargetPath(targetFromEvent, activeTab, WELCOME_KEY)
-            if (uiTarget) {
-              recorderStore.setTargetPath(uiTarget)
-            } else if (activeTab && !isWelcome) {
-              recorderStore.setTargetPath(normalizeRecordTabPath(activeTab))
-            }
+          const tabsSnap = tabsStore.snapshot()
+          if (tabsSnap.activeTab && tabsSnap.activeTab !== WELCOME_KEY) {
+            const recordTab = normalizeRecordTabPath(tabsSnap.activeTab)
+            recorderStore.setTargetPath(recordTab)
+            recorderStore.setLastRecordTarget(recordTab)
           }
+          await flushPendingEarlyRecordSteps()
           if (!appendOnly && !syncOnly) {
             appendLog(tr('journal.record.started'))
             setStatus(tr('journal.status.recording'), 'busy')
@@ -997,6 +1043,7 @@
               lines: payload.lines,
             },
             payload.targetPath ?? '',
+            payload.recordSessionId ?? '',
           )
         },
         onRecordFinished(result) {
@@ -1005,6 +1052,7 @@
         },
         onRecordError(message) {
           stopBrowserWatch()
+          pendingEarlyRecordSteps = []
           recorderStore.reset()
           dialogsStore.close('showRecord')
           recorderStore.setLiveRecordStepLines({})
@@ -1166,8 +1214,7 @@
         __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
       }).__e2eLoadFeature = (path, forceActivate = false) => loadFeature(path, { forceActivate })
       ;(window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession = async () => {
-        sessionStore.flushPersist(() => void persistSettings())
-        await persistSettings()
+        await flushWorkspaceSession()
       }
       unsubscribers.push(() => {
         delete (window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale
@@ -1194,17 +1241,30 @@
     }
     stopVanessaPoll()
     stopBrowserWatch()
+    if (!workspaceSessionFlushed) {
+      void flushWorkspaceSession()
+    }
     void teardownDesktopSession()
     applyCatalogFilterDebounced.cancel()
-    sessionStore.flushPersist(() => void persistSettings())
-    diagnosticsStore.clearValidateDebounce()
-    sessionStore.teardown()
+    if (!workspaceSessionFlushed) {
+      diagnosticsStore.clearValidateDebounce()
+      sessionStore.teardown()
+    } else {
+      sessionStore.stopDraftAutosave()
+    }
     layoutStore.clearPreviewMountTimer()
     for (const off of unsubscribers) off()
   })
 
   function schedulePersistSession() {
     sessionStore.schedulePersist(() => void persistSettings())
+  }
+
+  async function flushWorkspaceSession() {
+    syncActiveTabContent()
+    sessionStore.flushPersist()
+    await persistSettings()
+    workspaceSessionFlushed = true
   }
 
   async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
@@ -1924,6 +1984,7 @@
   }
 
   async function teardownDesktopSession() {
+    pendingEarlyRecordSteps = []
     stopBrowserWatch()
     try {
       if (recording) {
@@ -2166,7 +2227,7 @@
       }
     }
     monaco?.gotoLine(line)
-    const runOpts = runFormFromMode(lastRun, 'step-range', { dryRun, scenario, startStep, endStep })
+    const runOpts = currentScenarioRunFormFrom(lastRun, { dryRun, scenario, startStep, endStep }, browserOpen)
     const range = partialRunLogSuffix(startStep, endStep)
     const mode = runModeLabel(dryRun)
     if (partial && startStep >= 0) {
@@ -2189,7 +2250,7 @@
       endStep = resolved.endStep
     }
     monaco?.gotoLine(line)
-    const runOpts = runFormFromMode(lastRun, 'step-range', { dryRun, scenario, startStep, endStep })
+    const runOpts = currentScenarioRunFormFrom(lastRun, { dryRun, scenario, startStep, endStep }, browserOpen)
     const range = partialRunLogSuffix(startStep, endStep)
     const mode = runModeLabel(dryRun)
     if (endStep >= 0 && scenario) {
@@ -2876,12 +2937,16 @@
     }
   }
 
+  function activeTabLiveText(): string {
+    return monaco?.getEditorText() ?? get(editorStore).text ?? editorText
+  }
+
   function syncTabContent(tabPath: string) {
     if (!tabPath || tabPath === WELCOME_KEY) return
-    const liveText =
-      tabPath === activeTab && monaco ? (monaco.getEditorText() ?? editorText) : editorText
     tabsStore.mapTabs((tabs) => tabs.map((t) => {
       if (t.path !== tabPath) return t
+      const stored = tabEditorText(t)
+      const liveText = tabPath === activeTab ? pickPersistText(stored, activeTabLiveText()) : stored
       const dirty = liveText !== t.content
       if (!dirty) {
         if (!t.dirty && t.draft === undefined) return t
@@ -2933,8 +2998,8 @@
   }
 
   async function ensureRecordingTabSwitchAllowed(path: string): Promise<boolean> {
-    if (!recording || !recordingTargetPath) return true
-    if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path)) return true
+    if ((!recording && !captureFinalizing) || !recordingTargetPath) return true
+    if (recordingTabSwitchAllowed(recording, recordPaused, recordingTargetPath, path, captureFinalizing)) return true
     if (confirmDialogStore.shouldSkipRecordTabSwitchConfirm()) return true
     const ok = await askConfirm({
       title: tr('confirm.recordingActive.title'),
@@ -2965,9 +3030,9 @@
     if (leavingTab && !isWelcome && leavingTab !== path) {
       syncTabContent(leavingTab)
     }
-    const existing = tabs.find((t) => t.path === path)
+    const existing = tabs.find((t) => isSameRecordTab(t.path, path))
     if (existing) {
-      if (!opts?.forceActivate && path === activeTab && !tabNeedsDiskReload(existing)) {
+      if (!opts?.forceActivate && isSameRecordTab(path, activeTab) && !tabNeedsDiskReload(existing)) {
         return
       }
       let text = tabEditorText(existing)
@@ -2976,7 +3041,7 @@
           text = await ReadFeature(path)
           if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
           tabsStore.mapTabs((tabs) => tabs.map((t) =>
-            t.path === path ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
+            isSameRecordTab(t.path, path) ? { ...t, content: text, dirty: false, draft: undefined, unloaded: false } : t,
           ))
         } catch (e: any) {
           appendLog(tr('journal.file.openError', { error: String(e) }))
@@ -2984,8 +3049,8 @@
         }
       }
       if (!tabsStore.isLoadFeatureGenerationCurrent(generation)) return
-      tabsStore.patch({ welcomeTabVisible: false, activeTab: path })
-      await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: path, skipValidate: true })
+      tabsStore.patch({ welcomeTabVisible: false, activeTab: existing.path })
+      await applyEditorText(text, { saved: !existing.dirty, switchTab: true, tabPath: existing.path, skipValidate: true })
       trimTabsMemory()
       syncStepsPanelCollapsedFromPrefs()
       schedulePersistSession()
@@ -3029,6 +3094,7 @@
 
   function selectTab(path: string) {
     if (path === WELCOME_KEY) {
+      if (!canShowWelcome(tabs)) return
       cancelPendingFeatureLoads()
       if (recording && !recordPaused) {
         appendLog(tr('journal.record.pauseToWelcome'))
@@ -3041,7 +3107,7 @@
       }
       void applyEditorText('', { switchTab: true, tabPath: null, skipValidate: true })
       clearEditorValidation()
-      tabsStore.patch({ welcomeTabVisible: true, activeTab: WELCOME_KEY })
+      tabsStore.patch({ activeTab: WELCOME_KEY })
       trimTabsMemory()
       return
     }
@@ -3180,8 +3246,9 @@
       if (autoFixCount > 0) {
         text = autoFixed
         if (activeTab === pathAtStart) {
-          editorStore.setText(text)
-          await monaco?.setContent(text)
+          editorStore.setTextWithBump(text)
+          const textVersion = get(editorStore).textVersion
+          await monaco?.setContent(text, { path: pathAtStart, generation: textVersion })
         }
         appendLog(tr('journal.hint.autoFixed', { count: autoFixCount }))
       }
@@ -3299,10 +3366,23 @@
     return editorValidationIssues
   }
 
-  async function onEditorChange(event: { path: string | null; modelUri: string | null; text: string }) {
+  async function onEditorChange(event: {
+    path: string | null
+    modelUri: string | null
+    text: string
+    source?: string
+    modelVersion?: number
+    hydrationGeneration?: number
+  }) {
     const activePath = isWelcome ? null : activeTab
     const activeModelUri = monaco?.getActiveModelUri?.() ?? null
-    if (event.path !== activePath || event.modelUri !== activeModelUri) {
+    if (!shouldAcceptMonacoChange({
+      activePath,
+      eventPath: event.path,
+      activeModelUri,
+      eventModelUri: event.modelUri,
+      source: event.source,
+    })) {
       return
     }
     editorStore.setTextWithBump(event.text)
@@ -3836,12 +3916,13 @@
     options?: { saved?: boolean; switchTab?: boolean; tabPath?: string | null; skipValidate?: boolean },
   ) {
     editorStore.setTextWithBump(text)
+    const textVersion = get(editorStore).textVersion
     if (options?.switchTab) {
       const markerPath = options.tabPath ?? null
       const issues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
       diagnosticsStore.setIssues(issues)
       syncStepStatusFromIssues(issues)
-      monaco?.activateTab(options.tabPath ?? null, text)
+      monaco?.activateTab(options.tabPath ?? null, text, textVersion)
       monaco?.setMarkers(issues)
       if (options?.saved) {
         markActiveTabSaved(text, options.tabPath ?? activeTab)
@@ -3851,7 +3932,7 @@
         ))
       }
     } else {
-      await monaco?.setContent(text)
+      await monaco?.setContent(text, { path: editorValuePath, generation: textVersion })
       if (options?.saved) {
         markActiveTabSaved(text)
       } else {
@@ -3859,7 +3940,7 @@
       }
     }
     if (options?.skipValidate) {
-      void refreshEditorSteps(text, editorTextVersion)
+      void refreshEditorSteps(text, textVersion)
       return
     }
     await validateEditor()
@@ -4441,7 +4522,7 @@
       url: recordURL,
       output: recordOutput,
       idleSeconds: recordIdle,
-      headless: opts?.headed ?? settingsHeadless,
+      headless: opts?.headed === undefined ? settingsHeadless : !opts.headed,
       filterRecording,
       navOnlyRecording,
       hoverRecord,
@@ -4455,33 +4536,41 @@
   }
 
   function resolveRecordFeaturePath(outputPath = ''): string {
-    const append = (recordAppendTo || '').trim().replace(/\\/g, '/')
-    if (append) return append
-    const target = (outputPath || lastRecordTarget || recordOutput || '').trim().replace(/\\/g, '/')
-    if (!target || !projectPath) return target
-    if (target.startsWith('/') || /^[A-Za-z]:\//.test(target)) return target
-    return `${projectPath.replace(/\\/g, '/')}/${target}`
+    return resolveRecordFeaturePathForUI(
+      outputPath,
+      lastRecordTarget,
+      recordOutput,
+      recordAppendTo,
+      projectPath,
+    )
   }
 
-  async function prepareRecordEditorTab(outputPath = '') {
-    const appendPath = (recordAppendTo || '').trim().replace(/\\/g, '/')
-    if (appendPath && !isUntitled(appendPath)) {
-      await loadFeature(appendPath)
+  async function prepareRecordEditorTab(outputPath = '', uiTargetPath = '') {
+    const tabsSnap = tabsStore.snapshot()
+    const action = resolveRecordEditorPrepareAction({
+      activeTab: tabsSnap.activeTab,
+      welcomeKey: WELCOME_KEY,
+      appendPath: recordAppendTo,
+      backendOutputPath: outputPath,
+      lastRecordTarget,
+      recordOutput,
+      projectPath,
+      tabPaths: tabsSnap.tabs.map((tab) => tab.path),
+      uiTargetPath,
+      defaultUntitledName: 'zapis.feature',
+    })
+    if (action.kind === 'load') {
+      await loadFeature(action.path, { skipRecordingGuard: true, forceActivate: true })
       return
     }
-    const featurePath = resolveRecordFeaturePath(outputPath)
-    if (featurePath && tabs.some((t) => t.path === featurePath)) {
-      await loadFeature(featurePath)
-      return
-    }
-    if (!activeTab || isWelcome) {
+    if (action.kind === 'openUntitled') {
       await openUntitledTab(
         buildFeatureTemplate({
           title: recordFeatureName,
           scenario: recordScenarioName,
           startUrl: recordURL || startURL || 'https://example.com',
         }),
-        'zapis.feature',
+        action.displayName,
       )
     }
   }
@@ -4489,12 +4578,12 @@
   async function syncMonacoAfterMount() {
     if (!monaco) return
     if (isWelcome || !activeTab) {
-      await monaco.activateTab(null, editorText)
+      await monaco.activateTab(null, editorText, editorTextVersion)
       return
     }
     const tab = tabs.find((t) => t.path === activeTab)
     const text = tab ? tabEditorText(tab) : editorText
-    await monaco.activateTab(activeTab, text)
+    await monaco.activateTab(activeTab, text, editorTextVersion)
   }
 
   function dismissRecorderPicker() {
@@ -4502,44 +4591,92 @@
     pickerDialogStore.clear()
   }
 
-  function shouldApplyRecordStepEvent(event: RecordStepEvent): boolean {
-    switch (event.op) {
-      case 'upsert':
-        return shouldApplyLiveRecordedStep(recording, event.line ?? '')
-      case 'reset':
-        return true
-      case 'delete':
-      case 'snapshot':
-        return recording || Object.keys(liveRecordStepLines).length > 0
-      default:
-        return false
+  function recordStepApplyGate(eventRecordSessionId = ''): {
+    recording: boolean
+    captureFinalizing: boolean
+    activeRecordSessionId: string
+    eventRecordSessionId?: string
+    lineByIndexCount: number
+    recordingTargetPath: string
+  } {
+    const snap = get(recorderStore)
+    return {
+      recording: snap.recording,
+      captureFinalizing: snap.captureFinalizing,
+      activeRecordSessionId: snap.recordSessionId,
+      eventRecordSessionId,
+      lineByIndexCount: Object.keys(snap.liveRecordStepLines).length,
+      recordingTargetPath: snap.targetPath,
     }
   }
 
-  async function applyRecordStepToTarget(event: RecordStepEvent, eventTargetPath = '') {
-    if (!shouldApplyRecordStepEvent(event)) return
+  function shouldApplyRecordStepEventLocal(event: RecordStepEvent, eventRecordSessionId = ''): boolean {
+    return shouldApplyRecordStepEvent(recordStepApplyGate(eventRecordSessionId), event)
+  }
+
+  function bufferEarlyRecordStep(event: RecordStepEvent, targetPath: string, recordSessionId: string) {
+    pendingEarlyRecordSteps = [...pendingEarlyRecordSteps.slice(-99), { event, targetPath, recordSessionId }]
+  }
+
+  async function flushPendingEarlyRecordSteps() {
+    if (pendingEarlyRecordSteps.length === 0) return
+    const pending = pendingEarlyRecordSteps
+    pendingEarlyRecordSteps = []
+    for (const item of pending) {
+      await applyRecordStepToTarget(item.event, item.targetPath, item.recordSessionId, false)
+    }
+  }
+
+  async function applyRecordStepToTarget(
+    event: RecordStepEvent,
+    eventTargetPath = '',
+    eventRecordSessionId = '',
+    allowEarlyBuffer = true,
+  ) {
+    if (!shouldApplyRecordStepEventLocal(event, eventRecordSessionId)) {
+      if (allowEarlyBuffer && shouldBufferEarlyRecordStepEvent(recordStepApplyGate(eventRecordSessionId), event)) {
+        bufferEarlyRecordStep(event, eventTargetPath, eventRecordSessionId)
+      }
+      return
+    }
     await recorderStore.awaitRecordEditorReady()
-    const targetPath = resolveRecordingTargetPath(eventTargetPath, recordingTargetPath)
-    if (!targetPath && event.op !== 'reset') return
     recorderStore.chainRecordStepApply(async () => {
-      const tab = tabs.find((t) => isSameRecordTab(t.path, targetPath))
-      const sourceText = tab
-        ? tabEditorText(tab)
-        : isSameRecordTab(activeTab, targetPath)
-          ? (monaco?.getEditorText() ?? editorText)
-          : ''
+      const recorderSnap = get(recorderStore)
+      const tabsSnap = tabsStore.snapshot()
+      const editorSnap = get(editorStore)
+      const targetPath = resolveApplyRecordStepTarget(
+        eventTargetPath,
+        recorderSnap.targetPath,
+        tabsSnap.activeTab,
+        WELCOME_KEY,
+      )
+      if (!targetPath && event.op !== 'reset') return
+      const isActiveTarget = isSameRecordTab(tabsSnap.activeTab, targetPath)
+      const liveEditorText = monaco?.getEditorText() ?? editorSnap.text
+      const sourceText = recordStepSourceText(
+        tabsSnap.tabs,
+        tabsSnap.activeTab,
+        targetPath,
+        liveEditorText,
+      )
+      const tab = tabsSnap.tabs.find((t) => isSameRecordTab(t.path, targetPath))
       if (!tab && !sourceText && event.op !== 'reset') return
-      const result = applyRecordStepEvent(sourceText, event, liveRecordStepLines)
+      const result = applyRecordStepEvent(sourceText, event, recorderSnap.liveRecordStepLines)
       recorderStore.setLiveRecordStepLines(result.lineByIndex)
       if (tab) {
         tabsStore.mapTabs((tabs) => tabs.map((t) =>
           isSameRecordTab(t.path, targetPath) ? { ...t, draft: result.text, dirty: true } : t,
         ))
       }
-      if (isSameRecordTab(activeTab, targetPath)) {
-        editorStore.setText(result.text)
-        await monaco?.setContent(result.text)
+      if (isActiveTarget && tabsSnap.activeTab) {
+        editorStore.setTextWithBump(result.text)
+        const textVersion = get(editorStore).textVersion
+        monaco?.activateTab(tabsSnap.activeTab, result.text, textVersion)
+        void refreshEditorSteps(result.text, textVersion)
         scheduleValidateEditor(150)
+        if (isUntitled(targetPath)) {
+          schedulePersistSession()
+        }
       }
     })
     await recorderStore.awaitRecordStepApplyChain()
@@ -4568,24 +4705,31 @@
 
   function handleRecordStopped(payload?: { reason?: string; idleSeconds?: number }) {
     dismissRecorderPicker()
-    recorderStore.stopCaptureKeepBrowserOpen()
-    recorderStore.clearLiveRecordSession()
-    void maybeShowPostRecordBannerAfterStop()
-    if (payload?.reason === 'idle') {
-      const sec = payload.idleSeconds ?? recordIdle ?? 30
-      appendLog(tr('journal.record.stoppedIdle', { seconds: sec }))
-    }
-    if (browserOpen) {
-      setStatus(payload?.reason === 'idle' ? tr('journal.status.recordStoppedIdle') : tr('journal.status.browserOpen'), 'busy')
-      if (payload?.reason !== 'idle') {
-        appendLog(tr('journal.record.stoppedBrowserOpen'))
+    recorderStore.beginCaptureFinalize()
+    void (async () => {
+      await recorderStore.awaitRecordEditorReady()
+      await recorderStore.awaitRecordStepApplyChain()
+      recorderStore.stopCaptureKeepBrowserOpen()
+      recorderStore.clearLiveRecordSession()
+      syncActiveTabContent()
+      await maybeShowPostRecordBannerAfterStop()
+      if (payload?.reason === 'idle') {
+        const sec = payload.idleSeconds ?? recordIdle ?? 30
+        appendLog(tr('journal.record.stoppedIdle', { seconds: sec }))
       }
-    } else {
-      syncIdleStatus()
-    }
+      if (get(recorderStore).browserOpen) {
+        setStatus(payload?.reason === 'idle' ? tr('journal.status.recordStoppedIdle') : tr('journal.status.browserOpen'), 'busy')
+        if (payload?.reason !== 'idle') {
+          appendLog(tr('journal.record.stoppedBrowserOpen'))
+        }
+      } else {
+        syncIdleStatus()
+      }
+    })()
   }
 
   async function handleRecordSessionEnd(result: gui.RunResult, kind: 'record' | 'browse') {
+    pendingEarlyRecordSteps = []
     const recordTarget =
       (recordAppendTo || lastRecordTarget || (activeTab && !isWelcome ? activeTab : '')).trim().replace(/\\/g, '/')
     recorderStore.reset()
@@ -4683,7 +4827,8 @@
       await CancelRun()
       return
     }
-    if (recording) {
+    if (get(recorderStore).recording) {
+      recorderStore.beginCaptureFinalize()
       await StopRecordingCapture()
       return
     }
@@ -5160,7 +5305,7 @@
       <button class="menu-trigger" on:click={(e) => toggleMenu('view', e)}>{tr('menus.view')}</button>
       {#if openMenu === 'view'}
         <div class="menu-dropdown">
-          <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)}>{tr('menus.start')}</button>
+          <button class="menu-item" on:click={() => selectTab(WELCOME_KEY)} disabled={!canShowWelcome(tabs)}>{tr('menus.start')}</button>
           <button class="menu-item" on:click={() => { layoutStore.showSidebar() }}>{tr('menus.scenarios')}</button>
           <button class="menu-item" on:click={() => { layoutStore.hideSidebar() }}>{tr('menus.hideExplorer')}</button>
           <button class="menu-item" on:click={() => (dialogsStore.open('showCommandPalette'))}>{tr('palette.commands.palette')}<span class="menu-shortcut">Ctrl+Shift+P</span></button>
@@ -5505,6 +5650,8 @@
                     <MonacoEditor
                       bind:this={monaco}
                       bind:value={editorText}
+                      valuePath={editorValuePath}
+                      valueGeneration={editorTextVersion}
                       readOnly={automationActive || recordingTargetReadOnly}
                       bind:editorSettings={dialogBinds.bindEditorSettings}
                       scenarioHints={editorScenarioHints}

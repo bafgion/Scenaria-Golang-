@@ -350,13 +350,13 @@ func (s *Service) CloseGuardReasons() []string {
 	}
 	reasons := make([]string, 0, 3)
 	if s.HasActiveRun() {
-		reasons = append(reasons, "active run")
+		reasons = append(reasons, "active_run")
 	}
 	if s.HasLiveBrowser() {
-		reasons = append(reasons, "active recorder/browser")
+		reasons = append(reasons, "active_recorder")
 	}
 	if s.HasDirtyTabs() {
-		reasons = append(reasons, "unsaved tabs")
+		reasons = append(reasons, "unsaved_tabs")
 	}
 	return reasons
 }

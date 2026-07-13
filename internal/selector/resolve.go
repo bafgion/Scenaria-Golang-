@@ -112,26 +112,112 @@ func ResolveChainedLocator(page playwright.Page, selector string) playwright.Loc
 
 	for i := 0; i < count; i++ {
 		container := containers.Nth(i)
-		targets := container.Locator(targetSel)
-		targetCount, err := targets.Count()
-		if err != nil || targetCount != 1 {
-			continue
-		}
 		box, err := container.BoundingBox()
 		if err != nil || box == nil {
+			continue
+		}
+		target, ok := resolveChainedTarget(container, targetSel)
+		if !ok {
 			continue
 		}
 		area := box.Width * box.Height
 		if !hasBest || area < bestArea {
 			hasBest = true
 			bestArea = area
-			bestTarget = targets.First()
+			bestTarget = target
 		}
 	}
 	if hasBest {
 		return bestTarget
 	}
 	return page.Locator(selector)
+}
+
+func resolveChainedTarget(container playwright.Locator, targetSel string) (playwright.Locator, bool) {
+	text := firstHasText(targetSel)
+	if rootTag(targetSel) == "button" && longSelectorText(text) {
+		if target, ok := firstVisibleLocatorBySelectors(container, []string{
+			"a[href]",
+			"a",
+			`[role="link"]`,
+		}); ok {
+			return target, true
+		}
+	}
+
+	targets := container.Locator(targetSel)
+	targetCount, err := targets.Count()
+	if err == nil && targetCount == 1 {
+		return targets.First(), true
+	}
+	if err == nil && targetCount > 1 {
+		if target, ok := firstVisibleLocator(targets, targetCount); ok {
+			return target, true
+		}
+	}
+
+	if text == "" {
+		return nil, false
+	}
+	for _, candidate := range []string{
+		rootTag(targetSel),
+		"button",
+		"a",
+		`[role="button"]`,
+		`[role="link"]`,
+		`[role="menuitem"]`,
+	} {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		locator := container.Locator(candidate)
+		count, err := locator.Count()
+		if err != nil || count == 0 {
+			continue
+		}
+		if target, ok := firstVisibleLocator(locator, count); ok {
+			return target, true
+		}
+	}
+	return nil, false
+}
+
+func longSelectorText(text string) bool {
+	return len([]rune(strings.TrimSpace(text))) >= 24
+}
+
+func firstVisibleLocatorBySelectors(container playwright.Locator, selectors []string) (playwright.Locator, bool) {
+	for _, selector := range selectors {
+		selector = strings.TrimSpace(selector)
+		if selector == "" {
+			continue
+		}
+		locator := container.Locator(selector)
+		count, err := locator.Count()
+		if err != nil || count == 0 {
+			continue
+		}
+		if target, ok := firstVisibleLocator(locator, count); ok {
+			return target, true
+		}
+	}
+	return nil, false
+}
+
+func firstVisibleLocator(locator playwright.Locator, count int) (playwright.Locator, bool) {
+	for i := 0; i < count; i++ {
+		item := locator.Nth(i)
+		box, err := item.BoundingBox()
+		if err != nil || box == nil {
+			continue
+		}
+		if box.Width <= 0 || box.Height <= 0 {
+			continue
+		}
+		return item, true
+	}
+	return nil, false
 }
 
 // IsChained reports whether selector uses Playwright chain syntax.

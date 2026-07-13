@@ -21,10 +21,11 @@ type App struct {
 	ctx context.Context
 	svc *gui.Service
 
-	otpMu   sync.Mutex
-	otpCode chan string
-	otpErr  chan error
-	jobSeq  atomic.Uint64
+	otpMu          sync.Mutex
+	otpCode        chan string
+	otpErr         chan error
+	jobSeq         atomic.Uint64
+	closeConfirmed atomic.Bool
 }
 
 type projectEventEnvelope struct {
@@ -116,25 +117,22 @@ func (a *App) Shutdown(ctx context.Context) {
 	a.svc.Shutdown(shutdownCtx)
 }
 
-// BeforeClose asks for confirmation when the app still has unsaved or active work.
+// BeforeClose blocks native close until the frontend flushes session state and calls ConfirmAppClose.
 func (a *App) BeforeClose(ctx context.Context) bool {
-	reasons := a.svc.CloseGuardReasons()
-	if len(reasons) == 0 {
+	if a.closeConfirmed.Load() {
 		return false
 	}
-	message := "There is still active or unsaved work:\n- " + strings.Join(reasons, "\n- ") + "\n\nClose the app anyway?"
-	choice, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
-		Type:          runtime.QuestionDialog,
-		Title:         "Close Scenaria?",
-		Message:       message,
-		Buttons:       []string{"Close", "Cancel"},
-		DefaultButton: "Cancel",
-		CancelButton:  "Cancel",
-	})
-	if err != nil {
-		return true
+	reasons := a.svc.CloseGuardReasons()
+	a.emitEvent("app-close-requested", map[string]any{"reasons": reasons})
+	return true
+}
+
+// ConfirmAppClose bypasses the close guard and exits the application.
+func (a *App) ConfirmAppClose() {
+	a.closeConfirmed.Store(true)
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
 	}
-	return choice != "Close"
 }
 
 func (a *App) promptEmailCode(email string) (string, error) {

@@ -5,6 +5,7 @@
   const {
     visibleText,
     clickableAncestor,
+    preferredClickTarget,
     findCanvas,
     buildSelector,
     buildRecorderSelector,
@@ -32,7 +33,7 @@
     }
   }
 
-  function stashEventsForNavigation() {
+  function stashEventsForNavigation(clearCurrent) {
     try {
       const pending = window.__scenariaRecorder.events.slice();
       if (!pending.length) return;
@@ -43,7 +44,7 @@
         if (Array.isArray(parsed)) merged = parsed.concat(pending);
       }
       sessionStorage.setItem(STASH_KEY, JSON.stringify(merged));
-      window.__scenariaRecorder.events.length = 0;
+      if (clearCurrent) window.__scenariaRecorder.events.length = 0;
     } catch (_) {
       /* ignore */
     }
@@ -53,7 +54,7 @@
 
   function isNavCausingClick(el) {
     if (!el || el.nodeType !== 1) return false;
-    const root = clickableAncestor(el) || el;
+    const root = (preferredClickTarget ? preferredClickTarget(el) : null) || clickableAncestor(el) || el;
     if (isNavTarget(root)) return true;
     const tag = (root.tagName || '').toUpperCase();
     const type = (root.type || '').toLowerCase();
@@ -100,9 +101,10 @@
     if (!el || cfg().paused) return;
     if (isScenariaUI(el)) return;
     const c = cfg();
+    const actionRoot = (preferredClickTarget ? preferredClickTarget(el) : null) || clickableAncestor(el) || el;
     if (c.navOnly) {
-      if (type !== 'click' || !isNavTarget(clickableAncestor(el) || el)) return;
-    } else if (c.filterImportant && (type === 'click' || type === 'hover') && !isImportantTarget(clickableAncestor(el) || el)) {
+      if (type !== 'click' || !isNavTarget(actionRoot)) return;
+    } else if (c.filterImportant && (type === 'click' || type === 'hover') && !isImportantTarget(actionRoot)) {
       return;
     }
     pushDetail(type, collect(el, type));
@@ -260,7 +262,7 @@
   function onDocumentClick(e) {
     const el = resolveClickTarget(e);
     if (!el || isScenariaUI(el) || shouldSkipDuplicateClick(el)) return;
-    scrollIntoViewIfNeeded(clickableAncestor(el) || el);
+    scrollIntoViewIfNeeded((preferredClickTarget ? preferredClickTarget(el) : null) || clickableAncestor(el) || el);
     const tag = (el.tagName || '').toUpperCase();
     const inputType = (el.type || '').toLowerCase();
     if (tag === 'INPUT' && ['checkbox', 'radio', 'file'].includes(inputType)) return;
@@ -270,7 +272,7 @@
       return;
     }
 
-    const clickRoot = clickableAncestor(el) || el;
+    const clickRoot = (preferredClickTarget ? preferredClickTarget(el) : null) || clickableAncestor(el) || el;
     const c = cfg();
     if (c.navOnly && !isNavTarget(clickRoot)) return;
     if (c.filterImportant && !isImportantTarget(clickRoot)) return;
@@ -297,7 +299,7 @@
     }
     pushDetail('click', detail);
     if (isNavCausingClick(el)) {
-      stashEventsForNavigation();
+      stashEventsForNavigation(false);
     }
   }
 
@@ -481,7 +483,7 @@
 
   window.addEventListener('pagehide', () => {
     if (window.__scenariaRecorder?.events?.length) {
-      stashEventsForNavigation();
+      stashEventsForNavigation(true);
     }
   });
 })();

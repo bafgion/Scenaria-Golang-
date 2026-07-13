@@ -1,8 +1,16 @@
 (() => {
   if (window.__scenariaToolbar) return;
 
-  const state = { recording: false, paused: false, browserOnly: true, stepCount: 0 };
-  let pending = null;
+  const MAX_QUEUE = 8;
+  const state = {
+    recording: false,
+    paused: false,
+    browserOnly: true,
+    stepCount: 0,
+    phase: 'idle',
+    error: '',
+  };
+  const queue = [];
   let drag = null;
 
   const ICONS = {
@@ -60,6 +68,7 @@
       }
       #scenaria-browser-toolbar .sc-dot.recording { background: #f14c4c; box-shadow: 0 0 6px rgba(241,76,76,.55); }
       #scenaria-browser-toolbar .sc-dot.paused { background: #cca700; }
+      #scenaria-browser-toolbar .sc-dot.error { background: #f14c4c; }
       #scenaria-browser-toolbar .sc-title { font-weight: 600; letter-spacing: 0.04em; font-size: 11px; color: #e8e8e8; }
       #scenaria-browser-toolbar .sc-status {
         flex: 1 1 120px;
@@ -73,6 +82,7 @@
       }
       #scenaria-browser-toolbar .sc-status.recording { color: #f48771; }
       #scenaria-browser-toolbar .sc-status.paused { color: #cca700; }
+      #scenaria-browser-toolbar .sc-status.error { color: #f48771; }
       #scenaria-browser-toolbar .sc-actions { display: flex; gap: 4px; flex-shrink: 0; }
       #scenaria-browser-toolbar button {
         all: unset;
@@ -125,16 +135,29 @@
   const brand = host.querySelector('.sc-brand');
   const btnPause = host.querySelector('button[data-action="pause"]');
 
+  function effectivePhase() {
+    if (state.error) return 'error';
+    if (state.phase) return state.phase;
+    if (state.recording && state.paused) return 'paused';
+    if (state.recording) return 'recording';
+    return 'idle';
+  }
+
   function render() {
     if (!status || !dot) return;
+    const phase = effectivePhase();
     const rec = state.recording;
     const paused = state.paused;
-    dot.classList.toggle('recording', rec && !paused);
+    dot.classList.toggle('recording', rec && !paused && phase !== 'error');
     dot.classList.toggle('paused', rec && paused);
-    status.classList.toggle('recording', rec && !paused);
+    dot.classList.toggle('error', phase === 'error');
+    status.classList.toggle('recording', rec && !paused && phase !== 'error');
     status.classList.toggle('paused', rec && paused);
+    status.classList.toggle('error', phase === 'error');
 
-    if (rec && paused) {
+    if (phase === 'error' && state.error) {
+      status.textContent = state.error;
+    } else if (rec && paused) {
       status.textContent = 'Пауза — можно выбрать элемент';
     } else if (rec) {
       const n = state.stepCount || 0;
@@ -143,14 +166,19 @@
       status.textContent = 'Браузер открыт — запись по кнопке «Запись»';
     }
 
+    const busy = queue.length > 0;
     host.querySelectorAll('button[data-action]').forEach((btn) => {
       const action = btn.getAttribute('data-action');
       if (action === 'record') {
-        btn.disabled = rec;
-        btn.classList.remove('sc-primary');
-      } else if (action === 'pause') btn.disabled = !rec;
-      else if (action === 'stop') btn.disabled = false;
-      else if (action === 'picker') btn.disabled = rec && !paused;
+        btn.disabled = rec || busy;
+        btn.classList.toggle('sc-primary', !rec && !busy);
+      } else if (action === 'pause') {
+        btn.disabled = !rec;
+      } else if (action === 'stop') {
+        btn.disabled = !rec;
+      } else if (action === 'picker') {
+        btn.disabled = (rec && !paused) || busy;
+      }
     });
 
     if (btnPause) {
@@ -164,6 +192,25 @@
     }
   }
 
+  function enqueueAction(action) {
+    if (!action) return;
+    if (queue.length >= MAX_QUEUE) {
+      queue.shift();
+    }
+    queue.push(action);
+    render();
+  }
+
+  function clampPosition(left, top) {
+    const rect = host.getBoundingClientRect();
+    const maxLeft = Math.max(4, window.innerWidth - rect.width - 4);
+    const maxTop = Math.max(4, window.innerHeight - rect.height - 4);
+    return {
+      left: Math.min(Math.max(4, left), maxLeft),
+      top: Math.min(Math.max(4, top), maxTop),
+    };
+  }
+
   host.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn || btn.disabled) return;
@@ -171,9 +218,9 @@
     e.stopPropagation();
     const action = btn.getAttribute('data-action');
     if (action === 'pause') {
-      pending = state.paused ? 'resume' : 'pause';
+      enqueueAction(state.paused ? 'resume' : 'pause');
     } else {
-      pending = action;
+      enqueueAction(action);
     }
   }, true);
 
@@ -188,8 +235,9 @@
   });
   brand?.addEventListener('pointermove', (e) => {
     if (!drag) return;
-    host.style.left = `${Math.max(4, drag.left + (e.clientX - drag.x))}px`;
-    host.style.top = `${Math.max(4, drag.top + (e.clientY - drag.y))}px`;
+    const next = clampPosition(drag.left + (e.clientX - drag.x), drag.top + (e.clientY - drag.y));
+    host.style.left = `${next.left}px`;
+    host.style.top = `${next.top}px`;
   });
   const endDrag = (e) => {
     if (!drag) return;
@@ -213,13 +261,32 @@
 
   window.__scenariaToolbar = {
     setState(patch) {
+      const prev = { ...state };
       Object.assign(state, patch || {});
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'error') && !patch.error) {
+        state.error = '';
+      }
+      if (patch && (patch.recording !== undefined || patch.paused !== undefined || patch.phase !== undefined)) {
+        if (patch.error === undefined && prev.error && phaseAcknowledged(patch)) {
+          state.error = '';
+        }
+      }
       render();
     },
     takeAction() {
-      const action = pending;
-      pending = null;
+      if (queue.length === 0) return null;
+      const action = queue.shift();
+      render();
       return action;
     },
+    __test: { queue, state, enqueueAction, effectivePhase },
   };
+
+  function phaseAcknowledged(patch) {
+    if (patch.phase === 'error') return false;
+    if (patch.phase) return true;
+    if (patch.recording === true || patch.paused === true) return true;
+    if (patch.recording === false && !patch.paused) return true;
+    return false;
+  }
 })();

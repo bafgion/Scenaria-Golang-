@@ -24,4 +24,15 @@ describe('sessionStore', () => {
     expect(run).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+
+  it('can cancel pending persist without running a stale callback', () => {
+    vi.useFakeTimers()
+    const store = createSessionStore()
+    const run = vi.fn()
+    store.schedulePersist(run, 500)
+    store.flushPersist()
+    vi.advanceTimersByTime(500)
+    expect(run).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
 })

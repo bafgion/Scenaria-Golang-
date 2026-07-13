@@ -29,8 +29,11 @@
   import { featureTabUri } from './monacoTabModels'
   import { MonacoTabModelStore } from './monacoTabModels'
   import { MonacoTabViewStateStore } from './monacoTabViewState'
+  import { shouldApplyExternalEditorValue } from './monacoHydration'
 
   export let value = ''
+  export let valuePath: string | null = null
+  export let valueGeneration = 0
   export let readOnly = false
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
   export let hintActions: HintActionHandlers | null = null
@@ -47,13 +50,22 @@
   let suppressMarkerSync = false
   let validationMarkerIssues: MarkerIssue[] = []
   let activeTabPath: string | null = null
+  let activeHydrationGeneration = 0
   let welcomeModel: MonacoEditor.ITextModel | null = null
   let largeFileOptionsTimer: ReturnType<typeof setTimeout> | null = null
   let unsubscribeSystemTheme: (() => void) | undefined
   const tabModels = new MonacoTabModelStore()
   const tabViewStates = new MonacoTabViewStateStore()
 
-  type EditorChangeEvent = { path: string | null; modelUri: string | null; text: string }
+  type EditorChangeSource = 'user' | 'lifecycle'
+  type EditorChangeEvent = {
+    path: string | null
+    modelUri: string | null
+    text: string
+    source: EditorChangeSource
+    modelVersion: number
+    hydrationGeneration: number
+  }
 
   const dispatch = createEventDispatcher<{ change: EditorChangeEvent; cursorline: number; ready: void }>()
 
@@ -65,11 +77,15 @@
     return featureTabUri(monacoApi, path).toString()
   }
 
-  function emitChangeForModel(text: string, path = activeTabPath) {
+  function emitChangeForModel(text: string, path = activeTabPath, source: EditorChangeSource = 'user') {
+    const activeModel = editor?.getModel() ?? null
     dispatch('change', {
       path,
       modelUri: modelUriForPath(path),
       text,
+      source,
+      modelVersion: activeModel?.getVersionId() ?? 0,
+      hydrationGeneration: activeHydrationGeneration,
     })
   }
 
@@ -194,9 +210,15 @@
       registerGherkinInlayHints(monaco, inlayHintsHandlers)
     }
 
+    activeTabPath = valuePath
+    activeHydrationGeneration = valueGeneration
+    const initialModel = valuePath
+      ? tabModels.getOrCreate(monaco, valuePath, value)
+      : ensureWelcomeModel(value)
+
     editor = monaco.editor.create(container, {
       ...buildEditorOptions(monaco),
-      model: ensureWelcomeModel(value),
+      model: initialModel,
     })
 
     editor.onDidChangeModelContent(() => {
@@ -275,14 +297,17 @@
     return editor?.getModel()?.uri.toString() ?? null
   }
 
-  export function emitEditorChangeForTest(path: string | null, text: string) {
-    emitChangeForModel(text, path)
+  export function emitEditorChangeForTest(path: string | null, text: string, source: EditorChangeSource = 'user') {
+    emitChangeForModel(text, path, source)
   }
 
   onDestroy(() => {
     unsubscribeSystemTheme?.()
     if (largeFileOptionsTimer) clearTimeout(largeFileOptionsTimer)
     if (editor) {
+      if (activeTabPath !== null) {
+        emitChangeForModel(editor.getValue(), activeTabPath, 'lifecycle')
+      }
       editor.setModel(null)
     }
     if (monacoApi) {
@@ -297,11 +322,12 @@
   })
 
   /** Переключить активную вкладку: отдельная модель Monaco на файл. */
-  export function activateTab(path: string | null, text: string) {
+  export function activateTab(path: string | null, text: string, generation = valueGeneration) {
     if (editor) {
       tabViewStates.capture(editor, activeTabPath)
     }
     activeTabPath = path
+    activeHydrationGeneration = generation
     if (!editor || !monacoApi) {
       value = text
       return
@@ -354,7 +380,15 @@
   }
 
   /** Replace editor text from outside (hint fix, refactor, recording). Deferred to avoid Monaco quick-fix deadlocks. */
-  export function setContent(text: string): Promise<void> {
+  export function setContent(
+    text: string,
+    opts: { path?: string | null; generation?: number } = {},
+  ): Promise<void> {
+    const requestedPath = opts.path ?? activeTabPath
+    const requestedGeneration = opts.generation ?? valueGeneration
+    if (requestedPath !== activeTabPath || requestedGeneration < activeHydrationGeneration) {
+      return Promise.resolve()
+    }
     if (!editor) {
       value = text
       return Promise.resolve()
@@ -368,9 +402,18 @@
     const ed = editor
     const model = editor.getModel()
     const tabPath = activeTabPath
+    const generation = activeHydrationGeneration
     return new Promise((resolve) => {
       window.setTimeout(() => {
-        if (ed && ed === editor && model && editor.getModel() === model && activeTabPath === tabPath) {
+        if (
+          ed &&
+          ed === editor &&
+          model &&
+          editor.getModel() === model &&
+          activeTabPath === tabPath &&
+          requestedPath === tabPath &&
+          requestedGeneration >= generation
+        ) {
           replaceModelText(ed, text, 'set-content')
           value = text
         }
@@ -383,12 +426,18 @@
 
   $: if (
     editor &&
-    !applyingExternal &&
-    !suppressMarkerSync &&
-    activeTabPath === null &&
-    editor.getValue() !== value
+    shouldApplyExternalEditorValue({
+      applyingExternal,
+      suppressMarkerSync,
+      activePath: activeTabPath,
+      incomingPath: valuePath,
+      activeGeneration: activeHydrationGeneration,
+      incomingGeneration: valueGeneration,
+      modelText: editor.getValue(),
+      incomingText: value,
+    })
   ) {
-    void setContent(value)
+    void setContent(value, { path: valuePath, generation: valueGeneration })
   }
 
   export function insertAtCursor(text: string) {

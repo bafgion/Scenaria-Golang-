@@ -42,6 +42,8 @@ export function CloseBrowser():Promise<void>;
 
 export function CompletionsForLine(arg1:string,arg2:number,arg3:string):Promise<gui.StepCompletionsDTO>;
 
+export function ConfirmAppClose():Promise<void>;
+
 export function DeleteFeature(arg1:string):Promise<void>;
 
 export function DeleteTestClient(arg1:string):Promise<void>;

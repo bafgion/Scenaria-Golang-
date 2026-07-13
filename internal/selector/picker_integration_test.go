@@ -54,6 +54,35 @@ const duplicateRowsHTML = `<!doctype html><html><body>
 </table>
 </body></html>`
 
+const productCardLinkButtonHTML = `<!doctype html><html><body>
+<article class="product-card">
+  <a id="dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta" href="/collection/katalog/dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta/">
+    <span>Джинсы свободные RL20015</span>
+    <span>980 ₽</span>
+    <span>+3</span>
+  </a>
+  <button type="button">Джинсы свободные RL20015 980 ₽+3</button>
+</article>
+</body></html>`
+
+const productCardSeparateOverlayHTML = `<!doctype html><html><body>
+<div class="catalog-grid">
+  <div class="product-card">
+    <div class="product-photo">
+      <a id="dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta" href="/collection/katalog/dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta/">
+        <img alt="Джинсы свободные RL20015" />
+      </a>
+    </div>
+    <div class="product-info">
+      <div>Джинсы свободные RL20015</div>
+      <div>980 ₽</div>
+      <div>+3</div>
+      <button type="button">Джинсы свободные RL20015 980 ₽+3</button>
+    </div>
+  </div>
+</div>
+</body></html>`
+
 const unconnectedLabelHTML = `<!doctype html><html><body>
 <label>Email</label>
 <input type="text" />
@@ -266,6 +295,46 @@ func TestRecorderCollectDuplicateRowButtonsPrefersRowContext(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("selector %q matched %d elements", selector, count)
+	}
+}
+
+func TestRecorderCollectProductCardButtonPrefersStableProductLink(t *testing.T) {
+	page := openPickerFixture(t, productCardLinkButtonHTML, "")
+	defer page.Close()
+
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	raw, err := page.Evaluate(`() => window.__scenariaHeuristics.collect(document.querySelector('button'), 'click').selector`)
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	selector, ok := raw.(string)
+	if !ok || selector == "" {
+		t.Fatalf("empty selector: %#v", raw)
+	}
+	if selector != `#dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta` {
+		t.Fatalf("expected stable product link selector, got %q", selector)
+	}
+}
+
+func TestRecorderCollectProductCardOverlayButtonPrefersStableProductLink(t *testing.T) {
+	page := openPickerFixture(t, productCardSeparateOverlayHTML, "")
+	defer page.Close()
+
+	if _, err := page.Evaluate(RecorderHeuristicsJS); err != nil {
+		t.Fatalf("heuristics: %v", err)
+	}
+	raw, err := page.Evaluate(`() => window.__scenariaHeuristics.collect(document.querySelector('button'), 'click').selector`)
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	selector, ok := raw.(string)
+	if !ok || selector == "" {
+		t.Fatalf("empty selector: %#v", raw)
+	}
+	if selector != `#dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta` {
+		t.Fatalf("expected stable product link selector, got %q", selector)
 	}
 }
 

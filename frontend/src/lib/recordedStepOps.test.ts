@@ -31,6 +31,43 @@ describe('recordedStepOps', () => {
     expect(result.lineByIndex[1]).toBeGreaterThan(result.lineByIndex[0])
   })
 
+  it('does not shrink live-recorded steps when a shorter stop snapshot arrives', () => {
+    const first = applyRecordStepEvent(template, {
+      op: 'upsert',
+      index: 0,
+      line: '\tGiven opened "https://www.2moodstore.com/"',
+    }, {})
+    const second = applyRecordStepEvent(first.text, {
+      op: 'upsert',
+      index: 1,
+      line: '\tAnd click "#catalog"',
+    }, first.lineByIndex)
+    const snapshot = applyRecordStepEvent(second.text, {
+      op: 'snapshot',
+      lines: ['\tGiven opened "https://www.2moodstore.com/"'],
+    }, second.lineByIndex)
+
+    expect(snapshot.text).toContain('https://www.2moodstore.com/')
+    expect(snapshot.text).toContain('#catalog')
+    expect(snapshot.lineByIndex).toEqual(second.lineByIndex)
+  })
+
+  it('replaces mapped live steps with a longer authoritative snapshot without duplicating old lines', () => {
+    const first = applyRecordStepEvent(template, {
+      op: 'upsert',
+      index: 0,
+      line: '\tGiven opened "https://example.com"',
+    }, {})
+    const result = applyRecordStepEvent(first.text, {
+      op: 'snapshot',
+      lines: ['\tGiven opened "https://example.com"', '\tAnd click "#btn"'],
+    }, first.lineByIndex)
+
+    expect(result.text.match(/https:\/\/example\.com/g)?.length).toBe(1)
+    expect(result.text).toContain('#btn')
+    expect(Object.keys(result.lineByIndex)).toHaveLength(2)
+  })
+
   it('reset clears index map only', () => {
     const mapped = applyRecordStepEvent(template, {
       op: 'upsert',

@@ -207,6 +207,7 @@ export type RecordStepPayload = {
 
 export type WailsEventHandlers = {
   onOtpPrompt: (email: string) => void
+  onAppCloseRequested: (reasons: string[]) => void
   onBrowserOpened: () => void
   onBrowserClosed: (result: unknown, browserSessionId?: string) => void
   onBrowserLost: () => void
@@ -276,6 +277,14 @@ export function bindWailsEvents(options: BindWailsEventsOptions): () => void {
     eventsOn,
   } = options
   const unsubs: (() => void)[] = []
+
+  unsubs.push(
+    eventsOn('app-close-requested', (raw) => {
+      const { payload } = unwrapProjectEvent(raw as { reasons?: string[] } | ProjectEventEnvelope<{ reasons?: string[] }>)
+      const reasons = Array.isArray(payload?.reasons) ? payload!.reasons!.map(String) : []
+      handlers.onAppCloseRequested(reasons)
+    }),
+  )
 
   unsubs.push(
     eventsOn('otp-prompt', (raw) => {

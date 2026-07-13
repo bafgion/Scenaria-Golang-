@@ -1,4 +1,4 @@
-import { buildSessionTabsSnapshot, sessionTabPathsFromSettings, untitledContentMap } from '../lib/sessionTabs'
+import { buildSessionTabsSnapshot, resolveRestoredActiveTab, sessionTabPathsFromSettings, untitledContentMap } from '../lib/sessionTabs'
 import type { TabBody } from '../lib/tabMemory'
 import { tabEditorText } from '../lib/tabMemory'
 import { syncUntitledCounterFromPaths } from '../lib/untitled'
@@ -65,8 +65,7 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
     ctx.syncActiveTabContent()
     const tabs = ctx.getTabs()
     const activeTab = ctx.getActiveTab()
-    const editorText = ctx.getEditorText()
-    const sessionTabs = buildSessionTabsSnapshot(tabs, activeTab, editorText, ctx.welcomeKey)
+    const sessionTabs = buildSessionTabsSnapshot(tabs, activeTab, ctx.getEditorText, ctx.welcomeKey)
     const recents = ctx.stores.recentsStore.snapshot()
     return gui.AppSettingsDTO.createFrom({
       sessionProject: ctx.getProjectPath(),
@@ -108,28 +107,33 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
 
   async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
     const proj = (s.sessionProject || '').trim()
-    if (!proj) return
-    const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
-    if (!resolvedProj) return
-    try {
-      const info = await ctx.openProject(resolvedProj)
-      ctx.applyProjectScan(info, resolvedProj)
-      ctx.stores.testClientStore.setClients(await ctx.listTestClients().catch((): string[] => []))
-    } catch {
-      ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: resolvedProj }))
-      ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
-      return
+    const hasOpenTabs = (s.openTabs || []).some((p) => (p || '').trim())
+    const hasUntitled = (s.untitledTabs || []).some((t) => (t?.path || '').trim())
+    if (!proj && !hasOpenTabs && !hasUntitled) return
+
+    if (proj) {
+      const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
+      if (!resolvedProj) return
+      try {
+        const info = await ctx.openProject(resolvedProj)
+        ctx.applyProjectScan(info, resolvedProj)
+        const clients = await Promise.resolve(ctx.listTestClients()).catch((): string[] => [])
+        ctx.stores.testClientStore.setClients(clients ?? [])
+      } catch {
+        ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: resolvedProj }))
+        ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
+        return
+      }
     }
     try {
       const untitledBodies = untitledContentMap(s.untitledTabs)
       syncUntitledCounterFromPaths([...(s.openTabs || []), ...untitledBodies.keys()])
       const tabPaths = sessionTabPathsFromSettings(s.openTabs, s.untitledTabs)
-      const tabs = ctx.getTabs()
       for (const p of tabPaths) {
         if (ctx.isUntitled(p)) {
           const content = untitledBodies.get(p)
-          if (content === undefined || tabs.some((t) => t.path === p)) continue
-          ctx.stores.tabsStore.appendTab({ path: p, content, dirty: true })
+          if (content === undefined || ctx.getTabs().some((t) => t.path === p)) continue
+          ctx.stores.tabsStore.appendTab({ path: p, content, draft: content, dirty: true })
           continue
         }
         try {
@@ -139,24 +143,22 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
         }
       }
       const active = (s.activeTab || '').trim()
-      if (active) {
-        ctx.stores.tabsStore.setWelcomeVisible(false)
-        if (ctx.isUntitled(active)) {
-          const tab = ctx.getTabs().find((t) => t.path === active)
+      const focusPath = resolveRestoredActiveTab(active, tabPaths, ctx.getTabs(), ctx.welcomeKey)
+      if (focusPath && focusPath !== ctx.welcomeKey) {
+        ctx.stores.tabsStore.patch({ welcomeTabVisible: false, activeTab: focusPath })
+        if (ctx.isUntitled(focusPath)) {
+          const tab = ctx.getTabs().find((t) => t.path === focusPath)
           if (tab) {
             await ctx.applyEditorText(tabEditorText(tab), {
               switchTab: true,
-              tabPath: active,
+              tabPath: focusPath,
               skipValidate: true,
             })
-            ctx.stores.tabsStore.setActiveTab(active)
             ctx.trimTabsMemory()
           }
-        } else {
-          await ctx.loadFeature(active)
+        } else if (ctx.getActiveTab() !== focusPath) {
+          await ctx.loadFeature(focusPath)
         }
-      } else if (tabPaths.length > 0) {
-        ctx.stores.tabsStore.setWelcomeVisible(false)
       }
     } catch {
       /* ignore broken session */

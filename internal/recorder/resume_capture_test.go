@@ -13,7 +13,7 @@ func TestShouldSyncRecordedStepsOnCaptureStart(t *testing.T) {
 	}
 	s.EndCapture()
 	if !ShouldSyncRecordedStepsOnCaptureStart(s) {
-		t.Fatal("after stop the next capture is a fresh segment")
+		t.Fatal("after full EndCapture the next capture is a fresh segment")
 	}
 }
 
@@ -67,13 +67,25 @@ func TestSyncRecordedStepsOnCaptureStartCallbackCount(t *testing.T) {
 		t.Fatalf("first capture: expected snapshot with 3 lines, got %+v", events)
 	}
 
-	s.EndCapture()
+	s.StopCapturePreserveBuffer()
+	s.ResetCaptureSegment()
 	events = nil
 	syncSteps()
 	if len(events) != 0 {
-		t.Fatalf("after stop buffer is empty; expected no replay, got %+v", events)
+		t.Fatalf("after preserve-buffer stop expected no replay, got %+v", events)
 	}
 	if len(recorded) != 0 {
-		t.Fatalf("expected recorded cleared after stop, got %d", len(recorded))
+		t.Fatalf("expected recorded cleared after segment reset, got %d", len(recorded))
+	}
+
+	s.EndCapture()
+	events = nil
+	recorded = []RecordedStep{
+		{Action: "goto", Value: "https://example.com"},
+		{Action: "click", Selector: "#one"},
+	}
+	syncSteps()
+	if len(events) != 1 || events[0].Op != RecordStepSnapshot {
+		t.Fatalf("after full EndCapture expected replay snapshot, got %+v", events)
 	}
 }

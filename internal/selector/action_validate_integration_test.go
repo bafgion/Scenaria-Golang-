@@ -55,6 +55,66 @@ func TestValidateActionChainedAmbiguousWarning(t *testing.T) {
 	}
 }
 
+func TestResolveChainedLocatorFallsBackToVisibleCardButton(t *testing.T) {
+	html := `<!doctype html><html><body>
+<div class="product-card">
+  <h3>Джинсы свободные RL20015</h3>
+  <span>980 ₽</span><span>+3</span>
+  <button id="open-product">Подробнее</button>
+</div>
+<script>
+document.getElementById('open-product').addEventListener('click', () => {
+  document.body.setAttribute('data-clicked', 'product');
+});
+</script>
+</body></html>`
+	page := openPickerFixture(t, html, "")
+	locator := ResolveChainedLocator(page, `div:has-text("Джинсы свободные RL20015 980 ₽+3") >> button:has-text("Джинсы свободные RL20015 980 ₽+3")`)
+	if err := locator.Click(); err != nil {
+		t.Fatalf("click recovered card target: %v", err)
+	}
+	raw, err := page.GetAttribute("body", "data-clicked")
+	if err != nil {
+		t.Fatalf("read click marker: %v", err)
+	}
+	if raw != "product" {
+		t.Fatalf("expected recovered button click, got %q", raw)
+	}
+}
+
+func TestResolveChainedLocatorPrefersProductLinkForLongCardButtonSelector(t *testing.T) {
+	html := `<!doctype html><html><body>
+<div class="product-card">
+  <a id="product-link" href="/products/relaxed-jeans">
+    <h3>Relaxed jeans RL20015</h3>
+    <span>980 RUB</span><span>+3</span>
+  </a>
+  <button id="quick-view">Quick view</button>
+</div>
+<script>
+document.getElementById('product-link').addEventListener('click', (event) => {
+  event.preventDefault();
+  document.body.setAttribute('data-clicked', 'product-link');
+});
+document.getElementById('quick-view').addEventListener('click', () => {
+  document.body.setAttribute('data-clicked', 'quick-view');
+});
+</script>
+</body></html>`
+	page := openPickerFixture(t, html, "")
+	locator := ResolveChainedLocator(page, `div:has-text("Relaxed jeans RL20015 980 RUB+3") >> button:has-text("Relaxed jeans RL20015 980 RUB+3")`)
+	if err := locator.Click(); err != nil {
+		t.Fatalf("click recovered card target: %v", err)
+	}
+	raw, err := page.GetAttribute("body", "data-clicked")
+	if err != nil {
+		t.Fatalf("read click marker: %v", err)
+	}
+	if raw != "product-link" {
+		t.Fatalf("expected recovered product link click, got %q", raw)
+	}
+}
+
 func TestValidateFeatureStaticDynamicUIWarning(t *testing.T) {
 	html := `<!doctype html><html><body>
 <button id="open">Open</button>

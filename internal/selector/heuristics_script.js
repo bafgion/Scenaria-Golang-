@@ -147,6 +147,78 @@
     return el;
   }
 
+  function isLinkLike(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    return tag === 'a' || role === 'link';
+  }
+
+  function isButtonLike(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    return tag === 'button' || role === 'button';
+  }
+
+  function hasCommerceText(text) {
+    return /[₽$€£¥]|\b\d[\d\s.,]*(?:₽|руб|р\.|\$|€|£|¥)\b/i.test(String(text || ''));
+  }
+
+  function textOverlapScore(a, b) {
+    const left = String(a || '').trim().toLowerCase();
+    const right = String(b || '').trim().toLowerCase();
+    if (!left || !right) return 0;
+    if (left === right) return 60;
+    if (left.includes(right) || right.includes(left)) return 45;
+    const words = right.split(/\s+/).filter((w) => w.length >= 3);
+    if (!words.length) return 0;
+    let hits = 0;
+    for (const word of words) {
+      if (left.includes(word)) hits++;
+    }
+    return Math.round((hits / words.length) * 40);
+  }
+
+  function preferredProductLinkForButton(target) {
+    if (!target || !isButtonLike(target)) return null;
+    if (target.closest('nav, header, [role="navigation"], [role="menubar"]')) return null;
+    const targetText = visibleText(target).trim();
+    if (targetText.length < 24 && !hasCommerceText(targetText)) return null;
+
+    let best = null;
+    let bestScore = 0;
+    let node = target.parentElement;
+    for (let depth = 0; node && depth < 7; depth++) {
+      const links = node.querySelectorAll('a[href], [role="link"]');
+      for (const link of links) {
+        if (!link || link === target || !isElementVisible(link)) continue;
+        const href = link.getAttribute('href') || '';
+        const linkText = visibleText(link).trim();
+        if (!href && !link.id && !link.getAttribute('data-testid')) continue;
+        let score = 0;
+        if (link.id) score += 50;
+        if (link.getAttribute('data-testid')) score += 45;
+        if (href && href !== '#') score += 20;
+        score += textOverlapScore(targetText, linkText);
+        if (isCardLikeContainer(node)) score += 10;
+        if (score > bestScore) {
+          best = link;
+          bestScore = score;
+        }
+      }
+      if (best && bestScore >= 70) return best;
+      node = node.parentElement;
+    }
+    return bestScore >= 60 ? best : null;
+  }
+
+  function preferredClickTarget(el) {
+    const target = clickableAncestor(el) || el;
+    if (!target || isLinkLike(target)) return target;
+    return preferredProductLinkForButton(target) || target;
+  }
+
   function findCanvas(el) {
     if (!el || el.nodeType !== 1) return null;
     if (el.tagName === 'CANVAS') return el;
@@ -394,7 +466,7 @@
 
   function buildClickSelector(el) {
     if (!el || el.nodeType !== 1) return null;
-    const target = clickableAncestor(el) || el;
+    const target = preferredClickTarget(el) || el;
     const builders = clickStrategyBuilders(target);
     for (const key of strategyOrder('click')) {
       const sel = builders[key] && builders[key]();
@@ -472,7 +544,7 @@
       !(cand.warnings || []).includes('wrong-target')
     );
     if (usable) return prefixShadowChain(el, usable.selector);
-    const cssPath = buildCssPathSelector(resolvedKind === 'input' ? el : (clickableAncestor(el) || el));
+    const cssPath = buildCssPathSelector(resolvedKind === 'input' ? el : (preferredClickTarget(el) || el));
     if (cssPath) return prefixShadowChain(el, cssPath);
     const fallback = resolvedKind === 'input' ? buildInputSelector(el) : buildSelector(el);
     return prefixShadowChain(el, fallback);
@@ -742,7 +814,7 @@
   function generateLibraryCandidates(el, kind) {
     const packs = libraryPacksEnabled();
     if (!packs.mui && !packs.ant) return [];
-    const actionTarget = kind === 'input' ? el : (clickableAncestor(el) || el);
+    const actionTarget = kind === 'input' ? el : (preferredClickTarget(el) || el);
     const suggested = suggestAction(el);
     const inShadow = (() => {
       const root = el.getRootNode();
@@ -772,7 +844,7 @@
 
   function generateCandidates(el, kind) {
     if (!el || el.nodeType !== 1) return [];
-    const actionTarget = kind === 'input' ? el : (clickableAncestor(el) || el);
+    const actionTarget = kind === 'input' ? el : (preferredClickTarget(el) || el);
     const tag = inputElementTag(el);
     const builders = kind === 'input' ? inputStrategyBuilders(el, tag) : clickStrategyBuilders(actionTarget);
     const suggested = suggestAction(el);
@@ -918,7 +990,7 @@
 
   function collect(el, type) {
     const isField = isInputLikeElement(el);
-    const target = type === 'click' ? (clickableAncestor(el) || el) : (resolveInputFromPick(el) || el);
+    const target = type === 'click' ? (preferredClickTarget(el) || el) : (resolveInputFromPick(el) || el);
     if (!target) return {};
     const selectorKind = isInputLikeElement(target) ? 'input' : 'click';
     const detail = {
@@ -954,6 +1026,7 @@
     clickHasTextSelector,
     clickTagFor,
     clickableAncestor,
+    preferredClickTarget,
     findCanvas,
     buildCanvasSelector,
     isSignatureCanvas,

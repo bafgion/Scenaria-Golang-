@@ -195,4 +195,327 @@ describe('workspaceSessionController', () => {
     expect(resolveProjectPath).toHaveBeenCalledWith(absoluteExamples)
     expect(openProject).toHaveBeenCalledWith(absoluteExamples)
   })
+
+  it('activates restored feature tab when saved active tab is welcome', async () => {
+    const settingsStore = createSettingsStore()
+    const dialogBinds = createDialogBindController({
+      settingsStore,
+      uiPrefsStore: createUiPrefsStore(),
+      recorderPrefsStore: createRecorderPrefsStore(),
+      recordFormStore: createRecordFormStore(),
+      validateDialogStore: createValidateDialogStore(),
+      featureDialogStore: createFeatureDialogStore(),
+      projectReplaceStore: createProjectReplaceStore(),
+      testClientStore: createTestClientStore(),
+      vanessaRunStore: createVanessaRunStore(),
+      pluginRunStore: createPluginRunStore(),
+      runFormStore: createRunFormStore(),
+      settingsDialogStore: createSettingsDialogStore(),
+    })
+    const tabsStore = createTabsStore('__welcome__')
+    const loadFeature = vi.fn(async (path: string) => {
+      tabsStore.appendTab({ path, content: `Feature: ${path}`, dirty: false })
+    })
+    const controller = createWorkspaceSessionController({
+      stores: {
+        settingsStore,
+        recorderPrefsStore: createRecorderPrefsStore(),
+        uiPrefsStore: createUiPrefsStore(),
+        recentsStore: createRecentsStore(),
+        dialogBinds,
+        tabsStore,
+        testClientStore: createTestClientStore(),
+      },
+      welcomeKey: '__welcome__',
+      getProjectPath: () => '/proj',
+      getTabs: () => tabsStore.snapshot().tabs,
+      getActiveTab: () => tabsStore.snapshot().activeTab,
+      getEditorText: () => '',
+      syncActiveTabContent: vi.fn(),
+      isUntitled: () => false,
+      saveSettings: vi.fn(),
+      saveFeatureDraft: vi.fn(),
+      openProject: vi.fn().mockResolvedValue({ path: '/proj', features: [], tags: [], featureTags: {}, version: 1 }),
+      resolveProjectPath: vi.fn(async (path: string) => path),
+      applyProjectScan: vi.fn(),
+      listTestClients: vi.fn().mockResolvedValue([]),
+      loadFeature,
+      applyEditorText: vi.fn(),
+      trimTabsMemory: vi.fn(),
+      appendLog: vi.fn(),
+      setStatus: vi.fn(),
+      tr: (key) => key,
+    })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '/proj',
+      openTabs: ['/proj/old.feature'],
+      activeTab: '__welcome__',
+    } as never)
+
+    const snap = tabsStore.snapshot()
+    expect(snap.welcomeTabVisible).toBe(false)
+    expect(snap.activeTab).toBe('/proj/old.feature')
+    expect(loadFeature).toHaveBeenCalledWith('/proj/old.feature')
+  })
+
+  it('restores active untitled tab alongside saved feature tabs', async () => {
+    const settingsStore = createSettingsStore()
+    const dialogBinds = createDialogBindController({
+      settingsStore,
+      uiPrefsStore: createUiPrefsStore(),
+      recorderPrefsStore: createRecorderPrefsStore(),
+      recordFormStore: createRecordFormStore(),
+      validateDialogStore: createValidateDialogStore(),
+      featureDialogStore: createFeatureDialogStore(),
+      projectReplaceStore: createProjectReplaceStore(),
+      testClientStore: createTestClientStore(),
+      vanessaRunStore: createVanessaRunStore(),
+      pluginRunStore: createPluginRunStore(),
+      runFormStore: createRunFormStore(),
+      settingsDialogStore: createSettingsDialogStore(),
+    })
+    const tabsStore = createTabsStore('__welcome__')
+    const untitled = '__untitled__:2/demo.feature'
+    const loadFeature = vi.fn(async (path: string) => {
+      tabsStore.appendTab({ path, content: `Feature: ${path}`, dirty: false })
+    })
+    const applyEditorText = vi.fn()
+    const controller = createWorkspaceSessionController({
+      stores: {
+        settingsStore,
+        recorderPrefsStore: createRecorderPrefsStore(),
+        uiPrefsStore: createUiPrefsStore(),
+        recentsStore: createRecentsStore(),
+        dialogBinds,
+        tabsStore,
+        testClientStore: createTestClientStore(),
+      },
+      welcomeKey: '__welcome__',
+      getProjectPath: () => '/proj',
+      getTabs: () => tabsStore.snapshot().tabs,
+      getActiveTab: () => tabsStore.snapshot().activeTab,
+      getEditorText: () => '',
+      syncActiveTabContent: vi.fn(),
+      isUntitled: (path) => path.startsWith('__untitled__:'),
+      saveSettings: vi.fn(),
+      saveFeatureDraft: vi.fn(),
+      openProject: vi.fn().mockResolvedValue({ path: '/proj', features: [], tags: [], featureTags: {}, version: 1 }),
+      resolveProjectPath: vi.fn(async (path: string) => path),
+      applyProjectScan: vi.fn(),
+      listTestClients: vi.fn().mockResolvedValue([]),
+      loadFeature,
+      applyEditorText,
+      trimTabsMemory: vi.fn(),
+      appendLog: vi.fn(),
+      setStatus: vi.fn(),
+      tr: (key) => key,
+    })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '/proj',
+      openTabs: ['/proj/a.feature'],
+      untitledTabs: [{ path: untitled, content: 'Feature: Draft\n  Scenario: S' }],
+      activeTab: untitled,
+    } as never)
+
+    const snap = tabsStore.snapshot()
+    expect(snap.tabs.map((tab) => tab.path)).toEqual(['/proj/a.feature', untitled])
+    expect(snap.welcomeTabVisible).toBe(false)
+    expect(snap.activeTab).toBe(untitled)
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Draft\n  Scenario: S',
+      expect.objectContaining({ switchTab: true, tabPath: untitled }),
+    )
+  })
+
+  it('restores untitled-only session without a saved project', async () => {
+    const tabsStore = createTabsStore('__welcome__')
+    const applyEditorText = vi.fn()
+    const openProject = vi.fn()
+    const controller = createWorkspaceSessionController({
+      stores: {
+        settingsStore: createSettingsStore(),
+        recorderPrefsStore: createRecorderPrefsStore(),
+        uiPrefsStore: createUiPrefsStore(),
+        recentsStore: createRecentsStore(),
+        dialogBinds: createDialogBindController({
+          settingsStore: createSettingsStore(),
+          uiPrefsStore: createUiPrefsStore(),
+          recorderPrefsStore: createRecorderPrefsStore(),
+          recordFormStore: createRecordFormStore(),
+          validateDialogStore: createValidateDialogStore(),
+          featureDialogStore: createFeatureDialogStore(),
+          projectReplaceStore: createProjectReplaceStore(),
+          testClientStore: createTestClientStore(),
+          vanessaRunStore: createVanessaRunStore(),
+          pluginRunStore: createPluginRunStore(),
+          runFormStore: createRunFormStore(),
+          settingsDialogStore: createSettingsDialogStore(),
+        }),
+        tabsStore,
+        testClientStore: createTestClientStore(),
+      },
+      welcomeKey: '__welcome__',
+      getProjectPath: () => '',
+      getTabs: () => tabsStore.snapshot().tabs,
+      getActiveTab: () => tabsStore.snapshot().activeTab,
+      getEditorText: () => '',
+      syncActiveTabContent: vi.fn(),
+      isUntitled: (path) => path.startsWith('__untitled__:'),
+      saveSettings: vi.fn(),
+      saveFeatureDraft: vi.fn(),
+      openProject,
+      resolveProjectPath: vi.fn(async (path: string) => path),
+      applyProjectScan: vi.fn(),
+      listTestClients: vi.fn().mockResolvedValue([]),
+      loadFeature: vi.fn(),
+      applyEditorText,
+      trimTabsMemory: vi.fn(),
+      appendLog: vi.fn(),
+      setStatus: vi.fn(),
+      tr: (key) => key,
+    })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: [],
+      untitledTabs: [{ path: '__untitled__:1/novyy-scenariy.feature', content: 'Feature: Draft' }],
+      activeTab: '__untitled__:1/novyy-scenariy.feature',
+    } as never)
+
+    expect(openProject).not.toHaveBeenCalled()
+    expect(tabsStore.snapshot().tabs).toEqual([
+      {
+        path: '__untitled__:1/novyy-scenariy.feature',
+        content: 'Feature: Draft',
+        draft: 'Feature: Draft',
+        dirty: true,
+      },
+    ])
+    expect(applyEditorText).toHaveBeenCalled()
+  })
+
+  function createUntitledRestoreHarness() {
+    const settingsStore = createSettingsStore()
+    const tabsStore = createTabsStore('__welcome__')
+    const applyEditorText = vi.fn()
+    const loadFeature = vi.fn(async (path: string) => {
+      tabsStore.appendTab({ path, content: `Feature: ${path}`, dirty: false })
+    })
+    const controller = createWorkspaceSessionController({
+      stores: {
+        settingsStore,
+        recorderPrefsStore: createRecorderPrefsStore(),
+        uiPrefsStore: createUiPrefsStore(),
+        recentsStore: createRecentsStore(),
+        dialogBinds: createDialogBindController({
+          settingsStore,
+          uiPrefsStore: createUiPrefsStore(),
+          recorderPrefsStore: createRecorderPrefsStore(),
+          recordFormStore: createRecordFormStore(),
+          validateDialogStore: createValidateDialogStore(),
+          featureDialogStore: createFeatureDialogStore(),
+          projectReplaceStore: createProjectReplaceStore(),
+          testClientStore: createTestClientStore(),
+          vanessaRunStore: createVanessaRunStore(),
+          pluginRunStore: createPluginRunStore(),
+          runFormStore: createRunFormStore(),
+          settingsDialogStore: createSettingsDialogStore(),
+        }),
+        tabsStore,
+        testClientStore: createTestClientStore(),
+      },
+      welcomeKey: '__welcome__',
+      getProjectPath: () => '',
+      getTabs: () => tabsStore.snapshot().tabs,
+      getActiveTab: () => tabsStore.snapshot().activeTab,
+      getEditorText: () => '',
+      syncActiveTabContent: vi.fn(),
+      isUntitled: (path) => path.startsWith('__untitled__:'),
+      saveSettings: vi.fn(),
+      saveFeatureDraft: vi.fn(),
+      openProject: vi.fn(),
+      resolveProjectPath: vi.fn(async (path: string) => path),
+      applyProjectScan: vi.fn(),
+      listTestClients: vi.fn().mockResolvedValue([]),
+      loadFeature,
+      applyEditorText,
+      trimTabsMemory: vi.fn(),
+      appendLog: vi.fn(),
+      setStatus: vi.fn(),
+      tr: (key) => key,
+    })
+    return { controller, tabsStore, applyEditorText, loadFeature }
+  }
+
+  it('restores multiple untitled tabs with independent editable drafts', async () => {
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness()
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: [
+        '__untitled__:1/one.feature',
+        '__untitled__:2/two.feature',
+        '__untitled__:3/three.feature',
+      ],
+      untitledTabs: [
+        { path: '__untitled__:1/one.feature', content: 'Feature: One' },
+        { path: '__untitled__:2/two.feature', content: 'Feature: Two' },
+        { path: '__untitled__:3/three.feature', content: 'Feature: Three' },
+      ],
+      activeTab: '__untitled__:2/two.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().activeTab).toBe('__untitled__:2/two.feature')
+    expect(tabsStore.snapshot().tabs).toEqual([
+      { path: '__untitled__:1/one.feature', content: 'Feature: One', draft: 'Feature: One', dirty: true },
+      { path: '__untitled__:2/two.feature', content: 'Feature: Two', draft: 'Feature: Two', dirty: true },
+      { path: '__untitled__:3/three.feature', content: 'Feature: Three', draft: 'Feature: Three', dirty: true },
+    ])
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Two',
+      expect.objectContaining({ switchTab: true, tabPath: '__untitled__:2/two.feature' }),
+    )
+  })
+
+  it('falls back to a valid untitled tab when saved active tab is invalid', async () => {
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness()
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: ['__untitled__:1/one.feature', '__untitled__:2/two.feature'],
+      untitledTabs: [
+        { path: '__untitled__:1/one.feature', content: 'Feature: One' },
+        { path: '__untitled__:2/two.feature', content: 'Feature: Two' },
+      ],
+      activeTab: '__untitled__:999/missing.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().activeTab).toBe('__untitled__:2/two.feature')
+    expect(tabsStore.snapshot().tabs).toHaveLength(2)
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Two',
+      expect.objectContaining({ tabPath: '__untitled__:2/two.feature' }),
+    )
+  })
+
+  it('deduplicates duplicate persisted untitled paths without losing non-empty text', async () => {
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness()
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: ['__untitled__:1/one.feature', '__untitled__:1/one.feature'],
+      untitledTabs: [
+        { path: '__untitled__:1/one.feature', content: 'Feature: One' },
+        { path: '__untitled__:1/one.feature', content: '' },
+      ],
+      activeTab: '__untitled__:1/one.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().tabs).toEqual([
+      { path: '__untitled__:1/one.feature', content: 'Feature: One', draft: 'Feature: One', dirty: true },
+    ])
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: One',
+      expect.objectContaining({ tabPath: '__untitled__:1/one.feature' }),
+    )
+  })
 })

@@ -15,6 +15,41 @@ export type TabsCloseResult = {
   showWelcome: boolean
 }
 
+/** Welcome screen/tab is available only when there are no open feature/untitled tabs. */
+export function canShowWelcome(tabs: TabBody[]): boolean {
+  return tabs.length === 0
+}
+
+/** @deprecated use canShowWelcome */
+export function welcomeTabVisibleForTabs(tabs: TabBody[]): boolean {
+  return canShowWelcome(tabs)
+}
+
+function resolveActiveTabForTabs(
+  tabs: TabBody[],
+  activeTab: string,
+  welcomeKey: string,
+): string {
+  if (tabs.length === 0) {
+    return welcomeKey
+  }
+  if (activeTab !== welcomeKey && tabs.some((t) => t.path === activeTab)) {
+    return activeTab
+  }
+  return tabs[tabs.length - 1]?.path ?? activeTab
+}
+
+function normalizeTabsState(state: TabsState, welcomeKey: string): TabsState {
+  const welcomeTabVisible = canShowWelcome(state.tabs)
+  return {
+    ...state,
+    activeTab: welcomeTabVisible
+      ? welcomeKey
+      : resolveActiveTabForTabs(state.tabs, state.activeTab, welcomeKey),
+    welcomeTabVisible,
+  }
+}
+
 /**
  * Pure reducer for close-tab flow:
  * - removes closed tab
@@ -59,48 +94,54 @@ export function createTabsStore(
   },
 ) {
   const store = writable<TabsState>(initial)
+  const normalize = (state: TabsState) => normalizeTabsState(state, welcomeKey)
   return {
     subscribe: store.subscribe,
     setTabs(tabs: TabBody[]) {
-      store.update((s) => ({ ...s, tabs }))
+      store.update((s) => normalize({ ...s, tabs }))
     },
     mapTabs(fn: (tabs: TabBody[]) => TabBody[]) {
-      store.update((s) => ({ ...s, tabs: fn(s.tabs) }))
+      store.update((s) => normalize({ ...s, tabs: fn(s.tabs) }))
     },
     mapEachTab(fn: (tab: TabBody) => TabBody) {
-      store.update((s) => ({ ...s, tabs: s.tabs.map(fn) }))
+      store.update((s) => normalize({ ...s, tabs: s.tabs.map(fn) }))
     },
     appendTab(tab: TabBody) {
-      store.update((s) => ({ ...s, tabs: [...s.tabs, tab] }))
+      store.update((s) => normalize({ ...s, tabs: [...s.tabs, tab] }))
     },
     setActiveTab(activeTab: string) {
-      store.update((s) => ({ ...s, activeTab }))
+      store.update((s) => normalize({ ...s, activeTab }))
     },
     setWelcomeVisible(welcomeTabVisible: boolean) {
-      store.update((s) => ({ ...s, welcomeTabVisible }))
+      store.update((s) =>
+        normalize({
+          ...s,
+          welcomeTabVisible: welcomeTabVisible && canShowWelcome(s.tabs),
+        }),
+      )
     },
     patch(partial: Partial<TabsState>) {
-      store.update((s) => ({ ...s, ...partial }))
+      store.update((s) => normalize({ ...s, ...partial }))
     },
     applyCloseResult(result: TabsCloseResult) {
       store.update((s) => {
         if (result.showWelcome) {
-          return {
+          return normalize({
             tabs: result.tabs,
             activeTab: welcomeKey,
             welcomeTabVisible: true,
             pendingCloseTab: null,
             loadFeatureGeneration: s.loadFeatureGeneration,
-          }
+          })
         }
         const nextActiveTab = result.openNextPath || s.activeTab
-        return {
+        return normalize({
           ...s,
           tabs: result.tabs,
           activeTab: nextActiveTab,
           pendingCloseTab: null,
           welcomeTabVisible: false,
-        }
+        })
       })
     },
     closePath(path: string): TabsCloseResult {
@@ -112,21 +153,21 @@ export function createTabsStore(
       store.update((s) => {
         result = reduceTabsAfterClose(s.tabs, s.activeTab, path)
         if (result.showWelcome) {
-          return {
+          return normalize({
             tabs: result.tabs,
             activeTab: welcomeKey,
             welcomeTabVisible: true,
             pendingCloseTab: null,
             loadFeatureGeneration: s.loadFeatureGeneration,
-          }
+          })
         }
-        return {
+        return normalize({
           ...s,
           tabs: result.tabs,
           activeTab: result.openNextPath || s.activeTab,
           pendingCloseTab: null,
           welcomeTabVisible: false,
-        }
+        })
       })
       return result
     },

@@ -67,14 +67,16 @@ export function applyRecordStepEvent(
         .filter((entry) => Number.isFinite(entry.index) && entry.lineNo >= 0)
         .sort((a, b) => a.index - b.index)
 
-      if (existing.length === incoming.length) {
-        for (let i = 0; i < incoming.length; i++) {
-          const mapped = existing[i]
-          if (mapped && mapped.lineNo < lines.length) {
-            lines[mapped.lineNo] = incoming[i]
+      if (existing.length > incoming.length) {
+        return { text, lineByIndex: { ...lineByIndex } }
+      }
+
+      if (existing.length > 0) {
+        for (const entry of [...existing].sort((a, b) => b.lineNo - a.lineNo)) {
+          if (entry.lineNo < lines.length) {
+            lines.splice(entry.lineNo, 1)
           }
         }
-        return { text: lines.join('\n'), lineByIndex: rebuildLiveRecordStepLines(lines.join('\n'), incoming.length) }
       }
 
       const startAt = insertAfter + 1

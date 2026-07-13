@@ -32,7 +32,7 @@ func TestServiceCloseGuardReasonsDetectDirtyTabs(t *testing.T) {
 	}
 	found := false
 	for _, reason := range reasons {
-		if reason == "unsaved tabs" {
+		if reason == "unsaved_tabs" {
 			found = true
 		}
 	}
@@ -49,6 +49,8 @@ func TestServiceCloseGuardReasonsDetectDirtyTabs(t *testing.T) {
 
 func TestServiceCloseGuardReasonsDetectLiveDirtyTabs(t *testing.T) {
 	svc := NewService()
+	svc.settingsStore = settings.NewStore(filepath.Join(t.TempDir(), "settings.json"))
+	svc.settingsService = NewSettingsService(svc.settingsStore)
 	if svc.HasDirtyTabs() {
 		t.Fatal("expected no dirty tabs initially")
 	}
@@ -59,7 +61,7 @@ func TestServiceCloseGuardReasonsDetectLiveDirtyTabs(t *testing.T) {
 	reasons := svc.CloseGuardReasons()
 	found := false
 	for _, reason := range reasons {
-		if reason == "unsaved tabs" {
+		if reason == "unsaved_tabs" {
 			found = true
 		}
 	}

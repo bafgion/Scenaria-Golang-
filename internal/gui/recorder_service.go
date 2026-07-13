@@ -72,7 +72,11 @@ func (s *RecorderService) StopCapture(session *recorder.LiveSession) (bool, erro
 	if !session.CaptureEnabled() {
 		return false, nil
 	}
-	session.EndCapture()
+	if page, ok := session.ActivePage(); ok {
+		_ = recorder.FlushPendingRecorderEvents(session, page, nil)
+	}
+	session.StopCapturePreserveBuffer()
+	session.ResetCaptureSegment()
 	return true, nil
 }
 

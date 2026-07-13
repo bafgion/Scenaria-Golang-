@@ -35,6 +35,12 @@ func TestIsUnstableSelectorValue(t *testing.T) {
 	if isUnstableSelectorValue("login-form") {
 		t.Fatal("expected stable id")
 	}
+	if isUnstableSelectorValue("dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta") {
+		t.Fatal("expected product slug id to be stable")
+	}
+	if !isUnstableSelectorValue("2f1a9c0b7e8d6a5c4b3a2910fedcba98") {
+		t.Fatal("expected long hex id to be unstable")
+	}
 }
 
 func TestEventToRecordedStepKeepsHasText(t *testing.T) {

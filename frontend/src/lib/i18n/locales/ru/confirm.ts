@@ -48,4 +48,15 @@ export const confirm = {
   closeBrowser: {
     message: 'Есть несохранённые изменения. Закрыть браузер?',
   },
+  closeApp: {
+    title: 'Закрыть Scenaria?',
+    messageIntro: 'Есть незавершённая или несохранённая работа:',
+    messageOutro: 'Всё равно закрыть приложение?',
+    confirmLabel: 'Закрыть',
+    reason: {
+      unsaved_tabs: 'несохранённые вкладки',
+      active_run: 'активный запуск теста',
+      active_recorder: 'активная запись/браузер',
+    },
+  },
 } as const

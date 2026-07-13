@@ -125,6 +125,7 @@ describe('wailsEventsController', () => {
       },
       handlers: {
         onOtpPrompt: () => {},
+        onAppCloseRequested: () => {},
         onBrowserOpened: () => {},
         onBrowserClosed: () => {},
         onBrowserLost: () => {},
@@ -204,6 +205,7 @@ describe('wailsEventsController', () => {
       },
       handlers: {
         onOtpPrompt,
+        onAppCloseRequested: () => {},
         onBrowserOpened: () => {},
         onBrowserClosed: () => {},
         onBrowserLost: () => {},
@@ -262,6 +264,7 @@ describe('wailsEventsController', () => {
       },
       handlers: {
         onOtpPrompt: () => {},
+        onAppCloseRequested: () => {},
         onBrowserOpened: () => {},
         onBrowserClosed: () => {},
         onBrowserLost: () => {},
@@ -325,6 +328,7 @@ describe('wailsEventsController', () => {
       },
       handlers: {
         onOtpPrompt: () => {},
+        onAppCloseRequested: () => {},
         onBrowserOpened: () => {},
         onBrowserClosed: () => {},
         onBrowserLost: () => {},
@@ -388,6 +392,7 @@ describe('wailsEventsController', () => {
       },
       handlers: {
         onOtpPrompt: () => {},
+        onAppCloseRequested: () => {},
         onBrowserOpened: () => {},
         onBrowserClosed: () => {},
         onBrowserLost: () => {},

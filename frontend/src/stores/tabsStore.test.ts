@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createTabsStore, reduceTabsAfterClose } from './tabsStore'
+import { canShowWelcome, createTabsStore, reduceTabsAfterClose, welcomeTabVisibleForTabs } from './tabsStore'
 
 describe('tabsStore reduceTabsAfterClose', () => {
   it('keeps active tab when closing inactive tab', () => {
@@ -42,8 +42,45 @@ describe('tabsStore reduceTabsAfterClose', () => {
   })
 })
 
+describe('canShowWelcome', () => {
+  it('is true only when no feature tabs are open', () => {
+    expect(canShowWelcome([])).toBe(true)
+    expect(canShowWelcome([{ path: 'a.feature', content: '', dirty: false }])).toBe(false)
+  })
+})
+
+describe('welcomeTabVisibleForTabs', () => {
+  it('matches canShowWelcome', () => {
+    expect(welcomeTabVisibleForTabs([])).toBe(true)
+    expect(
+      welcomeTabVisibleForTabs([{ path: 'a.feature', content: '', dirty: false }]),
+    ).toBe(false)
+  })
+})
+
 describe('createTabsStore', () => {
   const welcomeKey = '__welcome__'
+
+  it('hides welcome tab when a feature tab is opened', () => {
+    const store = createTabsStore(welcomeKey)
+    store.appendTab({ path: 'a.feature', content: '', dirty: false })
+    expect(store.snapshot().welcomeTabVisible).toBe(false)
+  })
+
+  it('ignores welcomeTabVisible patch while feature tabs are open', () => {
+    const store = createTabsStore(welcomeKey)
+    store.appendTab({ path: 'a.feature', content: '', dirty: false })
+    store.patch({ welcomeTabVisible: true })
+    expect(store.snapshot().welcomeTabVisible).toBe(false)
+  })
+
+  it('redirects welcome active tab to the last open feature tab', () => {
+    const store = createTabsStore(welcomeKey)
+    store.appendTab({ path: 'a.feature', content: '', dirty: false })
+    store.appendTab({ path: 'b.feature', content: '', dirty: false })
+    store.patch({ activeTab: welcomeKey })
+    expect(store.snapshot().activeTab).toBe('b.feature')
+  })
 
   it('resets to welcome state', () => {
     const store = createTabsStore(welcomeKey)

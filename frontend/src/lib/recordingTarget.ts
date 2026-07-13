@@ -1,5 +1,5 @@
 import { canonicalFeaturePath } from './featurePath'
-import { isUntitled } from './untitled'
+import { isUntitled, isRealFeaturePath } from './untitled'
 
 /** Normalize feature tab path for stable comparisons during recording. */
 export function normalizeRecordTabPath(path: string): string {
@@ -17,8 +17,9 @@ export function recordingTabSwitchAllowed(
   recordPaused: boolean,
   recordingTargetPath: string,
   nextPath: string,
+  captureFinalizing = false,
 ): boolean {
-  if (!recording || recordPaused || !recordingTargetPath) return true
+  if ((!recording && !captureFinalizing) || recordPaused || !recordingTargetPath) return true
   return isSameRecordTab(recordingTargetPath, nextPath)
 }
 
@@ -41,6 +42,9 @@ export function resolveRecordStartedTargetPath(
   if (activeTab && activeTab !== welcomeKey && isUntitled(activeTab)) {
     return normalizeRecordTabPath(activeTab)
   }
+  if (activeTab && activeTab !== welcomeKey && isRealFeaturePath(activeTab)) {
+    return normalizeRecordTabPath(activeTab)
+  }
   return backendTargetPath ? normalizeRecordTabPath(backendTargetPath) : ''
 }
 
@@ -48,12 +52,9 @@ export function isRecordingTargetReadOnly(
   recording: boolean,
   recordingTargetPath: string,
   activeTab: string,
+  captureFinalizing = false,
 ): boolean {
-  if (!recording || !recordingTargetPath || !activeTab) return false
+  if ((!recording && !captureFinalizing) || !recordingTargetPath || !activeTab) return false
   return isSameRecordTab(activeTab, recordingTargetPath)
 }
 
-/** Ignore record-step events that arrive after capture has stopped. */
-export function shouldApplyLiveRecordedStep(recording: boolean, line: string): boolean {
-  return recording && line.trim() !== ''
-}

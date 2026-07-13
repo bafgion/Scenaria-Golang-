@@ -94,7 +94,9 @@ export function buildPaletteCommands(
   const compactLabel = state.toolbarCompact ? pc('expanded') : pc('compact')
   return [
     { id: 'palette', label: pc('palette'), group: pg('view'), shortcut: 'Ctrl+Shift+P', run: actions.openCommandPalette },
-    { id: 'welcome', label: pc('welcome'), group: pg('view'), run: actions.selectWelcome },
+    ...(state.isWelcome
+      ? [{ id: 'welcome', label: pc('welcome'), group: pg('view'), run: actions.selectWelcome }]
+      : []),
     { id: 'open', label: pc('open'), group: pg('project'), run: actions.openProject },
     { id: 'new-project', label: pc('newProject'), group: pg('project'), run: actions.openNewProject },
     { id: 'close-project', label: pc('closeProject'), group: pg('project'), run: actions.closeProject },

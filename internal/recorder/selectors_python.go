@@ -6,6 +6,9 @@ import (
 )
 
 var unstableSelectorValueRE = regexp.MustCompile(`(?i)(radix|:r[0-9]+|headlessui|react-aria|ember[0-9]|^:r[0-9])`)
+var hashLikeSelectorValueRE = regexp.MustCompile(`(?i)^[a-f0-9]{16,}$`)
+var uuidLikeSelectorValueRE = regexp.MustCompile(`(?i)^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+var stableSlugSelectorValueRE = regexp.MustCompile(`(?i)^[a-z0-9]+(?:[-_][a-z0-9]+){1,}$`)
 
 // ClickHasTextSelector builds a Playwright-style tag:has-text selector (Python recorder parity).
 func ClickHasTextSelector(label, tag string) string {
@@ -58,13 +61,16 @@ func isUnstableSelectorValue(value string) bool {
 	if strings.Contains(value, ":") && len(value) > 6 {
 		return true
 	}
-	if len(value) > 28 {
+	if hashLikeSelectorValueRE.MatchString(lower) || uuidLikeSelectorValueRE.MatchString(lower) {
+		return true
+	}
+	if stableSlugSelectorValueRE.MatchString(lower) {
+		return false
+	}
+	if len(value) > 64 {
 		return true
 	}
 	if strings.Count(value, "-") >= 5 {
-		return true
-	}
-	if regexp.MustCompile(`^[a-f0-9]{16,}$`).MatchString(lower) {
 		return true
 	}
 	return false

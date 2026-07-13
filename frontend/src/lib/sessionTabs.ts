@@ -13,19 +13,27 @@ export type SessionTabsSnapshot = {
   activeTab: string
 }
 
+/** Prefer live editor text, but never replace non-empty stored text with empty. */
+export function pickPersistText(stored: string, live: string): string {
+  if (live.trim()) return live
+  if (stored.trim()) return stored
+  return live || stored
+}
+
 export function buildSessionTabsSnapshot(
   tabs: TabBody[],
   activeTab: string,
-  editorText: string,
+  getLiveEditorText: () => string,
   welcomeKey: string,
 ): SessionTabsSnapshot {
   const openTabs = tabs.map((t) => t.path).filter(Boolean)
   const untitledTabs = tabs
     .filter((t) => isUntitled(t.path))
-    .map((t) => ({
-      path: t.path,
-      content: t.path === activeTab ? editorText : tabEditorText(t),
-    }))
+    .map((t) => {
+      const stored = tabEditorText(t)
+      const content = t.path === activeTab ? pickPersistText(stored, getLiveEditorText()) : stored
+      return { path: t.path, content }
+    })
   return {
     openTabs,
     untitledTabs,
@@ -37,11 +45,16 @@ export function sessionTabPathsFromSettings(
   openTabs: string[] | undefined,
   untitledTabs: UntitledTabSnapshot[] | undefined,
 ): string[] {
-  const paths = (openTabs || []).filter((p) => p && p.trim())
-  if (paths.length > 0) {
-    return paths
+  const merged: string[] = []
+  const addPath = (raw: string | undefined) => {
+    const path = (raw || '').trim()
+    if (path && !merged.includes(path)) {
+      merged.push(path)
+    }
   }
-  return (untitledTabs || []).map((t) => t.path).filter(Boolean)
+  for (const path of openTabs || []) addPath(path)
+  for (const tab of untitledTabs || []) addPath(tab.path)
+  return merged
 }
 
 export function untitledContentMap(
@@ -49,9 +62,40 @@ export function untitledContentMap(
 ): Map<string, string> {
   const map = new Map<string, string>()
   for (const tab of untitledTabs || []) {
-    if (tab.path) {
-      map.set(tab.path, tab.content ?? '')
+    const path = (tab.path || '').trim()
+    if (path) {
+      const content = tab.content ?? ''
+      const existing = map.get(path)
+      if (existing === undefined || content.trim() || !existing.trim()) {
+        map.set(path, content)
+      }
     }
   }
   return map
+}
+
+/** Pick the tab that should be focused after session restore. */
+export function resolveRestoredActiveTab(
+  savedActiveTab: string,
+  tabPaths: string[],
+  restoredTabs: TabBody[],
+  welcomeKey: string,
+): string {
+  const active = (savedActiveTab || '').trim()
+  const normalizedActive = active === welcomeKey ? '' : active
+  const featureTabs = restoredTabs.filter((tab) => tab.path && tab.path !== welcomeKey)
+  if (featureTabs.length === 0) {
+    return welcomeKey
+  }
+  if (normalizedActive && featureTabs.some((tab) => tab.path === normalizedActive)) {
+    return normalizedActive
+  }
+  for (let i = tabPaths.length - 1; i >= 0; i--) {
+    const path = (tabPaths[i] || '').trim()
+    if (!path || path === welcomeKey) continue
+    if (featureTabs.some((tab) => tab.path === path)) {
+      return path
+    }
+  }
+  return featureTabs[featureTabs.length - 1].path
 }

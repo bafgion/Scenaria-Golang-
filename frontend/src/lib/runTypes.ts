@@ -90,6 +90,19 @@ export function runFormFromMode(lastRun: RunForm, mode: RunFormMode, defaults: R
   return form
 }
 
+export function currentScenarioRunFormFrom(
+  lastRun: RunForm,
+  defaults: RunFormModeDefaults = {},
+  liveBrowserOpen = false,
+): RunForm {
+  const form = runFormFromMode(lastRun, 'step-range', defaults)
+  if (!form.dryRun && liveBrowserOpen) {
+    form.reuseLiveBrowser = true
+    form.workers = 1
+  }
+  return form
+}
+
 export function batchRunFormFrom(lastRun: RunForm, dryRun: boolean): RunForm {
   return runFormFromMode(lastRun, 'batch', { dryRun })
 }

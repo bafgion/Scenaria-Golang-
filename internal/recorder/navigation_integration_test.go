@@ -18,6 +18,27 @@ const navLinkHTML = `<!doctype html><html><body>
 
 const navTargetHTML = `<!doctype html><html><body><h1>Target</h1></body></html>`
 
+const spaMenuHTML = `<!doctype html><html><body>
+<nav><a id="clothes" href="/catalog/clothes">Одежда</a></nav>
+<script>
+document.getElementById('clothes').addEventListener('click', (event) => {
+	event.preventDefault();
+	history.pushState({}, '', '/catalog/clothes');
+});
+</script>
+</body></html>`
+
+const productCardRecorderHTML = `<!doctype html><html><body>
+<article class="product-card">
+  <a id="dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta" href="/collection/katalog/dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta/">
+    <span>Джинсы свободные RL20015</span>
+    <span>980 ₽</span>
+    <span>+3</span>
+  </a>
+  <button type="button">Джинсы свободные RL20015 980 ₽+3</button>
+</article>
+</body></html>`
+
 func TestRecorderStashPreservesClickAcrossFullNavigation(t *testing.T) {
 	page := openRecorderFixture(t, navLinkHTML, "https://recorder.test/target", navTargetHTML)
 	clickAndWaitNavigation(t, page, "#go", "https://recorder.test/target")
@@ -35,6 +56,34 @@ func TestRecorderStashPreservesClickAcrossFullNavigation(t *testing.T) {
 	applyRecorderPollBatch(&recorded, &state, events, page.URL(), time.Now(), nil)
 	if len(recorded) < 2 || recorded[1].Action != "click" {
 		t.Fatalf("expected click step first, got %+v", recorded)
+	}
+}
+
+func TestRecorderKeepsNavClickDrainableForSPANavigation(t *testing.T) {
+	page := openRecorderFixture(t, spaMenuHTML, "https://recorder.test/catalog/clothes", navTargetHTML)
+	if err := page.Click("#clothes"); err != nil {
+		t.Fatalf("click menu: %v", err)
+	}
+	events, err := drainRecorderEvents(page)
+	if err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if !eventsContainClick(events, "#clothes") {
+		t.Fatalf("expected SPA menu click in live drained events, got %+v", events)
+	}
+}
+
+func TestRecorderProductCardButtonRecordsStableProductLink(t *testing.T) {
+	page := openRecorderFixture(t, productCardRecorderHTML, "https://recorder.test/product", navTargetHTML)
+	if err := page.Click("button"); err != nil {
+		t.Fatalf("click product button: %v", err)
+	}
+	events, err := drainRecorderEvents(page)
+	if err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+	if !eventsContainClick(events, "#dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta") {
+		t.Fatalf("expected stable product link click, got %+v", events)
 	}
 }
 

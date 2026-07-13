@@ -48,4 +48,15 @@ export const confirm = {
   closeBrowser: {
     message: 'There are unsaved changes. Close the browser?',
   },
+  closeApp: {
+    title: 'Close Scenaria?',
+    messageIntro: 'There is still active or unsaved work:',
+    messageOutro: 'Close the app anyway?',
+    confirmLabel: 'Close',
+    reason: {
+      unsaved_tabs: 'unsaved tabs',
+      active_run: 'active test run',
+      active_recorder: 'active recorder/browser',
+    },
+  },
 } as const

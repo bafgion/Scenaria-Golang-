@@ -108,6 +108,94 @@ func TestStopRecordingCaptureEndsCaptureOnly(t *testing.T) {
 	}
 }
 
+func TestStopRecordingCaptureEmitsSnapshotBeforeReset(t *testing.T) {
+	svc, session := attachLiveSession(t, true)
+	steps := []recorder.RecordedStep{
+		{Action: "click", Selector: "#one"},
+		{Action: "click", Selector: "#two"},
+	}
+	session.Bind(nil, &steps)
+	if err := session.BeginCapture(); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []string
+	svc.recorderOps().Session().SetEmit(func(name string, payload any) {
+		if name != "record-step" {
+			return
+		}
+		m, ok := payload.(map[string]any)
+		if !ok {
+			return
+		}
+		op, _ := m["op"].(string)
+		events = append(events, op)
+	})
+
+	stopped, err := svc.StopRecordingCapture()
+	if err != nil {
+		t.Fatalf("StopRecordingCapture: %v", err)
+	}
+	if !stopped {
+		t.Fatal("expected stop to report stopped=true")
+	}
+	if len(events) < 2 {
+		t.Fatalf("expected snapshot + reset events, got %v", events)
+	}
+	if events[0] != "snapshot" {
+		t.Fatalf("expected snapshot first, got %v", events)
+	}
+	if events[len(events)-1] != "reset" {
+		t.Fatalf("expected reset last, got %v", events)
+	}
+}
+
+func TestRecordStepPayloadIncludesSessionIdentity(t *testing.T) {
+	payload := recordStepPayload(recorder.RecordStepEvent{
+		Op:    recorder.RecordStepUpsert,
+		Index: 2,
+		Line:  "\tAnd click \"#buy\"",
+	}, "untitled://new.feature", "record-7", "browser-7")
+
+	if payload["recordSessionId"] != "record-7" {
+		t.Fatalf("record session id missing: %+v", payload)
+	}
+	if payload["browserSessionId"] != "browser-7" {
+		t.Fatalf("browser session id missing: %+v", payload)
+	}
+	if payload["targetPath"] != "untitled://new.feature" {
+		t.Fatalf("target path missing: %+v", payload)
+	}
+	if payload["op"] != "upsert" || payload["index"] != 2 || payload["line"] == "" {
+		t.Fatalf("step payload fields missing: %+v", payload)
+	}
+}
+
+func TestStopRecordingCapturePreservesCaptureEver(t *testing.T) {
+	svc, session := attachLiveSession(t, true)
+	steps := []recorder.RecordedStep{
+		{Action: "goto", Value: "https://example.com"},
+		{Action: "click", Selector: "#btn"},
+	}
+	session.Bind(nil, &steps)
+	if err := session.BeginCapture(); err != nil {
+		t.Fatal(err)
+	}
+	stopped, err := svc.StopRecordingCapture()
+	if err != nil {
+		t.Fatalf("StopRecordingCapture: %v", err)
+	}
+	if !stopped {
+		t.Fatal("expected stop to report stopped=true")
+	}
+	if len(steps) != 0 {
+		t.Fatalf("expected cleared segment buffer, got %d", len(steps))
+	}
+	if !session.CaptureEverEnabled() {
+		t.Fatal("expected captureEver preserved after stop for resume without duplicate snapshot")
+	}
+}
+
 func TestStopRecordingCaptureClearsSteps(t *testing.T) {
 	svc, session := attachLiveSession(t, true)
 	steps := []recorder.RecordedStep{

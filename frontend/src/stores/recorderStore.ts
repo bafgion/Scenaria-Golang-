@@ -3,6 +3,7 @@ import { writable } from 'svelte/store'
 export type RecorderState = {
   browserOpen: boolean
   recording: boolean
+  captureFinalizing: boolean
   paused: boolean
   targetPath: string
   recordSessionId: string
@@ -15,6 +16,7 @@ export type RecorderState = {
 export const defaultRecorderState: RecorderState = {
   browserOpen: false,
   recording: false,
+  captureFinalizing: false,
   paused: false,
   targetPath: '',
   recordSessionId: '',
@@ -48,10 +50,16 @@ export function createRecorderStore(initial: RecorderState = defaultRecorderStat
       store.update((s) => ({ ...s, browserOpen }))
     },
     setRecording(recording: boolean, paused = false) {
-      store.update((s) => ({ ...s, recording, paused }))
+      store.update((s) => ({ ...s, recording, paused, captureFinalizing: recording ? false : s.captureFinalizing }))
     },
     setBrowserState(browserOpen: boolean, recording: boolean, paused = false) {
-      store.update((s) => ({ ...s, browserOpen, recording, paused }))
+      store.update((s) => ({
+        ...s,
+        browserOpen,
+        recording,
+        paused,
+        captureFinalizing: recording ? false : s.captureFinalizing,
+      }))
     },
     setLiveRecordStepLines(liveRecordStepLines: Record<number, number>) {
       store.update((s) => ({ ...s, liveRecordStepLines }))
@@ -62,17 +70,25 @@ export function createRecorderStore(initial: RecorderState = defaultRecorderStat
     clearLiveRecordSession() {
       store.update((s) => ({ ...s, liveRecordStepLines: {}, lastRecordTarget: '' }))
     },
+    beginCaptureFinalize() {
+      store.update((s) => ({
+        ...s,
+        recording: false,
+        paused: false,
+        captureFinalizing: true,
+      }))
+    },
     stopCaptureKeepBrowserOpen() {
-      this.resetRecordOrchestration()
       store.update((s) => ({
         ...s,
         browserOpen: true,
         recording: false,
+        captureFinalizing: false,
         paused: false,
-        targetPath: '',
         liveRecordStepLines: {},
         pauseToggleGuardUntil: 0,
       }))
+      this.resetRecordOrchestration()
     },
     extendPauseToggleGuard(ms = 900) {
       store.update((s) => ({ ...s, pauseToggleGuardUntil: Date.now() + ms }))

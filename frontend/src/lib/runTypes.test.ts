@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { batchRunFormFrom, defaultRunForm, runFormFromMode, type RunForm } from './runTypes'
+import { batchRunFormFrom, currentScenarioRunFormFrom, defaultRunForm, runFormFromMode, type RunForm } from './runTypes'
 
 describe('batchRunFormFrom', () => {
   it('clears stale scenario, tag and step range while preserving other run settings', () => {
@@ -82,5 +82,31 @@ describe('runFormFromMode', () => {
     expect(range.scenario).toBe('Login flow')
     expect(range.startStep).toBe(1)
     expect(range.endStep).toBe(3)
+  })
+})
+
+describe('currentScenarioRunFormFrom', () => {
+  it('reuses the open live browser for non-dry current scenario runs', () => {
+    const lastRun = defaultRunForm({
+      workers: 4,
+      reuseLiveBrowser: false,
+      headed: true,
+      browser: 'chromium',
+    })
+
+    const form = currentScenarioRunFormFrom(lastRun, { dryRun: false, scenario: 'Product flow' }, true)
+
+    expect(form.scenario).toBe('Product flow')
+    expect(form.reuseLiveBrowser).toBe(true)
+    expect(form.workers).toBe(1)
+  })
+
+  it('does not reuse the live browser for dry-run current scenario checks', () => {
+    const lastRun = defaultRunForm({ workers: 4, reuseLiveBrowser: false })
+
+    const form = currentScenarioRunFormFrom(lastRun, { dryRun: true, scenario: 'Syntax only' }, true)
+
+    expect(form.reuseLiveBrowser).toBe(false)
+    expect(form.workers).toBe(4)
   })
 })

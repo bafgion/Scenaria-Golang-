@@ -6,7 +6,6 @@ import {
   recordingTabSwitchAllowed,
   resolveRecordStartedTargetPath,
   resolveRecordingTargetPath,
-  shouldApplyLiveRecordedStep,
 } from './recordingTarget'
 import { makeUntitledPath } from './untitled'
 
@@ -18,12 +17,6 @@ describe('recordingTarget', () => {
   it('compares tab paths', () => {
     expect(isSameRecordTab('C:/a.feature', 'C:\\a.feature')).toBe(true)
     expect(isSameRecordTab('C:/a.feature', 'C:/b.feature')).toBe(false)
-  })
-
-  it('ignores late recorder events after capture stops', () => {
-    expect(shouldApplyLiveRecordedStep(false, 'нажимаю "#late"')).toBe(false)
-    expect(shouldApplyLiveRecordedStep(true, 'нажимаю "#live"')).toBe(true)
-    expect(shouldApplyLiveRecordedStep(true, '   ')).toBe(false)
   })
 
   it('blocks switching away from active recording target until UI confirms', () => {
@@ -50,6 +43,11 @@ describe('recordingTarget', () => {
 
     expect(resolveRecordStartedTargetPath('C:/proj/recorded.feature', untitled)).toBe(untitled)
     expect(resolveRecordingTargetPath('C:/proj/recorded.feature', untitled)).toBe(untitled)
+  })
+
+  it('keeps the active real feature tab as the UI target over backend output paths', () => {
+    const feature = 'C:/proj/smoke.feature'
+    expect(resolveRecordStartedTargetPath('C:/proj/recorded.feature', feature)).toBe(feature)
   })
 
   it('locks the active recording target for manual edits', () => {

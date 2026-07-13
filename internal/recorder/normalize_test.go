@@ -212,6 +212,24 @@ func TestUpgradeClickSelectorKeepsGoodHasTextDespiteContext(t *testing.T) {
 	}
 }
 
+func TestNormalizeKeepsStableProductSlugIDDespiteContext(t *testing.T) {
+	steps := []RecordedStep{
+		{
+			Action:   "click",
+			Selector: "#dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta",
+			Text:     "Джинсы свободные RL20015 980 ₽+3",
+			Context:  "Джинсы свободные RL20015 980 ₽+3",
+		},
+	}
+	out := NormalizeSteps(steps)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 step, got %+v", out)
+	}
+	if out[0].Selector != "#dzhinsy_relaxed_rl200_iz_liotsella_svetlo_zheltogo_tsveta" {
+		t.Fatalf("selector was downgraded: %q", out[0].Selector)
+	}
+}
+
 func TestNormalizeKeepsUploadStep(t *testing.T) {
 	steps := []RecordedStep{
 		{Action: "upload", Selector: "#file", Value: "data.csv"},

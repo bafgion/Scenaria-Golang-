@@ -101,10 +101,10 @@ func runLiveBrowserSession(
 	})
 
 	lastURL := page.URL()
-	pollState := newRecorderPollState(lastURL, session.RecordURLWaitAfterClick())
-	lastEventAt := time.Now()
-	stepNotify := func(event RecordStepEvent) {
-		if opts.Callbacks.OnStepRecorded != nil {
+	pollState := session.pollStateForPage(page)
+	var stepNotify StepNotifier
+	if opts.Callbacks.OnStepRecorded != nil {
+		stepNotify = func(event RecordStepEvent) {
 			opts.Callbacks.OnStepRecorded(event)
 		}
 	}
@@ -112,6 +112,14 @@ func runLiveBrowserSession(
 	defer poll.Stop()
 	nextEvaluateAt := time.Now()
 	idlePolls := 0
+	lastEventAt := time.Now()
+
+	processToolbar := func() {
+		if action := takeToolbarAction(page); action != "" {
+			idlePolls = 0
+			ProcessToolbarAction(action, session, page, opts, stepNotify, recorded)
+		}
+	}
 
 	for {
 		select {
@@ -124,61 +132,26 @@ func runLiveBrowserSession(
 			return context.Canceled
 		case <-poll.C:
 		}
-		now := time.Now()
-		if now.Before(nextEvaluateAt) {
-			continue
-		}
 		if !session.BrowserAlive() {
 			if opts.Callbacks.OnBrowserLost != nil {
 				opts.Callbacks.OnBrowserLost()
 			}
 			return context.Canceled
 		}
+		// Poll toolbar at full rate; do not throttle behind recorder event backoff.
+		if !session.TestRunHeld() {
+			syncBrowserToolbar(page, session, opts.BrowseOnly)
+			processToolbar()
+		}
+		now := time.Now()
+		if now.Before(nextEvaluateAt) {
+			continue
+		}
 		if session.TestRunHeld() {
 			nextEvaluateAt = time.Now().Add(250 * time.Millisecond)
 			continue
 		}
 		nextEvaluateAt = time.Now().Add(100 * time.Millisecond)
-		syncBrowserToolbar(page, session, opts.BrowseOnly)
-		if action := takeToolbarAction(page); action != "" {
-			idlePolls = 0
-			switch action {
-			case "stop":
-				if session.CaptureEnabled() {
-					session.EndCapture()
-					if opts.Callbacks.OnCaptureStop != nil {
-						opts.Callbacks.OnCaptureStop("manual")
-					}
-					if opts.Callbacks.OnStepRecorded != nil {
-						continue
-					}
-					return context.Canceled
-				}
-				return context.Canceled
-			case "pause":
-				session.Pause()
-			case "resume":
-				session.Resume()
-			case "record":
-				if !session.CaptureEnabled() {
-					replay := ShouldSyncRecordedStepsOnCaptureStart(session)
-					if err := session.BeginCapture(); err != nil {
-						// Keep the browser alive; user can retry from the IDE.
-						continue
-					}
-					if opts.Callbacks.OnCaptureStart != nil {
-						opts.Callbacks.OnCaptureStart(!replay)
-					}
-					if replay {
-						notifySnapshot(stepNotify, *recorded)
-					}
-				}
-			case "picker":
-				if opts.Callbacks.OnPickerRequest != nil {
-					opts.Callbacks.OnPickerRequest()
-				}
-			}
-		}
 		if session.RelaunchPending() {
 			if u := page.URL(); u != "" {
 				session.SetResumeURL(u)
@@ -186,24 +159,30 @@ func runLiveBrowserSession(
 			return ErrRelaunchHeadless
 		}
 		for session.IsPaused() {
-			evaluateRecorderCleanup(page, `() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`)
-			if err := sleepContext(ctx, 100*time.Millisecond); err != nil {
-				return err
+			if !session.TestRunHeld() {
+				syncBrowserToolbar(page, session, opts.BrowseOnly)
+				processToolbar()
 			}
+			evaluateRecorderCleanup(page, `() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = true; }`)
 			if session.RelaunchPending() {
 				if u := page.URL(); u != "" {
 					session.SetResumeURL(u)
 				}
 				return ErrRelaunchHeadless
 			}
+			if !session.BrowserAlive() {
+				if opts.Callbacks.OnBrowserLost != nil {
+					opts.Callbacks.OnBrowserLost()
+				}
+				return context.Canceled
+			}
+			if err := sleepContext(ctx, 100*time.Millisecond); err != nil {
+				return err
+			}
 		}
 		evaluateRecorderCleanup(page, `() => { if (window.__scenariaRecorder) window.__scenariaRecorder.paused = false; }`)
 		if opts.IdleTimeout > 0 && session.CaptureEnabled() && time.Since(lastEventAt) >= opts.IdleTimeout {
-			session.captureEnabled.Store(false)
-			session.paused.Store(false)
-			if opts.Callbacks.OnCaptureStop != nil {
-				opts.Callbacks.OnCaptureStop("idle")
-			}
+			CompleteCaptureStop(session, page, stepNotify, "idle", opts.Callbacks.OnCaptureStop)
 			if opts.Callbacks.OnStepRecorded != nil {
 				continue
 			}
@@ -219,7 +198,7 @@ func runLiveBrowserSession(
 		if err != nil {
 			return err
 		}
-		hadEvents, urlChanged := session.applyRecorderPollBatch(&pollState, events, page.URL(), now, stepNotify)
+		hadEvents, urlChanged := session.applyRecorderPollBatch(pollState, events, page.URL(), now, stepNotify)
 		if hadEvents || urlChanged {
 			lastEventAt = time.Now()
 		}
@@ -235,6 +214,7 @@ func runLiveBrowserSession(
 				nextEvaluateAt = time.Now().Add(300 * time.Millisecond)
 			}
 		}
+		_ = lastURL
 	}
 }
 
@@ -256,6 +236,7 @@ func syncBrowserToolbar(page playwright.Page, session *LiveSession, browseOnly b
 	recording := session.CaptureEnabled()
 	paused := session.IsPaused()
 	browserOnly := browseOnly && !recording
+	phase := browserToolbarPhase(session, browseOnly)
 	script := fmt.Sprintf(`() => {
 		if (!window.__scenariaToolbar) return;
 		window.__scenariaToolbar.setState({
@@ -263,8 +244,9 @@ func syncBrowserToolbar(page playwright.Page, session *LiveSession, browseOnly b
 			paused: %v,
 			browserOnly: %v,
 			stepCount: %d,
+			phase: %q,
 		});
-	}`, recording, paused, browserOnly, session.RecordedStepCount())
+	}`, recording, paused, browserOnly, session.RecordedStepCount(), phase)
 	evaluateRecorderCleanup(page, script)
 }
 

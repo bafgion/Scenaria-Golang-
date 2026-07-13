@@ -16,9 +16,9 @@ import (
 
 // RecorderExecutionHost supplies project-scoped dependencies for live record orchestration.
 type RecorderExecutionHost struct {
-	ProjectPath        func() string
-	LoadAppSettings    func() (*settings.AppSettings, error)
-	SaveAppSettings    func(*settings.AppSettings) error
+	ProjectPath          func() string
+	LoadAppSettings      func() (*settings.AppSettings, error)
+	SaveAppSettings      func(*settings.AppSettings) error
 	WithActivePlaywright func(func())
 }
 
@@ -36,6 +36,27 @@ func resolveRecordTargetPath(projectPath string, req RecordRequest) string {
 		return confined
 	}
 	return filepath.Join(projectPath, "recorded.feature")
+}
+
+func recordStepPayload(event recorder.RecordStepEvent, targetPath, recordSessionID, browserSessionID string) map[string]any {
+	payload := map[string]any{
+		"op":               string(event.Op),
+		"recordSessionId":  recordSessionID,
+		"browserSessionId": browserSessionID,
+	}
+	if targetPath != "" {
+		payload["targetPath"] = targetPath
+	}
+	switch event.Op {
+	case recorder.RecordStepUpsert:
+		payload["index"] = event.Index
+		payload["line"] = event.Line
+	case recorder.RecordStepDelete:
+		payload["index"] = event.Index
+	case recorder.RecordStepSnapshot:
+		payload["lines"] = event.Lines
+	}
+	return payload
 }
 
 func (s *RecorderService) liveRecordCallbacks(
@@ -99,17 +120,7 @@ func (s *RecorderService) liveRecordCallbacks(
 			if emit == nil {
 				return
 			}
-			payload := eventPayload(map[string]any{"op": string(event.Op)})
-			switch event.Op {
-			case recorder.RecordStepUpsert:
-				payload["index"] = event.Index
-				payload["line"] = event.Line
-			case recorder.RecordStepDelete:
-				payload["index"] = event.Index
-			case recorder.RecordStepSnapshot:
-				payload["lines"] = event.Lines
-			}
-			emit("record-step", payload)
+			emit("record-step", recordStepPayload(event, targetPath, recordSessionID, browserSessionID))
 		},
 	}
 }
@@ -329,24 +340,24 @@ func (s *RecorderService) recordLive(req RecordRequest, emit func(string, any), 
 	}
 
 	err = recorder.RecordLive(ctx, recorder.LiveOptions{
-		StartURL:          cleanURL,
-		FeatureName:       featureName,
-		ScenarioName:      scenarioName,
-		OutputPath:        output,
-		Headless:          req.Headless,
-		IdleTimeout:       idleTimeout,
-		Session:           session,
-		AppendTo:          appendTo,
-		FilterImportant:   req.FilterRecording,
-		NavOnly:           req.NavOnlyRecording,
-		HoverRecord:       req.HoverRecord,
-		ScrollBeforeClick: appCfg.ScrollBeforeClick,
-		HoverRecordMinMs:  appCfg.HoverRecordMinMs,
+		StartURL:             cleanURL,
+		FeatureName:          featureName,
+		ScenarioName:         scenarioName,
+		OutputPath:           output,
+		Headless:             req.Headless,
+		IdleTimeout:          idleTimeout,
+		Session:              session,
+		AppendTo:             appendTo,
+		FilterImportant:      req.FilterRecording,
+		NavOnly:              req.NavOnlyRecording,
+		HoverRecord:          req.HoverRecord,
+		ScrollBeforeClick:    appCfg.ScrollBeforeClick,
+		HoverRecordMinMs:     appCfg.HoverRecordMinMs,
 		DisableRecordURLWait: appCfg.DisableRecordURLWait,
-		TestClient:        testClient,
-		HTTPCredentials:   httpCreds,
-		BrowseOnly:        req.BrowseOnly,
-		Callbacks:         s.liveRecordCallbacks(emit, req.BrowseOnly, output, targetPath, recordSessionID, browserSessionID, idle),
+		TestClient:           testClient,
+		HTTPCredentials:      httpCreds,
+		BrowseOnly:           req.BrowseOnly,
+		Callbacks:            s.liveRecordCallbacks(emit, req.BrowseOnly, output, targetPath, recordSessionID, browserSessionID, idle),
 	})
 
 	s.session.FinishSession(myGen, recordSessionID, browserSessionID)
@@ -379,7 +390,26 @@ func (s *RecorderService) BeginRecordingCaptureWithReplay() (bool, error) {
 }
 
 func (s *RecorderService) StopRecordingCaptureWithReset() (bool, error) {
-	stopped, err := s.StopCapture(s.LiveSession())
+	snap := s.session.Snapshot()
+	session := s.LiveSession()
+	if session == nil {
+		return false, fmt.Errorf("браузер не открыт")
+	}
+	if !session.CaptureEnabled() {
+		return false, nil
+	}
+	if page, ok := session.ActivePage(); ok && snap.Emit != nil {
+		emit := s.session.GuardedEmit(snap.Gen, snap.TargetPath, snap.Emit)
+		notify := func(event recorder.RecordStepEvent) {
+			emit("record-step", recordStepPayload(event, snap.TargetPath, snap.RecordSessionID, snap.BrowserSessionID))
+		}
+		_ = recorder.FlushPendingRecorderEvents(session, page, notify)
+	}
+	if snap.Emit != nil && session.RecordedStepCount() > 0 {
+		emit := s.session.GuardedEmit(snap.Gen, snap.TargetPath, snap.Emit)
+		s.emitLiveRecordedSteps(session, emit, snap.TargetPath, snap.RecordSessionID, snap.BrowserSessionID)
+	}
+	stopped, err := s.StopCapture(session)
 	if err != nil {
 		return false, err
 	}
