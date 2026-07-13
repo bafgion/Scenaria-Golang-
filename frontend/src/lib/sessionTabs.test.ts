@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildSessionTabsSnapshot,
-  pickPersistText,
   resolveRestoredActiveTab,
   sessionTabPathsFromSettings,
   untitledContentMap,
@@ -35,16 +34,27 @@ describe('buildSessionTabsSnapshot', () => {
     )
     expect(snap.untitledTabs).toEqual([{ path: untitled, content: 'live text' }])
   })
-})
 
-describe('pickPersistText', () => {
-  it('keeps stored text when live editor text is empty', () => {
-    expect(pickPersistText('draft text', '')).toBe('draft text')
-    expect(pickPersistText('draft text', '   ')).toBe('draft text')
+  it('preserves an intentional empty live edit for the active untitled tab', () => {
+    const untitled = `${UNTITLED_PREFIX}2/demo.feature`
+    const snap = buildSessionTabsSnapshot(
+      [{ path: untitled, content: 'old', dirty: true, draft: 'old' }],
+      untitled,
+      () => '',
+      '__welcome__',
+    )
+    expect(snap.untitledTabs).toEqual([{ path: untitled, content: '' }])
   })
 
-  it('prefers non-empty live text', () => {
-    expect(pickPersistText('old', 'new live')).toBe('new live')
+  it('falls back to stored untitled text when the active Monaco model is for another path', () => {
+    const untitled = `${UNTITLED_PREFIX}2/demo.feature`
+    const snap = buildSessionTabsSnapshot(
+      [{ path: untitled, content: 'old', dirty: true, draft: 'draft text' }],
+      untitled,
+      () => null,
+      '__welcome__',
+    )
+    expect(snap.untitledTabs).toEqual([{ path: untitled, content: 'draft text' }])
   })
 })
 

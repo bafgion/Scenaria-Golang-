@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { shouldAcceptMonacoChange, shouldApplyExternalEditorValue } from './monacoHydration'
+import monacoEditorSource from './MonacoEditor.svelte?raw'
+import {
+  modelUriMatchesPath,
+  resolveInitialMonacoActivation,
+  shouldAcceptMonacoChange,
+  shouldApplyExternalEditorValue,
+  shouldHydrateModelText,
+  shouldUseWelcomeModelForActivation,
+} from './monacoHydration'
 
 describe('shouldApplyExternalEditorValue', () => {
   it('blocks path-less empty startup value from overwriting restored untitled text', () => {
@@ -81,5 +89,68 @@ describe('shouldAcceptMonacoChange', () => {
       eventModelUri: 'file:///active.feature',
       source: 'user',
     })).toBe(true)
+  })
+
+  it('accepts intentional empty user edits from the active model', () => {
+    expect(shouldAcceptMonacoChange({
+      activePath: '__untitled__:1/novyy-scenariy.feature',
+      eventPath: '__untitled__:1/novyy-scenariy.feature',
+      activeModelUri: 'file:///active.feature',
+      eventModelUri: 'file:///active.feature',
+      source: 'user',
+    })).toBe(true)
+  })
+})
+
+describe('Monaco editor startup lifecycle guards', () => {
+  it('mounts a restored untitled tab directly with its own path', () => {
+    const activation = resolveInitialMonacoActivation({
+      activePath: '__untitled__:1/novyy-scenariy.feature',
+      valuePath: null,
+      value: 'Feature: Restored',
+      valueGeneration: 7,
+      pending: null,
+    })
+    expect(activation).toEqual({
+      path: '__untitled__:1/novyy-scenariy.feature',
+      text: 'Feature: Restored',
+      generation: 7,
+      mode: 'hydrate',
+    })
+    expect(shouldUseWelcomeModelForActivation(activation.path)).toBe(false)
+  })
+
+  it('preserves activation requested before Monaco is ready', () => {
+    const pending = {
+      path: '__untitled__:2/recorded.feature',
+      text: 'Feature: Recorded',
+      generation: 8,
+      mode: 'hydrate' as const,
+    }
+    expect(resolveInitialMonacoActivation({
+      activePath: null,
+      valuePath: null,
+      value: '',
+      valueGeneration: 0,
+      pending,
+    })).toBe(pending)
+  })
+
+  it('hydrates an existing empty model with authoritative restored text', () => {
+    expect(shouldHydrateModelText('hydrate', '', 'Feature: Restored')).toBe(true)
+    expect(shouldHydrateModelText('activate', '', 'Feature: Restored')).toBe(false)
+  })
+
+  it('rejects text access when the active model URI belongs to another path', () => {
+    expect(modelUriMatchesPath('inmemory://scenaria/feature/a', 'inmemory://scenaria/feature/b')).toBe(false)
+    expect(modelUriMatchesPath('inmemory://scenaria/feature/a', 'inmemory://scenaria/feature/a')).toBe(true)
+  })
+
+  it('does not mutate the exported value inside MonacoEditor', () => {
+    const illegalAssignments = monacoEditorSource
+      .split(/\r?\n/)
+      .filter((line: string) => /\bvalue\s*(?:=|\+=)/.test(line))
+      .filter((line: string) => !line.includes('export let value ='))
+    expect(illegalAssignments).toEqual([])
   })
 })

@@ -26,6 +26,7 @@ export type ApplyEditorTextOptions = {
   switchTab?: boolean
   tabPath?: string | null
   skipValidate?: boolean
+  hydrate?: boolean
 }
 
 export type WorkspaceSessionContext = {
@@ -34,7 +35,7 @@ export type WorkspaceSessionContext = {
   getProjectPath: () => string
   getTabs: () => TabBody[]
   getActiveTab: () => string
-  getEditorText: () => string
+  getEditorText: () => string | null
   syncActiveTabContent: () => void
   isUntitled: (path: string) => boolean
   saveSettings: (dto: gui.AppSettingsDTO) => Promise<void>
@@ -93,10 +94,10 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
     if (!ctx.getProjectPath()) return
     ctx.syncActiveTabContent()
     const activeTab = ctx.getActiveTab()
-    const editorText = ctx.getEditorText()
     for (const tab of ctx.getTabs()) {
       if (!tab.dirty || ctx.isUntitled(tab.path)) continue
-      const text = tab.path === activeTab ? editorText : tabEditorText(tab)
+      const liveText = tab.path === activeTab ? ctx.getEditorText() : null
+      const text = liveText !== null ? liveText : tabEditorText(tab)
       try {
         await ctx.saveFeatureDraft(tab.path, text)
       } catch {
@@ -153,6 +154,7 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
               switchTab: true,
               tabPath: focusPath,
               skipValidate: true,
+              hydrate: true,
             })
             ctx.trimTabsMemory()
           }

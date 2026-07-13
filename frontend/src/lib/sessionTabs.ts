@@ -13,17 +13,10 @@ export type SessionTabsSnapshot = {
   activeTab: string
 }
 
-/** Prefer live editor text, but never replace non-empty stored text with empty. */
-export function pickPersistText(stored: string, live: string): string {
-  if (live.trim()) return live
-  if (stored.trim()) return stored
-  return live || stored
-}
-
 export function buildSessionTabsSnapshot(
   tabs: TabBody[],
   activeTab: string,
-  getLiveEditorText: () => string,
+  getLiveEditorText: () => string | null,
   welcomeKey: string,
 ): SessionTabsSnapshot {
   const openTabs = tabs.map((t) => t.path).filter(Boolean)
@@ -31,7 +24,8 @@ export function buildSessionTabsSnapshot(
     .filter((t) => isUntitled(t.path))
     .map((t) => {
       const stored = tabEditorText(t)
-      const content = t.path === activeTab ? pickPersistText(stored, getLiveEditorText()) : stored
+      const live = t.path === activeTab ? getLiveEditorText() : null
+      const content = live !== null ? live : stored
       return { path: t.path, content }
     })
   return {

@@ -29,10 +29,10 @@
   import { featureTabUri } from './monacoTabModels'
   import { MonacoTabModelStore } from './monacoTabModels'
   import { MonacoTabViewStateStore } from './monacoTabViewState'
-  import { shouldApplyExternalEditorValue } from './monacoHydration'
 
   export let value = ''
   export let valuePath: string | null = null
+  export let activePath: string | null = null
   export let valueGeneration = 0
   export let readOnly = false
   export let editorSettings: EditorSettings = { ...DEFAULT_EDITOR_SETTINGS }
@@ -57,6 +57,14 @@
   const tabModels = new MonacoTabModelStore()
   const tabViewStates = new MonacoTabViewStateStore()
 
+  type ActivationMode = 'activate' | 'hydrate'
+  type PendingActivation = {
+    path: string | null
+    text: string
+    generation: number
+    mode: ActivationMode
+  }
+
   type EditorChangeSource = 'user' | 'lifecycle'
   type EditorChangeEvent = {
     path: string | null
@@ -68,6 +76,11 @@
   }
 
   const dispatch = createEventDispatcher<{ change: EditorChangeEvent; cursorline: number; ready: void }>()
+  let pendingActivation: PendingActivation | null = null
+
+  function inputPath(): string | null {
+    return activePath ?? valuePath
+  }
 
   function modelUriForPath(path: string | null): string | null {
     if (!monacoApi) return null
@@ -108,12 +121,8 @@
     applyingExternal = true
     suppressMarkerSync = true
     editor.setModel(model)
-    const modelText = model.getValue()
-    if (modelText !== value) {
-      value = modelText
-      if (!opts?.silent) {
-        emitChangeForModel(modelText)
-      }
+    if (!opts?.silent) {
+      emitChangeForModel(model.getValue())
     }
     queueMicrotask(() => {
       finishExternalEdit()
@@ -122,12 +131,58 @@
     })
   }
 
-  function reconcileAttachedModelText(text: string) {
-    if (!editor) return
+  function reconcileAttachedModelText(text: string, source: string) {
+    if (!editor) return false
     const model = editor.getModel()
-    if (!model || model.getValue() === text) return
-    replaceModelText(editor, text, 'activate-tab')
-    value = text
+    if (!model || model.getValue() === text) return false
+    applyingExternal = true
+    suppressMarkerSync = true
+    const changed = replaceModelText(editor, text, source)
+    queueMicrotask(() => {
+      finishExternalEdit()
+      syncEditorMarkers()
+      syncLargeFileOptions()
+    })
+    return changed
+  }
+
+  function modelForPath(monaco: typeof import('monaco-editor'), path: string | null, text: string) {
+    return path ? tabModels.getOrCreate(monaco, path, text) : ensureWelcomeModel(text)
+  }
+
+  function rememberPendingActivation(
+    path: string | null,
+    text: string,
+    generation: number,
+    mode: ActivationMode,
+  ) {
+    activeTabPath = path
+    activeHydrationGeneration = generation
+    pendingActivation = { path, text, generation, mode }
+  }
+
+  function applyActivation(
+    path: string | null,
+    text: string,
+    generation: number,
+    mode: ActivationMode,
+  ) {
+    if (editor) {
+      tabViewStates.capture(editor, activeTabPath)
+    }
+    activeTabPath = path
+    activeHydrationGeneration = generation
+    if (!editor || !monacoApi) {
+      rememberPendingActivation(path, text, generation, mode)
+      return
+    }
+    const model = modelForPath(monacoApi, path, text)
+    attachModel(model, { silent: true })
+    if (mode === 'hydrate') {
+      reconcileAttachedModelText(text, 'hydrate-tab')
+    }
+    tabViewStates.restore(editor, path)
+    syncEditorMarkers()
   }
 
   function syncLargeFileOptions() {
@@ -210,23 +265,31 @@
       registerGherkinInlayHints(monaco, inlayHintsHandlers)
     }
 
-    activeTabPath = valuePath
-    activeHydrationGeneration = valueGeneration
-    const initialModel = valuePath
-      ? tabModels.getOrCreate(monaco, valuePath, value)
-      : ensureWelcomeModel(value)
+    const initial = pendingActivation ?? {
+      path: inputPath(),
+      text: value,
+      generation: valueGeneration,
+      mode: 'hydrate' as ActivationMode,
+    }
+    pendingActivation = null
+    activeTabPath = initial.path
+    activeHydrationGeneration = initial.generation
+    const initialModel = modelForPath(monaco, initial.path, initial.text)
 
     editor = monaco.editor.create(container, {
       ...buildEditorOptions(monaco),
       model: initialModel,
     })
+    if (initial.mode === 'hydrate') {
+      reconcileAttachedModelText(initial.text, 'hydrate-mount')
+    }
 
     editor.onDidChangeModelContent(() => {
       if (!editor || applyingExternal) {
         return
       }
-      value = editor.getValue()
-      emitChangeForModel(value)
+      const text = editor.getValue()
+      emitChangeForModel(text)
       scheduleLargeFileOptionsSync()
     })
 
@@ -323,35 +386,12 @@
 
   /** Переключить активную вкладку: отдельная модель Monaco на файл. */
   export function activateTab(path: string | null, text: string, generation = valueGeneration) {
-    if (editor) {
-      tabViewStates.capture(editor, activeTabPath)
-    }
-    activeTabPath = path
-    activeHydrationGeneration = generation
-    if (!editor || !monacoApi) {
-      value = text
-      return
-    }
-    if (!path) {
-      const model = ensureWelcomeModel(text)
-      attachModel(model, { silent: true })
-      reconcileAttachedModelText(text)
-      syncEditorMarkers()
-      tabViewStates.restore(editor, path)
-      return
-    }
-    const existing = tabModels.getModel(monacoApi, path)
-    if (existing) {
-      attachModel(existing, { silent: true })
-      reconcileAttachedModelText(text)
-      syncEditorMarkers()
-      tabViewStates.restore(editor, path)
-      return
-    }
-    const model = tabModels.getOrCreate(monacoApi, path, text)
-    attachModel(model, { silent: true })
-    tabViewStates.restore(editor, path)
-    syncEditorMarkers()
+    applyActivation(path, text, generation, 'activate')
+  }
+
+  /** Authoritative activation for session restore, disk reload and other external text sources. */
+  export function hydrateTab(path: string | null, text: string, generation = valueGeneration) {
+    applyActivation(path, text, generation, 'hydrate')
   }
 
   /** Закрыть вкладку — освободить модель и память Monaco. */
@@ -390,11 +430,10 @@
       return Promise.resolve()
     }
     if (!editor) {
-      value = text
+      rememberPendingActivation(requestedPath, text, requestedGeneration, 'hydrate')
       return Promise.resolve()
     }
     if (editor.getModel()?.getValue() === text) {
-      value = text
       return Promise.resolve()
     }
     applyingExternal = true
@@ -415,7 +454,6 @@
           requestedGeneration >= generation
         ) {
           replaceModelText(ed, text, 'set-content')
-          value = text
         }
         finishExternalEdit()
         syncEditorMarkers()
@@ -424,26 +462,12 @@
     })
   }
 
-  $: if (
-    editor &&
-    shouldApplyExternalEditorValue({
-      applyingExternal,
-      suppressMarkerSync,
-      activePath: activeTabPath,
-      incomingPath: valuePath,
-      activeGeneration: activeHydrationGeneration,
-      incomingGeneration: valueGeneration,
-      modelText: editor.getValue(),
-      incomingText: value,
-    })
-  ) {
-    void setContent(value, { path: valuePath, generation: valueGeneration })
-  }
-
   export function insertAtCursor(text: string) {
     if (readOnly) return
     if (!editor) {
-      value += (value && !value.endsWith('\n') ? '\n' : '') + text
+      const current = pendingActivation?.text ?? value
+      const next = current + (current && !current.endsWith('\n') ? '\n' : '') + text
+      rememberPendingActivation(inputPath(), next, valueGeneration, 'hydrate')
       return
     }
     const selection = editor.getSelection()
@@ -493,6 +517,15 @@
   /** Source of truth for feature text (avoids stale Svelte state during live record). */
   export function getEditorText(): string {
     return editor?.getModel()?.getValue() ?? value
+  }
+
+  export function getEditorTextForPath(path: string | null): string | null {
+    const model = editor?.getModel()
+    const expectedUri = modelUriForPath(path)
+    if (!model || !expectedUri || model.uri.toString() !== expectedUri) {
+      return null
+    }
+    return model.getValue()
   }
 </script>
 

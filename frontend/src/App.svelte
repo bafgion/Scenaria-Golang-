@@ -24,7 +24,6 @@
   import { createDialogBindController } from './controllers/dialogBindController'
   import { buildPaletteCommands, type PaletteActions } from './controllers/paletteCommandsController'
   import { createWorkspaceSessionController, hasRestorableWorkspaceSession } from './controllers/workspaceSessionController'
-  import { pickPersistText } from './lib/sessionTabs'
   import { createProjectStore, type ProjectState } from './stores/projectStore'
   import { createRunnerStore } from './stores/runnerStore'
   import { createDiagnosticsStore } from './stores/diagnosticsStore'
@@ -350,7 +349,7 @@
     getProjectPath: () => projectPath,
     getTabs: () => tabs,
     getActiveTab: () => activeTab,
-    getEditorText: () => monaco?.getEditorText() ?? editorText,
+    getEditorText: () => (activeTab && !isWelcome ? monaco?.getEditorTextForPath(activeTab) ?? null : null),
     syncActiveTabContent,
     isUntitled,
     saveSettings: SaveSettings,
@@ -993,7 +992,7 @@
               if (!appendOnly) {
                 await prepareRecordEditorTab(m.output || '', uiTarget)
               }
-              postRecordStore.setBaselineText(monaco?.getEditorText() ?? editorText)
+              postRecordStore.setBaselineText(activeTabLiveText())
             }
           })())
           try {
@@ -1495,7 +1494,7 @@
     try {
       const tab = tabs.find((t) => t.path === path)
       if (activeTab === path) {
-        postRecordStore.setStepCount((await ParseEditorSteps(monaco?.getEditorText() ?? editorText)).length)
+        postRecordStore.setStepCount((await ParseEditorSteps(liveEditorTextForTab(path) ?? editorText)).length)
       } else if (tab) {
         postRecordStore.setStepCount((await ParseEditorSteps(tabEditorText(tab))).length)
       } else if (isRealFeaturePath(path)) {
@@ -1524,7 +1523,7 @@
     const tab = tabs.find((t) => t.path === postRecordPath)
     const modified =
       postRecordPath === activeTab
-        ? (monaco?.getEditorText() ?? editorText)
+        ? (liveEditorTextForTab(postRecordPath) ?? editorText)
         : tab
           ? tabEditorText(tab)
           : ''
@@ -1572,7 +1571,7 @@
         const tab = tabs.find((t) => t.path === path)
         const text =
           path === activeTab
-            ? (monaco?.getEditorText() ?? editorText)
+            ? (liveEditorTextForTab(path) ?? editorText)
             : tab
               ? tabEditorText(tab)
               : ''
@@ -2170,7 +2169,7 @@
 
   async function materializeRunTargets(paths: string[]): Promise<string[]> {
     syncActiveTabContent()
-    const liveActive = monaco?.getEditorText() ?? editorText
+    const liveActive = activeTabLiveText()
     return materializeRunTargetPaths(paths, tabs, activeTab, editorText, liveActive, {
       writeTempFeature: WriteTempFeature,
       readFeature: ReadFeature,
@@ -2937,8 +2936,13 @@
     }
   }
 
+  function liveEditorTextForTab(tabPath: string): string | null {
+    return monaco?.getEditorTextForPath(tabPath) ?? null
+  }
+
   function activeTabLiveText(): string {
-    return monaco?.getEditorText() ?? get(editorStore).text ?? editorText
+    if (isWelcome || !activeTab) return editorText
+    return liveEditorTextForTab(activeTab) ?? get(editorStore).text ?? editorText
   }
 
   function syncTabContent(tabPath: string) {
@@ -2946,7 +2950,7 @@
     tabsStore.mapTabs((tabs) => tabs.map((t) => {
       if (t.path !== tabPath) return t
       const stored = tabEditorText(t)
-      const liveText = tabPath === activeTab ? pickPersistText(stored, activeTabLiveText()) : stored
+      const liveText = tabPath === activeTab ? (liveEditorTextForTab(tabPath) ?? stored) : stored
       const dirty = liveText !== t.content
       if (!dirty) {
         if (!t.dirty && t.draft === undefined) return t
@@ -3205,7 +3209,7 @@
     const picked = await PickSaveFile(tr('filePicker.saveAs'), basename(pathAtStart))
     if (!picked) return
     try {
-      const text = monaco?.getEditorText() ?? editorText
+      const text = activeTabLiveText()
       await SaveFeature(picked, text)
       const stillActive = activeTab === pathAtStart
       tabsStore.mapTabs((tabs) => tabs.map((t) =>
@@ -3234,10 +3238,10 @@
       return
     }
     try {
-      let text = monaco?.getEditorText() ?? editorText
+      let text = activeTabLiveText()
       if (dialogBinds.bindEditorSettings.formatOnSave) {
         await monaco?.formatDocument()
-        text = monaco?.getEditorText() ?? text
+        text = liveEditorTextForTab(pathAtStart) ?? text
         if (activeTab === pathAtStart) {
           editorStore.setText(text)
         }
@@ -3913,7 +3917,13 @@
 
   async function applyEditorText(
     text: string,
-    options?: { saved?: boolean; switchTab?: boolean; tabPath?: string | null; skipValidate?: boolean },
+    options?: {
+      saved?: boolean
+      switchTab?: boolean
+      tabPath?: string | null
+      skipValidate?: boolean
+      hydrate?: boolean
+    },
   ) {
     editorStore.setTextWithBump(text)
     const textVersion = get(editorStore).textVersion
@@ -3922,7 +3932,11 @@
       const issues = markerPath ? (editorValidationByTab[markerPath] ?? []) : []
       diagnosticsStore.setIssues(issues)
       syncStepStatusFromIssues(issues)
-      monaco?.activateTab(options.tabPath ?? null, text, textVersion)
+      if (options.hydrate) {
+        monaco?.hydrateTab(options.tabPath ?? null, text, textVersion)
+      } else {
+        monaco?.activateTab(options.tabPath ?? null, text, textVersion)
+      }
       monaco?.setMarkers(issues)
       if (options?.saved) {
         markActiveTabSaved(text, options.tabPath ?? activeTab)
@@ -4578,12 +4592,12 @@
   async function syncMonacoAfterMount() {
     if (!monaco) return
     if (isWelcome || !activeTab) {
-      await monaco.activateTab(null, editorText, editorTextVersion)
+      await monaco.hydrateTab(null, editorText, editorTextVersion)
       return
     }
     const tab = tabs.find((t) => t.path === activeTab)
     const text = tab ? tabEditorText(tab) : editorText
-    await monaco.activateTab(activeTab, text, editorTextVersion)
+    await monaco.hydrateTab(activeTab, text, editorTextVersion)
   }
 
   function dismissRecorderPicker() {
@@ -4652,7 +4666,9 @@
       )
       if (!targetPath && event.op !== 'reset') return
       const isActiveTarget = isSameRecordTab(tabsSnap.activeTab, targetPath)
-      const liveEditorText = monaco?.getEditorText() ?? editorSnap.text
+      const liveEditorText = isActiveTarget
+        ? (liveEditorTextForTab(tabsSnap.activeTab) ?? editorSnap.text)
+        : editorSnap.text
       const sourceText = recordStepSourceText(
         tabsSnap.tabs,
         tabsSnap.activeTab,
@@ -4671,7 +4687,7 @@
       if (isActiveTarget && tabsSnap.activeTab) {
         editorStore.setTextWithBump(result.text)
         const textVersion = get(editorStore).textVersion
-        monaco?.activateTab(tabsSnap.activeTab, result.text, textVersion)
+        monaco?.hydrateTab(tabsSnap.activeTab, result.text, textVersion)
         void refreshEditorSteps(result.text, textVersion)
         scheduleValidateEditor(150)
         if (isUntitled(targetPath)) {
@@ -4695,7 +4711,7 @@
     const tab = tabs.find((t) => t.path === bannerPath)
     const current =
       bannerPath === activeTab
-        ? (monaco?.getEditorText() ?? editorText)
+        ? (liveEditorTextForTab(bannerPath) ?? editorText)
         : tab
           ? tabEditorText(tab)
           : ''
@@ -5649,7 +5665,8 @@
                 <div class="editor-area" class:playing-active={playing || vanessaRunning} class:dry-run-active={runningDryRun}>
                     <MonacoEditor
                       bind:this={monaco}
-                      bind:value={editorText}
+                      value={editorText}
+                      activePath={editorValuePath}
                       valuePath={editorValuePath}
                       valueGeneration={editorTextVersion}
                       readOnly={automationActive || recordingTargetReadOnly}
@@ -6224,7 +6241,7 @@
   <PostRecordDiffDialog
     path={postRecordPath}
     original={postRecordBaselineText}
-    modified={monaco?.getEditorText() ?? editorText}
+    modified={liveEditorTextForTab(postRecordPath) ?? editorText}
     onClose={() => (dialogsStore.close('showPostRecordDiff'))}
   />
 {/if}

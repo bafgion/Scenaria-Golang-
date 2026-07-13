@@ -32,3 +32,44 @@ export function shouldAcceptMonacoChange(state: MonacoChangeRoutingState): boole
   }
   return true
 }
+
+export type MonacoActivationMode = 'activate' | 'hydrate'
+
+export type MonacoActivationRequest = {
+  path: string | null
+  text: string
+  generation: number
+  mode: MonacoActivationMode
+}
+
+export function resolveInitialMonacoActivation(input: {
+  activePath: string | null
+  valuePath: string | null
+  value: string
+  valueGeneration: number
+  pending: MonacoActivationRequest | null
+}): MonacoActivationRequest {
+  if (input.pending) return input.pending
+  return {
+    path: input.activePath ?? input.valuePath,
+    text: input.value,
+    generation: input.valueGeneration,
+    mode: 'hydrate',
+  }
+}
+
+export function shouldUseWelcomeModelForActivation(path: string | null): boolean {
+  return path === null
+}
+
+export function shouldHydrateModelText(
+  mode: MonacoActivationMode,
+  modelText: string,
+  authoritativeText: string,
+): boolean {
+  return mode === 'hydrate' && modelText !== authoritativeText
+}
+
+export function modelUriMatchesPath(activeModelUri: string | null, expectedModelUri: string | null): boolean {
+  return !!activeModelUri && !!expectedModelUri && activeModelUri === expectedModelUri
+}
