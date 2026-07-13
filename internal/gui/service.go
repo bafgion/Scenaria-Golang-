@@ -537,6 +537,9 @@ func (s *Service) OpenProject(path string) (ProjectInfo, error) {
 	if s.recorderService != nil {
 		s.recorderService.Session().CancelContextOnProjectSwitch()
 	}
+	if s.pluginService != nil {
+		s.pluginService.CancelActive()
+	}
 	s.rotateProjectSessionLocked(path)
 	s.mu.Unlock()
 	s.CleanupStartupTempArtifacts(path)

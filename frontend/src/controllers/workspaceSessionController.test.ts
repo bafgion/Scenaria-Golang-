@@ -396,7 +396,13 @@ describe('workspaceSessionController', () => {
     expect(applyEditorText).toHaveBeenCalled()
   })
 
-  function createUntitledRestoreHarness() {
+  function createUntitledRestoreHarness(overrides: {
+    openProject?: ReturnType<typeof vi.fn>
+    resolveProjectPath?: ReturnType<typeof vi.fn>
+    appendLog?: ReturnType<typeof vi.fn>
+    setStatus?: ReturnType<typeof vi.fn>
+    recoveryStorage?: StorageLike
+  } = {}) {
     const settingsStore = createSettingsStore()
     const tabsStore = createTabsStore('__welcome__')
     const applyEditorText = vi.fn()
@@ -435,15 +441,16 @@ describe('workspaceSessionController', () => {
       isUntitled: (path) => path.startsWith('__untitled__:'),
       saveSettings: vi.fn(),
       saveFeatureDraft: vi.fn(),
-      openProject: vi.fn(),
-      resolveProjectPath: vi.fn(async (path: string) => path),
+      openProject: overrides.openProject ?? vi.fn(),
+      resolveProjectPath: overrides.resolveProjectPath ?? vi.fn(async (path: string) => path),
       applyProjectScan: vi.fn(),
       listTestClients: vi.fn().mockResolvedValue([]),
       loadFeature,
       applyEditorText,
       trimTabsMemory: vi.fn(),
-      appendLog: vi.fn(),
-      setStatus: vi.fn(),
+      appendLog: overrides.appendLog ?? vi.fn(),
+      setStatus: overrides.setStatus ?? vi.fn(),
+      recoveryStorage: overrides.recoveryStorage,
       tr: (key) => key,
     })
     return { controller, tabsStore, applyEditorText, loadFeature }
@@ -518,4 +525,135 @@ describe('workspaceSessionController', () => {
       expect.objectContaining({ tabPath: '__untitled__:1/one.feature' }),
     )
   })
+
+  it('restores untitled tabs when saved project cannot be opened', async () => {
+    const openProject = vi.fn().mockRejectedValue(new Error('missing project'))
+    const appendLog = vi.fn()
+    const setStatus = vi.fn()
+    const { controller, tabsStore, applyEditorText, loadFeature } = createUntitledRestoreHarness({
+      openProject,
+      appendLog,
+      setStatus,
+    })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '/missing-project',
+      openTabs: ['/missing-project/a.feature'],
+      untitledTabs: [
+        { path: '__untitled__:1/one.feature', content: 'Feature: One' },
+        { path: '__untitled__:2/two.feature', content: 'Feature: Two' },
+      ],
+      activeTab: '/missing-project/a.feature',
+    } as never)
+
+    expect(openProject).toHaveBeenCalledWith('/missing-project')
+    expect(loadFeature).not.toHaveBeenCalled()
+    expect(tabsStore.snapshot().tabs).toEqual([
+      { path: '__untitled__:1/one.feature', content: 'Feature: One', draft: 'Feature: One', dirty: true },
+      { path: '__untitled__:2/two.feature', content: 'Feature: Two', draft: 'Feature: Two', dirty: true },
+    ])
+    expect(tabsStore.snapshot().welcomeTabVisible).toBe(false)
+    expect(tabsStore.snapshot().activeTab).toBe('__untitled__:2/two.feature')
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Two',
+      expect.objectContaining({ tabPath: '__untitled__:2/two.feature', hydrate: true }),
+    )
+    expect(appendLog).toHaveBeenCalledWith('journal.session.projectNotFound')
+    expect(setStatus).toHaveBeenCalledWith('journal.status.sessionProjectNotFound', 'error')
+  })
+
+  it('keeps intentionally empty untitled visible when saved project cannot be resolved', async () => {
+    const resolveProjectPath = vi.fn(async () => '')
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ resolveProjectPath })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '/missing-project',
+      openTabs: [],
+      untitledTabs: [{ path: '__untitled__:3/empty.feature', content: '' }],
+      activeTab: '__untitled__:3/empty.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().tabs).toEqual([
+      { path: '__untitled__:3/empty.feature', content: '', draft: '', dirty: true },
+    ])
+    expect(tabsStore.snapshot().activeTab).toBe('__untitled__:3/empty.feature')
+    expect(applyEditorText).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ tabPath: '__untitled__:3/empty.feature', hydrate: true }),
+    )
+  })
+
+  it('uses untitled recovery journal over older debounced session content', async () => {
+    const storage = new MemoryStorage()
+    storage.setItem(
+      'scenaria.untitledRecovery.v1',
+      JSON.stringify({
+        version: 1,
+        tabs: [{ path: '__untitled__:1/recovered.feature', content: 'Feature: Latest', updatedAt: Date.now() }],
+      }),
+    )
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ recoveryStorage: storage })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: ['__untitled__:1/recovered.feature'],
+      untitledTabs: [{ path: '__untitled__:1/recovered.feature', content: 'Feature: Old' }],
+      activeTab: '__untitled__:1/recovered.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().tabs).toEqual([
+      {
+        path: '__untitled__:1/recovered.feature',
+        content: 'Feature: Latest',
+        draft: 'Feature: Latest',
+        dirty: true,
+      },
+    ])
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Latest',
+      expect.objectContaining({ tabPath: '__untitled__:1/recovered.feature', hydrate: true }),
+    )
+  })
+
+  it('uses intentionally empty recovery journal content over older session content', async () => {
+    const storage = new MemoryStorage()
+    storage.setItem(
+      'scenaria.untitledRecovery.v1',
+      JSON.stringify({
+        version: 1,
+        tabs: [{ path: '__untitled__:2/empty.feature', content: '', updatedAt: Date.now() }],
+      }),
+    )
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ recoveryStorage: storage })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '',
+      openTabs: ['__untitled__:2/empty.feature'],
+      untitledTabs: [{ path: '__untitled__:2/empty.feature', content: 'Feature: Old' }],
+      activeTab: '__untitled__:2/empty.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().tabs).toEqual([
+      { path: '__untitled__:2/empty.feature', content: '', draft: '', dirty: true },
+    ])
+    expect(applyEditorText).toHaveBeenCalledWith(
+      '',
+      expect.objectContaining({ tabPath: '__untitled__:2/empty.feature', hydrate: true }),
+    )
+  })
 })
+
+type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+class MemoryStorage implements StorageLike {
+  values = new Map<string, string>()
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null
+  }
+  setItem(key: string, value: string) {
+    this.values.set(key, value)
+  }
+  removeItem(key: string) {
+    this.values.delete(key)
+  }
+}

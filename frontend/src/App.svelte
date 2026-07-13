@@ -1259,6 +1259,14 @@
     sessionStore.schedulePersist(() => void persistSettings())
   }
 
+  function journalCurrentUntitledTabs() {
+    workspaceSession.journalCurrentUntitledTabs()
+  }
+
+  function clearUntitledJournalPath(path: string) {
+    workspaceSession.clearUntitledJournalPath(path)
+  }
+
   async function flushWorkspaceSession() {
     syncActiveTabContent()
     sessionStore.flushPersist()
@@ -2958,6 +2966,9 @@
       }
       return { ...t, draft: liveText, dirty: true }
     }))
+    if (isUntitled(tabPath)) {
+      journalCurrentUntitledTabs()
+    }
   }
 
   function syncActiveTabContent() {
@@ -3163,6 +3174,9 @@
   function finalizeCloseTab(path: string) {
     evictFeatureSymbolCache(path)
     monaco?.releaseTab(path)
+    if (isUntitled(path)) {
+      clearUntitledJournalPath(path)
+    }
     const reduced = tabsStore.closePath(path)
     trimTabsMemory()
     if (reduced.openNextPath) {
@@ -3196,6 +3210,9 @@
     } catch (e) {
       console.warn('failed to clear discarded feature draft', e)
     }
+    if (isUntitled(path)) {
+      clearUntitledJournalPath(path)
+    }
     finalizeCloseTab(path)
   }
 
@@ -3218,6 +3235,9 @@
       if (stillActive) {
         tabsStore.setActiveTab(picked)
         await applyEditorText(text, { saved: true, switchTab: true, tabPath: picked, skipValidate: true })
+      }
+      if (isUntitled(pathAtStart)) {
+        clearUntitledJournalPath(pathAtStart)
       }
       monaco?.releaseTab(pathAtStart)
       await rememberFeature(picked)
@@ -3392,6 +3412,9 @@
     editorStore.setTextWithBump(event.text)
     const text = event.text
     syncActiveTabContent()
+    if (activeTab && isUntitled(activeTab)) {
+      journalCurrentUntitledTabs()
+    }
     schedulePersistSession()
     if (dialogBinds.bindEditorSettings.validateOnType && !isWelcome) {
       scheduleValidateEditor()
@@ -4691,6 +4714,7 @@
         void refreshEditorSteps(result.text, textVersion)
         scheduleValidateEditor(150)
         if (isUntitled(targetPath)) {
+          journalCurrentUntitledTabs()
           schedulePersistSession()
         }
       }
@@ -4894,6 +4918,7 @@
     trimTabsMemory()
     syncStepsPanelCollapsedFromPrefs()
     scheduleValidateEditor()
+    journalCurrentUntitledTabs()
     schedulePersistSession()
   }
 

@@ -10,11 +10,14 @@ import (
 )
 
 type browserPool struct {
-	mu      sync.Mutex
-	slots   chan *browserPoolSlot
-	size    int
-	retired int
-	closed  bool
+	mu          sync.Mutex
+	slots       chan *browserPoolSlot
+	size        int
+	retired     int
+	closed      bool
+	resetSlot   func(*browserPoolSlot) error
+	replaceSlot func(context.Context, *browserPoolSlot, PlaywrightExecutorOptions) error
+	closeWait   time.Duration
 }
 
 type browserPoolSlot struct {
@@ -111,13 +114,13 @@ func (p *browserPool) release(
 
 	needsReplace := ScenarioBlocksSessionReuse(result, runCase, slot.session)
 	if !needsReplace {
-		if err := slot.session.resetForScenario(); err != nil {
+		if err := p.resetForScenario(slot); err != nil {
 			needsReplace = true
 			logPoolResetFailure(slot, err, runCase, runID)
 		}
 	}
 	if needsReplace {
-		if err := slot.replaceSession(ctx, options); err != nil {
+		if err := p.replaceSession(ctx, slot, options); err != nil {
 			p.retireSlot(slot, err)
 			return
 		}
@@ -129,10 +132,54 @@ func (p *browserPool) release(
 		)
 	}
 
+	if returned, closed := p.returnSlot(slot); !returned {
+		if closed {
+			logx.Debug("pool late release stopped after close",
+				"run_id", runID,
+				"worker_id", slot.index,
+				"case_id", runCase.CaseID,
+				"scenario", runCase.Name,
+			)
+			if slot.stop != nil {
+				slot.stop()
+			}
+		}
+		return
+	}
+}
+
+func (p *browserPool) resetForScenario(slot *browserPoolSlot) error {
+	if p != nil && p.resetSlot != nil {
+		return p.resetSlot(slot)
+	}
+	if slot == nil || slot.session == nil {
+		return fmt.Errorf("browser pool slot session is nil")
+	}
+	return slot.session.resetForScenario()
+}
+
+func (p *browserPool) replaceSession(ctx context.Context, slot *browserPoolSlot, options PlaywrightExecutorOptions) error {
+	if p != nil && p.replaceSlot != nil {
+		return p.replaceSlot(ctx, slot, options)
+	}
+	return slot.replaceSession(ctx, options)
+}
+
+func (p *browserPool) returnSlot(slot *browserPoolSlot) (bool, bool) {
+	if p == nil || slot == nil {
+		return false, false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false, true
+	}
 	select {
 	case p.slots <- slot:
+		return true, false
 	default:
 		logx.Debug("pool release skipped", "error", "slot channel is full", "slot", slot.index)
+		return false, false
 	}
 }
 
@@ -173,8 +220,15 @@ func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
 		"retired", retired,
 		"size", size,
 		"error", reason,
-		"session", slot.session.poolDiagState(),
+		"session", poolSlotDiagState(slot),
 	)
+}
+
+func poolSlotDiagState(slot *browserPoolSlot) string {
+	if slot == nil || slot.session == nil {
+		return "nil"
+	}
+	return slot.session.poolDiagState()
 }
 
 func logPoolResetFailure(slot *browserPoolSlot, err error, runCase RunCase, runID string) {
@@ -210,9 +264,8 @@ func (p *browserPool) abortActiveSessions() {
 				slot.session.abortRun()
 			}
 			if slot != nil {
-				select {
-				case p.slots <- slot:
-				default:
+				if returned, closed := p.returnSlot(slot); !returned && closed && slot.stop != nil {
+					slot.stop()
 				}
 			}
 		default:
@@ -248,7 +301,7 @@ func (p *browserPool) Close() {
 			if slot != nil && slot.stop != nil {
 				slot.stop()
 			}
-		case <-time.After(2 * time.Second):
+		case <-time.After(p.idleSlotWait()):
 			logx.Warn("browser pool close timed out waiting for idle slot",
 				"index", i,
 				"elapsed_ms", time.Since(slotStart).Milliseconds(),
@@ -259,7 +312,13 @@ func (p *browserPool) Close() {
 		"elapsed_ms", time.Since(started).Milliseconds(),
 		"retired", retired,
 	)
-	p.size = 0
+}
+
+func (p *browserPool) idleSlotWait() time.Duration {
+	if p != nil && p.closeWait > 0 {
+		return p.closeWait
+	}
+	return 2 * time.Second
 }
 
 func poolEligible(options PlaywrightExecutorOptions) bool {

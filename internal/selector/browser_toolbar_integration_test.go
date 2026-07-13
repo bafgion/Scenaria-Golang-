@@ -19,9 +19,11 @@ func TestBrowserToolbarActionFIFO(t *testing.T) {
 	if got := takeToolbarAction(page); got != "resume" {
 		t.Fatalf("expected resume first, got %q", got)
 	}
+	mustEval(t, page, `() => window.__scenariaToolbar.ackAction(window.__scenariaToolbar.__test.pendingAction()?.id, true)`)
 	if got := takeToolbarAction(page); got != "picker" {
 		t.Fatalf("expected picker second, got %q", got)
 	}
+	mustEval(t, page, `() => window.__scenariaToolbar.ackAction(window.__scenariaToolbar.__test.pendingAction()?.id, true)`)
 	if got := takeToolbarAction(page); got != "" {
 		t.Fatalf("expected empty queue, got %q", got)
 	}
@@ -52,6 +54,53 @@ func TestBrowserToolbarStopStaysEnabledWhileQueued(t *testing.T) {
 	}
 	if got := takeToolbarAction(page); got != "stop" {
 		t.Fatalf("expected stop action, got %q", got)
+	}
+}
+
+func TestBrowserToolbarStopWinsWhenQueueIsFull(t *testing.T) {
+	page := openToolbarFixture(t)
+	mustEval(t, page, `() => window.__scenariaToolbar.setState({ recording: true, paused: true, browserOnly: false })`)
+	mustEval(t, page, `() => {
+		for (let i = 1; i <= 8; i++) {
+			window.__scenariaToolbar.__test.enqueueAction('synthetic-' + i);
+		}
+		window.__scenariaToolbar.__test.enqueueAction('stop');
+	}`)
+	if got := takeToolbarAction(page); got != "stop" {
+		t.Fatalf("expected stop to win full queue, got %q", got)
+	}
+}
+
+func TestBrowserToolbarRejectsNonTerminalOverflowWithoutDroppingOldest(t *testing.T) {
+	page := openToolbarFixture(t)
+	mustEval(t, page, `() => window.__scenariaToolbar.setState({ recording: true, paused: true, browserOnly: false })`)
+	mustEval(t, page, `() => {
+		for (let i = 1; i <= 8; i++) {
+			window.__scenariaToolbar.__test.enqueueAction('synthetic-' + i);
+		}
+		window.__scenariaToolbar.__test.enqueueAction('synthetic-9');
+	}`)
+	if got := takeToolbarAction(page); got != "synthetic-1" {
+		t.Fatalf("expected oldest command retained, got %q", got)
+	}
+}
+
+func TestBrowserToolbarWaitsForAckBeforeNextAction(t *testing.T) {
+	page := openToolbarFixture(t)
+	mustEval(t, page, `() => window.__scenariaToolbar.setState({ recording: true, paused: true, browserOnly: false })`)
+	mustEval(t, page, `() => {
+		window.__scenariaToolbar.__test.enqueueAction('resume');
+		window.__scenariaToolbar.__test.enqueueAction('picker');
+	}`)
+	if got := takeToolbarAction(page); got != "resume" {
+		t.Fatalf("expected resume first, got %q", got)
+	}
+	if got := takeToolbarAction(page); got != "" {
+		t.Fatalf("expected no second action before ack, got %q", got)
+	}
+	mustEval(t, page, `() => window.__scenariaToolbar.ackAction(window.__scenariaToolbar.__test.pendingAction()?.id, true)`)
+	if got := takeToolbarAction(page); got != "picker" {
+		t.Fatalf("expected picker after ack, got %q", got)
 	}
 }
 
@@ -125,6 +174,11 @@ func takeToolbarAction(page playwright.Page) string {
 	}
 	if action, ok := raw.(string); ok {
 		return action
+	}
+	if payload, ok := raw.(map[string]any); ok {
+		if action, _ := payload["action"].(string); action != "" {
+			return action
+		}
 	}
 	return ""
 }

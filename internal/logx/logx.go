@@ -3,6 +3,8 @@ package logx
 import (
 	"log/slog"
 	"os"
+
+	"github.com/bafgion/scenaria-golang/internal/secret"
 )
 
 var logger = slog.Default()
@@ -23,9 +25,17 @@ func Init() {
 	slog.SetDefault(logger)
 }
 
-func Info(msg string, args ...any)  { logger.Info(msg, args...) }
-func Warn(msg string, args ...any)  { logger.Warn(msg, args...) }
-func Error(msg string, args ...any) { logger.Error(msg, args...) }
-func Debug(msg string, args ...any) { logger.Debug(msg, args...) }
+func Info(msg string, args ...any) {
+	logger.Info(secret.RedactString(msg), secret.RedactKeyValues(args)...)
+}
+func Warn(msg string, args ...any) {
+	logger.Warn(secret.RedactString(msg), secret.RedactKeyValues(args)...)
+}
+func Error(msg string, args ...any) {
+	logger.Error(secret.RedactString(msg), secret.RedactKeyValues(args)...)
+}
+func Debug(msg string, args ...any) {
+	logger.Debug(secret.RedactString(msg), secret.RedactKeyValues(args)...)
+}
 
 func Logger() *slog.Logger { return logger }

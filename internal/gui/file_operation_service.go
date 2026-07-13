@@ -107,34 +107,27 @@ func (s *FileOperationService) DuplicateFeature(path, newName string) (string, e
 	dir := filepath.Dir(srcAbs)
 	ext := filepath.Ext(srcAbs)
 	target := ""
-	if name := strings.TrimSpace(newName); name != "" {
-		name = strings.TrimSuffix(name, ext)
-		name = strings.TrimSuffix(name, ".feature")
-		if name == "" {
-			return "", fmt.Errorf("new feature name is required")
+	if strings.TrimSpace(newName) != "" {
+		fileName, err := normalizeFeatureFileName(newName)
+		if err != nil {
+			return "", err
 		}
-		target = filepath.Join(dir, name+ext)
-		if _, err := os.Stat(target); err == nil {
-			return "", fmt.Errorf("file already exists: %s", filepath.Base(target))
-		} else if !os.IsNotExist(err) {
+		target, err = s.ensureInsideProject(filepath.Join(dir, fileName))
+		if err != nil {
 			return "", err
 		}
 	} else {
 		base := strings.TrimSuffix(filepath.Base(srcAbs), ext)
-		target = filepath.Join(dir, base+"-copy"+ext)
-		for i := 2; i < 100; i++ {
-			if _, err := os.Stat(target); os.IsNotExist(err) {
-				break
-			}
-			target = filepath.Join(dir, fmt.Sprintf("%s-copy-%d%s", base, i, ext))
+		target, err = nextAvailableFeaturePath(filepath.Join(dir, base+"-copy"+ext))
+		if err != nil {
+			return "", err
+		}
+		if target, err = s.ensureInsideProject(target); err != nil {
+			return "", err
 		}
 	}
 	if err := s.withWriteLock(func() error {
-		payload, err := os.ReadFile(srcAbs)
-		if err != nil {
-			return fmt.Errorf("read feature: %w", err)
-		}
-		return os.WriteFile(target, payload, 0o644)
+		return copyFeatureFileExclusive(srcAbs, target)
 	}); err != nil {
 		return "", fmt.Errorf("write duplicate: %w", err)
 	}
@@ -195,7 +188,14 @@ func (s *FileOperationService) ImportFeatures(destDir string, paths []string) ([
 			if src == "" || !strings.EqualFold(filepath.Ext(src), ".feature") {
 				continue
 			}
-			target := uniqueFeaturePath(filepath.Join(destAbs, filepath.Base(src)))
+			fileName, err := normalizeFeatureFileName(filepath.Base(src))
+			if err != nil {
+				return fmt.Errorf("import %s: %w", filepath.Base(src), err)
+			}
+			target, err := nextAvailableFeaturePath(filepath.Join(destAbs, fileName))
+			if err != nil {
+				return fmt.Errorf("import %s: %w", filepath.Base(src), err)
+			}
 			if err := copyFeatureFile(src, target); err != nil {
 				return fmt.Errorf("import %s: %w", filepath.Base(src), err)
 			}
@@ -216,24 +216,21 @@ func (s *FileOperationService) RenameFeature(path, newName string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	newName = strings.TrimSpace(newName)
-	if newName == "" {
+	if strings.TrimSpace(newName) == "" {
 		return "", fmt.Errorf("new file name is required")
 	}
-	if strings.ContainsAny(newName, `/\`) {
-		return "", fmt.Errorf("invalid file name %q", newName)
-	}
-	if !strings.EqualFold(filepath.Ext(newName), ".feature") {
-		newName += ".feature"
+	fileName, err := normalizeFeatureFileName(newName)
+	if err != nil {
+		return "", err
 	}
 	dir := filepath.Dir(srcAbs)
-	target := filepath.Join(dir, newName)
+	target := filepath.Join(dir, fileName)
 	if strings.EqualFold(filepath.Clean(srcAbs), filepath.Clean(target)) {
 		return srcAbs, nil
 	}
 	if err := s.withWriteLock(func() error {
 		if _, err := os.Stat(target); err == nil {
-			return fmt.Errorf("file already exists: %s", newName)
+			return fmt.Errorf("file already exists: %s", fileName)
 		} else if !os.IsNotExist(err) {
 			return err
 		}
@@ -304,19 +301,7 @@ func (s *FileOperationService) ensureInsideProject(target string) (string, error
 	if project == "" {
 		return "", fmt.Errorf("open a project folder first")
 	}
-	abs, err := filepath.Abs(target)
-	if err != nil {
-		return "", err
-	}
-	projectAbs, err := filepath.Abs(project)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(projectAbs, abs)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("path is outside the project")
-	}
-	return abs, nil
+	return paths.PathGuard{Root: project}.ResolveExistingOrNew(target)
 }
 
 type featureDraft struct {
@@ -346,37 +331,111 @@ func featureDraftPath(featurePath string) (string, error) {
 	return filepath.Join(dir, safe+".json"), nil
 }
 
-func uniqueFeaturePath(path string) string {
+func normalizeFeatureFileName(name string) (string, error) {
+	if name != strings.TrimSpace(name) {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	if name == "" {
+		return "", fmt.Errorf("new feature name is required")
+	}
+	if name != strings.TrimRight(name, " .") {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	if filepath.IsAbs(name) || filepath.VolumeName(name) != "" {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	if filepath.Base(name) != name || strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	if strings.ContainsAny(name, `<>:"|?*`) {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	for _, r := range name {
+		if r < 32 {
+			return "", fmt.Errorf("invalid file name %q", name)
+		}
+	}
+	if !strings.EqualFold(filepath.Ext(name), ".feature") {
+		name += ".feature"
+	}
+	if strings.TrimSuffix(name, filepath.Ext(name)) == "" {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	if isReservedWindowsFileName(name) {
+		return "", fmt.Errorf("invalid file name %q", name)
+	}
+	return name, nil
+}
+
+func isReservedWindowsFileName(name string) bool {
+	base := strings.TrimRight(name, " .")
+	if idx := strings.IndexRune(base, '.'); idx >= 0 {
+		base = base[:idx]
+	}
+	base = strings.ToUpper(base)
+	switch base {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(base) == 4 {
+		prefix := base[:3]
+		suffix := base[3]
+		if (prefix == "COM" || prefix == "LPT") && suffix >= '1' && suffix <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+func nextAvailableFeaturePath(path string) (string, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return path
+		return path, nil
+	} else if err != nil {
+		return "", err
 	}
 	dir := filepath.Dir(path)
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	ext := filepath.Ext(path)
-	for i := 2; i < 100; i++ {
+	for i := 2; i < 10000; i++ {
 		candidate := filepath.Join(dir, fmt.Sprintf("%s-%d%s", base, i, ext))
 		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
+			return candidate, nil
+		} else if err != nil {
+			return "", err
 		}
 	}
-	return filepath.Join(dir, base+"-copy"+ext)
+	return "", fmt.Errorf("no available file name for %s", filepath.Base(path))
 }
 
 func copyFeatureFile(src, dest string) error {
+	return copyFeatureFileExclusive(src, dest)
+}
+
+func copyFeatureFileExclusive(src, dest string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.Create(dest)
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	cleanup := true
+	defer func() {
+		_ = out.Close()
+		if cleanup {
+			_ = os.Remove(dest)
+		}
+	}()
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func restoreFileBackupByCopy(src, dest string, perm os.FileMode) error {

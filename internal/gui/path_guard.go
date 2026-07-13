@@ -3,7 +3,6 @@ package gui
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/paths"
@@ -17,25 +16,16 @@ func (s *Service) confineFeaturePath(path string) (string, error) {
 	if root := s.ProjectPath(); root != "" {
 		return paths.ConfineToProjectRoot(root, path)
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
 	s.tempFeatureMu.Lock()
 	defer s.tempFeatureMu.Unlock()
 	for _, dir := range s.tempFeatureDirs {
-		dirAbs, err := filepath.Abs(dir)
-		if err != nil {
-			continue
-		}
-		rel, err := filepath.Rel(dirAbs, abs)
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-			return abs, nil
+		if confined, err := (paths.PathGuard{Root: dir}).ResolveExistingOrNew(path); err == nil {
+			return confined, nil
 		}
 	}
 	tmpRoot := os.TempDir()
-	if rel, err := filepath.Rel(tmpRoot, abs); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return abs, nil
+	if confined, err := (paths.PathGuard{Root: tmpRoot}).ResolveExistingOrNew(path); err == nil {
+		return confined, nil
 	}
 	return "", fmt.Errorf("feature path is outside the allowed temp run directories")
 }

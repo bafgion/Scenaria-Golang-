@@ -2,6 +2,14 @@ import { buildSessionTabsSnapshot, resolveRestoredActiveTab, sessionTabPathsFrom
 import type { TabBody } from '../lib/tabMemory'
 import { tabEditorText } from '../lib/tabMemory'
 import { syncUntitledCounterFromPaths } from '../lib/untitled'
+import {
+  clearUntitledRecoveryAll,
+  clearUntitledRecoveryPath,
+  journalUntitledTabs,
+  loadUntitledRecoveryJournal,
+  mergeUntitledSessionWithRecovery,
+  type UntitledRecoveryStorage,
+} from '../lib/untitledRecoveryJournal'
 import type { DialogBindController } from './dialogBindController'
 import type { PaletteTr } from './paletteCommandsController'
 import type { createRecentsStore } from '../stores/recentsStore'
@@ -49,6 +57,7 @@ export type WorkspaceSessionContext = {
   trimTabsMemory: () => void
   appendLog: (line: string) => void
   setStatus: (msg: string, tone?: 'normal' | 'error' | 'success' | 'busy') => void
+  recoveryStorage?: UntitledRecoveryStorage | null
   tr: PaletteTr
 }
 
@@ -87,7 +96,20 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
     dialogBinds.flushRecorderPrefsBindLocals()
     dialogBinds.flushRecordFormBindLocals()
     dialogBinds.flushSettingsBindLocals()
+    journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage)
     await ctx.saveSettings(buildSettingsDTO())
+  }
+
+  function journalCurrentUntitledTabs() {
+    journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage)
+  }
+
+  function clearUntitledJournalPath(path: string) {
+    clearUntitledRecoveryPath(path, ctx.recoveryStorage)
+  }
+
+  function clearUntitledJournal() {
+    clearUntitledRecoveryAll(ctx.recoveryStorage)
   }
 
   async function autosaveDirtyDrafts() {
@@ -109,12 +131,64 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
   async function restoreWorkspaceSession(s: gui.AppSettingsDTO) {
     const proj = (s.sessionProject || '').trim()
     const hasOpenTabs = (s.openTabs || []).some((p) => (p || '').trim())
-    const hasUntitled = (s.untitledTabs || []).some((t) => (t?.path || '').trim())
+    const recoveryTabs = loadUntitledRecoveryJournal(ctx.recoveryStorage)
+    const mergedUntitledTabs = mergeUntitledSessionWithRecovery(s.untitledTabs, recoveryTabs)
+    const hasUntitled = mergedUntitledTabs.some((t) => (t?.path || '').trim())
     if (!proj && !hasOpenTabs && !hasUntitled) return
+
+    const untitledBodies = untitledContentMap(mergedUntitledTabs)
+    syncUntitledCounterFromPaths([...(s.openTabs || []), ...untitledBodies.keys()])
+    const tabPaths = sessionTabPathsFromSettings(s.openTabs, mergedUntitledTabs)
+    const restoreUntitledTabs = () => {
+      for (const p of tabPaths) {
+        if (!ctx.isUntitled(p)) continue
+        const content = untitledBodies.get(p)
+        if (content === undefined || ctx.getTabs().some((t) => t.path === p)) continue
+        ctx.stores.tabsStore.appendTab({ path: p, content, draft: content, dirty: true })
+      }
+    }
+    const restoreTabOrder = () => {
+      const tabs = ctx.getTabs()
+      const byPath = new Map(tabs.map((tab) => [tab.path, tab]))
+      const ordered = tabPaths.map((path) => byPath.get(path)).filter((tab): tab is TabBody => Boolean(tab))
+      const orderedPaths = new Set(ordered.map((tab) => tab.path))
+      const remaining = tabs.filter((tab) => !orderedPaths.has(tab.path))
+      if (ordered.length > 0) {
+        ctx.stores.tabsStore.setTabs([...ordered, ...remaining])
+      }
+    }
+    const activateRestoredTab = async () => {
+      restoreTabOrder()
+      const active = (s.activeTab || '').trim()
+      const focusPath = resolveRestoredActiveTab(active, tabPaths, ctx.getTabs(), ctx.welcomeKey)
+      if (!focusPath || focusPath === ctx.welcomeKey) return
+      ctx.stores.tabsStore.patch({ welcomeTabVisible: false, activeTab: focusPath })
+      if (ctx.isUntitled(focusPath)) {
+        const tab = ctx.getTabs().find((t) => t.path === focusPath)
+        if (tab) {
+          await ctx.applyEditorText(tabEditorText(tab), {
+            switchTab: true,
+            tabPath: focusPath,
+            skipValidate: true,
+            hydrate: true,
+          })
+          ctx.trimTabsMemory()
+        }
+      }
+    }
+
+    try {
+      restoreUntitledTabs()
+    } catch {
+      /* ignore broken untitled session */
+    }
 
     if (proj) {
       const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
-      if (!resolvedProj) return
+      if (!resolvedProj) {
+        await activateRestoredTab()
+        return
+      }
       try {
         const info = await ctx.openProject(resolvedProj)
         ctx.applyProjectScan(info, resolvedProj)
@@ -123,18 +197,13 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
       } catch {
         ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: resolvedProj }))
         ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
+        await activateRestoredTab()
         return
       }
     }
     try {
-      const untitledBodies = untitledContentMap(s.untitledTabs)
-      syncUntitledCounterFromPaths([...(s.openTabs || []), ...untitledBodies.keys()])
-      const tabPaths = sessionTabPathsFromSettings(s.openTabs, s.untitledTabs)
       for (const p of tabPaths) {
         if (ctx.isUntitled(p)) {
-          const content = untitledBodies.get(p)
-          if (content === undefined || ctx.getTabs().some((t) => t.path === p)) continue
-          ctx.stores.tabsStore.appendTab({ path: p, content, draft: content, dirty: true })
           continue
         }
         try {
@@ -143,25 +212,7 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
           /* skip missing files */
         }
       }
-      const active = (s.activeTab || '').trim()
-      const focusPath = resolveRestoredActiveTab(active, tabPaths, ctx.getTabs(), ctx.welcomeKey)
-      if (focusPath && focusPath !== ctx.welcomeKey) {
-        ctx.stores.tabsStore.patch({ welcomeTabVisible: false, activeTab: focusPath })
-        if (ctx.isUntitled(focusPath)) {
-          const tab = ctx.getTabs().find((t) => t.path === focusPath)
-          if (tab) {
-            await ctx.applyEditorText(tabEditorText(tab), {
-              switchTab: true,
-              tabPath: focusPath,
-              skipValidate: true,
-              hydrate: true,
-            })
-            ctx.trimTabsMemory()
-          }
-        } else if (ctx.getActiveTab() !== focusPath) {
-          await ctx.loadFeature(focusPath)
-        }
-      }
+      await activateRestoredTab()
     } catch {
       /* ignore broken session */
     }
@@ -170,6 +221,9 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
   return {
     buildSettingsDTO,
     persistSettings,
+    journalCurrentUntitledTabs,
+    clearUntitledJournalPath,
+    clearUntitledJournal,
     autosaveDirtyDrafts,
     restoreWorkspaceSession,
   }

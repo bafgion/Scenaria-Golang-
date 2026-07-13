@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import { redactSecrets } from '../lib/redaction'
 
 export type StatusTone = 'normal' | 'error' | 'success' | 'busy'
 
@@ -19,13 +20,14 @@ export function createJournalStore(initial: JournalState = defaultJournalState) 
   return {
     subscribe: store.subscribe,
     appendLog(line: string) {
+      const safeLine = redactSecrets(line)
       store.update((s) => ({
         ...s,
-        logText: s.logText + line + (line.endsWith('\n') ? '' : '\n'),
+        logText: s.logText + safeLine + (safeLine.endsWith('\n') ? '' : '\n'),
       }))
     },
     setStatus(msg: string, tone: StatusTone = 'normal') {
-      store.update((s) => ({ ...s, statusMessage: msg, statusTone: tone }))
+      store.update((s) => ({ ...s, statusMessage: redactSecrets(msg), statusTone: tone }))
     },
     patch(partial: Partial<JournalState>) {
       store.update((s) => ({ ...s, ...partial }))

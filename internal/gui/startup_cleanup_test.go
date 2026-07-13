@@ -84,3 +84,72 @@ func TestCleanupStartupTempArtifactsRemovesStaleProjectAndGlobalTemps(t *testing
 		t.Fatalf("fresh global temp should remain, err=%v", err)
 	}
 }
+
+func TestCleanupStartupTempArtifactsRemovesStalePluginInstallTemps(t *testing.T) {
+	root := t.TempDir()
+	scenaria := filepath.Join(root, ".scenaria")
+	staging := filepath.Join(scenaria, "plugin-staging")
+	backups := filepath.Join(scenaria, "plugin-backups")
+	staleStaging := filepath.Join(staging, "demo-111")
+	freshStaging := filepath.Join(staging, "demo-222")
+	staleBackup := filepath.Join(backups, "demo-333")
+	unknown := filepath.Join(staging, "notowned")
+	for _, dir := range []string{staleStaging, freshStaging, staleBackup, unknown} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	for _, dir := range []string{staleStaging, staleBackup, unknown} {
+		if err := os.Chtimes(dir, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := cleanupStartupTempArtifactsForProject(root, time.Hour, time.Now()); err != nil {
+		t.Fatalf("project cleanup: %v", err)
+	}
+
+	if _, err := os.Stat(staleStaging); !os.IsNotExist(err) {
+		t.Fatalf("stale plugin staging should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(staleBackup); !os.IsNotExist(err) {
+		t.Fatalf("stale plugin backup should be removed, err=%v", err)
+	}
+	if _, err := os.Stat(freshStaging); err != nil {
+		t.Fatalf("fresh plugin staging should remain, err=%v", err)
+	}
+	if _, err := os.Stat(unknown); err != nil {
+		t.Fatalf("unknown plugin temp name should remain, err=%v", err)
+	}
+}
+
+func TestCleanupStartupTempArtifactsSkipsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "keep.txt")
+	if err := os.WriteFile(outsideFile, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(root, ".scenaria", "plugin-staging")
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(staging, "demo-escape")
+	createGUIDirSymlinkOrSkip(t, outside, link)
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(outside, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cleanupStartupTempArtifactsForProject(root, time.Hour, time.Now()); err != nil {
+		t.Fatalf("project cleanup: %v", err)
+	}
+
+	if _, err := os.Stat(outsideFile); err != nil {
+		t.Fatalf("outside data must remain, err=%v", err)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("unsafe symlink should be skipped rather than followed/removed, err=%v", err)
+	}
+}

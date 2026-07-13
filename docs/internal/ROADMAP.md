@@ -1390,6 +1390,870 @@ docs/architecture
 
 ---
 
+# 11. Release Safety Follow-Up
+
+**Priority:** Critical / High
+**Status:** Planned
+**Area:** v1.0 Stability / Data Safety / Plugin Lifecycle / Runtime Cleanup
+
+## Problem
+
+Phase 0 local verification found remaining release-stability defects after the broad refactor. These items must be handled as focused phases; do not combine plugin, file operation, frontend session, runner, and shutdown changes into one patch.
+
+## Scope
+
+```text
+internal/plugin
+internal/gui/file_operation_service.go
+internal/gui/features.go
+internal/gui/path_guard.go
+internal/paths
+internal/player/browser_pool.go
+internal/gui/service_shutdown.go
+internal/gui/startup_cleanup.go
+internal/selector/browser_toolbar.js
+internal/settings
+frontend/src/controllers/workspaceSessionController.ts
+frontend/src/stores/sessionStore.ts
+```
+
+# 11.1. Plugin Filesystem Confinement and ID Validation
+
+**Priority:** Critical
+**Status:** Planned
+**Area:** Plugin Store / Plugin Installer / Filesystem Safety
+**Parent Section:** 10. Architecture Cleanup / PluginService
+**Deferrable or v1.0 blocker:** v1.0 blocker
+
+## Problem
+
+Plugin names are used directly in filesystem paths before validation. A malformed name can resolve outside `projectRoot/addons`, and `FetchAndInstall` calls `os.RemoveAll` on that destination.
+
+## User impact
+
+A malicious or malformed plugin name can delete or overwrite data outside the Scenaria-owned addons directory.
+
+## Confirmed code paths
+
+```text
+internal/gui/plugin_service.go:56 PluginService.Install
+internal/plugin/install.go:17 FetchAndInstall
+internal/plugin/install.go:22 filepath.Join(projectRoot, "addons", name)
+internal/plugin/install.go:23 os.RemoveAll(dest)
+internal/plugin/descriptor.go DescriptorPath
+internal/plugin/registry.go Install/Uninstall
+```
+
+## Required invariants
+
+* [ ] A plugin ID never resolves outside the exact Scenaria-owned addons root.
+* [ ] `RemoveAll` is never called until the destination has passed backend validation and confinement.
+* [ ] Install, update, load descriptor, run, enable/disable and uninstall use the same validator.
+
+## Tasks
+
+* [ ] Add shared backend `ValidatePluginID`.
+* [ ] Permit only documented safe IDs: letters, digits, dot, dash, underscore.
+* [ ] Reject empty, `.`, `..`, separators, rooted paths, UNC paths, Windows volume-qualified paths, control characters, trailing spaces/dots.
+* [ ] Add addons-root confinement helper that validates the joined path after cleaning.
+* [ ] Apply validation before every plugin filesystem or registry operation.
+* [ ] Handle existing symlinks/junctions in the addons path through the shared PathGuard work.
+
+## Tests
+
+* [ ] Valid plugin IDs.
+* [ ] Slash and backslash traversal.
+* [ ] Absolute Windows path, UNC path, and different volume.
+* [ ] Dot, double-dot, trailing dot/space.
+* [ ] Malformed ID leaves existing files untouched.
+* [ ] Uninstall cannot escape addons.
+
+## Acceptance criteria
+
+* [ ] Every plugin path operation is confined to `projectRoot/addons/<pluginID>`.
+* [ ] Invalid plugin IDs fail before filesystem mutation.
+* [ ] Existing valid plugin files are untouched after malformed input.
+
+## Manual verification
+
+* [ ] Try installing/uninstalling `../outside`, `..\outside`, `C:\outside`, `\\server\share`, `.`, `..`, and names with trailing spaces/dots.
+
+## Dependencies
+
+* [ ] Coordinate with 11.6 Canonical PathGuard for symlink/junction protection.
+
+# 11.2. Transactional Plugin Installation and Update Rollback
+
+**Priority:** Critical / High
+**Status:** Planned
+**Area:** Plugin Installer / Data Safety
+**Parent Section:** 10. Architecture Cleanup / PluginService
+**Deferrable or v1.0 blocker:** v1.0 blocker
+
+## Problem
+
+`FetchAndInstall` deletes the destination plugin directory before download, extraction, descriptor validation, API compatibility checks, or final commit.
+
+## User impact
+
+A failed update can remove a previously working plugin and leave no usable version.
+
+## Confirmed code paths
+
+```text
+internal/plugin/install.go:17 FetchAndInstall
+internal/plugin/install.go:23 os.RemoveAll(dest)
+internal/plugin/install.go:24 os.MkdirAll(dest)
+internal/plugin/install.go:35 extractZip(tmp, dest)
+internal/plugin/install.go:45 extractZip(source, dest)
+internal/plugin/install.go:55 copyDir(source, dest)
+internal/plugin/install.go:61 Install(projectRoot, name, source)
+```
+
+## Required invariants
+
+* [ ] A failed install or update leaves the previous valid plugin fully usable.
+* [ ] New plugin files are committed only after package and descriptor validation succeed.
+* [ ] Staging, backup, and final directories remain inside Scenaria-owned storage.
+
+## Tasks
+
+* [ ] Download/copy/extract into a Scenaria-owned staging directory.
+* [ ] Validate archive paths, descriptor, plugin ID, and API compatibility in staging.
+* [ ] Move existing version to backup only after staging is ready.
+* [ ] Move staging to final atomically where possible.
+* [ ] Restore backup on failure and report rollback failures explicitly.
+* [ ] Clean abandoned staging/backup directories safely.
+
+## Tests
+
+* [ ] Successful new install and update.
+* [ ] Failed download, corrupt archive, missing descriptor, invalid descriptor.
+* [ ] Incompatible API version if supported by descriptor schema.
+* [ ] Failed final rename and failed rollback.
+* [ ] Old plugin remains usable after every failed update.
+* [ ] No abandoned staging directory after normal failure.
+
+## Acceptance criteria
+
+* [ ] No update failure removes the previous valid plugin.
+* [ ] No partial extraction is visible as an installed plugin.
+* [ ] Registry is updated only after the filesystem commit succeeds.
+
+## Manual verification
+
+* [ ] Install a valid plugin, then update from a broken zip and confirm the old plugin still runs.
+
+## Dependencies
+
+* [ ] Depends on 11.1 plugin ID validation.
+* [ ] Coordinate registry commit ordering with 11.9.
+
+# 11.3. Safe Duplicate, Import and Destination Path Validation
+
+**Priority:** High
+**Status:** Planned
+**Area:** File Operations / Feature Management
+**Parent Section:** 5. Stabilize Backend Storage, Locks and File Operations
+**Deferrable or v1.0 blocker:** v1.0 blocker
+
+## Problem
+
+`DuplicateFeature` validates the source path but accepts `newName` into `filepath.Join(dir, name+ext)` without rejecting separators, rooted paths, Windows reserved names, or trailing dot/space. Import and duplicate destination creation can also overwrite after collision exhaustion.
+
+## User impact
+
+A duplicate/import operation can escape the intended directory or silently overwrite an existing file.
+
+## Confirmed code paths
+
+```text
+internal/gui/file_operation_service.go:98 DuplicateFeature
+internal/gui/file_operation_service.go:116 target = filepath.Join(dir, name+ext)
+internal/gui/file_operation_service.go:125 fixed duplicate collision loop
+internal/gui/file_operation_service.go:137 os.WriteFile(target, payload, 0o644)
+internal/gui/file_operation_service.go:180 ImportFeatures
+internal/gui/file_operation_service.go:198 uniqueFeaturePath(...)
+internal/gui/file_operation_service.go:349 uniqueFeaturePath
+internal/gui/file_operation_service.go:371 os.Create(dest)
+```
+
+## Required invariants
+
+* [ ] Duplicate/import creates only a new `.feature` file inside the intended project directory.
+* [ ] New destination files are created exclusively.
+* [ ] Existing files are never truncated or overwritten silently.
+
+## Tasks
+
+* [ ] Add shared backend filename validation for create/rename/duplicate/import.
+* [ ] Reject separators, rooted paths, UNC paths, volume-qualified paths, Windows reserved names, control characters, trailing dot/space.
+* [ ] Validate final destination with PathGuard after joining.
+* [ ] Replace fixed collision fallback with bounded-safe or unbounded-safe candidate generation.
+* [ ] Create new destinations with `O_CREATE|O_EXCL`.
+* [ ] Remove partial destination on copy failure.
+
+## Tests
+
+* [ ] Traversal names and Windows absolute/UNC names.
+* [ ] Reserved names and trailing dot/space.
+* [ ] Valid names.
+* [ ] More than 100 collisions.
+* [ ] Concurrent collision.
+* [ ] Partial copy cleanup.
+* [ ] Existing destination content remains unchanged.
+
+## Acceptance criteria
+
+* [ ] No duplicate/import can escape project confinement.
+* [ ] Collision exhaustion returns an error or a guaranteed unused name.
+* [ ] Save after duplicate/import cannot recreate or overwrite an unintended path.
+
+## Manual verification
+
+* [ ] Duplicate with valid and invalid names on Windows.
+* [ ] Import files whose names collide with many existing copies.
+
+## Dependencies
+
+* [ ] Depends on 11.6 for canonical destination confinement.
+
+# 11.4. Transactional Replace-in-Project with Rollback
+
+**Priority:** High
+**Status:** Planned
+**Area:** Project-Wide Editing / Data Safety
+**Parent Section:** 5. Stabilize Backend Storage, Locks and File Operations
+**Deferrable or v1.0 blocker:** v1.0 blocker
+
+## Problem
+
+`ReplaceInProject` writes feature files one by one and silently skips read errors. If a later write fails, earlier files remain modified.
+
+## User impact
+
+Project-wide replace can leave the project partially modified after a lock, permission error, antivirus block, or disk-full condition.
+
+## Confirmed code paths
+
+```text
+internal/gui/features.go:23 ReplaceInProject
+internal/gui/features.go:42 read error continue
+internal/gui/features.go:49 os.WriteFile(file, []byte(replaced.Text), 0o644)
+```
+
+## Required invariants
+
+* [ ] Replace-in-project is all-or-nothing for the selected files, or reports a recovery journal with explicit rollback status.
+* [ ] Read failures are not silently ignored for files selected by discovery.
+* [ ] Original contents are recoverable after any commit failure.
+
+## Tasks
+
+* [ ] Add planning stage that reads all candidate files before modifying any file.
+* [ ] Compute replacements in memory.
+* [ ] Prepare temp files for every changed file.
+* [ ] Commit with atomic replacement and a rollback journal.
+* [ ] Roll back all previously committed files if a later commit fails.
+* [ ] Report rollback failures explicitly.
+
+## Tests
+
+* [ ] Normal multi-file replacement and no-match result.
+* [ ] Read failure before commit.
+* [ ] Temp write failure.
+* [ ] Failure on second/final commit.
+* [ ] Rollback success and rollback failure.
+* [ ] Locked file / permission simulation.
+
+## Acceptance criteria
+
+* [ ] Failed replace does not leave silent partial edits.
+* [ ] Result counts reflect only committed changes.
+* [ ] User receives a precise error and recovery status.
+
+## Manual verification
+
+* [ ] Run replace while one target file is locked on Windows.
+
+## Dependencies
+
+* [ ] Reuse existing atomic feature write helper where safe.
+
+# 11.5. Project-Independent Untitled Session Recovery
+
+**Priority:** High
+**Status:** Planned
+**Area:** Workspace Session / Untitled Recovery
+**Parent Section:** 1. Stabilize Monaco Tabs and Editor State
+**Deferrable or v1.0 blocker:** v1.0 blocker
+
+## Problem
+
+`restoreWorkspaceSession` opens the saved project before restoring valid Untitled tabs. If project open fails, it returns early and the Untitled documents remain hidden.
+
+## User impact
+
+Unsaved text can appear lost when the previous project was moved, deleted, or is on a disconnected drive.
+
+## Confirmed code paths
+
+```text
+frontend/src/controllers/workspaceSessionController.ts:109 restoreWorkspaceSession
+frontend/src/controllers/workspaceSessionController.ts:119 openProject(resolvedProj)
+frontend/src/controllers/workspaceSessionController.ts:124 projectNotFound log/status
+frontend/src/controllers/workspaceSessionController.ts:126 return
+frontend/src/controllers/workspaceSessionController.ts:130-157 Untitled restore happens only after project open succeeds
+```
+
+## Required invariants
+
+* [ ] Missing project never hides valid Untitled content.
+* [ ] Valid Untitled documents restore before or independently from project open.
+* [ ] Active fallback selection is deterministic.
+* [ ] Intentionally empty Untitled documents remain empty.
+* [ ] Recorder-generated Untitled content survives restart.
+
+## Tasks
+
+* [ ] Restore and deduplicate Untitled tabs before attempting project open.
+* [ ] Choose a valid active tab from restored documents before project failure can abort.
+* [ ] Continue with project open as best effort.
+* [ ] If project open fails, keep Untitled visible and show a recovery warning.
+* [ ] Avoid creating replacement empty Untitled tabs.
+
+## Tests
+
+* [ ] One Untitled with missing project.
+* [ ] Multiple Untitled tabs with invalid active tab.
+* [ ] Intentionally empty Untitled.
+* [ ] Recorder-created Untitled.
+* [ ] Saved feature plus Untitled with project moved/deleted.
+
+## Acceptance criteria
+
+* [ ] Untitled content restores even when the saved project cannot be opened.
+* [ ] No duplicate empty Untitled is created.
+* [ ] User gets a clear project-not-found warning.
+
+## Manual verification
+
+* [ ] Save dirty Untitled, move/delete previous project, reopen app.
+
+## Dependencies
+
+* [ ] Must preserve Monaco hydration invariants from Section 1.
+
+# 11.6. Canonical PathGuard and Reparse-Point Confinement
+
+**Priority:** High
+**Status:** Verification Required
+**Area:** Filesystem Confinement / Windows Paths
+**Parent Section:** 5. Stabilize Backend Storage, Locks and File Operations
+**Deferrable or v1.0 blocker:** v1.0 blocker for destructive operations
+
+## Problem
+
+Project confinement is implemented in several places with lexical `Abs`/`Rel` checks. Existing targets and new-file parent directories are not consistently canonicalized with symlink/junction awareness.
+
+## User impact
+
+A path that looks inside a project can physically target data outside the project through a symlink, Windows junction, or reparse point.
+
+## Confirmed code paths
+
+```text
+internal/paths/paths.go:52 ConfineToProjectRoot
+internal/paths/paths.go:57 filepath.Abs(projectRoot)
+internal/paths/paths.go:67 filepath.Rel(absRoot, absPath)
+internal/gui/file_operation_service.go:295 ensureInsideProject
+internal/gui/file_operation_service.go:307 filepath.Abs(target)
+internal/gui/file_operation_service.go:315 filepath.Rel(projectAbs, abs)
+internal/gui/path_guard.go confineFeaturePath/confineArtifactPath
+```
+
+## Required invariants
+
+* [ ] Existing targets are checked using resolved canonical paths.
+* [ ] New files validate the resolved canonical parent directory.
+* [ ] Final resolved path remains within the resolved allowed root.
+* [ ] Different Windows volumes and UNC escapes are rejected.
+* [ ] `..hidden` is not confused with parent traversal.
+* [ ] Case-insensitive Windows paths are handled correctly.
+
+## Tasks
+
+* [ ] Introduce a shared `PathGuard` with `ResolveExisting`, `ResolveNewFile`, and `EnsureContained`.
+* [ ] Use `EvalSymlinks` for existing targets and existing parent directories.
+* [ ] Replace ad hoc `Abs`/`Rel` helpers in GUI file operations and artifact paths.
+* [ ] Apply the same guard to plugin addons paths where existing filesystem entries are involved.
+* [ ] Keep non-existing final files supported when the canonical parent is inside the root.
+
+## Tests
+
+* [ ] Normal child, sibling, `..hidden`, and `../outside`.
+* [ ] Symlink inside root pointing outside.
+* [ ] Windows junction/reparse point pointing outside.
+* [ ] Symlinked parent for a new file.
+* [ ] Different volume and UNC path.
+* [ ] Case variations on Windows.
+
+## Acceptance criteria
+
+* [ ] Destructive operations cannot cross the physical project/addons root.
+* [ ] Valid project paths continue to work.
+* [ ] Windows-specific path behavior is covered by tests or manual verification.
+
+## Manual verification
+
+* [ ] Create a Windows junction under a project and try read/save/delete/move/import through it.
+
+## Dependencies
+
+* [ ] Should precede or accompany 11.3 for final destination safety.
+
+# 11.7. Browser Pool Close and Late-Release Synchronization
+
+**Priority:** High
+**Status:** Planned
+**Area:** Parallel Runner / Browser Pool / Shutdown
+**Parent Section:** 8. Stabilize Playwright Runner Lifecycle
+**Deferrable or v1.0 blocker:** v1.0 blocker if `workers > 1` remains enabled
+
+## Problem
+
+`browserPool.release` checks `closed` before slow reset/replacement work, but does not re-check immediately before returning the slot to the channel. `Close` can time out while release is still resetting or replacing, and a late release can re-enter a closed pool.
+
+## User impact
+
+A browser worker can leak or be reused after shutdown/cancel, causing inconsistent parallel runs or stuck Playwright processes.
+
+## Confirmed code paths
+
+```text
+internal/player/browser_pool.go:91 release
+internal/player/browser_pool.go:103 initial closed check
+internal/player/browser_pool.go:114 resetForScenario
+internal/player/browser_pool.go:120 replaceSession
+internal/player/browser_pool.go:133 p.slots <- slot
+internal/player/browser_pool.go:224 Close
+internal/player/browser_pool.go:251 time.After(2 * time.Second)
+```
+
+## Required invariants
+
+* [ ] No slot or replacement worker re-enters the pool after `Close` starts.
+* [ ] Late release after close stops its worker instead of sending it to the pool.
+* [ ] Double close and concurrent releases do not panic or leak workers.
+
+## Tasks
+
+* [ ] Add a post-reset/post-replacement closed check immediately before channel send.
+* [ ] Stop the slot if the pool closed during slow release work.
+* [ ] Ensure retired-slot accounting remains correct.
+* [ ] Keep close bounded and log late-release cleanup.
+
+## Tests
+
+* [ ] Close during reset.
+* [ ] Close during replacement.
+* [ ] Close during unhealthy release.
+* [ ] Several concurrent releases.
+* [ ] Double `Close`.
+* [ ] Late release closes worker and does not send to the pool.
+
+## Acceptance criteria
+
+* [ ] No send occurs after close starts.
+* [ ] No browser process remains owned by a closed pool.
+* [ ] Existing close-browser slot replacement tests still pass.
+
+## Manual verification
+
+* [ ] Run repeated cancel/shutdown during `workers = 2/4` batches.
+
+## Dependencies
+
+* [ ] Existing browser pool replacement/retirement tests are already present and should be extended.
+
+# 11.8. Plugin Process Ownership, Cancellation and Structured Arguments
+
+**Priority:** High
+**Status:** Planned
+**Area:** Plugin Runtime / Process Lifecycle / Windows Compatibility
+**Parent Section:** 10. Architecture Cleanup / PluginService
+**Deferrable or v1.0 blocker:** v1.0 blocker for plugin runtime release
+
+## Problem
+
+Plugin `run` execution uses `context.Background()`, and command descriptors are parsed with `strings.Fields`, which breaks paths and arguments containing spaces.
+
+## User impact
+
+Plugin processes can outlive app shutdown or project switches, and valid Windows paths such as `C:\Program Files\...` can be parsed incorrectly.
+
+## Confirmed code paths
+
+```text
+internal/gui/plugin_service.go:118 cli.Run(context.Background(), args)
+internal/plugin/runner.go:27 resolveCommand
+internal/plugin/runner.go:28 strings.Fields(command)
+```
+
+## Required invariants
+
+* [ ] Plugin execution is tied to app/project/plugin invocation cancellation.
+* [ ] Only Scenaria-owned plugin processes are tracked and stopped.
+* [ ] No global image-name process kill is used.
+* [ ] Executable and arguments with spaces are represented without shell reparsing.
+
+## Tasks
+
+* [ ] Add plugin invocation context hierarchy.
+* [ ] Track owned plugin processes for shutdown.
+* [ ] Add cancellation paths for project switch, plugin disable/uninstall, and app close.
+* [ ] Extend plugin descriptor schema with structured command/args while preserving compatibility where needed.
+* [ ] Deprecate or safely parse legacy command strings.
+
+## Tests
+
+* [ ] Explicit cancellation, project switch, app close, plugin disable.
+* [ ] Hanging plugin, non-zero exit, large stdout/stderr.
+* [ ] Executable path with spaces.
+* [ ] Argument with spaces, Unicode path, empty argument, literal quote.
+* [ ] Backward compatibility for existing descriptors.
+
+## Acceptance criteria
+
+* [ ] No plugin process remains after cancellation/shutdown.
+* [ ] Quoted Windows paths and arguments run correctly.
+* [ ] Legacy descriptors fail safely or are migrated deterministically.
+
+## Manual verification
+
+* [ ] Run a plugin from a path containing spaces and cancel it from the GUI.
+
+## Dependencies
+
+* [ ] Depends on 11.1 for plugin identity validation.
+
+# 11.9. Atomic Plugin Registry Persistence and Safe Uninstall
+
+**Priority:** Medium / High
+**Status:** Planned
+**Area:** Plugin Registry / Uninstall / Durability
+**Parent Section:** 10. Architecture Cleanup / PluginService
+**Deferrable or v1.0 blocker:** v1.0 blocker for plugin store release
+
+## Problem
+
+Plugin registry writes use plain `os.WriteFile`, and uninstall removes only the registry entry while leaving plugin files on disk.
+
+## User impact
+
+A failed registry write can corrupt installed-plugin state. Uninstall can leave stale executables and a registry/disk mismatch.
+
+## Confirmed code paths
+
+```text
+internal/plugin/registry.go:45 SaveManifest
+internal/plugin/registry.go:54 os.WriteFile(path, ...)
+internal/plugin/registry.go:93 Uninstall
+internal/gui/plugin_service.go:67 PluginService.Uninstall
+```
+
+## Required invariants
+
+* [ ] Failed registry update preserves the previous valid registry.
+* [ ] Uninstall validates plugin ID and removes registry and files in a recoverable order.
+* [ ] Partial uninstall is reported explicitly.
+
+## Tasks
+
+* [ ] Replace registry `os.WriteFile` with proven atomic JSON write behavior.
+* [ ] Define corrupted-registry recovery behavior.
+* [ ] Stop any running plugin before uninstall.
+* [ ] Remove plugin files from a confined addons path.
+* [ ] Decide rollback/staging order for registry-vs-files uninstall.
+
+## Tests
+
+* [ ] Normal registry write and update.
+* [ ] Temp write failure and replacement failure.
+* [ ] Old registry preserved.
+* [ ] Malformed existing registry.
+* [ ] Normal uninstall, missing directory, missing registry entry.
+* [ ] Locked executable/running plugin.
+* [ ] Malicious plugin ID.
+* [ ] Registry update failure and filesystem removal failure.
+
+## Acceptance criteria
+
+* [ ] Registry cannot be truncated by a failed write.
+* [ ] Successful uninstall leaves no runnable plugin files.
+* [ ] Failed uninstall does not silently desynchronize registry and disk.
+
+## Manual verification
+
+* [ ] Install, uninstall, reinstall a plugin; confirm the addon directory state.
+
+## Dependencies
+
+* [ ] Depends on 11.1 and should align with 11.2 commit ordering.
+
+# 11.10. End-to-End Bounded Shutdown and Startup Cleanup Hardening
+
+**Priority:** Medium / High
+**Status:** Verification Required
+**Area:** Application Shutdown / Process Cleanup / Startup Temp Cleanup
+**Parent Section:** 8. Stabilize Playwright Runner Lifecycle
+**Deferrable or v1.0 blocker:** v1.0 blocker if unbounded waits are reproduced
+
+## Problem
+
+Shutdown waits for active work with the caller context, but cleanup after timeout still calls `cleanupTempFeatureDirs`, `stopAllureServe`, and `playwrightrt.Shutdown()` without a shared remaining deadline. Startup temp cleanup exists, but it does not yet cover plugin staging directories and lacks symlink/junction escape tests.
+
+## User impact
+
+App exit can still hang after the first timeout, and crash leftovers outside the currently covered temp namespaces can accumulate.
+
+## Confirmed code paths
+
+```text
+internal/gui/service_shutdown.go:31 Shutdown
+internal/gui/service_shutdown.go:78 cleanupTempFeatureDirs()
+internal/gui/service_shutdown.go:79 stopAllureServe()
+internal/gui/service_shutdown.go:80 playwrightrt.Shutdown()
+internal/gui/startup_cleanup.go:14 startupTempMaxAge
+internal/gui/startup_cleanup.go:16 CleanupStartupTempArtifacts
+internal/gui/startup_cleanup.go:25 CleanupGlobalStartupTemps
+```
+
+## Required invariants
+
+* [ ] One shutdown deadline covers every cleanup step.
+* [ ] Each cleanup operation accepts context or has a smaller bounded timeout.
+* [ ] Only known Scenaria-owned processes are stopped.
+* [ ] Startup cleanup deletes only known stale Scenaria-owned temp namespaces.
+* [ ] Symlink/junction escapes are rejected.
+
+## Tasks
+
+* [ ] Thread a root shutdown context through recorder, pool, live browser, Allure, plugin, Playwright runtime and temp cleanup.
+* [ ] Log structured remaining resources after deadline.
+* [ ] Add bounded wrappers for cleanup calls that cannot accept context yet.
+* [ ] Extend startup cleanup to plugin staging/backup temp directories after transactional install is implemented.
+* [ ] Add symlink/junction checks for startup cleanup paths.
+
+## Tests
+
+* [ ] Hanging active run, recorder, pool worker, plugin, Allure stop, Playwright shutdown.
+* [ ] Repeated `Shutdown` calls.
+* [ ] Normal shutdown remains fast.
+* [ ] Stale temp removed, fresh/unknown/active temp preserved.
+* [ ] Malformed path ignored.
+* [ ] Junction/symlink escape rejected.
+
+## Acceptance criteria
+
+* [ ] Shutdown cannot begin a new unbounded wait after its deadline expires.
+* [ ] Logs identify remaining owned resources.
+* [ ] Startup cleanup does not remove user data or active artifacts.
+
+## Manual verification
+
+* [ ] Close the app during a run/recording/plugin execution and verify shutdown completes or reports bounded timeout.
+
+## Dependencies
+
+* [ ] Plugin staging cleanup depends on 11.2.
+* [ ] Symlink/junction checks depend on 11.6.
+
+# 11.11. Crash-Resilient Untitled Recovery Journal
+
+**Priority:** Medium / High
+**Status:** Verification Required
+**Area:** Workspace Autosave / Data Safety
+**Parent Section:** 1. Stabilize Monaco Tabs and Editor State
+**Deferrable or v1.0 blocker:** Conditional; blocker only if strict crash recovery is required for v1.0
+
+## Problem
+
+Untitled tabs are persisted through debounced workspace settings snapshots. Controlled close flushes settings, but an immediate process kill can occur before the 500 ms scheduled persistence runs.
+
+## User impact
+
+The most recent Untitled edits can be lost after crash or Task Manager termination even when normal close restores correctly.
+
+## Confirmed code paths
+
+```text
+frontend/src/stores/sessionStore.ts:6 schedulePersist(run, delayMs = 500)
+frontend/src/lib/sessionTabs.ts:16 buildSessionTabsSnapshot
+frontend/src/controllers/workspaceSessionController.ts:69 buildSessionTabsSnapshot(...)
+internal/settings/settings.go:57 UntitledTabSession
+```
+
+## Required invariants
+
+* [ ] Controlled close still flushes all Untitled text.
+* [ ] Crash recovery restores recently edited Untitled content within the accepted durability window.
+* [ ] Explicit Discard and Save As clean obsolete recovery data.
+* [ ] Intentionally empty Untitled content is preserved.
+
+## Tasks
+
+* [ ] Decide whether current 500 ms settings debounce is acceptable for v1.0.
+* [ ] If not acceptable, add a small atomic per-Untitled recovery journal.
+* [ ] Define precedence between session snapshot, feature drafts, and Untitled journal.
+* [ ] Clean journal on Save As and explicit Discard.
+
+## Tests
+
+* [ ] Edit and immediate simulated crash.
+* [ ] Journal write failure.
+* [ ] Explicit Discard.
+* [ ] Save As.
+* [ ] Multiple Untitled documents.
+* [ ] Stale/corrupted journal.
+* [ ] Session and journal precedence.
+
+## Acceptance criteria
+
+* [ ] The chosen durability guarantee is documented and tested.
+* [ ] A crash cannot resurrect explicitly discarded Untitled text.
+* [ ] Saved feature tabs remain unaffected.
+
+## Manual verification
+
+* [ ] Type into Untitled and terminate the process immediately; reopen and verify expected recovery behavior.
+
+## Dependencies
+
+* [ ] Should be implemented after 11.5 so project-independent restore is stable.
+
+# 11.12. Browser Toolbar Command Acknowledgement and Overflow Safety
+
+**Priority:** Medium
+**Status:** Planned
+**Area:** Injected Browser Toolbar / Recorder Lifecycle
+**Parent Section:** 6. Stabilize Recorder Lifecycle
+**Deferrable or v1.0 blocker:** Post-v1.0 unless normal usage drops Stop/Pause
+
+## Problem
+
+The injected toolbar uses an 8-item FIFO queue and silently drops the oldest command on overflow. Stop/Pause commands can be queued while busy and can be dropped if the queue is full.
+
+## User impact
+
+Rapid toolbar actions can silently lose an important command such as Stop or Pause.
+
+## Confirmed code paths
+
+```text
+internal/selector/browser_toolbar.js:4 MAX_QUEUE = 8
+internal/selector/browser_toolbar.js:197 queue overflow
+internal/selector/browser_toolbar.js:198 queue.shift()
+internal/selector/browser_toolbar.js:200 queue.push(action)
+internal/selector/browser_toolbar.js:276 takeAction()
+```
+
+## Required invariants
+
+* [ ] Stop is never silently discarded.
+* [ ] Accepted commands are acknowledged or reflected in busy state.
+* [ ] Incompatible commands are disabled while pending.
+* [ ] Repeated identical commands are deduplicated where appropriate.
+
+## Tasks
+
+* [ ] Define priority/overflow policy for Stop, Pause, Record, Picker.
+* [ ] Add command acknowledgement state.
+* [ ] Deduplicate repeated identical commands.
+* [ ] Surface queue-full/busy feedback instead of silent drop.
+
+## Tests
+
+* [ ] Rapid Pause/Stop.
+* [ ] Repeated Pause and Record.
+* [ ] Stop under full queue.
+* [ ] Command ACK.
+* [ ] Navigation during pending action.
+
+## Acceptance criteria
+
+* [ ] Terminal commands cannot be lost silently.
+* [ ] Toolbar state remains consistent with backend recorder state.
+
+## Manual verification
+
+* [ ] Rapid-click toolbar controls during recording and confirm Stop always wins.
+
+## Dependencies
+
+* [ ] Coordinate with recorder session identity and toolbar polling code.
+
+# 11.13. Credential Storage and Secret Redaction Audit
+
+**Priority:** High
+**Status:** Implemented - documented plaintext storage for v1.0, accidental log/journal redaction added
+**Area:** Settings / Credentials / Security
+**Parent Section:** 5. Stabilize Backend Storage, Locks and File Operations
+**Deferrable or v1.0 blocker:** Security decision required before v1.0
+
+## Problem
+
+HTTP auth passwords are persisted as plaintext JSON settings. UI DTOs hide the password on read, but the at-rest storage is not protected.
+
+## User impact
+
+Users can unintentionally store secrets in ordinary settings files. A local file disclosure exposes HTTP credentials.
+
+## Confirmed code paths
+
+```text
+internal/settings/settings.go:43 HTTPAuth map json:"http_auth"
+internal/settings/settings.go:62 HTTPAuthEntry
+internal/settings/settings.go:64 Password string json:"password"
+internal/httpauth/httpauth.go:122 StoreHostCredentials
+internal/gui/settings_service.go:99 SaveHTTPAuth
+internal/gui/settings_service.go:209 SaveSettings preserves existing HTTPAuth
+```
+
+## Required invariants
+
+* [x] Secrets are not logged or sent to frontend logs/status except as explicit user input.
+* [x] At-rest credential behavior is documented before release.
+* [x] If protected storage is required, migration preserves existing credentials safely. Deferred: protected storage is not selected for v1.0.
+
+## Tasks
+
+* [x] Audit logs, reports, debug dumps, workspace snapshots and generated fixtures for secret exposure.
+* [x] Decide v1.0 policy: documented plaintext, opt-in storage, or OS secret store.
+* [x] If protected storage is chosen, design migration to Windows Credential Manager/DPAPI, macOS Keychain, and Linux Secret Service. Deferred: protected storage is not selected for v1.0.
+* [x] Ensure imported URL credentials are stripped from URLs before logs/reports.
+
+## Tests
+
+* [x] Password omitted from read DTOs.
+* [x] Password not present in logs/frontend journal other than chosen storage or explicit user-authored content.
+* [x] URL credentials stripped before persistence where expected.
+* [x] Migration tests if secret store is implemented. Not applicable for documented plaintext v1.0 policy.
+
+## Acceptance criteria
+
+* [x] Security posture is explicit and reviewed.
+* [x] No accidental secret leak is found in logs/frontend journal.
+* [x] At-rest behavior matches documentation.
+
+## Manual verification
+
+* [ ] Save HTTP auth credentials, inspect settings/logs/reports, and confirm expected exposure only.
+
+## Dependencies
+
+* [ ] None for audit; OS secret-store migration can be deferred only by explicit release decision.
+
 # Final Implementation Order
 
 Идём строго сверху вниз:
@@ -1415,6 +2279,20 @@ docs/architecture
 8.1. Stabilize Browser Context Isolation
 9. Performance and Memory Optimization
 10. Architecture Cleanup
+11. Release Safety Follow-Up
+11.1. Plugin Filesystem Confinement and ID Validation
+11.2. Transactional Plugin Installation and Update Rollback
+11.3. Safe Duplicate, Import and Destination Path Validation
+11.4. Transactional Replace-in-Project with Rollback
+11.5. Project-Independent Untitled Session Recovery
+11.6. Canonical PathGuard and Reparse-Point Confinement
+11.7. Browser Pool Close and Late-Release Synchronization
+11.8. Plugin Process Ownership, Cancellation and Structured Arguments
+11.9. Atomic Plugin Registry Persistence and Safe Uninstall
+11.10. End-to-End Bounded Shutdown and Startup Cleanup Hardening
+11.11. Crash-Resilient Untitled Recovery Journal
+11.12. Browser Toolbar Command Acknowledgement and Overflow Safety
+11.13. Credential Storage and Secret Redaction Audit
 ```
 
 ---

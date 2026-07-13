@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/bafgion/scenaria-golang/internal/plugin"
 )
@@ -17,12 +19,21 @@ type pluginCLIRunner interface {
 type PluginService struct {
 	projectPath func() string
 	cliRunner   func() pluginCLIRunner
+	mu          sync.Mutex
+	nextRunID   atomic.Uint64
+	active      map[uint64]pluginInvocation
+}
+
+type pluginInvocation struct {
+	name   string
+	cancel context.CancelFunc
 }
 
 func NewPluginService(projectPath func() string, cliRunner func() pluginCLIRunner) *PluginService {
 	return &PluginService{
 		projectPath: projectPath,
 		cliRunner:   cliRunner,
+		active:      make(map[uint64]pluginInvocation),
 	}
 }
 
@@ -69,6 +80,7 @@ func (s *PluginService) Uninstall(name string) error {
 	if err != nil {
 		return err
 	}
+	s.CancelPlugin(name)
 	removed, err := plugin.Uninstall(path, name)
 	if err != nil {
 		return err
@@ -115,13 +127,70 @@ func (s *PluginService) Run(req PluginRunRequest) RunResult {
 		return RunResult{Output: out}
 	case "run":
 		args := appendRunPluginArgs(append([]string(nil), target.Args...), req)
-		out, runErr := cli.Run(context.Background(), args)
+		ctx, finish := s.startInvocation(name)
+		defer finish()
+		out, runErr := cli.Run(ctx, args)
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
 		return RunResult{Output: out}
 	default:
 		return RunResult{Error: fmt.Sprintf("unsupported plugin runner %q", target.Runner)}
+	}
+}
+
+func (s *PluginService) startInvocation(name string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	if s == nil {
+		return ctx, cancel
+	}
+	id := s.nextRunID.Add(1)
+	s.mu.Lock()
+	if s.active == nil {
+		s.active = make(map[uint64]pluginInvocation)
+	}
+	s.active[id] = pluginInvocation{name: strings.TrimSpace(name), cancel: cancel}
+	s.mu.Unlock()
+	return ctx, func() {
+		s.mu.Lock()
+		delete(s.active, id)
+		s.mu.Unlock()
+		cancel()
+	}
+}
+
+func (s *PluginService) CancelActive() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	active := make([]context.CancelFunc, 0, len(s.active))
+	for id, invocation := range s.active {
+		active = append(active, invocation.cancel)
+		delete(s.active, id)
+	}
+	s.mu.Unlock()
+	for _, cancel := range active {
+		cancel()
+	}
+}
+
+func (s *PluginService) CancelPlugin(name string) {
+	if s == nil {
+		return
+	}
+	name = strings.TrimSpace(name)
+	s.mu.Lock()
+	active := make([]context.CancelFunc, 0)
+	for id, invocation := range s.active {
+		if strings.EqualFold(invocation.name, name) {
+			active = append(active, invocation.cancel)
+			delete(s.active, id)
+		}
+	}
+	s.mu.Unlock()
+	for _, cancel := range active {
+		cancel()
 	}
 }
 

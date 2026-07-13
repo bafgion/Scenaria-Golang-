@@ -209,3 +209,53 @@ func TestFileOperationServiceDeleteFeature(t *testing.T) {
 		t.Fatalf("expected file removed, stat err=%v", err)
 	}
 }
+
+func TestFileOperationServiceDeleteRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.feature")
+	if err := os.WriteFile(secret, []byte("Feature: Secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "linked")
+	createGUIDirSymlinkOrSkip(t, outside, link)
+	svc := NewFileOperationService(
+		func(p string) (string, error) { return p, nil },
+		func() string { return root },
+		func(run func() error) error { return run() },
+		func(run func() error) error { return run() },
+	)
+
+	if err := svc.DeleteFeature(filepath.Join(link, "secret.feature")); err == nil {
+		t.Fatal("expected symlink escape delete to fail")
+	}
+	assertGUIFileContent(t, secret, "Feature: Secret\n")
+}
+
+func TestFileOperationServiceAllowsDotDotPrefixNames(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "..hidden.feature")
+	if err := os.WriteFile(path, []byte("Feature: Hidden\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewFileOperationService(
+		func(p string) (string, error) { return p, nil },
+		func() string { return root },
+		func(run func() error) error { return run() },
+		func(run func() error) error { return run() },
+	)
+
+	if err := svc.DeleteFeature(path); err != nil {
+		t.Fatalf("DeleteFeature should allow in-project dot-dot prefix names: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected file removed, stat err=%v", err)
+	}
+}
+
+func createGUIDirSymlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+}

@@ -115,9 +115,10 @@ func runLiveBrowserSession(
 	lastEventAt := time.Now()
 
 	processToolbar := func() {
-		if action := takeToolbarAction(page); action != "" {
+		if command := takeToolbarAction(page); command.Action != "" {
 			idlePolls = 0
-			ProcessToolbarAction(action, session, page, opts, stepNotify, recorded)
+			ProcessToolbarAction(command.Action, session, page, opts, stepNotify, recorded)
+			ackToolbarAction(page, command.ID, true)
 		}
 	}
 
@@ -268,15 +269,47 @@ func evaluateRecorderCleanup(page playwright.Page, script string) {
 	}
 }
 
-func takeToolbarAction(page playwright.Page) string {
+type toolbarCommand struct {
+	ID     int64
+	Action string
+}
+
+func takeToolbarAction(page playwright.Page) toolbarCommand {
 	raw, err := page.Evaluate(`() => window.__scenariaToolbar?.takeAction?.() || null`)
 	if err != nil || raw == nil {
-		return ""
+		return toolbarCommand{}
 	}
 	if action, ok := raw.(string); ok {
-		return action
+		return toolbarCommand{Action: action}
 	}
-	return ""
+	payload, ok := raw.(map[string]any)
+	if !ok {
+		return toolbarCommand{}
+	}
+	action, _ := payload["action"].(string)
+	id := toolbarCommandID(payload["id"])
+	return toolbarCommand{ID: id, Action: action}
+}
+
+func toolbarCommandID(raw any) int64 {
+	switch v := raw.(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
+}
+
+func ackToolbarAction(page playwright.Page, id int64, ok bool) {
+	if page == nil || id == 0 {
+		return
+	}
+	script := fmt.Sprintf(`() => window.__scenariaToolbar?.ackAction?.(%d, %v)`, id, ok)
+	evaluateRecorderCleanup(page, script)
 }
 
 func registerBrowserInitScripts(bctx playwright.BrowserContext, includeRecorder bool) error {

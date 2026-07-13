@@ -43,6 +43,9 @@ func cleanupStartupTempArtifactsForProject(projectRoot string, maxAge time.Durat
 	if err := cleanupProjectRunTemps(filepath.Join(scenariaDir, "runs"), cutoff); err != nil {
 		return err
 	}
+	if err := cleanupPluginInstallTemps(scenariaDir, cutoff); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -66,7 +69,7 @@ func cleanupGlobalStartupTemps(tempRoot string, maxAge time.Duration, now time.T
 		} else if !stale {
 			continue
 		}
-		if err := os.RemoveAll(full); err != nil && !os.IsNotExist(err) {
+		if err := removeContained(tempRoot, full); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -92,7 +95,7 @@ func cleanupProjectTempDir(tempDir string, cutoff time.Time) error {
 		} else if !stale {
 			continue
 		}
-		if err := os.RemoveAll(full); err != nil && !os.IsNotExist(err) {
+		if err := removeContained(tempDir, full); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -127,7 +130,7 @@ func cleanupProjectRunTemps(runsDir string, cutoff time.Time) error {
 			}
 			return nil
 		}
-		if err := os.RemoveAll(path); err != nil && !os.IsNotExist(err) {
+		if err := removeContained(runsDir, path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		if d.IsDir() {
@@ -135,6 +138,69 @@ func cleanupProjectRunTemps(runsDir string, cutoff time.Time) error {
 		}
 		return nil
 	})
+}
+
+func cleanupPluginInstallTemps(scenariaDir string, cutoff time.Time) error {
+	for _, dirName := range []string{"plugin-staging", "plugin-backups"} {
+		root := filepath.Join(scenariaDir, dirName)
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if !isPluginInstallTempName(name) {
+				continue
+			}
+			full := filepath.Join(root, name)
+			if stale, err := isOlderThan(full, cutoff); err != nil {
+				return err
+			} else if !stale {
+				continue
+			}
+			if err := removeContained(root, full); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func isPluginInstallTempName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	idx := strings.Index(name, "-")
+	if idx <= 0 || idx == len(name)-1 {
+		return false
+	}
+	prefix := name[:idx]
+	for _, r := range prefix {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func removeContained(root, target string) error {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(target) == "" {
+		return nil
+	}
+	if _, err := (paths.PathGuard{Root: root}).ResolveExisting(target); err != nil {
+		logx.Warn("startup cleanup skipped unsafe path", "root", root, "path", target, "error", err)
+		return nil
+	}
+	return os.RemoveAll(target)
 }
 
 func isScenariaTempRunArtifact(name string) bool {

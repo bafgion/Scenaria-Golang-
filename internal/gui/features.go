@@ -1,8 +1,10 @@
 package gui
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/scenario"
@@ -18,6 +20,20 @@ type ProjectReplaceResult struct {
 	FilesChanged int      `json:"filesChanged"`
 	Replacements int      `json:"replacements"`
 	Files        []string `json:"files"`
+}
+
+var (
+	projectReplaceReadFile  = os.ReadFile
+	projectReplaceStat      = os.Stat
+	projectReplaceWriteFile = writeFileAtomic
+)
+
+type plannedProjectReplacement struct {
+	Path  string
+	Old   []byte
+	New   []byte
+	Count int
+	Perm  os.FileMode
 }
 
 func (s *Service) ReplaceInProject(req ProjectReplaceRequest) (ProjectReplaceResult, error) {
@@ -36,28 +52,83 @@ func (s *Service) ReplaceInProject(req ProjectReplaceRequest) (ProjectReplaceRes
 		if err != nil {
 			return err
 		}
-		for _, file := range files {
-			payload, err := os.ReadFile(file)
-			if err != nil {
-				continue
-			}
-			original := string(payload)
-			replaced := ReplaceAllInText(original, find, req.Replace, req.CaseSensitive, true)
-			if replaced.Count == 0 {
-				continue
-			}
-			if err := os.WriteFile(file, []byte(replaced.Text), 0o644); err != nil {
-				return fmt.Errorf("write %s: %w", file, err)
-			}
-			result.FilesChanged++
-			result.Replacements += replaced.Count
-			result.Files = append(result.Files, file)
+		plan, plannedResult, err := buildProjectReplacementPlan(files, find, req.Replace, req.CaseSensitive)
+		if err != nil {
+			return err
 		}
+		if err := commitProjectReplacementPlan(plan); err != nil {
+			return err
+		}
+		result = plannedResult
 		return nil
 	}); err != nil {
-		return result, err
+		return ProjectReplaceResult{Files: []string{}}, err
 	}
 	return result, nil
+}
+
+func buildProjectReplacementPlan(files []string, find, replace string, caseSensitive bool) ([]plannedProjectReplacement, ProjectReplaceResult, error) {
+	plan := make([]plannedProjectReplacement, 0)
+	result := ProjectReplaceResult{Files: []string{}}
+	for _, file := range files {
+		info, err := projectReplaceStat(file)
+		if err != nil {
+			return nil, result, fmt.Errorf("stat %s: %w", filepath.Base(file), err)
+		}
+		payload, err := projectReplaceReadFile(file)
+		if err != nil {
+			return nil, result, fmt.Errorf("read %s: %w", filepath.Base(file), err)
+		}
+		replaced := ReplaceAllInText(string(payload), find, replace, caseSensitive, true)
+		if replaced.Count == 0 {
+			continue
+		}
+		oldContent := append([]byte(nil), payload...)
+		newContent := []byte(replaced.Text)
+		perm := info.Mode().Perm()
+		if perm == 0 {
+			perm = 0o644
+		}
+		plan = append(plan, plannedProjectReplacement{
+			Path:  file,
+			Old:   oldContent,
+			New:   newContent,
+			Count: replaced.Count,
+			Perm:  perm,
+		})
+		result.FilesChanged++
+		result.Replacements += replaced.Count
+		result.Files = append(result.Files, file)
+	}
+	return plan, result, nil
+}
+
+func commitProjectReplacementPlan(plan []plannedProjectReplacement) error {
+	committed := make([]plannedProjectReplacement, 0, len(plan))
+	for _, item := range plan {
+		if err := projectReplaceWriteFile(item.Path, item.New, item.Perm); err != nil {
+			if rollbackErr := rollbackProjectReplacements(committed); rollbackErr != nil {
+				return fmt.Errorf("write %s: %w (rollback failed: %v)", filepath.Base(item.Path), err, rollbackErr)
+			}
+			return fmt.Errorf("write %s: %w", filepath.Base(item.Path), err)
+		}
+		committed = append(committed, item)
+	}
+	return nil
+}
+
+func rollbackProjectReplacements(committed []plannedProjectReplacement) error {
+	var failures []string
+	for i := len(committed) - 1; i >= 0; i-- {
+		item := committed[i]
+		if err := projectReplaceWriteFile(item.Path, item.Old, item.Perm); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", filepath.Base(item.Path), err))
+		}
+	}
+	if len(failures) > 0 {
+		return errors.New(strings.Join(failures, "; "))
+	}
+	return nil
 }
 
 func (s *Service) DeleteFeature(path string) error {

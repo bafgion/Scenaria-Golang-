@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,5 +57,120 @@ func TestReplaceInProjectSkipsFeatureTitle(t *testing.T) {
 	}
 	if got.Replacements != 0 {
 		t.Fatalf("expected no replacements in headers, got %+v", got)
+	}
+}
+
+func TestReplaceInProjectReadFailureDoesNotModifyAnyFile(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	second := writeReplaceFeature(t, dir, "b.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origRead := projectReplaceReadFile
+	origWrite := projectReplaceWriteFile
+	defer func() {
+		projectReplaceReadFile = origRead
+		projectReplaceWriteFile = origWrite
+	}()
+	writes := 0
+	projectReplaceReadFile = func(path string) ([]byte, error) {
+		if filepath.Clean(path) == filepath.Clean(second) {
+			return nil, errors.New("simulated read failure")
+		}
+		return os.ReadFile(path)
+	}
+	projectReplaceWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		writes++
+		return writeFileAtomic(path, data, perm)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "read b.feature") {
+		t.Fatalf("expected read failure, got %v", err)
+	}
+	if writes != 0 {
+		t.Fatalf("expected no writes before all files are read, got %d", writes)
+	}
+	assertReplaceFileContains(t, first, "old.example.com")
+	assertReplaceFileContains(t, second, "old.example.com")
+}
+
+func TestReplaceInProjectWriteFailureRollsBackCommittedFiles(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	second := writeReplaceFeature(t, dir, "b.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origWrite := projectReplaceWriteFile
+	defer func() { projectReplaceWriteFile = origWrite }()
+	projectReplaceWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		if filepath.Clean(path) == filepath.Clean(second) {
+			return errors.New("simulated write failure")
+		}
+		return writeFileAtomic(path, data, perm)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "write b.feature") {
+		t.Fatalf("expected write failure, got %v", err)
+	}
+	assertReplaceFileContains(t, first, "old.example.com")
+	assertReplaceFileContains(t, second, "old.example.com")
+}
+
+func TestReplaceInProjectRollbackFailureIsReported(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	second := writeReplaceFeature(t, dir, "b.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origWrite := projectReplaceWriteFile
+	defer func() { projectReplaceWriteFile = origWrite }()
+	projectReplaceWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		switch {
+		case filepath.Clean(path) == filepath.Clean(second):
+			return errors.New("simulated write failure")
+		case filepath.Clean(path) == filepath.Clean(first) && strings.Contains(string(data), "old.example.com"):
+			return errors.New("simulated rollback failure")
+		default:
+			return writeFileAtomic(path, data, perm)
+		}
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "rollback failed") {
+		t.Fatalf("expected rollback failure, got %v", err)
+	}
+	assertReplaceFileContains(t, first, "new.example.com")
+	assertReplaceFileContains(t, second, "old.example.com")
+}
+
+func writeReplaceFeature(t *testing.T, dir, name, url string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	content := "Р¤СѓРЅРєС†РёРѕРЅР°Р»: UI\nРЎС†РµРЅР°СЂРёР№: A\n\tР”РѕРїСѓСЃС‚РёРј РѕС‚РєСЂС‹С‚ \"https://" + url + "\"\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func openReplaceTestProject(t *testing.T, dir string) *Service {
+	t.Helper()
+	svc := NewService()
+	if _, err := svc.OpenProject(dir); err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
+
+func assertReplaceFileContains(t *testing.T, path, want string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), want) {
+		t.Fatalf("%s does not contain %q: %q", path, want, string(raw))
 	}
 }

@@ -40,3 +40,52 @@ func TestShutdownRespectsTimeout(t *testing.T) {
 	}
 	svc.activePlaywright.Done()
 }
+
+func TestRunBoundedCleanupReturnsOnDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+
+	start := time.Now()
+	ok := runBoundedCleanup(ctx, "hung-test-cleanup", func() {
+		close(started)
+		<-release
+	})
+	if ok {
+		t.Fatal("expected cleanup timeout")
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("bounded cleanup waited too long")
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("cleanup should have started before deadline")
+	}
+}
+
+func TestRunBoundedCleanupSkipsAfterDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	ok := runBoundedCleanup(ctx, "expired-test-cleanup", func() {
+		called = true
+	})
+	if ok {
+		t.Fatal("expected cleanup to be skipped")
+	}
+	if called {
+		t.Fatal("cleanup should not start after deadline")
+	}
+}
+
+func TestShutdownRepeatedWithExpiredContextDoesNotPanic(t *testing.T) {
+	svc := NewService()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	svc.Shutdown(ctx)
+	svc.Shutdown(ctx)
+}

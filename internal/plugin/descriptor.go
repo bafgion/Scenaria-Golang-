@@ -9,19 +9,33 @@ import (
 )
 
 type Descriptor struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Description string   `json:"description"`
-	Commands    []string `json:"commands"`
+	ID             string        `json:"id"`
+	Name           string        `json:"name"`
+	Version        string        `json:"version"`
+	Description    string        `json:"description"`
+	Commands       []string      `json:"commands"`
+	StructuredRuns []CommandSpec `json:"structuredRuns,omitempty"`
+	CommandSpecs   []CommandSpec `json:"commandSpecs,omitempty"`
+}
+
+type CommandSpec struct {
+	Runner string   `json:"runner"`
+	Args   []string `json:"args,omitempty"`
 }
 
 func DescriptorPath(projectRoot, pluginName string) string {
-	return filepath.Join(projectRoot, "addons", pluginName, "plugin.json")
+	path, err := descriptorPath(projectRoot, pluginName)
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 func LoadDescriptor(projectRoot, pluginName string) (Descriptor, error) {
-	path := DescriptorPath(projectRoot, pluginName)
+	path, err := descriptorPath(projectRoot, pluginName)
+	if err != nil {
+		return Descriptor{}, err
+	}
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		return Descriptor{}, fmt.Errorf("read plugin descriptor %q: %w", path, err)
@@ -36,6 +50,14 @@ func LoadDescriptor(projectRoot, pluginName string) (Descriptor, error) {
 	return desc, nil
 }
 
+func descriptorPath(projectRoot, pluginName string) (string, error) {
+	dir, err := addonPath(projectRoot, pluginName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "plugin.json"), nil
+}
+
 func IsVanessa(desc Descriptor) bool {
 	if strings.EqualFold(desc.ID, "vanessa") {
 		return true
@@ -46,9 +68,21 @@ func IsVanessa(desc Descriptor) bool {
 			return true
 		}
 	}
+	for _, cmd := range structuredCommands(desc) {
+		if strings.EqualFold(strings.TrimSpace(cmd.Runner), "va") {
+			return true
+		}
+	}
 	return false
 }
 
 func IsRunnable(desc Descriptor) bool {
-	return IsVanessa(desc) || len(desc.Commands) > 0
+	return IsVanessa(desc) || len(desc.Commands) > 0 || len(structuredCommands(desc)) > 0
+}
+
+func structuredCommands(desc Descriptor) []CommandSpec {
+	if len(desc.StructuredRuns) > 0 {
+		return desc.StructuredRuns
+	}
+	return desc.CommandSpecs
 }

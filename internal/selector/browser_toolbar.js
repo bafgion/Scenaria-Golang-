@@ -9,8 +9,11 @@
     stepCount: 0,
     phase: 'idle',
     error: '',
+    notice: '',
   };
   const queue = [];
+  let inFlight = null;
+  let nextCommandId = 1;
   let drag = null;
 
   const ICONS = {
@@ -155,7 +158,9 @@
     status.classList.toggle('paused', rec && paused);
     status.classList.toggle('error', phase === 'error');
 
-    if (phase === 'error' && state.error) {
+    if (state.notice) {
+      status.textContent = state.notice;
+    } else if (phase === 'error' && state.error) {
       status.textContent = state.error;
     } else if (rec && paused) {
       status.textContent = 'Пауза — можно выбрать элемент';
@@ -166,14 +171,15 @@
       status.textContent = 'Браузер открыт — запись по кнопке «Запись»';
     }
 
-    const busy = queue.length > 0;
+    const busy = queue.length > 0 || !!inFlight;
+    const terminalPending = hasQueuedAction('stop') || inFlight?.action === 'stop';
     host.querySelectorAll('button[data-action]').forEach((btn) => {
       const action = btn.getAttribute('data-action');
       if (action === 'record') {
         btn.disabled = rec || busy;
         btn.classList.toggle('sc-primary', !rec && !busy);
       } else if (action === 'pause') {
-        btn.disabled = !rec;
+        btn.disabled = !rec || terminalPending || busy;
       } else if (action === 'stop') {
         btn.disabled = !rec;
       } else if (action === 'picker') {
@@ -194,11 +200,43 @@
 
   function enqueueAction(action) {
     if (!action) return;
-    if (queue.length >= MAX_QUEUE) {
-      queue.shift();
+    state.notice = '';
+    if (action === 'stop') {
+      if (inFlight?.action === 'stop' || hasQueuedAction('stop')) {
+        render();
+        return inFlight?.id || queuedAction('stop')?.id || null;
+      }
+      while (queue.length >= MAX_QUEUE) {
+        const dropIndex = queue.findIndex((item) => item.action !== 'stop');
+        if (dropIndex < 0) break;
+        queue.splice(dropIndex, 1);
+      }
+      const item = { id: nextCommandId++, action };
+      queue.unshift(item);
+      render();
+      return item.id;
     }
-    queue.push(action);
+    if (inFlight?.action === action || hasQueuedAction(action)) {
+      render();
+      return inFlight?.id || queuedAction(action)?.id || null;
+    }
+    if (queue.length >= MAX_QUEUE) {
+      state.notice = 'Command queue is full';
+      render();
+      return null;
+    }
+    const item = { id: nextCommandId++, action };
+    queue.push(item);
     render();
+    return item.id;
+  }
+
+  function hasQueuedAction(action) {
+    return queue.some((item) => item.action === action);
+  }
+
+  function queuedAction(action) {
+    return queue.find((item) => item.action === action) || null;
   }
 
   function clampPosition(left, top) {
@@ -266,20 +304,49 @@
       if (patch && Object.prototype.hasOwnProperty.call(patch, 'error') && !patch.error) {
         state.error = '';
       }
+      if (patch && Object.prototype.hasOwnProperty.call(patch, 'notice') && !patch.notice) {
+        state.notice = '';
+      }
       if (patch && (patch.recording !== undefined || patch.paused !== undefined || patch.phase !== undefined)) {
         if (patch.error === undefined && prev.error && phaseAcknowledged(patch)) {
           state.error = '';
+        }
+        if (phaseAcknowledged(patch)) {
+          state.notice = '';
         }
       }
       render();
     },
     takeAction() {
-      if (queue.length === 0) return null;
-      const action = queue.shift();
+      if (inFlight || queue.length === 0) return null;
+      inFlight = queue.shift();
       render();
-      return action;
+      return { id: inFlight.id, action: inFlight.action };
     },
-    __test: { queue, state, enqueueAction, effectivePhase },
+    ackAction(id, ok) {
+      if (inFlight && (!id || inFlight.id === id)) {
+        inFlight = null;
+      }
+      if (ok !== false) {
+        state.notice = '';
+      }
+      render();
+    },
+    clearPendingActions(reason) {
+      queue.length = 0;
+      inFlight = null;
+      if (reason) state.notice = String(reason);
+      render();
+    },
+    __test: {
+      queue,
+      state,
+      enqueueAction,
+      effectivePhase,
+      pendingAction: () => inFlight,
+      ackAction(id, ok) { window.__scenariaToolbar.ackAction(id, ok); },
+      clearPendingActions(reason) { window.__scenariaToolbar.clearPendingActions(reason); },
+    },
   };
 
   function phaseAcknowledged(patch) {
