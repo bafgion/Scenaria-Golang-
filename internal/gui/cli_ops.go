@@ -17,7 +17,7 @@ type CLIOps struct {
 	runExportFn     func(args []string, out io.Writer) error
 	runImportJSONFn func(args []string, out io.Writer) error
 	runRecordFn     func(args []string, out io.Writer) error
-	runVAFn         func(args []string, out io.Writer) error
+	runVAFn         func(ctx context.Context, args []string, out io.Writer) error
 	runRunFn        func(ctx context.Context, args []string, out io.Writer) error
 }
 
@@ -29,7 +29,7 @@ func NewCLIOps() *CLIOps {
 		runExportFn:     cli.RunExportWithOutput,
 		runImportJSONFn: cli.RunImportJSONWithOutput,
 		runRecordFn:     cli.RunRecordWithOutput,
-		runVAFn:         cli.RunVAWithOutput,
+		runVAFn:         cli.RunVAContextWithOutput,
 		runRunFn:        cli.RunRunContextWithOutput,
 	}
 }
@@ -69,8 +69,8 @@ func (c *CLIOps) Record(args []string) (string, error) {
 	return runCLIWithOutput(func(out io.Writer) error { return c.runRecordFn(args, out) })
 }
 
-func (c *CLIOps) VA(args []string) (string, error) {
-	return runCLIWithOutput(func(out io.Writer) error { return c.runVAFn(args, out) })
+func (c *CLIOps) VA(ctx context.Context, args []string) (string, error) {
+	return runCLIWithOutput(func(out io.Writer) error { return c.runVAFn(ctx, args, out) })
 }
 
 func (c *CLIOps) Run(ctx context.Context, args []string) (string, error) {

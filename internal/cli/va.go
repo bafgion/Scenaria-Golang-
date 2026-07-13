@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -28,10 +29,21 @@ type vaOptions struct {
 }
 
 func RunVA(args []string) error {
-	return RunVAWithOutput(args, nil)
+	return RunVAContextWithOutput(context.Background(), args, nil)
 }
 
 func RunVAWithOutput(args []string, out io.Writer) error {
+	return RunVAContextWithOutput(context.Background(), args, out)
+}
+
+func RunVAContext(ctx context.Context, args []string) error {
+	return RunVAContextWithOutput(ctx, args, nil)
+}
+
+func RunVAContextWithOutput(ctx context.Context, args []string, out io.Writer) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
 		return printVAHelp(out)
 	}
@@ -46,7 +58,7 @@ func RunVAWithOutput(args []string, out io.Writer) error {
 	if projectRoot == "" {
 		projectRoot = paths.InferProjectRoot(opts.paths)
 	}
-	result, err := vanessa.Run(vanessa.RunRequest{
+	result, err := vanessa.RunContext(ctx, vanessa.RunRequest{
 		ProjectRoot:        projectRoot,
 		Paths:              opts.paths,
 		Tag:                opts.tag,

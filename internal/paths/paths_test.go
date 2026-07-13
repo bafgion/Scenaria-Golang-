@@ -19,7 +19,7 @@ func TestConfineToProjectRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("absolute inside: %v", err)
 	}
-	if got != filepath.Clean(inside) {
+	if !SamePath(got, inside) {
 		t.Fatalf("got %q want %q", got, inside)
 	}
 	if _, err := ConfineToProjectRoot(root, "../escape.feature"); err == nil {
@@ -34,7 +34,7 @@ func TestConfineToProjectRootAllowsDotDotPrefixNames(t *testing.T) {
 		t.Fatalf("dot-dot prefix file name should remain inside project: %v", err)
 	}
 	want := filepath.Join(root, "..hidden.feature")
-	if got != want {
+	if !SamePath(got, want) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
@@ -46,7 +46,7 @@ func TestConfineToProjectRootAllowsMissingDescendantParents(t *testing.T) {
 		t.Fatalf("missing descendant parents should be allowed for new paths: %v", err)
 	}
 	want := filepath.Join(root, "reports", "run-1", "trace.zip")
-	if got != want {
+	if !SamePath(got, want) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }

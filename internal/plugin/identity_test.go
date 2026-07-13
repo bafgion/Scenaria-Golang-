@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 func TestValidatePluginID(t *testing.T) {
@@ -53,7 +55,7 @@ func TestAddonPathIsConfinedToAddonsRoot(t *testing.T) {
 		t.Fatalf("addonPath valid id: %v", err)
 	}
 	want := filepath.Join(project, "addons", "demo.plugin")
-	if got != want {
+	if !paths.SamePath(got, want) {
 		t.Fatalf("addonPath = %q, want %q", got, want)
 	}
 	if _, err := addonPath(project, "../outside"); err == nil {

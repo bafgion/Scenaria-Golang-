@@ -1,6 +1,7 @@
 package vanessa
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -27,6 +28,13 @@ type BatchResult struct {
 }
 
 func Run(req RunRequest) (BatchResult, error) {
+	return RunContext(context.Background(), req)
+}
+
+func RunContext(ctx context.Context, req RunRequest) (BatchResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	projectRoot := req.ProjectRoot
 	if projectRoot == "" && len(req.Paths) > 0 {
 		projectRoot = filepath.Dir(req.Paths[0])
@@ -92,7 +100,7 @@ func Run(req RunRequest) (BatchResult, error) {
 		return BatchResult{}, err
 	}
 
-	cmd := buildPlatformCommand(cfg, vaPath)
+	cmd := buildPlatformCommand(ctx, cfg, vaPath)
 	processLog := filepath.Join(runDir, "process.log")
 	logFile, err := os.Create(processLog)
 	if err != nil {
@@ -125,7 +133,16 @@ func Run(req RunRequest) (BatchResult, error) {
 	for {
 		select {
 		case waitErr = <-done:
+			if ctx.Err() != nil {
+				return BatchResult{RunDir: runDir, ExitCode: -1, Error: ctx.Err().Error()}, ctx.Err()
+			}
 			goto finished
+		case <-ctx.Done():
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			<-done
+			return BatchResult{RunDir: runDir, ExitCode: -1, Error: ctx.Err().Error()}, ctx.Err()
 		case <-deadline.C:
 			_ = cmd.Process.Kill()
 			waitErr = fmt.Errorf("process timeout after %s", timeout)
@@ -180,7 +197,7 @@ finished:
 	}, nil
 }
 
-func buildPlatformCommand(cfg Settings, vaParamsPath string) *exec.Cmd {
+func buildPlatformCommand(ctx context.Context, cfg Settings, vaParamsPath string) *exec.Cmd {
 	args := []string{cfg.PlatformMode}
 	if conn := strings.TrimSpace(cfg.IBConnection); conn != "" {
 		args = append(args, conn)
@@ -194,7 +211,7 @@ func buildPlatformCommand(cfg Settings, vaParamsPath string) *exec.Cmd {
 	args = append(args, `/Execute`+cfg.EPFPath)
 	args = append(args, `/C`+vaParamsPath)
 	args = append(args, cfg.PlatformExtraArgs...)
-	return exec.Command(cfg.PlatformExecutable, args...)
+	return exec.CommandContext(ctx, cfg.PlatformExecutable, args...)
 }
 
 func ParseJUnitDir(dir string) []CaseResult {
@@ -265,8 +282,8 @@ type junitNode struct {
 }
 
 type junitCase struct {
-	Name      string       `xml:"name,attr"`
-	Classname string       `xml:"classname,attr"`
+	Name      string      `xml:"name,attr"`
+	Classname string      `xml:"classname,attr"`
 	Failure   *junitFault `xml:"failure"`
 	Error     *junitFault `xml:"error"`
 }

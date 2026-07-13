@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/bafgion/scenaria-golang/internal/paths"
 	"github.com/bafgion/scenaria-golang/internal/recorder"
 )
 
@@ -88,7 +89,7 @@ func TestResolveRecordTargetPathPrefersAppendTo(t *testing.T) {
 	}
 	got := resolveRecordTargetPath(root, req)
 	want := filepath.Join(root, "features", "existing.feature")
-	if got != want {
+	if !paths.SamePath(got, want) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }

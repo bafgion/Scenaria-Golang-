@@ -1,12 +1,15 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/bafgion/scenaria-golang/internal/vanessa"
 )
+
+var runVanessaBatch func(context.Context, vanessa.RunRequest) (vanessa.BatchResult, error) = vanessa.RunContext
 
 type VanessaCaseDTO struct {
 	Path    string `json:"path"`
@@ -78,7 +81,10 @@ func (s *Service) RunVanessaPlugin(req PluginRunRequest) VanessaRunResultDTO {
 		return VanessaRunResultDTO{Error: "open a project folder first"}
 	}
 	vReq := pluginToVanessaRun(path, req)
-	result, err := vanessa.Run(vReq)
+	plugins := s.pluginOps()
+	ctx, finish := plugins.startInvocation(vanessaInvocationName(req))
+	defer finish()
+	result, err := runVanessaBatch(ctx, vReq)
 	dto := vanessaBatchToDTO(result)
 	if err != nil && dto.Error == "" {
 		dto.Error = err.Error()

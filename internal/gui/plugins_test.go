@@ -110,6 +110,33 @@ func TestPluginServiceCancelActiveCancelsRunInvocation(t *testing.T) {
 	}
 }
 
+func TestPluginServiceCancelActiveCancelsVanessaInvocation(t *testing.T) {
+	root := t.TempDir()
+	runner := newBlockingPluginRunner()
+	svc := NewPluginService(func() string { return root }, func() pluginCLIRunner { return runner })
+
+	done := make(chan RunResult, 1)
+	go func() {
+		done <- svc.Run(PluginRunRequest{Name: "vanessa"})
+	}()
+	args := runner.waitStarted(t)
+	want := []string{"run", "--project", root}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("va args = %#v, want %#v", args, want)
+	}
+
+	svc.CancelActive()
+
+	select {
+	case result := <-done:
+		if !strings.Contains(result.Error, context.Canceled.Error()) {
+			t.Fatalf("expected context canceled result, got %+v", result)
+		}
+	case <-timeAfterTest():
+		t.Fatal("service Run did not return after Vanessa cancellation")
+	}
+}
+
 func TestPluginServiceCancelPluginOnlyCancelsMatchingInvocation(t *testing.T) {
 	root := t.TempDir()
 	writePluginDescriptorForTest(t, root, "demo", `{"id":"demo","commands":["run"]}`)
@@ -153,6 +180,49 @@ func TestPluginServiceCancelPluginOnlyCancelsMatchingInvocation(t *testing.T) {
 	}
 }
 
+func TestPluginServiceCancelPluginOnlyCancelsMatchingVanessaInvocation(t *testing.T) {
+	root := t.TempDir()
+	writePluginDescriptorForTest(t, root, "demo", `{"id":"demo","structuredRuns":[{"runner":"va","args":["run","--scenario","Demo Scenario"]}]}`)
+	writePluginDescriptorForTest(t, root, "other", `{"id":"other","structuredRuns":[{"runner":"va","args":["run","--scenario","Other Scenario"]}]}`)
+	demoRunner := newBlockingPluginRunner()
+	otherRunner := newBlockingPluginRunner()
+	svc := NewPluginService(
+		func() string { return root },
+		func() pluginCLIRunner {
+			if demoRunner.startedCount() == 0 {
+				return demoRunner
+			}
+			return otherRunner
+		},
+	)
+
+	demoDone := make(chan RunResult, 1)
+	otherDone := make(chan RunResult, 1)
+	go func() { demoDone <- svc.Run(PluginRunRequest{Name: "demo"}) }()
+	_ = demoRunner.waitStarted(t)
+	go func() { otherDone <- svc.Run(PluginRunRequest{Name: "other"}) }()
+	_ = otherRunner.waitStarted(t)
+
+	svc.CancelPlugin("demo")
+
+	select {
+	case <-demoDone:
+	case <-timeAfterTest():
+		t.Fatal("matching Vanessa invocation was not canceled")
+	}
+	select {
+	case <-otherDone:
+		t.Fatal("non-matching Vanessa invocation was canceled")
+	default:
+	}
+	svc.CancelActive()
+	select {
+	case <-otherDone:
+	case <-timeAfterTest():
+		t.Fatal("remaining Vanessa invocation was not canceled")
+	}
+}
+
 func writePluginDescriptorForTest(t *testing.T, root, name, payload string) {
 	t.Helper()
 	dir := filepath.Join(root, "addons", name)
@@ -179,11 +249,15 @@ func newBlockingPluginRunner() *blockingPluginRunner {
 	}
 }
 
-func (r *blockingPluginRunner) VA(args []string) (string, error) {
-	return "", nil
+func (r *blockingPluginRunner) VA(ctx context.Context, args []string) (string, error) {
+	return r.block(ctx, args)
 }
 
 func (r *blockingPluginRunner) Run(ctx context.Context, args []string) (string, error) {
+	return r.block(ctx, args)
+}
+
+func (r *blockingPluginRunner) block(ctx context.Context, args []string) (string, error) {
 	copied := append([]string(nil), args...)
 	r.mu.Lock()
 	r.count++

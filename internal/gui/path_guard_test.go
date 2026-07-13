@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 func TestConfineFeaturePathInsideProject(t *testing.T) {
@@ -20,8 +22,8 @@ func TestConfineFeaturePathInsideProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != inside {
-		t.Fatalf("got %q", got)
+	if !paths.SamePath(got, inside) {
+		t.Fatalf("got %q want %q", got, inside)
 	}
 }
 

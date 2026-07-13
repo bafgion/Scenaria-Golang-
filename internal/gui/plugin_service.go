@@ -11,7 +11,7 @@ import (
 )
 
 type pluginCLIRunner interface {
-	VA(args []string) (string, error)
+	VA(ctx context.Context, args []string) (string, error)
 	Run(ctx context.Context, args []string) (string, error)
 }
 
@@ -120,7 +120,9 @@ func (s *PluginService) Run(req PluginRunRequest) RunResult {
 	}
 	switch target.Runner {
 	case "va":
-		out, runErr := cli.VA(appendVanessaArgs(target.Args, req))
+		ctx, finish := s.startInvocation(name)
+		defer finish()
+		out, runErr := cli.VA(ctx, appendVanessaArgs(append([]string(nil), target.Args...), req))
 		if runErr != nil {
 			return RunResult{Output: out, Error: runErr.Error()}
 		}
@@ -212,11 +214,21 @@ func (s *PluginService) runVanessa(req PluginRunRequest) RunResult {
 		args = append(args, "--dry-run")
 	}
 	args = appendVanessaArgs(args, req)
-	out, err := cli.VA(args)
+	ctx, finish := s.startInvocation(vanessaInvocationName(req))
+	defer finish()
+	out, err := cli.VA(ctx, args)
 	if err != nil {
 		return RunResult{Output: out, Error: err.Error()}
 	}
 	return RunResult{Output: out}
+}
+
+func vanessaInvocationName(req PluginRunRequest) string {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return "vanessa"
+	}
+	return name
 }
 
 func pluginEntryDTO(projectRoot string, entry plugin.Entry) PluginEntryDTO {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bafgion/scenaria-golang/internal/paths"
 )
 
 func TestFetchAndInstallUpdatesPluginTransactionally(t *testing.T) {
@@ -81,9 +83,12 @@ func TestFetchAndInstallDescriptorIDMismatchLeavesExistingPlugin(t *testing.T) {
 
 func TestFetchAndInstallCommitRenameFailureRestoresExistingPlugin(t *testing.T) {
 	project := t.TempDir()
-	dest := filepath.Join(project, "addons", "demo")
 	createInstalledPlugin(t, project, "demo", "old")
 	if err := Install(project, "demo", "old-source"); err != nil {
+		t.Fatal(err)
+	}
+	dest, err := addonPath(project, "demo")
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,13 +101,14 @@ func TestFetchAndInstallCommitRenameFailureRestoresExistingPlugin(t *testing.T) 
 	origRename := installRename
 	defer func() { installRename = origRename }()
 	installRename = func(oldpath, newpath string) error {
-		if filepath.Clean(newpath) == filepath.Clean(dest) && strings.Contains(filepath.Clean(oldpath), filepath.Clean(filepath.Join(".scenaria", "plugin-staging"))) {
+		stagingMarker := filepath.Join(".scenaria", "plugin-staging")
+		if paths.SamePath(newpath, dest) && strings.Contains(filepath.ToSlash(filepath.Clean(oldpath)), filepath.ToSlash(stagingMarker)) {
 			return errors.New("simulated final rename failure")
 		}
 		return os.Rename(oldpath, newpath)
 	}
 
-	err := FetchAndInstall(project, "demo", zipPath)
+	err = FetchAndInstall(project, "demo", zipPath)
 	if err == nil || !strings.Contains(err.Error(), "commit plugin files") {
 		t.Fatalf("expected commit failure, got %v", err)
 	}
