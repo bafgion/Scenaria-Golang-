@@ -16,6 +16,7 @@ const (
 	asfwAny        = ^uintptr(0)
 	vkMenu         = 0x12
 	keyeventfKeyup = 0x0002
+	swShow         = 5
 	swRestore      = 9
 )
 
@@ -26,6 +27,7 @@ var (
 	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
 	procGetClassNameW            = user32.NewProc("GetClassNameW")
 	procGetWindowTextW           = user32.NewProc("GetWindowTextW")
+	procIsIconic                 = user32.NewProc("IsIconic")
 	procSetForegroundWindow      = user32.NewProc("SetForegroundWindow")
 	procAllowSetForegroundWindow = user32.NewProc("AllowSetForegroundWindow")
 	procKeybdEvent               = user32.NewProc("keybd_event")
@@ -33,13 +35,17 @@ var (
 	procBringWindowToTop         = user32.NewProc("BringWindowToTop")
 )
 
-func raiseNativeWindow(titleHint, urlHint string) error {
-	hwnd := findChromiumWindow(titleHint, urlHint)
+func raiseNativeWindow(titleHint, urlHint string, processID uint32) error {
+	hwnd := findChromiumWindow(titleHint, urlHint, processID)
 	if hwnd == 0 {
 		return fmt.Errorf("окно браузера не найдено")
 	}
 	_, _, _ = procAllowSetForegroundWindow.Call(asfwAny)
-	_, _, _ = procShowWindow.Call(uintptr(hwnd), swRestore)
+	if isMinimized(hwnd) {
+		_, _, _ = procShowWindow.Call(uintptr(hwnd), swRestore)
+	} else {
+		_, _, _ = procShowWindow.Call(uintptr(hwnd), swShow)
+	}
 	_, _, _ = procBringWindowToTop.Call(uintptr(hwnd))
 	_, _, _ = procKeybdEvent.Call(vkMenu, 0, 0, 0)
 	_, _, _ = procSetForegroundWindow.Call(uintptr(hwnd))
@@ -47,7 +53,7 @@ func raiseNativeWindow(titleHint, urlHint string) error {
 	return nil
 }
 
-func findChromiumWindow(titleHint, urlHint string) windows.Handle {
+func findChromiumWindow(titleHint, urlHint string, processID uint32) windows.Handle {
 	hint := strings.ToLower(strings.TrimSpace(titleHint))
 	ownPID := uint32(os.Getpid())
 	var best windows.Handle
@@ -59,7 +65,11 @@ func findChromiumWindow(titleHint, urlHint string) windows.Handle {
 			return 1
 		}
 		handle := windows.Handle(hwnd)
-		if windowProcessID(handle) == ownPID {
+		windowPID := windowProcessID(handle)
+		if windowPID == ownPID {
+			return 1
+		}
+		if processID != 0 && windowPID != processID {
 			return 1
 		}
 		class := windowClass(handle)
@@ -116,4 +126,9 @@ func windowTitle(hwnd windows.Handle) string {
 		return ""
 	}
 	return windows.UTF16ToString(buf[:n])
+}
+
+func isMinimized(hwnd windows.Handle) bool {
+	iconic, _, _ := procIsIconic.Call(uintptr(hwnd))
+	return iconic != 0
 }

@@ -1215,6 +1215,21 @@
       ;(window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession = async () => {
         await flushWorkspaceSession()
       }
+      ;(window as unknown as {
+        __e2eEditorState?: () => {
+          activeTab: string
+          editorText: string
+          editorTextVersion: number
+          monacoText: string | null
+          monacoUri: string | null
+        }
+      }).__e2eEditorState = () => ({
+        activeTab,
+        editorText,
+        editorTextVersion,
+        monacoText: activeTab && !isWelcome ? monaco?.getEditorTextForPath(activeTab) ?? null : null,
+        monacoUri: monaco?.getActiveModelUri?.() ?? null,
+      })
       unsubscribers.push(() => {
         delete (window as unknown as { __e2eCheckActiveTabDiskStale?: () => Promise<void> }).__e2eCheckActiveTabDiskStale
         delete (window as unknown as {
@@ -1224,6 +1239,7 @@
           __e2eLoadFeature?: (path: string, forceActivate?: boolean) => Promise<void>
         }).__e2eLoadFeature
         delete (window as unknown as { __e2eFlushSession?: () => Promise<void> }).__e2eFlushSession
+        delete (window as unknown as { __e2eEditorState?: () => unknown }).__e2eEditorState
       })
     }
     } catch (err) {
@@ -3336,7 +3352,13 @@
       if (tabAtStart) {
         diagnosticsStore.setIssuesForTab(tabAtStart, issues)
       }
-      monaco?.setMarkers(issues)
+      const hints = dialogBinds.bindEditorSettings.scenarioHints
+        ? (analysis?.hints || [])
+          .filter((h) => !diagnosticsStore.isHintDismissed(hintDismissKey(h)))
+          .filter((h) => filterScenarioHints([h], dialogBinds.bindEditorSettings).length > 0)
+        : []
+      diagnosticsStore.setHints(hints)
+      monaco?.setMarkers(issues, hints)
       if (isEditorAnalysisSnapshotVisible(textVersionAtStart, editorTextVersion)) {
         editorStore.setSteps(analysis?.steps || [], textVersionAtStart)
         monaco?.refreshInlayHints()
@@ -3347,14 +3369,6 @@
         setStatus(tr('journal.status.scenarioError'), 'error')
       } else {
         syncStepStatusFromIssues(issues)
-      }
-      if (dialogBinds.bindEditorSettings.scenarioHints) {
-        const hints = (analysis?.hints || [])
-          .filter((h) => !diagnosticsStore.isHintDismissed(hintDismissKey(h)))
-          .filter((h) => filterScenarioHints([h], dialogBinds.bindEditorSettings).length > 0)
-        diagnosticsStore.setHints(hints)
-      } else {
-        diagnosticsStore.setHints([])
       }
     } catch {
       if (generation !== diagnosticsStore.validateGeneration() || tabAtStart !== activeTab || textVersionAtStart !== editorTextVersion) return
@@ -4615,12 +4629,20 @@
   async function syncMonacoAfterMount() {
     if (!monaco) return
     if (isWelcome || !activeTab) {
-      await monaco.hydrateTab(null, editorText, editorTextVersion)
+      await hydrateEditorTabText(null, editorText, editorTextVersion)
       return
     }
     const tab = tabs.find((t) => t.path === activeTab)
     const text = tab ? tabEditorText(tab) : editorText
-    await monaco.hydrateTab(activeTab, text, editorTextVersion)
+    await hydrateEditorTabText(activeTab, text, editorTextVersion)
+  }
+
+  async function hydrateEditorTabText(path: string | null, text: string, textVersion: number) {
+    if (!monaco) return
+    monaco.hydrateTab(path, text, textVersion)
+    if (monaco.getEditorTextForPath(path) !== text) {
+      await monaco.setContent(text, { path, generation: textVersion })
+    }
   }
 
   function dismissRecorderPicker() {
@@ -4689,16 +4711,18 @@
       )
       if (!targetPath && event.op !== 'reset') return
       const isActiveTarget = isSameRecordTab(tabsSnap.activeTab, targetPath)
-      const liveEditorText = isActiveTarget
-        ? (liveEditorTextForTab(tabsSnap.activeTab) ?? editorSnap.text)
-        : editorSnap.text
+      const tab = tabsSnap.tabs.find((t) => isSameRecordTab(t.path, targetPath))
+      const sourceEditorText = isActiveTarget && tab
+        ? tabEditorText(tab)
+        : isActiveTarget
+          ? (liveEditorTextForTab(tabsSnap.activeTab) ?? editorSnap.text)
+          : editorSnap.text
       const sourceText = recordStepSourceText(
         tabsSnap.tabs,
         tabsSnap.activeTab,
         targetPath,
-        liveEditorText,
+        sourceEditorText,
       )
-      const tab = tabsSnap.tabs.find((t) => isSameRecordTab(t.path, targetPath))
       if (!tab && !sourceText && event.op !== 'reset') return
       const result = applyRecordStepEvent(sourceText, event, recorderSnap.liveRecordStepLines)
       recorderStore.setLiveRecordStepLines(result.lineByIndex)
@@ -4710,7 +4734,7 @@
       if (isActiveTarget && tabsSnap.activeTab) {
         editorStore.setTextWithBump(result.text)
         const textVersion = get(editorStore).textVersion
-        monaco?.hydrateTab(tabsSnap.activeTab, result.text, textVersion)
+        await hydrateEditorTabText(tabsSnap.activeTab, result.text, textVersion)
         void refreshEditorSteps(result.text, textVersion)
         scheduleValidateEditor(150)
         if (isUntitled(targetPath)) {

@@ -3,10 +3,19 @@ import { replaceModelText } from './editorTextSync'
 
 function mockEditor(initial: string) {
   let value = initial
+  let readOnly = false
   const undoStops: string[] = []
   const edits: string[] = []
   return {
     value: () => value,
+    readOnly: () => readOnly,
+    setReadOnly: (next: boolean) => {
+      readOnly = next
+    },
+    getRawOptions: () => ({ readOnly }),
+    updateOptions: (options: { readOnly?: boolean }) => {
+      if (typeof options.readOnly === 'boolean') readOnly = options.readOnly
+    },
     pushUndoStop: () => undoStops.push('stop'),
     executeEdits: (source: string, ops: Array<{ text: string }>) => {
       edits.push(source)
@@ -34,5 +43,14 @@ describe('replaceModelText', () => {
     expect(editor.value()).toBe('new')
     expect(editor.edits).toEqual(['test'])
     expect(editor.undoStops).toHaveLength(2)
+  })
+
+  it('temporarily disables readOnly for external replacements', () => {
+    const editor = mockEditor('old')
+    editor.setReadOnly(true)
+    expect(replaceModelText(editor as never, 'new', 'record-sync')).toBe(true)
+    expect(editor.value()).toBe('new')
+    expect(editor.readOnly()).toBe(true)
+    expect(editor.edits).toEqual(['record-sync'])
   })
 })

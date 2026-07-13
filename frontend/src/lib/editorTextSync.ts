@@ -9,14 +9,25 @@ export function replaceModelText(
   const model = editor.getModel()
   if (!model) return false
   if (model.getValue() === text) return false
-  editor.pushUndoStop()
-  editor.executeEdits(source, [
-    {
-      range: model.getFullModelRange(),
-      text,
-      forceMoveMarkers: true,
-    },
-  ])
-  editor.pushUndoStop()
+  const rawOptions = typeof editor.getRawOptions === 'function' ? editor.getRawOptions() : {}
+  const wasReadOnly = rawOptions.readOnly === true
+  if (wasReadOnly) {
+    editor.updateOptions({ readOnly: false })
+  }
+  try {
+    editor.pushUndoStop()
+    editor.executeEdits(source, [
+      {
+        range: model.getFullModelRange(),
+        text,
+        forceMoveMarkers: true,
+      },
+    ])
+    editor.pushUndoStop()
+  } finally {
+    if (wasReadOnly) {
+      editor.updateOptions({ readOnly: true })
+    }
+  }
   return true
 }

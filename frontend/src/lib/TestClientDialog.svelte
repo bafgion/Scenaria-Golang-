@@ -188,19 +188,27 @@
         {/if}
       </div>
     </div>
-    <div class="modal-actions">
-      <button type="button" class="primary" on:click={captureFromBrowser} disabled={!canCapture} title={browserOpen ? '' : tr('dialogs.testClient.captureTitle')}>
-        {tr('dialogs.testClient.capture')}
-      </button>
-      <button type="button" class="primary" on:click={saveClient} disabled={!canSave}>{tr('dialogs.common.save')}</button>
-      <button type="button" on:click={deleteClient} disabled={!selectedName || isNew || busy}>{tr('dialogs.common.delete')}</button>
-      <button type="button" class="primary" on:click={() => onUse(selectedName)} disabled={!canUse}>{tr('dialogs.testClient.useOnRun')}</button>
-      <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
+    <div class="modal-actions test-client-actions">
+      <div class="action-group primary-actions">
+        <button type="button" class="primary" on:click={captureFromBrowser} disabled={!canCapture} title={browserOpen ? '' : tr('dialogs.testClient.captureTitle')}>
+          {tr('dialogs.testClient.capture')}
+        </button>
+        <button type="button" class="primary" on:click={saveClient} disabled={!canSave}>{tr('dialogs.common.save')}</button>
+        <button type="button" class="primary use-button" on:click={() => onUse(selectedName)} disabled={!canUse}>{tr('dialogs.testClient.useOnRun')}</button>
+      </div>
+      <div class="action-group secondary-actions">
+        <button type="button" on:click={deleteClient} disabled={!selectedName || isNew || busy}>{tr('dialogs.common.delete')}</button>
+        <button type="button" on:click={onClose}>{tr('dialogs.common.close')}</button>
+      </div>
     </div>
   </div>
 </div>
 
 <style>
+  .modal.test-client-dialog {
+    width: min(640px, 96vw);
+  }
+
   .test-client-body {
     display: grid;
     grid-template-columns: 180px 1fr;
@@ -215,8 +223,14 @@
   }
 
   .new-btn {
-    border-style: dashed;
+    border-top: 1px dashed var(--color-border);
+    border-bottom: none;
     margin-top: 4px;
+  }
+
+  :global(.client-list .client-item:focus-visible) {
+    outline: 1px solid var(--color-accent, #1e88e5);
+    outline-offset: -2px;
   }
 
   .client-editor {
@@ -252,5 +266,51 @@
     font-size: 12px;
     line-height: 1.45;
     color: var(--color-muted);
+  }
+
+  .test-client-actions {
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .action-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .primary-actions {
+    flex: 1 1 360px;
+    justify-content: flex-start;
+  }
+
+  .secondary-actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+  }
+
+  .use-button {
+    min-width: 192px;
+  }
+
+  @media (max-width: 620px) {
+    .test-client-body {
+      grid-template-columns: 1fr;
+    }
+
+    .test-client-actions,
+    .primary-actions,
+    .secondary-actions {
+      justify-content: stretch;
+    }
+
+    .action-group {
+      width: 100%;
+    }
+
+    .action-group button {
+      flex: 1 1 160px;
+    }
   }
 </style>

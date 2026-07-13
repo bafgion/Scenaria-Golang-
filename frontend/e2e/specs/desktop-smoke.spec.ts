@@ -228,7 +228,8 @@ test('первый Ctrl+Enter открывает диалог запуска', a
 
 test('экспорт: превью текущего сценария', async () => {
   const page = await connectDesktop()
-  await createNewScenario(page)
+  await ensureExamplesProject(page)
+  await clickCatalogFeature(page, 0)
   await openMenuItem(page, 'Сценарий', 'Экспорт…')
   const dialog = page.getByRole('dialog', { name: 'Экспорт сценария' })
   await expect(dialog).toBeVisible()

@@ -142,11 +142,15 @@
   const withRecordIdentity = (event, payload) => {
     if (!payload || typeof payload !== 'object') return payload
     if (!event.startsWith('record-') && !event.startsWith('browser-') && event !== 'toolbar-picker') return payload
+    const recordStepPayload =
+      event === 'record-step' && !payload.op && ('line' in payload || 'index' in payload)
+        ? { op: 'upsert', ...payload }
+        : payload
     return {
-      ...payload,
-      recordSessionId: payload.recordSessionId || liveRecord.recordSessionId,
-      browserSessionId: payload.browserSessionId || liveRecord.browserSessionId,
-      targetPath: payload.targetPath || liveRecord.targetPath,
+      ...recordStepPayload,
+      recordSessionId: recordStepPayload.recordSessionId || liveRecord.recordSessionId,
+      browserSessionId: recordStepPayload.browserSessionId || liveRecord.browserSessionId,
+      targetPath: recordStepPayload.targetPath || liveRecord.targetPath,
     }
   }
 
@@ -295,6 +299,9 @@
       }
     }, 80)
   }
+
+  const recordTargetForRequest = (req = {}, fallback = '') =>
+    req.appendTo || req.output || liveRecord.targetPath || fallback
 
   const postRecordSteps = [
     { index: 0, line: 'нажимаю "#login"' },
@@ -675,15 +682,13 @@
         liveRecord.captureEver = true
         liveRecord.paused = false
         liveRecord.steps = mode === 'record-resume' ? [...resumeRecordSteps] : [...postRecordSteps]
-        const recordOutput =
-          mode === 'record-resume'
-            ? ''
-            : req.output || (mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : `${E2E_PROJECT}/smoke.feature`)
-        liveRecord.targetPath = mode === 'record-resume' ? '' : recordOutput
+        const recordOutput = req.output || (mode === 'demo-video' ? `${E2E_PROJECT}/examples/smoke.feature` : '')
+        liveRecord.targetPath = recordTargetForRequest(req)
         emitE2E('browser-opened', {})
         emitE2E('record-started', {
           resume: false,
           output: recordOutput,
+          targetPath: liveRecord.targetPath,
           recordSessionId: liveRecord.recordSessionId,
           browserSessionId: liveRecord.browserSessionId,
         })
@@ -700,14 +705,14 @@
       liveRecord.steps = []
       liveRecord.targetPath = req.output || `${E2E_PROJECT}/examples/smoke.feature`
       emitE2E('browser-opened', {})
-      emitE2E('record-started', { resume: false, output: liveRecord.targetPath })
+      emitE2E('record-started', { resume: false, output: liveRecord.targetPath, targetPath: liveRecord.targetPath })
     },
     BeginRecordingCapture: async () => {
       if (!liveRecord.browserOpen) {
         throw new Error('браузер не открыт')
       }
       if (liveRecord.recording) {
-        emitE2E('record-started', { append: true, sync: true })
+        emitE2E('record-started', { append: true, sync: true, targetPath: liveRecord.targetPath })
         return
       }
       const mode = e2eMode()
@@ -716,10 +721,11 @@
       liveRecord.paused = false
       if (mode === 'record-resume') {
         liveRecord.steps = [...resumeRecordSteps]
-        liveRecord.targetPath = ''
+        liveRecord.targetPath = recordTargetForRequest()
         emitE2E('record-started', {
           append: true,
           resume: true,
+          targetPath: liveRecord.targetPath,
           recordSessionId: liveRecord.recordSessionId,
           browserSessionId: liveRecord.browserSessionId,
         })
@@ -728,13 +734,14 @@
       }
       liveRecord.steps = []
       liveRecord.targetPath = liveRecord.targetPath || `${E2E_PROJECT}/smoke.feature`
-      emitE2E('record-started', { append: true })
+      emitE2E('record-started', { append: true, targetPath: liveRecord.targetPath })
     },
     PollBrowserSession: async () => ({
       browserOpen: liveRecord.browserOpen,
       recording: liveRecord.recording,
       paused: liveRecord.paused,
       stepCount: liveRecord.recording ? liveRecord.steps.length : 0,
+      browserSessionId: liveRecord.browserSessionId,
     }),
     RecordBaseline: recordBaselineImpl,
     StartRecordBaseline: (req) =>
@@ -763,7 +770,7 @@
         liveRecord.paused = false
         liveRecord.captureEver = false
         liveRecord.steps = []
-        emitE2E('record-finished', { output: 'Запись сохранена', error: '' })
+        emitE2E('record-finished', { output: 'Запись сохранена', error: '', targetPath: liveRecord.targetPath })
         return
       }
       liveRecord.browserOpen = false
@@ -779,7 +786,7 @@
         liveRecord.paused = false
         liveRecord.captureEver = false
         liveRecord.steps = []
-        emitE2E('record-finished', { output: 'Запись сохранена', error: '' })
+        emitE2E('record-finished', { output: 'Запись сохранена', error: '', targetPath: liveRecord.targetPath })
         return
       }
       if (!liveRecord.browserOpen) {
@@ -789,7 +796,7 @@
       liveRecord.paused = false
       liveRecord.captureEver = false
       liveRecord.steps = []
-      emitE2E('record-stopped', null)
+      emitE2E('record-stopped', { targetPath: liveRecord.targetPath })
     },
     FocusBrowser: async () => {
       focusBrowserCalls += 1

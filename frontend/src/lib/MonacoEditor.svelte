@@ -484,8 +484,12 @@
     editor.focus()
   }
 
-  export function setMarkers(issues: MarkerIssue[]) {
+  export function setMarkers(issues: MarkerIssue[], hintsOverride?: gui.ScenarioHintDTO[]) {
     validationMarkerIssues = issues
+    if (hintsOverride && editor?.getModel() && monacoApi) {
+      applyEditorMarkers(monacoApi, editor.getModel()!, validationMarkerIssues, hintsOverride)
+      return
+    }
     syncEditorMarkers()
   }
 

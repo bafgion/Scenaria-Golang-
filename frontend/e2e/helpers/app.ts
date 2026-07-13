@@ -100,6 +100,17 @@ export function editorLine(page: Page, text: string | RegExp) {
   return page.locator('.workspace .monaco-editor').getByText(text)
 }
 
+export async function expectEditorTextContains(page: Page, text: string) {
+  await expect
+    .poll(async () => {
+      return await page.evaluate(() => {
+        const state = (window as unknown as { __e2eEditorState?: () => { editorText?: string; monacoText?: string | null } }).__e2eEditorState?.()
+        return state?.monacoText ?? state?.editorText ?? ''
+      })
+    }, { timeout: 10_000 })
+    .toContain(text)
+}
+
 export async function openMenuItem(page: Page, menu: string, item: string | RegExp, opts?: { exact?: boolean }) {
   await page.locator('.menubar .menu-trigger', { hasText: menu }).click()
   await page

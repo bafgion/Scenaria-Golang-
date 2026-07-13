@@ -24,7 +24,7 @@ func hostFromURL(raw string) string {
 func scoreChromiumTitle(title, titleHint, urlHint string) int {
 	lower := strings.ToLower(strings.TrimSpace(title))
 	if lower == "" {
-		return 1
+		return 0
 	}
 	titleHint = strings.ToLower(strings.TrimSpace(titleHint))
 	if titleHint != "" && strings.Contains(lower, titleHint) {
@@ -36,5 +36,5 @@ func scoreChromiumTitle(title, titleHint, urlHint string) int {
 	if strings.Contains(lower, "chromium") {
 		return 10
 	}
-	return 2
+	return 0
 }

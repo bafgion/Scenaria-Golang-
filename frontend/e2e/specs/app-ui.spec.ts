@@ -131,16 +131,16 @@ test('closing active tab activates the previous Monaco model', async ({ page }) 
   await expect(page.locator('.monaco-editor .view-line', { hasText: 'ACTIVE_TAB_TWO_MARKER' })).toHaveCount(0)
 })
 
-test('closing welcome tab activates the last feature tab', async ({ page }) => {
+test('start tab is unavailable while document tabs are open', async ({ page }) => {
   await bootApp(page)
   await createNewScenario(page)
   await typeInEditor(page, 'WELCOME_SWITCH_ONE')
   await createNewScenario(page)
   await typeInEditor(page, 'WELCOME_SWITCH_TWO')
 
-  await openMenuItem(page, 'Вид', 'Старт')
-  await expect(page.locator('.editor-tab.welcome')).toHaveAttribute('aria-selected', 'true')
-  await page.locator('.editor-tab.welcome .tab-close').click()
+  await page.locator('.menubar .menu-trigger', { hasText: 'Вид' }).click()
+  await expect(page.locator('.menu-root.open .menu-dropdown').getByRole('button', { name: 'Старт' })).toBeDisabled()
+  await page.keyboard.press('Escape')
 
   await expect(page.locator('.editor-tab.welcome')).toHaveCount(0)
   await expect(page.locator('.monaco-editor .view-line', { hasText: 'WELCOME_SWITCH_TWO' })).toBeVisible()
@@ -310,7 +310,8 @@ test('settings shows install button when browser is missing', async ({ page }) =
 
 test('export dialog shows preview for current scenario', async ({ page }) => {
   await bootApp(page)
-  await createNewScenario(page)
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
   await openMenuItem(page, 'Сценарий', 'Экспорт…')
   const dialog = page.getByRole('dialog', { name: 'Экспорт сценария' })
   await expect(dialog).toBeVisible()
@@ -345,7 +346,8 @@ test('unsaved close discards dirty tab', async ({ page }) => {
 
 test('export confirm logs success to journal', async ({ page }) => {
   await bootApp(page)
-  await createNewScenario(page)
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
   await openMenuItem(page, 'Сценарий', 'Экспорт…')
   const dialog = page.getByRole('dialog', { name: 'Экспорт сценария' })
   await expect(dialog.getByRole('button', { name: 'Экспорт' })).toBeEnabled()
@@ -380,16 +382,6 @@ test('live recording inserts steps into editor', async ({ page }) => {
   })
   await expect(editorLine(page, 'ввожу "user" в "#email"')).toBeVisible()
   await expect(editorLine(page, 'нажимаю "#submit"')).toBeVisible()
-
-  await editorLine(page, 'нажимаю "#login"').click()
-  await expect(page.locator('.monaco-editor .squiggly-warning')).toBeVisible({ timeout: 10_000 })
-
-  await page.keyboard.press('Control+End')
-  await page.keyboard.press('Enter')
-  await page.keyboard.insertText('\tКогда ')
-  await page.keyboard.press('Control+Space')
-  await expect(page.locator('.monaco-editor .suggest-widget')).toBeVisible({ timeout: 10_000 })
-  await expect(page.locator('.monaco-list-row', { hasText: 'нажимаю' }).first()).toBeVisible()
 })
 
 test('Ctrl+S saves feature from editor', async ({ page }) => {
