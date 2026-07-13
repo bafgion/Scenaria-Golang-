@@ -39,6 +39,44 @@ func TestFetchAndInstallUpdatesPluginTransactionally(t *testing.T) {
 	if len(plugins) != 1 || plugins[0].Name != "demo" || plugins[0].Source != zipPath {
 		t.Fatalf("registry not updated: %#v", plugins)
 	}
+	assertNoBackupDirs(t, project)
+}
+
+func TestFetchAndInstallBackupCleanupFailureDoesNotFailSuccessfulUpdate(t *testing.T) {
+	project := t.TempDir()
+	createInstalledPlugin(t, project, "demo", "old")
+	if err := Install(project, "demo", "old-source"); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath := filepath.Join(t.TempDir(), "new.zip")
+	writePluginZipWithFiles(t, zipPath, map[string]string{
+		"plugin.json": `{"id":"demo","name":"Demo"}`,
+		"new.txt":     "new",
+	})
+
+	origRemoveAll := installRemoveAll
+	defer func() { installRemoveAll = origRemoveAll }()
+	backupRemoveCalls := 0
+	installRemoveAll = func(path string) error {
+		if strings.Contains(filepath.ToSlash(filepath.Clean(path)), "/.scenaria/plugin-backups/") {
+			backupRemoveCalls++
+			if backupRemoveCalls == 2 {
+				return errors.New("simulated backup cleanup failure")
+			}
+		}
+		return os.RemoveAll(path)
+	}
+
+	if err := FetchAndInstall(project, "demo", zipPath); err != nil {
+		t.Fatalf("successful update must not fail when final backup cleanup fails: %v", err)
+	}
+	assertFileContent(t, filepath.Join(project, "addons", "demo", "new.txt"), "new")
+	assertRegistrySource(t, project, "demo", zipPath)
+	if backupRemoveCalls != 2 {
+		t.Fatalf("expected prepare and final backup cleanup attempts, got %d", backupRemoveCalls)
+	}
+	assertBackupDirContaining(t, project, "demo-", "old.txt")
 }
 
 func TestFetchAndInstallMissingDescriptorLeavesExistingPlugin(t *testing.T) {
@@ -237,4 +275,38 @@ func assertNoStagingDirs(t *testing.T, project string) {
 	if len(entries) != 0 {
 		t.Fatalf("expected no staging dirs, got %v", entries)
 	}
+}
+
+func assertNoBackupDirs(t *testing.T, project string) {
+	t.Helper()
+	backupRoot := filepath.Join(project, ".scenaria", "plugin-backups")
+	entries, err := os.ReadDir(backupRoot)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected no backup dirs, got %v", entries)
+	}
+}
+
+func assertBackupDirContaining(t *testing.T, project, prefix, fileName string) {
+	t.Helper()
+	backupRoot := filepath.Join(project, ".scenaria", "plugin-backups")
+	entries, err := os.ReadDir(backupRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(backupRoot, entry.Name(), fileName)); err != nil {
+			t.Fatalf("backup %s should contain %s: %v", entry.Name(), fileName, err)
+		}
+		return
+	}
+	t.Fatalf("expected backup dir with prefix %q in %s", prefix, backupRoot)
 }

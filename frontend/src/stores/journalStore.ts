@@ -15,8 +15,27 @@ export const defaultJournalState: JournalState = {
   statusTone: 'normal',
 }
 
+function redactJournalState(state: JournalState): JournalState {
+  return {
+    ...state,
+    logText: redactSecrets(state.logText),
+    statusMessage: redactSecrets(state.statusMessage),
+  }
+}
+
+function redactJournalPatch(partial: Partial<JournalState>): Partial<JournalState> {
+  const safe = { ...partial }
+  if (safe.logText !== undefined) {
+    safe.logText = redactSecrets(safe.logText)
+  }
+  if (safe.statusMessage !== undefined) {
+    safe.statusMessage = redactSecrets(safe.statusMessage)
+  }
+  return safe
+}
+
 export function createJournalStore(initial: JournalState = defaultJournalState) {
-  const store = writable<JournalState>(initial)
+  const store = writable<JournalState>(redactJournalState(initial))
   return {
     subscribe: store.subscribe,
     appendLog(line: string) {
@@ -30,7 +49,8 @@ export function createJournalStore(initial: JournalState = defaultJournalState) 
       store.update((s) => ({ ...s, statusMessage: redactSecrets(msg), statusTone: tone }))
     },
     patch(partial: Partial<JournalState>) {
-      store.update((s) => ({ ...s, ...partial }))
+      const safePartial = redactJournalPatch(partial)
+      store.update((s) => ({ ...s, ...safePartial }))
     },
     clearLog() {
       store.update((s) => ({ ...s, logText: '' }))

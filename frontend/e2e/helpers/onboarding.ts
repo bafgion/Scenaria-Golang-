@@ -9,6 +9,7 @@ export const TOUR_TOTAL = 8
 export async function restartOnboardingTour(page: Page): Promise<void> {
   await dismissBlockingDialogs(page)
   await dismissTourIfVisible(page)
+  await page.keyboard.press('Escape')
   await openMenuItem(page, 'Справка', 'Обучение…')
   await expect(page.getByText('Шаг 1 из 8')).toBeVisible({ timeout: 20_000 })
 }

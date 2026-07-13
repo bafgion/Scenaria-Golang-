@@ -42,6 +42,8 @@ export const journal = {
   },
   session: {
     projectNotFound: 'Session: project not found — {path}',
+    untitledRecoveryUnavailable:
+      'Could not update crash recovery for unsaved documents. Use Save As to protect your changes.',
   },
   project: {
     opened: 'Project opened: {path}',
@@ -191,6 +193,7 @@ export const journal = {
     vanessaError: 'Vanessa error',
     vanessaDone: 'Vanessa finished',
     sessionProjectNotFound: 'Session project not found',
+    untitledRecoveryUnavailable: 'Unsaved recovery unavailable',
     examplesOpened: 'Examples opened — select a scenario',
     recordingActive: 'Recording active',
     saved: 'Saved',

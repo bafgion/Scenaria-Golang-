@@ -118,6 +118,136 @@ func TestReplaceInProjectWriteFailureRollsBackCommittedFiles(t *testing.T) {
 	assertReplaceFileContains(t, second, "old.example.com")
 }
 
+func TestReplaceInProjectExternalChangeBeforeFirstCommitAbortsWithoutOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	second := writeReplaceFeature(t, dir, "b.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origRead := projectReplaceReadFile
+	origWrite := projectReplaceWriteFile
+	defer func() {
+		projectReplaceReadFile = origRead
+		projectReplaceWriteFile = origWrite
+	}()
+	reads := map[string]int{}
+	writes := 0
+	projectReplaceReadFile = func(path string) ([]byte, error) {
+		clean := filepath.Clean(path)
+		reads[clean]++
+		if clean == filepath.Clean(first) && reads[clean] == 2 {
+			if err := os.WriteFile(first, []byte("external same size edit old.example.com\n"), 0o644); err != nil {
+				return nil, err
+			}
+		}
+		return os.ReadFile(path)
+	}
+	projectReplaceWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		writes++
+		return writeFileAtomic(path, data, perm)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "file changed externally: a.feature") {
+		t.Fatalf("expected external modification error, got %v", err)
+	}
+	if writes != 0 {
+		t.Fatalf("expected no writes after first-file conflict, got %d", writes)
+	}
+	assertReplaceFileContains(t, first, "external same size edit old.example.com")
+	assertReplaceFileContains(t, second, "old.example.com")
+}
+
+func TestReplaceInProjectExternalChangeBeforeLaterCommitRollsBackCommittedFiles(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	second := writeReplaceFeature(t, dir, "b.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origRead := projectReplaceReadFile
+	defer func() { projectReplaceReadFile = origRead }()
+	reads := map[string]int{}
+	projectReplaceReadFile = func(path string) ([]byte, error) {
+		clean := filepath.Clean(path)
+		reads[clean]++
+		if clean == filepath.Clean(second) && reads[clean] == 2 {
+			if err := os.WriteFile(second, []byte("external later edit old.example.com\n"), 0o644); err != nil {
+				return nil, err
+			}
+		}
+		return os.ReadFile(path)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "file changed externally: b.feature") {
+		t.Fatalf("expected external modification error, got %v", err)
+	}
+	assertReplaceFileContains(t, first, "old.example.com")
+	assertReplaceFileContains(t, second, "external later edit old.example.com")
+}
+
+func TestReplaceInProjectExternalSameSizeEditIsDetected(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origRead := projectReplaceReadFile
+	defer func() { projectReplaceReadFile = origRead }()
+	reads := map[string]int{}
+	projectReplaceReadFile = func(path string) ([]byte, error) {
+		clean := filepath.Clean(path)
+		reads[clean]++
+		if clean == filepath.Clean(first) && reads[clean] == 2 {
+			raw, err := os.ReadFile(first)
+			if err != nil {
+				return nil, err
+			}
+			changed := strings.Replace(string(raw), "old.example.com", "alt.example.com", 1)
+			if len(changed) != len(string(raw)) {
+				return nil, errors.New("test setup expected same-size edit")
+			}
+			if err := os.WriteFile(first, []byte(changed), 0o644); err != nil {
+				return nil, err
+			}
+		}
+		return os.ReadFile(path)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "file changed externally: a.feature") {
+		t.Fatalf("expected same-size external modification error, got %v", err)
+	}
+	assertReplaceFileContains(t, first, "alt.example.com")
+}
+
+func TestReplaceInProjectExternalDeleteBeforeCommitAborts(t *testing.T) {
+	dir := t.TempDir()
+	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")
+	svc := openReplaceTestProject(t, dir)
+
+	origRead := projectReplaceReadFile
+	defer func() { projectReplaceReadFile = origRead }()
+	reads := map[string]int{}
+	projectReplaceReadFile = func(path string) ([]byte, error) {
+		clean := filepath.Clean(path)
+		reads[clean]++
+		if clean == filepath.Clean(first) && reads[clean] == 2 {
+			if err := os.Remove(first); err != nil {
+				return nil, err
+			}
+		}
+		return os.ReadFile(path)
+	}
+
+	_, err := svc.ReplaceInProject(ProjectReplaceRequest{Find: "old.example.com", Replace: "new.example.com"})
+	if err == nil || !strings.Contains(err.Error(), "verify a.feature before replace") {
+		t.Fatalf("expected verify failure after external delete, got %v", err)
+	}
+	if _, statErr := os.Stat(first); !os.IsNotExist(statErr) {
+		t.Fatalf("externally deleted file should remain deleted, stat err=%v", statErr)
+	}
+}
+
 func TestReplaceInProjectRollbackFailureIsReported(t *testing.T) {
 	dir := t.TempDir()
 	first := writeReplaceFeature(t, dir, "a.feature", "old.example.com")

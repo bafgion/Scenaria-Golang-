@@ -43,6 +43,8 @@ export const journal = {
   },
   session: {
     projectNotFound: 'Сессия: проект не найден — {path}',
+    untitledRecoveryUnavailable:
+      'Не удалось обновить аварийное восстановление несохранённых документов. Используйте «Сохранить как», чтобы защитить изменения.',
   },
   project: {
     opened: 'Проект открыт: {path}',
@@ -193,6 +195,7 @@ export const journal = {
     vanessaError: 'Ошибка Vanessa',
     vanessaDone: 'Vanessa завершён',
     sessionProjectNotFound: 'Проект сессии не найден',
+    untitledRecoveryUnavailable: 'Восстановление несохранённых недоступно',
     examplesOpened: 'Примеры открыты — выберите сценарий',
     recordingActive: 'Запись активна',
     saved: 'Сохранено',

@@ -71,6 +71,26 @@ export function hasRestorableWorkspaceSession(s: Partial<gui.AppSettingsDTO> | n
 }
 
 export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
+  let untitledRecoveryWarningShown = false
+  let untitledRecoveryDegraded = false
+
+  function hasUntitledTabs(): boolean {
+    return ctx.getTabs().some((tab) => ctx.isUntitled(tab.path))
+  }
+
+  function handleUntitledRecoveryResult(ok: boolean, attempted = hasUntitledTabs()) {
+    if (ok) {
+      untitledRecoveryDegraded = false
+      return
+    }
+    if (!attempted) return
+    untitledRecoveryDegraded = true
+    if (untitledRecoveryWarningShown) return
+    untitledRecoveryWarningShown = true
+    ctx.appendLog(ctx.tr('journal.session.untitledRecoveryUnavailable'))
+    ctx.setStatus(ctx.tr('journal.status.untitledRecoveryUnavailable'), 'error')
+  }
+
   function buildSettingsDTO(): gui.AppSettingsDTO {
     ctx.syncActiveTabContent()
     const tabs = ctx.getTabs()
@@ -96,20 +116,20 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
     dialogBinds.flushRecorderPrefsBindLocals()
     dialogBinds.flushRecordFormBindLocals()
     dialogBinds.flushSettingsBindLocals()
-    journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage)
+    handleUntitledRecoveryResult(journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage))
     await ctx.saveSettings(buildSettingsDTO())
   }
 
   function journalCurrentUntitledTabs() {
-    journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage)
+    handleUntitledRecoveryResult(journalUntitledTabs(ctx.getTabs(), ctx.getActiveTab(), ctx.getEditorText, ctx.recoveryStorage))
   }
 
   function clearUntitledJournalPath(path: string) {
-    clearUntitledRecoveryPath(path, ctx.recoveryStorage)
+    handleUntitledRecoveryResult(clearUntitledRecoveryPath(path, ctx.recoveryStorage), ctx.isUntitled(path))
   }
 
   function clearUntitledJournal() {
-    clearUntitledRecoveryAll(ctx.recoveryStorage)
+    handleUntitledRecoveryResult(clearUntitledRecoveryAll(ctx.recoveryStorage), untitledRecoveryDegraded || hasUntitledTabs())
   }
 
   async function autosaveDirtyDrafts() {
@@ -184,18 +204,22 @@ export function createWorkspaceSessionController(ctx: WorkspaceSessionContext) {
     }
 
     if (proj) {
-      const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
-      if (!resolvedProj) {
-        await activateRestoredTab()
-        return
-      }
+      let projectForLog = proj
       try {
+        const resolvedProj = (await ctx.resolveProjectPath(proj)).trim()
+        projectForLog = resolvedProj || proj
+        if (!resolvedProj) {
+          ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: projectForLog }))
+          ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
+          await activateRestoredTab()
+          return
+        }
         const info = await ctx.openProject(resolvedProj)
         ctx.applyProjectScan(info, resolvedProj)
         const clients = await Promise.resolve(ctx.listTestClients()).catch((): string[] => [])
         ctx.stores.testClientStore.setClients(clients ?? [])
       } catch {
-        ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: resolvedProj }))
+        ctx.appendLog(ctx.tr('journal.session.projectNotFound', { path: projectForLog }))
         ctx.setStatus(ctx.tr('journal.status.sessionProjectNotFound'), 'error')
         await activateRestoredTab()
         return

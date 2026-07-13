@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bafgion/scenaria-golang/internal/logx"
 )
 
 // MaxPluginDownloadBytes caps remote plugin zip downloads (100 MiB).
@@ -276,7 +278,13 @@ func commitPluginInstall(projectRoot, name, source, staging, dest string) error 
 		return err
 	}
 	if hadExisting {
-		_ = installRemoveAll(backup)
+		if err := installRemoveAll(backup); err != nil && !os.IsNotExist(err) {
+			logx.Warn("plugin backup cleanup failed after successful install",
+				"plugin", name,
+				"backup", filepath.Base(backup),
+				"error", err,
+			)
+		}
 	}
 	return nil
 }

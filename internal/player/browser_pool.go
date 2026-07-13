@@ -21,9 +21,11 @@ type browserPool struct {
 }
 
 type browserPoolSlot struct {
-	session *browserSession
-	stop    func()
-	index   int
+	session  *browserSession
+	stop     func()
+	stopOnce sync.Once
+	index    int
+	retired  bool
 }
 
 func newPoolSlot(ctx context.Context, options PlaywrightExecutorOptions, index int) (*browserPoolSlot, error) {
@@ -70,24 +72,29 @@ func (p *browserPool) acquire(ctx context.Context) (*browserPoolSlot, error) {
 	if p == nil {
 		return nil, fmt.Errorf("browser pool is nil")
 	}
-	p.mu.Lock()
-	closed := p.closed
-	exhausted := p.retired >= p.size
-	p.mu.Unlock()
-	if closed {
-		return nil, fmt.Errorf("browser pool is closed")
-	}
-	if exhausted {
-		return nil, fmt.Errorf("browser pool has no healthy slots")
-	}
-	select {
-	case slot, ok := <-p.slots:
-		if !ok {
+	for {
+		p.mu.Lock()
+		closed := p.closed
+		exhausted := p.retired >= p.size
+		p.mu.Unlock()
+		if closed {
 			return nil, fmt.Errorf("browser pool is closed")
 		}
-		return slot, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		if exhausted {
+			return nil, fmt.Errorf("browser pool has no healthy slots")
+		}
+		select {
+		case slot, ok := <-p.slots:
+			if !ok {
+				return nil, fmt.Errorf("browser pool is closed")
+			}
+			if p.slotRetired(slot) {
+				continue
+			}
+			return slot, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
 
@@ -106,9 +113,7 @@ func (p *browserPool) release(
 	closed := p.closed
 	p.mu.Unlock()
 	if closed {
-		if slot.stop != nil {
-			slot.stop()
-		}
+		slot.stopWorker()
 		return
 	}
 
@@ -140,10 +145,10 @@ func (p *browserPool) release(
 				"case_id", runCase.CaseID,
 				"scenario", runCase.Name,
 			)
-			if slot.stop != nil {
-				slot.stop()
-			}
+			slot.stopWorker()
+			return
 		}
+		p.retireSlot(slot, fmt.Errorf("browser pool slot return rejected: slot channel is full"))
 		return
 	}
 }
@@ -174,6 +179,9 @@ func (p *browserPool) returnSlot(slot *browserPoolSlot) (bool, bool) {
 	if p.closed {
 		return false, true
 	}
+	if slot.retired {
+		return false, false
+	}
 	select {
 	case p.slots <- slot:
 		return true, false
@@ -187,15 +195,15 @@ func (slot *browserPoolSlot) replaceSession(ctx context.Context, options Playwri
 	if slot == nil {
 		return fmt.Errorf("pool slot is nil")
 	}
-	if slot.stop != nil {
-		slot.stop()
-	}
+	slot.stopWorker()
 	next, err := newPoolSlot(ctx, options, slot.index)
 	if err != nil {
 		return err
 	}
 	slot.session = next.session
 	slot.stop = next.stop
+	slot.stopOnce = sync.Once{}
+	slot.retired = false
 	return nil
 }
 
@@ -203,18 +211,27 @@ func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
 	if p == nil || slot == nil {
 		return
 	}
-	if slot.stop != nil {
-		slot.stop()
-	}
 	p.mu.Lock()
+	if slot.retired {
+		p.mu.Unlock()
+		slot.stopWorker()
+		return
+	}
+	slot.retired = true
 	p.retired++
 	retired := p.retired
 	size := p.size
+	closedPool := false
 	if retired >= size && !p.closed {
 		p.closed = true
 		close(p.slots)
+		closedPool = true
 	}
 	p.mu.Unlock()
+	slot.stopWorker()
+	if closedPool {
+		p.drainIdleSlots()
+	}
 	logx.Warn("pool slot retired",
 		"slot", slot.index,
 		"retired", retired,
@@ -222,6 +239,23 @@ func (p *browserPool) retireSlot(slot *browserPoolSlot, reason error) {
 		"error", reason,
 		"session", poolSlotDiagState(slot),
 	)
+}
+
+func (p *browserPool) slotRetired(slot *browserPoolSlot) bool {
+	if p == nil || slot == nil {
+		return true
+	}
+	p.mu.Lock()
+	retired := slot.retired
+	p.mu.Unlock()
+	return retired
+}
+
+func (slot *browserPoolSlot) stopWorker() {
+	if slot == nil || slot.stop == nil {
+		return
+	}
+	slot.stopOnce.Do(slot.stop)
 }
 
 func poolSlotDiagState(slot *browserPoolSlot) string {
@@ -265,7 +299,7 @@ func (p *browserPool) abortActiveSessions() {
 			}
 			if slot != nil {
 				if returned, closed := p.returnSlot(slot); !returned && closed && slot.stop != nil {
-					slot.stop()
+					slot.stopWorker()
 				}
 			}
 		default:
@@ -281,6 +315,7 @@ func (p *browserPool) Close() {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
+		p.drainIdleSlots()
 		return
 	}
 	p.closed = true
@@ -297,9 +332,16 @@ func (p *browserPool) Close() {
 	for i := 0; i < active; i++ {
 		slotStart := time.Now()
 		select {
-		case slot := <-p.slots:
-			if slot != nil && slot.stop != nil {
-				slot.stop()
+		case slot, ok := <-p.slots:
+			if !ok {
+				logx.Debug("browser pool closed",
+					"elapsed_ms", time.Since(started).Milliseconds(),
+					"retired", retired,
+				)
+				return
+			}
+			if slot != nil {
+				slot.stopWorker()
 			}
 		case <-time.After(p.idleSlotWait()):
 			logx.Warn("browser pool close timed out waiting for idle slot",
@@ -308,10 +350,30 @@ func (p *browserPool) Close() {
 			)
 		}
 	}
+	p.drainIdleSlots()
 	logx.Debug("browser pool closed",
 		"elapsed_ms", time.Since(started).Milliseconds(),
 		"retired", retired,
 	)
+}
+
+func (p *browserPool) drainIdleSlots() {
+	if p == nil || p.slots == nil {
+		return
+	}
+	for {
+		select {
+		case slot, ok := <-p.slots:
+			if !ok {
+				return
+			}
+			if slot != nil {
+				slot.stopWorker()
+			}
+		default:
+			return
+		}
+	}
 }
 
 func (p *browserPool) idleSlotWait() time.Duration {

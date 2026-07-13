@@ -9,6 +9,7 @@ import (
 
 	"github.com/bafgion/scenaria-golang/internal/logx"
 	"github.com/bafgion/scenaria-golang/internal/paths"
+	"github.com/bafgion/scenaria-golang/internal/plugin"
 )
 
 const startupTempMaxAge = 24 * time.Hour
@@ -174,18 +175,15 @@ func isPluginInstallTempName(name string) bool {
 	if name == "" {
 		return false
 	}
-	idx := strings.Index(name, "-")
+	idx := strings.LastIndex(name, "-")
 	if idx <= 0 || idx == len(name)-1 {
 		return false
 	}
-	prefix := name[:idx]
-	for _, r := range prefix {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '.', r == '_':
-		default:
+	if err := plugin.ValidatePluginID(name[:idx]); err != nil {
+		return false
+	}
+	for _, r := range name[idx+1:] {
+		if r < '0' || r > '9' {
 			return false
 		}
 	}

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   UNTITLED_RECOVERY_KEY,
   UNTITLED_RECOVERY_MAX_AGE_MS,
+  clearUntitledRecoveryAll,
   clearUntitledRecoveryPath,
   journalUntitledTabs,
   loadUntitledRecoveryJournal,
   mergeUntitledSessionWithRecovery,
+  persistUntitledRecoveryEntries,
 } from './untitledRecoveryJournal'
 import type { TabBody } from './tabMemory'
 
@@ -110,4 +112,54 @@ describe('untitledRecoveryJournal', () => {
     )
     expect(loadUntitledRecoveryJournal(storage, 600)).toEqual([])
   })
+
+  it('returns false when storage is unavailable or quota rejects writes', () => {
+    const storage = new FailingStorage({ failSet: true })
+    const tabs: TabBody[] = [
+      { path: '__untitled__:1/a.feature', content: 'old', draft: 'latest', dirty: true },
+    ]
+
+    expect(journalUntitledTabs(tabs, tabs[0].path, () => 'latest', storage, 700)).toBe(false)
+    expect(journalUntitledTabs(tabs, tabs[0].path, () => 'latest', null, 700)).toBe(false)
+  })
+
+  it('returns false when storage rejects cleanup', () => {
+    const storage = new FailingStorage({ failRemove: true })
+
+    expect(clearUntitledRecoveryAll(storage)).toBe(false)
+  })
+
+  it('returns false when serialization fails', () => {
+    const badContent = {
+      toJSON() {
+        throw new Error('cannot serialize')
+      },
+    }
+    expect(
+      persistUntitledRecoveryEntries(
+        [{ path: '__untitled__:1/a.feature', content: badContent as never, updatedAt: 800 }],
+        new MemoryStorage(),
+      ),
+    ).toBe(false)
+  })
 })
+
+class FailingStorage extends MemoryStorage {
+  failSet = false
+  failRemove = false
+
+  constructor(flags: Partial<Pick<FailingStorage, 'failSet' | 'failRemove'>> = {}) {
+    super()
+    Object.assign(this, flags)
+  }
+
+  setItem(key: string, value: string) {
+    if (this.failSet) throw new Error('storage quota exceeded')
+    super.setItem(key, value)
+  }
+
+  removeItem(key: string) {
+    if (this.failRemove) throw new Error('storage remove failed')
+    super.removeItem(key)
+  }
+}

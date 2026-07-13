@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -106,6 +107,12 @@ func buildProjectReplacementPlan(files []string, find, replace string, caseSensi
 func commitProjectReplacementPlan(plan []plannedProjectReplacement) error {
 	committed := make([]plannedProjectReplacement, 0, len(plan))
 	for _, item := range plan {
+		if err := validateProjectReplacementUnchanged(item); err != nil {
+			if rollbackErr := rollbackProjectReplacements(committed); rollbackErr != nil {
+				return fmt.Errorf("%w (rollback failed: %v)", err, rollbackErr)
+			}
+			return err
+		}
 		if err := projectReplaceWriteFile(item.Path, item.New, item.Perm); err != nil {
 			if rollbackErr := rollbackProjectReplacements(committed); rollbackErr != nil {
 				return fmt.Errorf("write %s: %w (rollback failed: %v)", filepath.Base(item.Path), err, rollbackErr)
@@ -113,6 +120,17 @@ func commitProjectReplacementPlan(plan []plannedProjectReplacement) error {
 			return fmt.Errorf("write %s: %w", filepath.Base(item.Path), err)
 		}
 		committed = append(committed, item)
+	}
+	return nil
+}
+
+func validateProjectReplacementUnchanged(item plannedProjectReplacement) error {
+	current, err := projectReplaceReadFile(item.Path)
+	if err != nil {
+		return fmt.Errorf("verify %s before replace: %w", filepath.Base(item.Path), err)
+	}
+	if !bytes.Equal(current, item.Old) {
+		return fmt.Errorf("replace aborted: file changed externally: %s", filepath.Base(item.Path))
 	}
 	return nil
 }

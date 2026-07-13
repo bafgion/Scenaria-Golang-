@@ -30,6 +30,7 @@ test.afterAll(async () => {
 
 test('тур: перезапуск из справки', async () => {
   const page = await connectDesktop()
+  await waitForAppReady(page)
   await dismissBlockingDialogs(page)
   await dismissTourIfVisible(page)
   await restartOnboardingTour(page)

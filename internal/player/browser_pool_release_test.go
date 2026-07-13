@@ -273,3 +273,134 @@ func TestBrowserPoolReleaseAfterCloseStopsSlotWithoutSend(t *testing.T) {
 		t.Fatal("release after close sent slot to pool")
 	}
 }
+
+func TestBrowserPoolRejectedReturnRetiresAndStopsSlot(t *testing.T) {
+	var rejectedStopped atomic.Int32
+	var idleStopped atomic.Int32
+	pool := &browserPool{
+		slots: make(chan *browserPoolSlot, 1),
+		size:  1,
+		resetSlot: func(*browserPoolSlot) error {
+			return nil
+		},
+	}
+	pool.slots <- &browserPoolSlot{index: 1, stop: func() { idleStopped.Add(1) }}
+	rejected := &browserPoolSlot{index: 2, stop: func() { rejectedStopped.Add(1) }}
+
+	pool.release(context.Background(), rejected, PlaywrightExecutorOptions{}, ScenarioResult{}, RunCase{Name: "full"}, "run-full")
+
+	if got := rejectedStopped.Load(); got != 1 {
+		t.Fatalf("rejected slot should be stopped once, got %d", got)
+	}
+	if got := idleStopped.Load(); got != 1 {
+		t.Fatalf("closing exhausted pool should stop buffered idle slot once, got %d", got)
+	}
+	if !rejected.retired {
+		t.Fatal("rejected slot should be marked retired")
+	}
+	if pool.retired != 1 {
+		t.Fatalf("rejected slot should count as retired, got %d", pool.retired)
+	}
+	if len(pool.slots) != 0 {
+		t.Fatal("retire-all should drain buffered idle slots")
+	}
+}
+
+func TestBrowserPoolDoubleReleaseDoesNotReuseStoppedSlot(t *testing.T) {
+	var stopped atomic.Int32
+	pool := &browserPool{
+		slots: make(chan *browserPoolSlot, 1),
+		size:  1,
+		resetSlot: func(*browserPoolSlot) error {
+			return nil
+		},
+	}
+	slot := &browserPoolSlot{index: 3, stop: func() { stopped.Add(1) }}
+
+	pool.release(context.Background(), slot, PlaywrightExecutorOptions{}, ScenarioResult{}, RunCase{Name: "first"}, "run-double")
+	pool.release(context.Background(), slot, PlaywrightExecutorOptions{}, ScenarioResult{}, RunCase{Name: "second"}, "run-double")
+
+	if got := stopped.Load(); got != 1 {
+		t.Fatalf("double release should stop duplicate slot once, got %d", got)
+	}
+	if _, err := pool.acquire(context.Background()); err == nil {
+		t.Fatal("retired duplicate slot should not be reusable")
+	}
+}
+
+func TestBrowserPoolRejectedReplacementSlotStopsReplacementOnce(t *testing.T) {
+	var oldStopped atomic.Int32
+	var replacementStopped atomic.Int32
+	var idleStopped atomic.Int32
+	pool := &browserPool{
+		slots: make(chan *browserPoolSlot, 1),
+		size:  1,
+		resetSlot: func(*browserPoolSlot) error {
+			return errors.New("force replacement")
+		},
+		replaceSlot: func(_ context.Context, slot *browserPoolSlot, _ PlaywrightExecutorOptions) error {
+			slot.stopWorker()
+			slot.stop = func() { replacementStopped.Add(1) }
+			slot.stopOnce = sync.Once{}
+			return nil
+		},
+	}
+	pool.slots <- &browserPoolSlot{index: 4, stop: func() { idleStopped.Add(1) }}
+	slot := &browserPoolSlot{index: 5, stop: func() { oldStopped.Add(1) }}
+
+	pool.release(context.Background(), slot, PlaywrightExecutorOptions{}, ScenarioResult{}, RunCase{Name: "replacement"}, "run-replacement")
+
+	if got := oldStopped.Load(); got != 1 {
+		t.Fatalf("old worker should be stopped during replacement, got %d", got)
+	}
+	if got := replacementStopped.Load(); got != 1 {
+		t.Fatalf("rejected replacement worker should be stopped once, got %d", got)
+	}
+	if got := idleStopped.Load(); got != 1 {
+		t.Fatalf("retire-all should stop buffered idle worker once, got %d", got)
+	}
+	if !slot.retired {
+		t.Fatal("rejected replacement slot should be retired")
+	}
+}
+
+func TestBrowserPoolConcurrentRejectedReturnsStopEachSlot(t *testing.T) {
+	const releases = 4
+	var stopped atomic.Int32
+	var idleStopped atomic.Int32
+	pool := &browserPool{
+		slots: make(chan *browserPoolSlot, 1),
+		size:  1,
+		resetSlot: func(*browserPoolSlot) error {
+			return nil
+		},
+	}
+	pool.slots <- &browserPoolSlot{index: 6, stop: func() { idleStopped.Add(1) }}
+
+	var wg sync.WaitGroup
+	for i := 0; i < releases; i++ {
+		slot := &browserPoolSlot{index: 10 + i, stop: func() { stopped.Add(1) }}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pool.release(context.Background(), slot, PlaywrightExecutorOptions{}, ScenarioResult{}, RunCase{Name: "parallel-full"}, "run-parallel-full")
+		}()
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("concurrent rejected releases did not finish")
+	}
+	if got := stopped.Load(); got != releases {
+		t.Fatalf("each rejected release should stop its slot once, got %d", got)
+	}
+	if got := idleStopped.Load(); got != 1 {
+		t.Fatalf("buffered idle slot should be stopped once, got %d", got)
+	}
+}

@@ -112,11 +112,11 @@ export async function expectEditorTextContains(page: Page, text: string) {
 }
 
 export async function openMenuItem(page: Page, menu: string, item: string | RegExp, opts?: { exact?: boolean }) {
-  await page.locator('.menubar .menu-trigger', { hasText: menu }).click()
-  await page
-    .locator('.menu-root.open .menu-dropdown')
-    .getByRole('button', { name: item, exact: opts?.exact })
-    .click()
+  await page.keyboard.press('Escape')
+  await page.locator('.menubar .menu-trigger', { hasText: menu }).click({ force: true })
+  const dropdown = page.locator('.menu-root.open .menu-dropdown')
+  await expect(dropdown).toBeVisible({ timeout: 10_000 })
+  await dropdown.getByRole('button', { name: item, exact: opts?.exact }).click()
 }
 
 export function catalogFeature(page: Page, featureName: string) {

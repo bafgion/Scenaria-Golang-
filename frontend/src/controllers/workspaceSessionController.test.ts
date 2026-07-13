@@ -402,6 +402,7 @@ describe('workspaceSessionController', () => {
     appendLog?: ReturnType<typeof vi.fn>
     setStatus?: ReturnType<typeof vi.fn>
     recoveryStorage?: StorageLike
+    getEditorText?: () => string | null
   } = {}) {
     const settingsStore = createSettingsStore()
     const tabsStore = createTabsStore('__welcome__')
@@ -436,7 +437,7 @@ describe('workspaceSessionController', () => {
       getProjectPath: () => '',
       getTabs: () => tabsStore.snapshot().tabs,
       getActiveTab: () => tabsStore.snapshot().activeTab,
-      getEditorText: () => '',
+      getEditorText: overrides.getEditorText ?? (() => ''),
       syncActiveTabContent: vi.fn(),
       isUntitled: (path) => path.startsWith('__untitled__:'),
       saveSettings: vi.fn(),
@@ -564,7 +565,9 @@ describe('workspaceSessionController', () => {
 
   it('keeps intentionally empty untitled visible when saved project cannot be resolved', async () => {
     const resolveProjectPath = vi.fn(async () => '')
-    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ resolveProjectPath })
+    const appendLog = vi.fn()
+    const setStatus = vi.fn()
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ resolveProjectPath, appendLog, setStatus })
 
     await controller.restoreWorkspaceSession({
       sessionProject: '/missing-project',
@@ -580,6 +583,37 @@ describe('workspaceSessionController', () => {
     expect(applyEditorText).toHaveBeenCalledWith(
       '',
       expect.objectContaining({ tabPath: '__untitled__:3/empty.feature', hydrate: true }),
+    )
+    expect(appendLog).toHaveBeenCalledWith('journal.session.projectNotFound')
+    expect(setStatus).toHaveBeenCalledWith('journal.status.sessionProjectNotFound', 'error')
+  })
+
+  it('restores untitled tabs when saved project path resolver rejects', async () => {
+    const resolveProjectPath = vi.fn(async () => {
+      throw new Error('drive unavailable')
+    })
+    const { controller, tabsStore, applyEditorText } = createUntitledRestoreHarness({ resolveProjectPath })
+
+    await controller.restoreWorkspaceSession({
+      sessionProject: '/missing-project',
+      openTabs: ['/missing-project/a.feature', '__untitled__:4/recovered.feature'],
+      untitledTabs: [{ path: '__untitled__:4/recovered.feature', content: 'Feature: Recovered' }],
+      activeTab: '/missing-project/a.feature',
+    } as never)
+
+    expect(tabsStore.snapshot().tabs).toEqual([
+      {
+        path: '__untitled__:4/recovered.feature',
+        content: 'Feature: Recovered',
+        draft: 'Feature: Recovered',
+        dirty: true,
+      },
+    ])
+    expect(tabsStore.snapshot().welcomeTabVisible).toBe(false)
+    expect(tabsStore.snapshot().activeTab).toBe('__untitled__:4/recovered.feature')
+    expect(applyEditorText).toHaveBeenCalledWith(
+      'Feature: Recovered',
+      expect.objectContaining({ tabPath: '__untitled__:4/recovered.feature', hydrate: true }),
     )
   })
 
@@ -641,6 +675,65 @@ describe('workspaceSessionController', () => {
       expect.objectContaining({ tabPath: '__untitled__:2/empty.feature', hydrate: true }),
     )
   })
+
+  it('warns once when untitled recovery journal writes fail', async () => {
+    const storage = new FailingStorage({ failSet: true, failRemove: true })
+    const appendLog = vi.fn()
+    const setStatus = vi.fn()
+    const { controller, tabsStore } = createUntitledRestoreHarness({
+      recoveryStorage: storage,
+      appendLog,
+      setStatus,
+      getEditorText: () => 'Feature: Latest',
+    })
+    tabsStore.appendTab({ path: '__untitled__:1/recovery.feature', content: 'Feature: Draft', draft: 'Feature: Draft', dirty: true })
+    tabsStore.patch({ activeTab: '__untitled__:1/recovery.feature' })
+
+    controller.journalCurrentUntitledTabs()
+    controller.journalCurrentUntitledTabs()
+    controller.clearUntitledJournalPath('__untitled__:1/recovery.feature')
+
+    expect(appendLog).toHaveBeenCalledTimes(1)
+    expect(appendLog).toHaveBeenCalledWith('journal.session.untitledRecoveryUnavailable')
+    expect(setStatus).toHaveBeenCalledTimes(1)
+    expect(setStatus).toHaveBeenCalledWith('journal.status.untitledRecoveryUnavailable', 'error')
+  })
+
+  it('does not warn when no untitled recovery write is needed', () => {
+    const storage = new FailingStorage({ failRemove: true })
+    const appendLog = vi.fn()
+    const setStatus = vi.fn()
+    const { controller } = createUntitledRestoreHarness({ recoveryStorage: storage, appendLog, setStatus })
+
+    controller.journalCurrentUntitledTabs()
+
+    expect(appendLog).not.toHaveBeenCalled()
+    expect(setStatus).not.toHaveBeenCalled()
+  })
+
+  it('keeps later successful untitled recovery writes functional after a failure', () => {
+    const storage = new FailingStorage({ failSet: true })
+    const appendLog = vi.fn()
+    const setStatus = vi.fn()
+    const { controller, tabsStore } = createUntitledRestoreHarness({
+      recoveryStorage: storage,
+      appendLog,
+      setStatus,
+      getEditorText: () => 'Feature: Latest',
+    })
+    tabsStore.appendTab({ path: '__untitled__:1/recovery.feature', content: 'Feature: Old', draft: 'Feature: Latest', dirty: true })
+    tabsStore.patch({ activeTab: '__untitled__:1/recovery.feature' })
+
+    controller.journalCurrentUntitledTabs()
+    storage.failSet = false
+    controller.journalCurrentUntitledTabs()
+
+    expect(appendLog).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(storage.getItem('scenaria.untitledRecovery.v1') || '{}')).toMatchObject({
+      version: 1,
+      tabs: [{ path: '__untitled__:1/recovery.feature', content: 'Feature: Latest' }],
+    })
+  })
 })
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -655,5 +748,31 @@ class MemoryStorage implements StorageLike {
   }
   removeItem(key: string) {
     this.values.delete(key)
+  }
+}
+
+class FailingStorage extends MemoryStorage {
+  failGet = false
+  failSet = false
+  failRemove = false
+
+  constructor(flags: Partial<Pick<FailingStorage, 'failGet' | 'failSet' | 'failRemove'>> = {}) {
+    super()
+    Object.assign(this, flags)
+  }
+
+  getItem(key: string): string | null {
+    if (this.failGet) throw new Error('storage get failed')
+    return super.getItem(key)
+  }
+
+  setItem(key: string, value: string) {
+    if (this.failSet) throw new Error('storage quota exceeded')
+    super.setItem(key, value)
+  }
+
+  removeItem(key: string) {
+    if (this.failRemove) throw new Error('storage remove failed')
+    super.removeItem(key)
   }
 }

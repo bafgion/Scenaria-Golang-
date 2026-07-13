@@ -26,4 +26,33 @@ describe('journalStore', () => {
     expect(snap.statusMessage).not.toContain('token123')
     expect(snap.statusMessage).toContain('[REDACTED]')
   })
+
+  it('redacts direct patch updates for journal and status text', () => {
+    const store = createJournalStore()
+    store.patch({
+      logText: 'Cookie: sid=123 https://user:pass@example.com/path\nplain context',
+      statusMessage: 'password="open sesame" Authorization: Basic abc123',
+      statusTone: 'error',
+    })
+    const snap = store.snapshot()
+    expect(snap.logText).not.toContain('sid=123')
+    expect(snap.logText).not.toContain('user:pass@')
+    expect(snap.logText).toContain('plain context')
+    expect(snap.statusMessage).not.toContain('open sesame')
+    expect(snap.statusMessage).not.toContain('abc123')
+    expect(snap.statusMessage).toContain('[REDACTED]')
+    expect(snap.statusTone).toBe('error')
+  })
+
+  it('redacts initial visible journal state', () => {
+    const store = createJournalStore({
+      logText: 'token=abc123',
+      statusMessage: 'https://user:pass@example.com/path',
+      statusTone: 'busy',
+    })
+    const snap = store.snapshot()
+    expect(snap.logText).not.toContain('abc123')
+    expect(snap.statusMessage).not.toContain('user:pass@')
+    expect(snap.statusMessage).toContain('https://example.com/path')
+  })
 })
