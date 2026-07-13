@@ -14,7 +14,7 @@ Legacy **Python/Qt Scenaria is discontinued**. Compatibility: `.feature` / `.sce
 | **Русский** | [docs/ru/index.md](docs/ru/index.md) |
 | **Full index** | [docs/README.md](docs/README.md) |
 
-Current release: **v0.29.0** — [downloads](https://github.com/bafgion/Scenaria-Golang-/releases).
+Current release: **v0.30.0** — [downloads](https://github.com/bafgion/Scenaria-Golang-/releases).
 
 ## Quick start (Windows)
 

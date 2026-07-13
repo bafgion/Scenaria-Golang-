@@ -152,10 +152,12 @@
     display: flex;
     gap: 8px;
     margin-top: 4px;
+    min-width: 0;
   }
 
   .path-row input {
     flex: 1;
+    min-width: 0;
     margin-top: 0;
   }
 
@@ -177,5 +179,16 @@
 
   .wizard-dialog {
     width: min(480px, 92vw);
+  }
+
+  @media (max-width: 560px) {
+    .path-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .path-row button {
+      width: 100%;
+    }
   }
 </style>

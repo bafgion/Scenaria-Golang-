@@ -207,13 +207,15 @@
 <style>
   .modal.test-client-dialog {
     width: min(640px, 96vw);
+    min-height: 0;
   }
 
   .test-client-body {
     display: grid;
     grid-template-columns: 180px 1fr;
     gap: 12px;
-    min-height: 320px;
+    min-height: min(320px, 48vh);
+    min-width: 0;
   }
 
   .empty-hint {
@@ -249,7 +251,7 @@
 
   .json-label textarea {
     flex: 1;
-    min-height: 240px;
+    min-height: min(240px, 40vh);
     font-family: var(--font-mono, monospace);
     font-size: 12px;
     resize: vertical;
@@ -278,25 +280,35 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    min-width: 0;
   }
 
   .primary-actions {
-    flex: 1 1 360px;
+    flex: 1 1 280px;
     justify-content: flex-start;
   }
 
   .secondary-actions {
-    flex: 0 0 auto;
+    flex: 1 1 160px;
     justify-content: flex-end;
   }
 
   .use-button {
-    min-width: 192px;
+    min-width: min(192px, 100%);
   }
 
-  @media (max-width: 620px) {
+  @media (max-width: 700px) {
     .test-client-body {
       grid-template-columns: 1fr;
+      min-height: 0;
+    }
+
+    .client-list {
+      max-height: 132px;
+    }
+
+    .json-label textarea {
+      min-height: 200px;
     }
 
     .test-client-actions,
@@ -311,6 +323,16 @@
 
     .action-group button {
       flex: 1 1 160px;
+    }
+  }
+
+  @media (max-height: 640px) {
+    .test-client-body {
+      min-height: 0;
+    }
+
+    .json-label textarea {
+      min-height: 160px;
     }
   }
 </style>

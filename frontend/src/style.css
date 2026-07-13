@@ -310,6 +310,7 @@ html {
   justify-content: center;
   padding: 8vh 16px 16px;
   box-sizing: border-box;
+  overflow: auto;
 }
 
 .palette-backdrop.modal-layer-top {
@@ -356,8 +357,11 @@ body.onboarding-tour-active .onboarding-target {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   color: var(--color-text);
   max-height: calc(100vh - 10vh);
+  max-width: calc(100vw - 32px);
   overflow: auto;
   padding: 16px 18px;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .palette-backdrop > .palette.command-palette,
@@ -416,6 +420,7 @@ body.onboarding-tour-active .onboarding-target {
   color: var(--color-text);
   font-size: 14px;
   outline: none;
+  box-sizing: border-box;
 }
 
 .palette-input:focus {
@@ -1715,6 +1720,7 @@ body.onboarding-tour-active .onboarding-target {
   z-index: var(--z-modal);
   padding: 24px 16px;
   box-sizing: border-box;
+  overflow: auto;
 }
 
 .modal {
@@ -1730,6 +1736,9 @@ body.onboarding-tour-active .onboarding-target {
   gap: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   color: var(--color-text);
+  box-sizing: border-box;
+  min-width: min(360px, calc(100vw - 32px));
+  overflow: hidden;
 }
 
 .modal.wide {
@@ -1744,6 +1753,7 @@ body.onboarding-tour-active .onboarding-target {
   margin: 0 0 4px;
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .about-modal .about-version {
@@ -1762,11 +1772,14 @@ body.onboarding-tour-active .onboarding-target {
   gap: 4px;
   font-size: 12px;
   color: var(--color-text);
+  min-width: 0;
 }
 
 .modal input,
 .modal select,
 .modal textarea {
+  width: 100%;
+  min-width: 0;
   padding: 6px 10px;
   background: var(--color-input);
   border: 1px solid var(--color-border);
@@ -1795,6 +1808,7 @@ body.onboarding-tour-active .onboarding-target {
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .modal-actions {
@@ -1808,6 +1822,7 @@ body.onboarding-tour-active .onboarding-target {
 .actions button,
 .banner-actions button {
   min-width: 84px;
+  max-width: 100%;
   padding: 6px 16px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
@@ -1896,6 +1911,7 @@ body.onboarding-tour-active .onboarding-target {
   gap: 8px;
   font-size: 12px;
   color: var(--color-text);
+  min-width: 0;
 }
 
 .check-row.disabled {
@@ -2376,6 +2392,7 @@ body.onboarding-tour-active .onboarding-target {
 
 .check-row input {
   width: auto;
+  flex: 0 0 auto;
 }
 
 .label-row,
@@ -2383,10 +2400,12 @@ body.onboarding-tour-active .onboarding-target {
   display: flex;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .input-row input {
   flex: 1;
+  min-width: 0;
 }
 
 .context-menu-backdrop {
@@ -2481,7 +2500,61 @@ body.onboarding-tour-active .onboarding-target {
   }
 
   .modal {
-    min-width: min(360px, calc(100vw - 32px));
+    width: min(100%, calc(100vw - 32px));
+    min-width: 0;
+  }
+
+  .app-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .dialog-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .dialog-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px;
+  }
+
+  .dialog-sidebar button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .setting-card,
+  .plugin-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .setting-card-control {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .setting-card-control input[type='text'],
+  .setting-card-control input.setting-text,
+  .setting-card-control select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dialog-footer {
+    justify-content: stretch;
+  }
+
+  .dialog-footer button {
+    flex: 1 1 140px;
   }
 }
 
@@ -2502,5 +2575,58 @@ body.onboarding-tour-active .onboarding-target {
 
   .bottom-panel {
     max-height: 45vh;
+  }
+
+  .modal-backdrop {
+    align-items: flex-start;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .modal,
+  .app-dialog {
+    max-height: calc(100vh - 24px);
+  }
+}
+
+@media (max-width: 560px) {
+  .modal-backdrop,
+  .palette-backdrop {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .palette-backdrop {
+    padding-top: 16px;
+  }
+
+  .modal,
+  .palette-backdrop > .palette {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .modal-actions,
+  .actions {
+    justify-content: stretch;
+  }
+
+  .modal-actions button,
+  .actions button,
+  .palette-backdrop .palette > .actions button,
+  .palette-backdrop .palette button.dialog-btn {
+    flex: 1 1 140px;
+  }
+
+  .input-row,
+  .label-row,
+  .quick-start {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .input-row button,
+  .quick-start button {
+    width: 100%;
   }
 }

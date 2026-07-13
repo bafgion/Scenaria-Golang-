@@ -222,6 +222,7 @@
 
   .tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     margin-bottom: 12px;
     border-bottom: 1px solid var(--color-border);
@@ -276,6 +277,8 @@
 
   .steps-header {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
     margin: 12px 0 6px;
@@ -313,6 +316,7 @@
     grid-template-columns: 1fr auto;
     gap: 8px;
     margin-bottom: 12px;
+    min-width: 0;
   }
 
   .preview-label {
@@ -336,5 +340,25 @@
     border-radius: 4px;
     background: var(--color-input);
     color: var(--color-text);
+  }
+
+  @media (max-width: 560px) {
+    .add-step {
+      grid-template-columns: 1fr;
+    }
+
+    .steps-header button,
+    .add-step button {
+      width: 100%;
+    }
+
+    li {
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .step-actions {
+      align-self: flex-end;
+    }
   }
 </style>

@@ -90,6 +90,9 @@
     color: var(--color-text);
     font-size: 12px;
     cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .recent-item:hover {

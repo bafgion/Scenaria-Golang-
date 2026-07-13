@@ -652,10 +652,12 @@
     margin: 0 0 8px;
     padding: 0 2px;
     min-height: 44px;
+    min-width: 0;
   }
 
   .browser-engine-status {
     flex: 1;
+    min-width: 0;
     margin: 0;
     font-size: 12px;
     line-height: 1.45;
@@ -705,6 +707,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
   }
 
   .dialog-footer-spacer {
@@ -712,10 +715,13 @@
   }
 
   .apply-notice {
-    max-width: min(420px, 42vw);
+    flex: 1 1 220px;
+    min-width: 0;
+    max-width: min(420px, 100%);
     font-size: 12px;
     line-height: 1.35;
     color: var(--color-success, #4ec9b0);
+    overflow-wrap: anywhere;
   }
 
   .dialog-footer button.applied:not(:disabled) {
@@ -764,5 +770,26 @@
 
   .strategy-actions :global(.btn-compact) {
     min-width: 24px;
+  }
+
+  @media (max-width: 700px) {
+    .browser-install-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .browser-install-row :global(.install-btn),
+    .browser-install-row button {
+      width: 100%;
+    }
+
+    .dialog-footer-spacer {
+      display: none;
+    }
+
+    .apply-notice {
+      flex-basis: 100%;
+      order: -1;
+    }
   }
 </style>

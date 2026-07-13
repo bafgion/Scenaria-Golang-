@@ -120,6 +120,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
+    min-width: 0;
   }
 
   .tag-chips {
@@ -157,5 +158,16 @@
   .check-row.indent {
     margin-left: 18px;
     font-size: 12px;
+  }
+
+  @media (max-width: 560px) {
+    .row-2 {
+      grid-template-columns: 1fr;
+    }
+
+    .check-row.indent {
+      margin-left: 0;
+      padding-left: 18px;
+    }
   }
 </style>

@@ -140,10 +140,12 @@
   .path-row {
     display: flex;
     gap: 8px;
+    min-width: 0;
   }
 
   .path-row input {
     flex: 1;
+    min-width: 0;
   }
 
   .warn {
@@ -155,5 +157,16 @@
     color: var(--color-error, #c62828);
     font-size: 12px;
     margin: 0;
+  }
+
+  @media (max-width: 560px) {
+    .path-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .path-row button {
+      width: 100%;
+    }
   }
 </style>

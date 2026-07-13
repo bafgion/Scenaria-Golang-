@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
   bootApp,
   catalogFeature,
@@ -17,6 +17,18 @@ import {
 test.beforeEach(async ({ page }) => {
   await page.addInitScript({ path: mockPath })
 })
+
+async function expectDialogWithinViewport(page: Page, dialog: Locator) {
+  await expect(dialog).toBeVisible()
+  const [box, viewport] = await Promise.all([dialog.boundingBox(), page.viewportSize()])
+  expect(box).toBeTruthy()
+  expect(viewport).toBeTruthy()
+  if (!box || !viewport) return
+  expect(box.x).toBeGreaterThanOrEqual(-1)
+  expect(box.y).toBeGreaterThanOrEqual(-1)
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1)
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1)
+}
 
 test('app boots to welcome screen', async ({ page }) => {
   await bootApp(page)
@@ -43,8 +55,9 @@ test('command palette opens with Ctrl+Shift+P', async ({ page }) => {
 test('settings dialog opens with Ctrl+Comma', async ({ page }) => {
   await bootApp(page)
   await page.keyboard.press('Control+Comma')
-  await expect(page.getByRole('dialog', { name: /Настройки/ })).toBeVisible()
-  await expect(page.getByPlaceholder('Поиск настроек')).toBeVisible()
+  const dialog = page.getByRole('dialog', { name: /Настройки/ })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByPlaceholder('Поиск настроек')).toBeVisible()
 })
 
 test('settings browser engine status updates on selection', async ({ page }) => {
@@ -571,6 +584,56 @@ test('run progress mock updates playing bar counter', async ({ page }) => {
   await catalogFeature(page, 'smoke').click()
   await page.keyboard.press('Control+Enter')
   await expect(page.locator('.playing-bar .play-progress-text')).toContainText(/\d\/3/, { timeout: 10_000 })
+})
+
+test('forms stay within viewport on compact screens', async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 640 })
+  await bootApp(page)
+
+  await page.keyboard.press('Control+Comma')
+  let dialog = page.getByRole('dialog', { name: /Настройки/ })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'OK' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+
+  await openMenuItem(page, 'Проект', 'Новый проект…')
+  dialog = page.getByRole('dialog', { name: 'Новый проект' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Обзор…' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+
+  await openTestProject(page)
+  await catalogFeature(page, 'smoke').click()
+
+  await openMenuItem(page, 'Запись и тест', 'Запустить…')
+  dialog = page.getByRole('dialog', { name: 'Запуск сценария' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Запустить' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+
+  await openMenuItem(page, 'Запись и тест', 'Тест-клиент…')
+  dialog = page.getByRole('dialog', { name: 'Тест-клиент' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Сохранить' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Закрыть' }).click()
+
+  await openMenuItem(page, 'Сценарий', 'Экспорт…')
+  dialog = page.getByRole('dialog', { name: 'Экспорт сценария' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Экспорт' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+
+  await openMenuItem(page, 'Сценарий', 'Импорт .feature…')
+  dialog = page.getByRole('dialog', { name: 'Импорт feature' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Добавить файлы…' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Отмена' }).click()
+
+  await openMenuItem(page, 'Плагины', 'Управление плагинами…')
+  dialog = page.getByRole('dialog', { name: 'Плагины' })
+  await expectDialogWithinViewport(page, dialog)
+  await expect(dialog.getByRole('button', { name: 'Закрыть' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Закрыть' }).click()
 })
 
 test('results trace viewer button logs success', async ({ page }) => {

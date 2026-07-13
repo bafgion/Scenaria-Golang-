@@ -127,6 +127,7 @@
     max-height: 82vh;
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
 
   .toolbar {
@@ -134,6 +135,7 @@
     gap: 8px;
     margin-bottom: 10px;
     flex-wrap: wrap;
+    min-width: 0;
   }
 
   .search {
@@ -141,10 +143,17 @@
     min-width: 180px;
   }
 
+  .toolbar select,
+  .toolbar button {
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
+
   .table-wrap {
     overflow: auto;
     flex: 1;
     min-height: 200px;
+    min-width: 0;
   }
 
   table {
@@ -261,7 +270,22 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     margin-top: 12px;
+  }
+
+  @media (max-width: 560px) {
+    .search,
+    .toolbar select,
+    .toolbar button {
+      flex: 1 1 100%;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .at {
+      white-space: normal;
+    }
   }
 </style>

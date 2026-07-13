@@ -126,6 +126,8 @@
 
   .files-header {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     align-items: center;
     justify-content: space-between;
     margin: 12px 0 6px;
@@ -134,6 +136,7 @@
 
   .file-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
 
@@ -167,6 +170,7 @@
   }
 
   li span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -176,5 +180,16 @@
     margin: 0 0 10px;
     font-size: 12px;
     color: var(--color-error);
+  }
+
+  @media (max-width: 560px) {
+    .files-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .file-actions button {
+      flex: 1 1 140px;
+    }
   }
 </style>

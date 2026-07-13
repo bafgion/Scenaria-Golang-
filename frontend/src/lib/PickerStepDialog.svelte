@@ -149,6 +149,8 @@
 <style>
   .picker-step {
     width: min(720px, 94vw);
+    max-height: 86vh;
+    overflow: auto;
   }
 
   .selector-preview {
@@ -185,6 +187,7 @@
     grid-template-columns: 220px 1fr;
     gap: 12px;
     min-height: 220px;
+    min-width: 0;
   }
 
   .side-panels {
@@ -213,6 +216,7 @@
   .choice-list button {
     display: block;
     width: 100%;
+    min-width: 0;
     text-align: left;
     padding: 8px 10px;
     border: none;
@@ -289,8 +293,29 @@
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     justify-content: flex-end;
     margin-top: 12px;
+  }
+
+  @media (max-width: 680px) {
+    .picker-body {
+      grid-template-columns: 1fr;
+      min-height: 0;
+    }
+
+    .side-panels {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .choice-list {
+      max-height: 140px;
+    }
+
+    pre {
+      min-height: 120px;
+    }
   }
 </style>

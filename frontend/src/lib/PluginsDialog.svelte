@@ -147,6 +147,7 @@
     width: min(720px, 96vw);
     max-height: 86vh;
     overflow: auto;
+    min-width: 0;
   }
 
   h3 {
@@ -166,16 +167,19 @@
     border-collapse: collapse;
     font-size: 12px;
     margin-bottom: 12px;
+    table-layout: fixed;
   }
 
   th, td {
     padding: 6px 8px;
     border-bottom: 1px solid var(--color-divider);
     text-align: left;
+    vertical-align: top;
+    min-width: 0;
   }
 
   .source {
-    max-width: 320px;
+    max-width: min(320px, 38vw);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -192,6 +196,7 @@
     display: grid;
     gap: 8px;
     margin-bottom: 12px;
+    min-width: 0;
   }
 
   label {
@@ -203,10 +208,12 @@
 
   .runners {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     margin-bottom: 10px;
     font-size: 12px;
+    min-width: 0;
   }
 
   .empty, .error {
@@ -222,5 +229,43 @@
     color: var(--color-error);
     background: transparent;
     border-color: var(--color-border);
+  }
+
+  @media (max-width: 620px) {
+    table,
+    thead,
+    tbody,
+    tr,
+    th,
+    td {
+      display: block;
+    }
+
+    thead {
+      display: none;
+    }
+
+    tr {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--color-divider);
+    }
+
+    td {
+      border-bottom: none;
+    }
+
+    .source {
+      max-width: none;
+      white-space: normal;
+      word-break: break-all;
+    }
+
+    td button {
+      width: 100%;
+    }
+
+    .runners button {
+      flex: 1 1 140px;
+    }
   }
 </style>

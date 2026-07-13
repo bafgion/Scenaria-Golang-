@@ -7,7 +7,7 @@
 | **English** | [docs/en/index.md](en/index.md) |
 | **Русский** | [docs/ru/index.md](ru/index.md) |
 
-Current release: **v0.29.0** (see [releases](https://github.com/bafgion/Scenaria-Golang-/releases)).
+Current release: **v0.30.0** (see [releases](https://github.com/bafgion/Scenaria-Golang-/releases)).
 
 [![CI](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/bafgion/Scenaria-Golang-/actions/workflows/ci.yml)
 
